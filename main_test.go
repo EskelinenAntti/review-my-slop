@@ -41,27 +41,6 @@ index 1111111..2222222 100644
 	}
 }
 
-func TestSelectRefs(t *testing.T) {
-	refs := []lineRef{
-		{Index: 1, File: "a", Line: 1},
-		{Index: 2, File: "a", Line: 2},
-		{Index: 3, File: "a", Line: 3},
-	}
-
-	selected, err := selectRefs(refs, "3,1-2,2")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(selected) != 3 {
-		t.Fatalf("expected 3 selections, got %d", len(selected))
-	}
-	for i, ref := range selected {
-		if ref.Index != i+1 {
-			t.Fatalf("selection %d index = %d", i, ref.Index)
-		}
-	}
-}
-
 func TestTruncateANSIPreservesEscapeSequences(t *testing.T) {
 	got := truncateANSI("\x1b[31mabcdef\x1b[0m", 4)
 	if !ansiRE.MatchString(got) {

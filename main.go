@@ -3,20 +3,15 @@ package main
 import (
 	"bufio"
 	"bytes"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"os"
 	"os/exec"
 	"regexp"
-	"sort"
 	"strconv"
 	"strings"
-	"time"
 )
-
-const commentsPath = ".rms-comments.json"
 
 var ansiRE = regexp.MustCompile(`\x1b\[[0-9;?]*[ -/]*[@-~]`)
 var changeColorRE = regexp.MustCompile(`\x1b\[[0-9;]*[39][12](?:;[0-9]*)?m`)
@@ -34,29 +29,14 @@ type displaySelection struct {
 	Ref       lineRef
 }
 
-type commentFile struct {
-	Version  int       `json:"version"`
-	Comments []comment `json:"comments"`
-}
-
-type comment struct {
-	ID        string `json:"id"`
-	File      string `json:"file"`
-	Line      int    `json:"line"`
-	Side      string `json:"side"`
-	Body      string `json:"body"`
-	DiffText  string `json:"diff_text"`
-	CreatedAt string `json:"created_at"`
-}
-
 func main() {
-	if err := run(os.Args[1:], os.Stdin, os.Stdout, os.Stderr); err != nil {
+	if err := run(os.Args[1:], os.Stdout); err != nil {
 		fmt.Fprintln(os.Stderr, "rms:", err)
 		os.Exit(1)
 	}
 }
 
-func run(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
+func run(args []string, stdout io.Writer) error {
 	refs, err := changedLines(args)
 	if err != nil {
 		return err
@@ -66,30 +46,23 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 		return nil
 	}
 
-	comments, err := loadComments(commentsPath)
+	diff, err := prettyDiff(args)
 	if err != nil {
 		return err
 	}
 
-	diff, err := prettyDiff(args)
-	if err != nil {
-		fmt.Fprintf(stderr, "could not show difftastic diff: %v\n", err)
-		diff = []byte(err.Error())
-	}
-
-	return reviewTUI(args, refs, comments, diff, stdout)
+	return reviewTUI(args, refs, diff, stdout)
 }
 
 func prettyDiff(args []string) ([]byte, error) {
-	if _, err := exec.LookPath("difft"); err == nil {
-		cmdArgs := append([]string{"-c", "diff.external=difft --color=always", "diff", "--ext-diff", "--color=always"}, args...)
-		cmd := exec.Command("git", cmdArgs...)
-		cmd.Env = append(os.Environ(), "DFT_COLOR=always")
-		return cmd.CombinedOutput()
+	if _, err := exec.LookPath("difft"); err != nil {
+		return nil, errors.New("difftastic is required: install `difft` and try again")
 	}
 
-	cmdArgs := append([]string{"diff", "--color=always"}, args...)
-	return exec.Command("git", cmdArgs...).CombinedOutput()
+	cmdArgs := append([]string{"-c", "diff.external=difft --color=always", "diff", "--ext-diff", "--color=always"}, args...)
+	cmd := exec.Command("git", cmdArgs...)
+	cmd.Env = append(os.Environ(), "DFT_COLOR=always")
+	return cmd.CombinedOutput()
 }
 
 type terminalState struct {
@@ -98,22 +71,18 @@ type terminalState struct {
 
 type reviewState struct {
 	args       []string
-	refs       []lineRef
 	selections []displaySelection
-	comments   commentFile
 	lines      []string
 	cursor     int
 	top        int
 	message    string
 }
 
-func reviewTUI(args []string, refs []lineRef, comments commentFile, diff []byte, stdout io.Writer) error {
+func reviewTUI(args []string, refs []lineRef, diff []byte, stdout io.Writer) error {
 	lines := splitLines(diffWithUntrackedNotice(args, diff))
 	state := &reviewState{
 		args:       args,
-		refs:       refs,
 		selections: buildSelections(lines, refs),
-		comments:   comments,
 		lines:      lines,
 	}
 
@@ -121,7 +90,7 @@ func reviewTUI(args []string, refs []lineRef, comments commentFile, diff []byte,
 	if err != nil {
 		fmt.Fprintln(stdout, string(diffWithUntrackedNotice(args, diff)))
 		fmt.Fprintln(stdout)
-		fmt.Fprintln(stdout, "Interactive review needs a terminal. Run `go run .` directly, then use j/k to move, c to comment, e to open, q to quit.")
+		fmt.Fprintln(stdout, "Interactive review needs a terminal. Run `go run .` directly, then use j/k to move, e to open, q to quit.")
 		return nil
 	}
 	defer term.restore()
@@ -164,29 +133,6 @@ func reviewTUI(args []string, refs []lineRef, comments commentFile, diff []byte,
 			} else {
 				state.message = fmt.Sprintf("Opened %s:%d", ref.File, ref.Line)
 			}
-		case "c":
-			ref := state.current()
-			var body string
-			err := withNormalTerminal(term, func() error {
-				fmt.Printf("Comment for %s:%d. Finish with a single . on its own line.\n", ref.File, ref.Line)
-				var err error
-				body, err = readCommentBody(bufio.NewReader(os.Stdin), os.Stdout)
-				return err
-			})
-			if err != nil {
-				state.message = err.Error()
-				continue
-			}
-			if strings.TrimSpace(body) == "" {
-				state.message = "Comment discarded."
-				continue
-			}
-			addComment(&state.comments, ref, body)
-			if err := saveComments(commentsPath, state.comments); err != nil {
-				state.message = err.Error()
-			} else {
-				state.message = fmt.Sprintf("Saved comment to %s", commentsPath)
-			}
 		case "r":
 			diff, err := prettyDiff(state.args)
 			if err != nil {
@@ -201,9 +147,8 @@ func reviewTUI(args []string, refs []lineRef, comments commentFile, diff []byte,
 			if len(refs) == 0 {
 				return nil
 			}
-			state.refs = refs
 			state.lines = splitLines(diffWithUntrackedNotice(state.args, diff))
-			state.selections = buildSelections(state.lines, state.refs)
+			state.selections = buildSelections(state.lines, refs)
 			if state.cursor >= len(state.selections) {
 				state.cursor = len(state.selections) - 1
 			}
@@ -350,7 +295,7 @@ func render(w io.Writer, state *reviewState, rows, cols int) {
 		marker = "-"
 	}
 	status := fmt.Sprintf(" %d/%d %s %s:%d  %s", state.cursor+1, len(state.selections), marker, ref.File, ref.Line, strings.TrimSpace(ref.Content))
-	help := " j/k move  c comment  e/Enter open  g/G top/bottom  ^u/^d page  r reload  q quit "
+	help := " j/k move  e/Enter open  g/G top/bottom  ^u/^d page  r reload  q quit "
 	fmt.Fprintf(w, "\x1b[7m%s\x1b[0m\x1b[K\r\n", fit(status, cols))
 	if state.message != "" {
 		fmt.Fprintf(w, "%s\x1b[K\r\n", fit(" "+state.message, cols))
@@ -534,18 +479,6 @@ func diffWithUntrackedNotice(args []string, diff []byte) []byte {
 		buf.WriteByte('\n')
 	}
 	return buf.Bytes()
-}
-
-func addComment(comments *commentFile, ref lineRef, body string) {
-	comments.Comments = append(comments.Comments, comment{
-		ID:        fmt.Sprintf("%d-%d", time.Now().UnixNano(), ref.Index),
-		File:      ref.File,
-		Line:      ref.Line,
-		Side:      ref.Side,
-		Body:      body,
-		DiffText:  ref.Content,
-		CreatedAt: time.Now().UTC().Format(time.RFC3339),
-	})
 }
 
 func fit(s string, width int) string {
@@ -776,104 +709,6 @@ func cleanDiffPath(path string) string {
 	return path
 }
 
-func printHelp(w io.Writer) {
-	fmt.Fprintln(w, "Commands:")
-	fmt.Fprintln(w, "  l                 list changed lines")
-	fmt.Fprintln(w, "  d                 show diff again")
-	fmt.Fprintln(w, "  e <n|range>       open changed line(s) in $VISUAL or $EDITOR")
-	fmt.Fprintln(w, "  c <n|range>       leave local comment(s)")
-	fmt.Fprintln(w, "  comments          show saved comments")
-	fmt.Fprintln(w, "  q                 quit")
-	fmt.Fprintln(w, "Selections accept comma-separated numbers and ranges, for example 1,4-6.")
-}
-
-func printLineRefs(w io.Writer, refs []lineRef) {
-	fmt.Fprintln(w, "\nChanged lines:")
-	for _, ref := range refs {
-		marker := "+"
-		if ref.Side == "old" {
-			marker = "-"
-		}
-		fmt.Fprintf(w, "%4d  %s %s:%d  %s\n", ref.Index, marker, ref.File, ref.Line, strings.TrimSpace(ref.Content))
-	}
-}
-
-func splitCommand(input string) (string, string) {
-	fields := strings.Fields(input)
-	if len(fields) == 0 {
-		return "", ""
-	}
-	cmd := strings.ToLower(fields[0])
-	rest := strings.TrimSpace(strings.TrimPrefix(input, fields[0]))
-	return cmd, rest
-}
-
-func selectRefs(refs []lineRef, selection string) ([]lineRef, error) {
-	selection = strings.TrimSpace(selection)
-	if selection == "" {
-		return nil, errors.New("missing selection")
-	}
-
-	seen := map[int]bool{}
-	var indexes []int
-	for _, part := range strings.Split(selection, ",") {
-		part = strings.TrimSpace(part)
-		if part == "" {
-			continue
-		}
-		if strings.Contains(part, "-") {
-			bounds := strings.SplitN(part, "-", 2)
-			start, err := strconv.Atoi(strings.TrimSpace(bounds[0]))
-			if err != nil {
-				return nil, fmt.Errorf("invalid selection %q", part)
-			}
-			end, err := strconv.Atoi(strings.TrimSpace(bounds[1]))
-			if err != nil {
-				return nil, fmt.Errorf("invalid selection %q", part)
-			}
-			if start > end {
-				start, end = end, start
-			}
-			for i := start; i <= end; i++ {
-				if !seen[i] {
-					seen[i] = true
-					indexes = append(indexes, i)
-				}
-			}
-			continue
-		}
-		index, err := strconv.Atoi(part)
-		if err != nil {
-			return nil, fmt.Errorf("invalid selection %q", part)
-		}
-		if !seen[index] {
-			seen[index] = true
-			indexes = append(indexes, index)
-		}
-	}
-
-	sort.Ints(indexes)
-	selected := make([]lineRef, 0, len(indexes))
-	for _, index := range indexes {
-		if index < 1 || index > len(refs) {
-			return nil, fmt.Errorf("selection %d is out of range", index)
-		}
-		selected = append(selected, refs[index-1])
-	}
-	if len(selected) == 0 {
-		return nil, errors.New("empty selection")
-	}
-	return selected, nil
-}
-
-func summarizeSelection(refs []lineRef) string {
-	parts := make([]string, 0, len(refs))
-	for _, ref := range refs {
-		parts = append(parts, fmt.Sprintf("%s:%d", ref.File, ref.Line))
-	}
-	return strings.Join(parts, ", ")
-}
-
 func openEditor(file string, line int) error {
 	editor := os.Getenv("VISUAL")
 	if editor == "" {
@@ -898,71 +733,4 @@ func openEditor(file string, line int) error {
 
 func shellQuote(s string) string {
 	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
-}
-
-func readCommentBody(reader *bufio.Reader, stdout io.Writer) (string, error) {
-	fmt.Fprintln(stdout, "Enter comment. Finish with a single . on its own line:")
-	var lines []string
-	for {
-		line, err := reader.ReadString('\n')
-		if err != nil && !errors.Is(err, io.EOF) {
-			return "", err
-		}
-		trimmed := strings.TrimRight(line, "\r\n")
-		if trimmed == "." {
-			return strings.Join(lines, "\n"), nil
-		}
-		if errors.Is(err, io.EOF) {
-			if trimmed != "" {
-				lines = append(lines, trimmed)
-			}
-			return strings.Join(lines, "\n"), nil
-		}
-		lines = append(lines, trimmed)
-	}
-}
-
-func loadComments(path string) (commentFile, error) {
-	data, err := os.ReadFile(path)
-	if errors.Is(err, os.ErrNotExist) {
-		return commentFile{Version: 1}, nil
-	}
-	if err != nil {
-		return commentFile{}, err
-	}
-
-	var comments commentFile
-	if err := json.Unmarshal(data, &comments); err != nil {
-		return commentFile{}, fmt.Errorf("read %s: %w", path, err)
-	}
-	if comments.Version == 0 {
-		comments.Version = 1
-	}
-	return comments, nil
-}
-
-func saveComments(path string, comments commentFile) error {
-	if comments.Version == 0 {
-		comments.Version = 1
-	}
-	data, err := json.MarshalIndent(comments, "", "  ")
-	if err != nil {
-		return err
-	}
-	data = append(data, '\n')
-	return os.WriteFile(path, data, 0o644)
-}
-
-func printComments(w io.Writer, comments commentFile) {
-	if len(comments.Comments) == 0 {
-		fmt.Fprintln(w, "No comments saved.")
-		return
-	}
-	for _, comment := range comments.Comments {
-		marker := "+"
-		if comment.Side == "old" {
-			marker = "-"
-		}
-		fmt.Fprintf(w, "%s %s:%d %s\n%s\n\n", marker, comment.File, comment.Line, comment.CreatedAt, comment.Body)
-	}
 }
