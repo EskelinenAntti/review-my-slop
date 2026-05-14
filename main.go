@@ -3,11 +3,13 @@ package main
 import (
 	"bufio"
 	"bytes"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
@@ -27,6 +29,26 @@ type lineRef struct {
 type displaySelection struct {
 	LineIndex int
 	Ref       lineRef
+}
+
+type prInfo struct {
+	Number int    `json:"number"`
+	Owner  string `json:"owner"`
+	Repo   string `json:"repo"`
+	Head   string `json:"head"`
+}
+
+func getPRInfo() (*prInfo, error) {
+	cmd := exec.Command("gh", "pr", "view", "--json", "number,headRefOid,headRepository,headRepositoryOwner", "--jq", `{"number": .number, "owner": .headRepositoryOwner.login, "repo": .headRepository.name, "head": .headRefOid}`)
+	out, err := cmd.Output()
+	if err != nil {
+		return nil, err
+	}
+	var info prInfo
+	if err := json.Unmarshal(out, &info); err != nil {
+		return nil, err
+	}
+	return &info, nil
 }
 
 func main() {
@@ -51,7 +73,9 @@ func run(args []string, stdout io.Writer) error {
 		return err
 	}
 
-	return reviewTUI(args, refs, diff, stdout)
+	pr, _ := getPRInfo()
+
+	return reviewTUI(args, refs, diff, pr, stdout)
 }
 
 func prettyDiff(args []string) ([]byte, error) {
@@ -76,14 +100,16 @@ type reviewState struct {
 	cursor     int
 	top        int
 	message    string
+	pr         *prInfo
 }
 
-func reviewTUI(args []string, refs []lineRef, diff []byte, stdout io.Writer) error {
+func reviewTUI(args []string, refs []lineRef, diff []byte, pr *prInfo, stdout io.Writer) error {
 	lines := splitLines(diffWithUntrackedNotice(args, diff))
 	state := &reviewState{
 		args:       args,
 		selections: buildSelections(lines, refs),
 		lines:      lines,
+		pr:         pr,
 	}
 
 	term, err := enterTerminal()
@@ -126,8 +152,8 @@ func reviewTUI(args []string, refs []lineRef, diff []byte, stdout io.Writer) err
 				state.message = fmt.Sprintf("Cannot open deleted line %s:%d", ref.File, ref.Line)
 				continue
 			}
-			if err := withNormalTerminal(term, func() error {
-				return openEditor(ref.File, ref.Line)
+			if _, err := withNormalTerminal(term, func() (struct{}, error) {
+				return struct{}{}, openEditor(ref.File, ref.Line)
 			}); err != nil {
 				state.message = err.Error()
 			} else {
@@ -153,8 +179,104 @@ func reviewTUI(args []string, refs []lineRef, diff []byte, stdout io.Writer) err
 				state.cursor = len(state.selections) - 1
 			}
 			state.message = "Reloaded diff."
+		case "c":
+			if state.pr == nil {
+				continue
+			}
+			ref := state.current()
+			comment, err := withNormalTerminal(term, func() (string, error) {
+				return promptEditor("", "comment.md")
+			})
+			if err != nil {
+				state.message = err.Error()
+				continue
+			}
+			if comment == "" {
+				state.message = "Comment cancelled."
+				continue
+			}
+			state.message = "Posting comment..."
+			render(stdout, state, rows, cols)
+			if err := postComment(state.pr, ref, comment); err != nil {
+				state.message = "Error: " + err.Error()
+			} else {
+				state.message = "Comment posted!"
+			}
+		case "s":
+			if state.pr == nil {
+				continue
+			}
+			ref := state.current()
+			suggestion := fmt.Sprintf("```suggestion\n%s\n```", ref.Content)
+			comment, err := withNormalTerminal(term, func() (string, error) {
+				return promptEditor(suggestion, "suggestion.md")
+			})
+			if err != nil {
+				state.message = err.Error()
+				continue
+			}
+			if comment == "" {
+				state.message = "Suggestion cancelled."
+				continue
+			}
+			state.message = "Posting suggestion..."
+			render(stdout, state, rows, cols)
+			if err := postComment(state.pr, ref, comment); err != nil {
+				state.message = "Error: " + err.Error()
+			} else {
+				state.message = "Suggestion posted!"
+			}
 		}
 	}
+}
+
+func promptEditor(initial, filename string) (string, error) {
+	tmp := filepath.Join(os.TempDir(), filename)
+	if err := os.WriteFile(tmp, []byte(initial), 0644); err != nil {
+		return "", err
+	}
+	defer os.Remove(tmp)
+
+	editor := os.Getenv("VISUAL")
+	if editor == "" {
+		editor = os.Getenv("EDITOR")
+	}
+	if editor == "" {
+		editor = "vi"
+	}
+
+	cmd := exec.Command("sh", "-c", fmt.Sprintf("%s %s", editor, shellQuote(tmp)))
+	cmd.Stdin = os.Stdin
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	if err := cmd.Run(); err != nil {
+		return "", err
+	}
+
+	b, err := os.ReadFile(tmp)
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(string(b)), nil
+}
+
+func postComment(pr *prInfo, ref lineRef, body string) error {
+	side := "RIGHT"
+	if ref.Side == "old" {
+		side = "LEFT"
+	}
+	cmd := exec.Command("gh", "api", "-X", "POST",
+		fmt.Sprintf("/repos/%s/%s/pulls/%d/comments", pr.Owner, pr.Repo, pr.Number),
+		"-f", "body="+body,
+		"-f", "commit_id="+pr.Head,
+		"-f", "path="+ref.File,
+		"-F", fmt.Sprintf("line=%d", ref.Line),
+		"-f", "side="+side)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("%w: %s", err, string(out))
+	}
+	return nil
 }
 
 func enterTerminal() (*terminalState, error) {
@@ -184,17 +306,17 @@ func (t *terminalState) restore() {
 	_ = cmd.Run()
 }
 
-func withNormalTerminal(t *terminalState, fn func() error) error {
+func withNormalTerminal[T any](t *terminalState, fn func() (T, error)) (T, error) {
 	fmt.Print("\x1b[?25h\x1b[?1049l")
 	cmd := exec.Command("stty", t.settings)
 	cmd.Stdin = os.Stdin
 	_ = cmd.Run()
-	err := fn()
+	val, err := fn()
 	raw := exec.Command("stty", "raw", "-echo")
 	raw.Stdin = os.Stdin
 	_ = raw.Run()
 	fmt.Print("\x1b[?1049h\x1b[?25l")
-	return err
+	return val, err
 }
 
 func terminalSize() (int, int) {
@@ -294,8 +416,16 @@ func render(w io.Writer, state *reviewState, rows, cols int) {
 	if ref.Side == "old" {
 		marker = "-"
 	}
-	status := fmt.Sprintf(" %d/%d %s %s:%d  %s", state.cursor+1, len(state.selections), marker, ref.File, ref.Line, strings.TrimSpace(ref.Content))
-	help := " j/k move  e/Enter open  g/G top/bottom  ^u/^d page  r reload  q quit "
+	prStr := ""
+	if state.pr != nil {
+		prStr = fmt.Sprintf(" #%d", state.pr.Number)
+	}
+	status := fmt.Sprintf(" %d/%d %s %s:%d %s %s", state.cursor+1, len(state.selections), marker, ref.File, ref.Line, strings.TrimSpace(ref.Content), prStr)
+	help := " j/k move  e/Enter open  g/G top/bottom  ^u/^d page  r reload "
+	if state.pr != nil {
+		help += " c comment  s suggest "
+	}
+	help += " q quit "
 	fmt.Fprintf(w, "\x1b[7m%s\x1b[0m\x1b[K\r\n", fit(status, cols))
 	if state.message != "" {
 		fmt.Fprintf(w, "%s\x1b[K\r\n", fit(" "+state.message, cols))
