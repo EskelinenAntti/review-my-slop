@@ -275,7 +275,7 @@ func render(w io.Writer, state *reviewState, rows, cols int) {
 	selectedLine := state.selectedDisplayLine()
 
 	fmt.Fprint(w, "\x1b[H\x1b[2J")
-	for row := 0; row < bodyRows; row++ {
+	for row := range bodyRows {
 		lineIndex := state.top + row
 		if lineIndex >= len(state.lines) {
 			fmt.Fprint(w, "\x1b[K\r\n")
@@ -556,27 +556,12 @@ func ansiEnd(s string, start int) int {
 	return -1
 }
 
-func max(a, b int) int {
-	if a > b {
-		return a
-	}
-	return b
-}
-
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
-}
-
 func changedLines(args []string) ([]lineRef, error) {
 	cmdArgs := append([]string{"diff", "--no-ext-diff", "--unified=0"}, args...)
 	cmd := exec.Command("git", cmdArgs...)
 	out, err := cmd.Output()
 	if err != nil {
-		var exitErr *exec.ExitError
-		if errors.As(err, &exitErr) {
+		if exitErr, ok := errors.AsType[*exec.ExitError](err); ok {
 			return nil, fmt.Errorf("git diff failed: %s", strings.TrimSpace(string(exitErr.Stderr)))
 		}
 		return nil, err
@@ -596,8 +581,7 @@ func untrackedLines(offset int) ([]lineRef, error) {
 	cmd := exec.Command("git", "ls-files", "--others", "--exclude-standard")
 	out, err := cmd.Output()
 	if err != nil {
-		var exitErr *exec.ExitError
-		if errors.As(err, &exitErr) {
+		if exitErr, ok := errors.AsType[*exec.ExitError](err); ok {
 			return nil, fmt.Errorf("git ls-files failed: %s", strings.TrimSpace(string(exitErr.Stderr)))
 		}
 		return nil, err
