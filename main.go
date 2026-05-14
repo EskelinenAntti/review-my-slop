@@ -19,6 +19,7 @@ import (
 const commentsPath = ".rms-comments.json"
 
 var ansiRE = regexp.MustCompile(`\x1b\[[0-9;?]*[ -/]*[@-~]`)
+var changeColorRE = regexp.MustCompile(`\x1b\[[0-9;]*[39][12](?:;[0-9]*)?m`)
 
 type lineRef struct {
 	Index   int
@@ -26,6 +27,11 @@ type lineRef struct {
 	Line    int
 	Side    string
 	Content string
+}
+
+type displaySelection struct {
+	LineIndex int
+	Ref       lineRef
 }
 
 type commentFile struct {
@@ -76,8 +82,10 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 
 func prettyDiff(args []string) ([]byte, error) {
 	if _, err := exec.LookPath("difft"); err == nil {
-		cmdArgs := append([]string{"-c", "diff.external=difft", "diff", "--ext-diff", "--color=always"}, args...)
-		return exec.Command("git", cmdArgs...).CombinedOutput()
+		cmdArgs := append([]string{"-c", "diff.external=difft --color=always", "diff", "--ext-diff", "--color=always"}, args...)
+		cmd := exec.Command("git", cmdArgs...)
+		cmd.Env = append(os.Environ(), "DFT_COLOR=always")
+		return cmd.CombinedOutput()
 	}
 
 	cmdArgs := append([]string{"diff", "--color=always"}, args...)
@@ -89,21 +97,24 @@ type terminalState struct {
 }
 
 type reviewState struct {
-	args     []string
-	refs     []lineRef
-	comments commentFile
-	lines    []string
-	cursor   int
-	top      int
-	message  string
+	args       []string
+	refs       []lineRef
+	selections []displaySelection
+	comments   commentFile
+	lines      []string
+	cursor     int
+	top        int
+	message    string
 }
 
 func reviewTUI(args []string, refs []lineRef, comments commentFile, diff []byte, stdout io.Writer) error {
+	lines := splitLines(diffWithUntrackedNotice(args, diff))
 	state := &reviewState{
-		args:     args,
-		refs:     refs,
-		comments: comments,
-		lines:    splitLines(diffWithUntrackedNotice(args, diff)),
+		args:       args,
+		refs:       refs,
+		selections: buildSelections(lines, refs),
+		comments:   comments,
+		lines:      lines,
 	}
 
 	term, err := enterTerminal()
@@ -135,7 +146,7 @@ func reviewTUI(args []string, refs []lineRef, comments commentFile, diff []byte,
 		case "g":
 			state.cursor = 0
 		case "G":
-			state.cursor = len(state.refs) - 1
+			state.cursor = len(state.selections) - 1
 		case "ctrl-d", "pagedown":
 			state.move(max(1, (rows-4)/2))
 		case "ctrl-u", "pageup":
@@ -191,10 +202,11 @@ func reviewTUI(args []string, refs []lineRef, comments commentFile, diff []byte,
 				return nil
 			}
 			state.refs = refs
-			if state.cursor >= len(state.refs) {
-				state.cursor = len(state.refs) - 1
-			}
 			state.lines = splitLines(diffWithUntrackedNotice(state.args, diff))
+			state.selections = buildSelections(state.lines, state.refs)
+			if state.cursor >= len(state.selections) {
+				state.cursor = len(state.selections) - 1
+			}
 			state.message = "Reloaded diff."
 		}
 	}
@@ -326,7 +338,7 @@ func render(w io.Writer, state *reviewState, rows, cols int) {
 		}
 		line := truncateANSI(state.lines[lineIndex], cols)
 		if lineIndex == selectedLine {
-			fmt.Fprintf(w, "\x1b[7m%s\x1b[0m\x1b[K\r\n", line)
+			fmt.Fprintf(w, "%s\x1b[K\r\n", highlightANSI(line, cols))
 		} else {
 			fmt.Fprintf(w, "%s\x1b[K\r\n", line)
 		}
@@ -337,7 +349,7 @@ func render(w io.Writer, state *reviewState, rows, cols int) {
 	if ref.Side == "old" {
 		marker = "-"
 	}
-	status := fmt.Sprintf(" %d/%d %s %s:%d  %s", state.cursor+1, len(state.refs), marker, ref.File, ref.Line, strings.TrimSpace(ref.Content))
+	status := fmt.Sprintf(" %d/%d %s %s:%d  %s", state.cursor+1, len(state.selections), marker, ref.File, ref.Line, strings.TrimSpace(ref.Content))
 	help := " j/k move  c comment  e/Enter open  g/G top/bottom  ^u/^d page  r reload  q quit "
 	fmt.Fprintf(w, "\x1b[7m%s\x1b[0m\x1b[K\r\n", fit(status, cols))
 	if state.message != "" {
@@ -349,7 +361,7 @@ func render(w io.Writer, state *reviewState, rows, cols int) {
 }
 
 func (s *reviewState) current() lineRef {
-	return s.refs[s.cursor]
+	return s.selections[s.cursor].Ref
 }
 
 func (s *reviewState) move(delta int) {
@@ -357,8 +369,8 @@ func (s *reviewState) move(delta int) {
 	if s.cursor < 0 {
 		s.cursor = 0
 	}
-	if s.cursor >= len(s.refs) {
-		s.cursor = len(s.refs) - 1
+	if s.cursor >= len(s.selections) {
+		s.cursor = len(s.selections) - 1
 	}
 	s.message = ""
 }
@@ -381,27 +393,7 @@ func (s *reviewState) keepSelectionVisible(rows int) {
 }
 
 func (s *reviewState) selectedDisplayLine() int {
-	ref := s.current()
-	content := strings.TrimSpace(ref.Content)
-	lineNo := strconv.Itoa(ref.Line)
-	best := -1
-	for i, raw := range s.lines {
-		plain := ansiRE.ReplaceAllString(raw, "")
-		if !strings.Contains(plain, lineNo) {
-			continue
-		}
-		if content != "" && !strings.Contains(plain, content) {
-			continue
-		}
-		if strings.Contains(plain, ref.File) {
-			best = i
-			break
-		}
-		if best == -1 {
-			best = i
-		}
-	}
-	return best
+	return s.selections[s.cursor].LineIndex
 }
 
 func splitLines(data []byte) []string {
@@ -411,6 +403,113 @@ func splitLines(data []byte) []string {
 		return []string{""}
 	}
 	return strings.Split(text, "\n")
+}
+
+func buildSelections(lines []string, fallback []lineRef) []displaySelection {
+	selections := buildDifftasticSelections(lines, true)
+	if len(selections) > 0 {
+		return selections
+	}
+	selections = buildDifftasticSelections(lines, false)
+	if len(selections) > 0 {
+		return selections
+	}
+
+	selections = make([]displaySelection, 0, len(fallback))
+	for i, ref := range fallback {
+		selections = append(selections, displaySelection{
+			LineIndex: min(i, max(0, len(lines)-1)),
+			Ref:       ref,
+		})
+	}
+	return selections
+}
+
+func buildDifftasticSelections(lines []string, changedOnly bool) []displaySelection {
+	var selections []displaySelection
+	currentFile := ""
+	index := 1
+
+	for lineIndex, raw := range lines {
+		plain := strings.TrimRight(ansiRE.ReplaceAllString(raw, ""), "\r")
+		if file, ok := parseDifftasticHeader(plain); ok {
+			currentFile = file
+			continue
+		}
+		if changedOnly && !changeColorRE.MatchString(raw) {
+			continue
+		}
+		if currentFile == "" {
+			continue
+		}
+		if ref, ok := parseDifftasticRow(index, currentFile, plain, raw); ok {
+			ref.Content = strings.TrimSpace(plain)
+			selections = append(selections, displaySelection{
+				LineIndex: lineIndex,
+				Ref:       ref,
+			})
+			index++
+		}
+	}
+
+	return selections
+}
+
+func parseDifftasticHeader(line string) (string, bool) {
+	before, _, ok := strings.Cut(line, " --- ")
+	if !ok {
+		return "", false
+	}
+	file := strings.TrimSpace(before)
+	if file == "" || strings.Contains(file, " ") {
+		return "", false
+	}
+	return cleanDiffPath(file), true
+}
+
+var leadingLineNoRE = regexp.MustCompile(`^\s*(\d+)\s`)
+var anyLineNoRE = regexp.MustCompile(`(?:^|\s)(\d+)\s`)
+
+func parseDifftasticRow(index int, file, line, raw string) (lineRef, bool) {
+	if strings.Contains(line, "│") || strings.Contains(line, "---") {
+		return lineRef{}, false
+	}
+
+	var leftLine int
+	if matches := leadingLineNoRE.FindStringSubmatch(line); len(matches) == 2 {
+		leftLine, _ = strconv.Atoi(matches[1])
+	}
+
+	all := anyLineNoRE.FindAllStringSubmatch(line, -1)
+	rightLine := 0
+	if len(all) > 1 {
+		rightLine, _ = strconv.Atoi(all[len(all)-1][1])
+	}
+	if len(all) == 1 && leftLine == 0 {
+		lineNo, _ := strconv.Atoi(all[0][1])
+		if hasGreen(raw) {
+			rightLine = lineNo
+		} else if hasRed(raw) {
+			leftLine = lineNo
+		}
+	}
+
+	switch {
+	case rightLine > 0:
+		return lineRef{Index: index, File: file, Line: rightLine, Side: "new"}, true
+	case leftLine > 0:
+		return lineRef{Index: index, File: file, Line: leftLine, Side: "old"}, true
+	default:
+		return lineRef{}, false
+	}
+}
+
+func hasGreen(s string) bool {
+	return strings.Contains(s, "\x1b[32") || strings.Contains(s, "\x1b[92")
+}
+
+func hasRed(s string) bool {
+	return strings.Contains(s, "\x1b[31") || strings.Contains(s, "\x1b[91")
 }
 
 func diffWithUntrackedNotice(args []string, diff []byte) []byte {
@@ -458,18 +557,78 @@ func fit(s string, width int) string {
 }
 
 func truncateANSI(s string, width int) string {
-	plain := ansiRE.ReplaceAllString(s, "")
-	if len(plain) <= width {
+	if visibleLen(s) <= width {
 		return s
 	}
 	if width <= 1 {
 		return ""
 	}
-	return plain[:width-1] + " "
+
+	var out strings.Builder
+	visible := 0
+	for i := 0; i < len(s) && visible < width-1; {
+		if s[i] == '\x1b' {
+			end := ansiEnd(s, i)
+			if end > i {
+				out.WriteString(s[i:end])
+				i = end
+				continue
+			}
+		}
+		out.WriteByte(s[i])
+		visible++
+		i++
+	}
+	out.WriteByte(' ')
+	out.WriteString("\x1b[0m")
+	return out.String()
+}
+
+func highlightANSI(s string, width int) string {
+	if visibleLen(s) < width {
+		s += strings.Repeat(" ", width-visibleLen(s))
+	}
+	s = strings.ReplaceAll(s, "\x1b[0m", "\x1b[0m\x1b[7m")
+	return "\x1b[7m" + s + "\x1b[0m"
+}
+
+func visibleLen(s string) int {
+	visible := 0
+	for i := 0; i < len(s); {
+		if s[i] == '\x1b' {
+			end := ansiEnd(s, i)
+			if end > i {
+				i = end
+				continue
+			}
+		}
+		visible++
+		i++
+	}
+	return visible
+}
+
+func ansiEnd(s string, start int) int {
+	if start+1 >= len(s) || s[start+1] != '[' {
+		return -1
+	}
+	for i := start + 2; i < len(s); i++ {
+		if s[i] >= '@' && s[i] <= '~' {
+			return i + 1
+		}
+	}
+	return -1
 }
 
 func max(a, b int) int {
 	if a > b {
+		return a
+	}
+	return b
+}
+
+func min(a, b int) int {
+	if a < b {
 		return a
 	}
 	return b

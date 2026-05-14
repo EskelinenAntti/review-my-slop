@@ -1,6 +1,9 @@
 package main
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestParseDiff(t *testing.T) {
 	diff := []byte(`diff --git a/a.go b/a.go
@@ -56,5 +59,46 @@ func TestSelectRefs(t *testing.T) {
 		if ref.Index != i+1 {
 			t.Fatalf("selection %d index = %d", i, ref.Index)
 		}
+	}
+}
+
+func TestTruncateANSIPreservesEscapeSequences(t *testing.T) {
+	got := truncateANSI("\x1b[31mabcdef\x1b[0m", 4)
+	if !ansiRE.MatchString(got) {
+		t.Fatalf("expected ansi escapes in %q", got)
+	}
+	if visibleLen(got) != 4 {
+		t.Fatalf("visible length = %d, want 4", visibleLen(got))
+	}
+}
+
+func TestBuildSelectionsUsesDisplayedRows(t *testing.T) {
+	lines := []string{
+		"\x1b[1mmain.go\x1b[0m --- Go",
+		"\x1b[2m 10 \x1b[0m old text        \x1b[2m 10 \x1b[0m new text",
+		"\x1b[2m .. \x1b[0m wrapped text     \x1b[2m .. \x1b[0m wrapped text",
+		"\x1b[2m .. \x1b[0m                  \x1b[92;1m 12 \x1b[0m added only",
+		"\x1b[91;1m 11 \x1b[0m removed       \x1b[92;1m 11 \x1b[0m added",
+	}
+
+	selections := buildSelections(lines, nil)
+	if len(selections) != 2 {
+		t.Fatalf("expected 2 selectable rows, got %d", len(selections))
+	}
+	if selections[0].LineIndex != 3 || selections[0].Ref.Line != 12 || selections[0].Ref.Side != "new" {
+		t.Fatalf("first selection = %#v", selections[0])
+	}
+	if selections[1].LineIndex != 4 || selections[1].Ref.Line != 11 || selections[1].Ref.Side != "new" {
+		t.Fatalf("second selection = %#v", selections[1])
+	}
+}
+
+func TestHighlightANSIReappliesReverseAfterReset(t *testing.T) {
+	got := highlightANSI("\x1b[31mred\x1b[0m plain", 12)
+	if !strings.Contains(got, "\x1b[0m\x1b[7m") {
+		t.Fatalf("expected reverse mode to resume after reset in %q", got)
+	}
+	if visibleLen(got) != 12 {
+		t.Fatalf("visible length = %d, want 12", visibleLen(got))
 	}
 }
