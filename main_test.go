@@ -93,10 +93,10 @@ func TestBuildSelectionsUsesDisplayedRows(t *testing.T) {
 	}
 }
 
-func TestHighlightANSIReappliesReverseAfterReset(t *testing.T) {
-	got := highlightANSI("\x1b[31mred\x1b[0m plain", 12)
-	if !strings.Contains(got, "\x1b[0m\x1b[7m") {
-		t.Fatalf("expected reverse mode to resume after reset in %q", got)
+func TestHighlightPlainStripsDiffColors(t *testing.T) {
+	got := highlightPlain("\x1b[31mred\x1b[0m plain", 12)
+	if strings.Contains(got, "\x1b[31m") {
+		t.Fatalf("expected diff color to be stripped from %q", got)
 	}
 	if visibleLen(got) != 12 {
 		t.Fatalf("visible length = %d, want 12", visibleLen(got))

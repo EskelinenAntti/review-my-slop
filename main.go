@@ -338,7 +338,7 @@ func render(w io.Writer, state *reviewState, rows, cols int) {
 		}
 		line := truncateANSI(state.lines[lineIndex], cols)
 		if lineIndex == selectedLine {
-			fmt.Fprintf(w, "%s\x1b[K\r\n", highlightANSI(line, cols))
+			fmt.Fprintf(w, "%s\x1b[K\r\n", highlightPlain(line, cols))
 		} else {
 			fmt.Fprintf(w, "%s\x1b[K\r\n", line)
 		}
@@ -584,12 +584,15 @@ func truncateANSI(s string, width int) string {
 	return out.String()
 }
 
-func highlightANSI(s string, width int) string {
-	if visibleLen(s) < width {
-		s += strings.Repeat(" ", width-visibleLen(s))
+func highlightPlain(s string, width int) string {
+	plain := ansiRE.ReplaceAllString(s, "")
+	if len(plain) > width {
+		plain = plain[:width]
 	}
-	s = strings.ReplaceAll(s, "\x1b[0m", "\x1b[0m\x1b[7m")
-	return "\x1b[7m" + s + "\x1b[0m"
+	if len(plain) < width {
+		plain += strings.Repeat(" ", width-len(plain))
+	}
+	return "\x1b[7m" + plain + "\x1b[0m"
 }
 
 func visibleLen(s string) int {
