@@ -21,6 +21,7 @@ suggestions.
 Keys:
 
 - `j` / `k` move the selected changed line
+- `h` / `l` choose the left or right side of a side-by-side changed row
 - `v` starts or clears a visual selection for a same-file, same-side range
 - `c` opens `$VISUAL` or `$EDITOR` and posts the body as an inline PR comment
 - `s` opens `$VISUAL` or `$EDITOR` with a prefilled `suggestion` block, then

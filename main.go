@@ -28,6 +28,9 @@ type lineRef struct {
 type displaySelection struct {
 	LineIndex int
 	Ref       lineRef
+	Left      *lineRef
+	Right     *lineRef
+	Split     int
 }
 
 type prContext struct {
@@ -139,6 +142,10 @@ func reviewTUI(args []string, refs []lineRef, diff []byte, stdout io.Writer) err
 			state.move(1)
 		case "k", "up":
 			state.move(-1)
+		case "h", "left":
+			state.selectSide("old")
+		case "l", "right":
+			state.selectSide("new")
 		case "g":
 			state.moveTo(0)
 		case "G":
@@ -468,6 +475,10 @@ func readKey(r io.Reader) (string, error) {
 			return "up", nil
 		case 'B':
 			return "down", nil
+		case 'C':
+			return "right", nil
+		case 'D':
+			return "left", nil
 		case '5':
 			var discard [1]byte
 			_, _ = io.ReadFull(r, discard[:])
@@ -501,10 +512,10 @@ func render(w io.Writer, state *reviewState, rows, cols int) {
 			continue
 		}
 		line := truncateANSI(state.lines[lineIndex], cols)
-		if state.isDisplayLineSelected(lineIndex) {
-			fmt.Fprintf(w, "%s\x1b[K\r\n", highlightPlain(line, cols))
+		if selection, ok := state.displayLineSelection(lineIndex); ok {
+			fmt.Fprintf(w, "%s\x1b[K\r\n", highlightSelectionSide(line, cols, selection))
 		} else if lineIndex == selectedLine {
-			fmt.Fprintf(w, "%s\x1b[K\r\n", highlightPlain(line, cols))
+			fmt.Fprintf(w, "%s\x1b[K\r\n", highlightSelectionSide(line, cols, state.selections[state.cursor]))
 		} else {
 			fmt.Fprintf(w, "%s\x1b[K\r\n", line)
 		}
@@ -524,7 +535,7 @@ func render(w io.Writer, state *reviewState, rows, cols int) {
 		pr = fmt.Sprintf(" PR #%d", state.pr.Number)
 	}
 	status := fmt.Sprintf(" %d/%d%s%s %s %s:%d  %s", state.cursor+1, len(state.selections), mode, pr, marker, ref.File, ref.Line, strings.TrimSpace(ref.Content))
-	help := " j/k move  v select  c comment  s suggest  e/Enter open  g/G top/bottom  ^u/^d page  r reload  q quit "
+	help := " j/k move  h/l side  v select  c comment  s suggest  e/Enter open  g/G top/bottom  ^u/^d page  r reload  q quit "
 	fmt.Fprintf(w, "\x1b[7m%s\x1b[0m\x1b[K\r\n", fit(status, cols))
 	if state.message != "" {
 		fmt.Fprintf(w, "%s\x1b[K\r\n", fit(" "+state.message, cols))
@@ -549,6 +560,13 @@ func (s *reviewState) moveTo(next int) {
 	}
 	if next >= len(s.selections) {
 		next = len(s.selections) - 1
+	}
+	desiredSide := s.current().Side
+	if s.selectionAnchor != nil {
+		desiredSide = s.selections[*s.selectionAnchor].Ref.Side
+	}
+	if ref := s.selections[next].sideRef(desiredSide); ref != nil {
+		s.selections[next].Ref = *ref
 	}
 	if s.selectionAnchor != nil && !s.canMoveSelectionTo(next) {
 		return
@@ -590,6 +608,24 @@ func (s *reviewState) toggleSelection() {
 	s.message = fmt.Sprintf("Selecting %s %s:%d", githubSide(ref.Side), ref.File, ref.Line)
 }
 
+func (s *reviewState) selectSide(side string) {
+	selection := &s.selections[s.cursor]
+	ref := selection.sideRef(side)
+	if ref == nil {
+		s.message = fmt.Sprintf("No %s side on this row.", sideLabel(side))
+		return
+	}
+
+	previous := selection.Ref
+	selection.Ref = *ref
+	if s.selectionAnchor != nil && !s.selectionRangeValid() {
+		selection.Ref = previous
+		s.message = "Selection must stay within one file and side."
+		return
+	}
+	s.message = fmt.Sprintf("Selected %s side.", sideLabel(side))
+}
+
 func (s *reviewState) clearSelection() {
 	s.selectionAnchor = nil
 }
@@ -624,9 +660,9 @@ func (s *reviewState) currentRange() (reviewRange, error) {
 	return reviewRange{Start: start, End: end}, nil
 }
 
-func (s *reviewState) isDisplayLineSelected(lineIndex int) bool {
+func (s *reviewState) displayLineSelection(lineIndex int) (displaySelection, bool) {
 	if s.selectionAnchor == nil {
-		return false
+		return displaySelection{}, false
 	}
 	start, end := *s.selectionAnchor, s.cursor
 	if start > end {
@@ -634,14 +670,26 @@ func (s *reviewState) isDisplayLineSelected(lineIndex int) bool {
 	}
 	for i := start; i <= end; i++ {
 		if s.selections[i].LineIndex == lineIndex {
-			return true
+			return s.selections[i], true
 		}
 	}
-	return false
+	return displaySelection{}, false
+}
+
+func (s *reviewState) selectionRangeValid() bool {
+	_, err := s.currentRange()
+	return err == nil
 }
 
 func sameReviewTarget(a, b lineRef) bool {
 	return a.File == b.File && a.Side == b.Side
+}
+
+func sideLabel(side string) string {
+	if side == "old" {
+		return "left"
+	}
+	return "right"
 }
 
 func splitLines(data []byte) []string {
@@ -665,10 +713,12 @@ func buildSelections(lines []string, fallback []lineRef) []displaySelection {
 
 	selections = make([]displaySelection, 0, len(fallback))
 	for i, ref := range fallback {
-		selections = append(selections, displaySelection{
+		selection := displaySelection{
 			LineIndex: min(i, max(0, len(lines)-1)),
 			Ref:       ref,
-		})
+		}
+		selection.setSideRef(ref)
+		selections = append(selections, selection)
 	}
 	return selections
 }
@@ -690,12 +740,9 @@ func buildDifftasticSelections(lines []string, changedOnly bool) []displaySelect
 		if currentFile == "" {
 			continue
 		}
-		if ref, ok := parseDifftasticRow(index, currentFile, plain, raw); ok {
-			ref.Content = strings.TrimSpace(plain)
-			selections = append(selections, displaySelection{
-				LineIndex: lineIndex,
-				Ref:       ref,
-			})
+		if selection, ok := parseDifftasticRow(index, currentFile, plain, raw); ok {
+			selection.LineIndex = lineIndex
+			selections = append(selections, selection)
 			index++
 		}
 	}
@@ -718,38 +765,68 @@ func parseDifftasticHeader(line string) (string, bool) {
 var leadingLineNoRE = regexp.MustCompile(`^\s*(\d+)\s`)
 var anyLineNoRE = regexp.MustCompile(`(?:^|\s)(\d+)\s`)
 
-func parseDifftasticRow(index int, file, line, raw string) (lineRef, bool) {
+func parseDifftasticRow(index int, file, line, raw string) (displaySelection, bool) {
 	if strings.Contains(line, "│") || strings.Contains(line, "---") {
-		return lineRef{}, false
+		return displaySelection{}, false
 	}
 
+	content := strings.TrimSpace(line)
 	var leftLine int
 	if matches := leadingLineNoRE.FindStringSubmatch(line); len(matches) == 2 {
 		leftLine, _ = strconv.Atoi(matches[1])
 	}
 
 	all := anyLineNoRE.FindAllStringSubmatch(line, -1)
+	allIndexes := anyLineNoRE.FindAllStringSubmatchIndex(line, -1)
 	rightLine := 0
+	split := 0
 	if len(all) > 1 {
 		rightLine, _ = strconv.Atoi(all[len(all)-1][1])
+		split = allIndexes[len(allIndexes)-1][2]
 	}
 	if len(all) == 1 && leftLine == 0 {
 		lineNo, _ := strconv.Atoi(all[0][1])
 		if hasGreen(raw) {
 			rightLine = lineNo
+			split = allIndexes[0][2]
 		} else if hasRed(raw) {
 			leftLine = lineNo
 		}
 	}
 
-	switch {
-	case rightLine > 0:
-		return lineRef{Index: index, File: file, Line: rightLine, Side: "new"}, true
-	case leftLine > 0:
-		return lineRef{Index: index, File: file, Line: leftLine, Side: "old"}, true
-	default:
-		return lineRef{}, false
+	var selection displaySelection
+	if leftLine > 0 {
+		selection.setSideRef(lineRef{Index: index, File: file, Line: leftLine, Side: "old", Content: content})
 	}
+	if rightLine > 0 {
+		selection.setSideRef(lineRef{Index: index, File: file, Line: rightLine, Side: "new", Content: content})
+	}
+	selection.Split = split
+	if selection.Right != nil {
+		selection.Ref = *selection.Right
+	} else if selection.Left != nil {
+		selection.Ref = *selection.Left
+	}
+	if selection.Left == nil && selection.Right == nil {
+		return displaySelection{}, false
+	}
+	return selection, true
+}
+
+func (s *displaySelection) setSideRef(ref lineRef) {
+	refCopy := ref
+	if ref.Side == "old" {
+		s.Left = &refCopy
+	} else {
+		s.Right = &refCopy
+	}
+}
+
+func (s displaySelection) sideRef(side string) *lineRef {
+	if side == "old" {
+		return s.Left
+	}
+	return s.Right
 }
 
 func hasGreen(s string) bool {
@@ -829,6 +906,41 @@ func highlightPlain(s string, width int) string {
 		plain += strings.Repeat(" ", width-len(plain))
 	}
 	return "\x1b[7m" + plain + "\x1b[0m"
+}
+
+func highlightSelectionSide(s string, width int, selection displaySelection) string {
+	plain := ansiRE.ReplaceAllString(s, "")
+	if len(plain) > width {
+		plain = plain[:width]
+	}
+	if len(plain) < width {
+		plain += strings.Repeat(" ", width-len(plain))
+	}
+
+	start, end := selectionHighlightRange(selection, width)
+	if start < 0 {
+		start = 0
+	}
+	if end > width {
+		end = width
+	}
+	if start >= end {
+		return highlightPlain(s, width)
+	}
+	return plain[:start] + "\x1b[7m" + plain[start:end] + "\x1b[0m" + plain[end:]
+}
+
+func selectionHighlightRange(selection displaySelection, width int) (int, int) {
+	if selection.Ref.Side == "old" {
+		if selection.Split > 0 {
+			return 0, selection.Split
+		}
+		return 0, width
+	}
+	if selection.Split > 0 {
+		return selection.Split, width
+	}
+	return 0, width
 }
 
 func visibleLen(s string) int {

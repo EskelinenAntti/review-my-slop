@@ -70,6 +70,12 @@ func TestBuildSelectionsUsesDisplayedRows(t *testing.T) {
 	if selections[1].LineIndex != 4 || selections[1].Ref.Line != 11 || selections[1].Ref.Side != "new" {
 		t.Fatalf("second selection = %#v", selections[1])
 	}
+	if selections[1].Left == nil || selections[1].Left.Line != 11 || selections[1].Left.Side != "old" {
+		t.Fatalf("second selection left side = %#v", selections[1].Left)
+	}
+	if selections[1].Right == nil || selections[1].Right.Line != 11 || selections[1].Right.Side != "new" {
+		t.Fatalf("second selection right side = %#v", selections[1].Right)
+	}
 }
 
 func TestHighlightPlainStripsDiffColors(t *testing.T) {
@@ -85,10 +91,10 @@ func TestHighlightPlainStripsDiffColors(t *testing.T) {
 func TestSelectionMovementStaysWithinFileAndSide(t *testing.T) {
 	state := &reviewState{
 		selections: []displaySelection{
-			{Ref: lineRef{File: "a.go", Line: 10, Side: "new"}},
-			{Ref: lineRef{File: "a.go", Line: 11, Side: "new"}},
-			{Ref: lineRef{File: "a.go", Line: 12, Side: "old"}},
-			{Ref: lineRef{File: "b.go", Line: 1, Side: "new"}},
+			testSelection(lineRef{File: "a.go", Line: 10, Side: "new"}),
+			testSelection(lineRef{File: "a.go", Line: 11, Side: "new"}),
+			testSelection(lineRef{File: "a.go", Line: 12, Side: "old"}),
+			testSelection(lineRef{File: "b.go", Line: 1, Side: "new"}),
 		},
 	}
 	state.toggleSelection()
@@ -112,8 +118,8 @@ func TestCurrentRangeSortsByLine(t *testing.T) {
 		cursor:          0,
 		selectionAnchor: &anchor,
 		selections: []displaySelection{
-			{Ref: lineRef{File: "a.go", Line: 12, Side: "new"}},
-			{Ref: lineRef{File: "a.go", Line: 10, Side: "new"}},
+			testSelection(lineRef{File: "a.go", Line: 12, Side: "new"}),
+			testSelection(lineRef{File: "a.go", Line: 10, Side: "new"}),
 		},
 	}
 
@@ -124,6 +130,67 @@ func TestCurrentRangeSortsByLine(t *testing.T) {
 	if got.Start.Line != 10 || got.End.Line != 12 {
 		t.Fatalf("range = %#v, want 10-12", got)
 	}
+}
+
+func TestSelectSideSwitchesReviewTargetOnTwoSidedRow(t *testing.T) {
+	left := lineRef{File: "a.go", Line: 10, Side: "old"}
+	right := lineRef{File: "a.go", Line: 10, Side: "new"}
+	state := &reviewState{
+		selections: []displaySelection{{
+			Ref:   right,
+			Left:  &left,
+			Right: &right,
+			Split: 24,
+		}},
+	}
+
+	state.selectSide("old")
+	if state.current().Side != "old" || state.current().Line != 10 {
+		t.Fatalf("current after h = %#v, want old side", state.current())
+	}
+	start, end := selectionHighlightRange(state.selections[0], 80)
+	if start != 0 || end != 24 {
+		t.Fatalf("old highlight range = %d-%d, want 0-24", start, end)
+	}
+
+	state.selectSide("new")
+	if state.current().Side != "new" || state.current().Line != 10 {
+		t.Fatalf("current after l = %#v, want new side", state.current())
+	}
+	start, end = selectionHighlightRange(state.selections[0], 80)
+	if start != 24 || end != 80 {
+		t.Fatalf("new highlight range = %d-%d, want 24-80", start, end)
+	}
+}
+
+func TestSelectionMovementKeepsAnchorSideOnTwoSidedRows(t *testing.T) {
+	firstLeft := lineRef{File: "a.go", Line: 10, Side: "old"}
+	firstRight := lineRef{File: "a.go", Line: 10, Side: "new"}
+	secondLeft := lineRef{File: "a.go", Line: 11, Side: "old"}
+	secondRight := lineRef{File: "a.go", Line: 11, Side: "new"}
+	state := &reviewState{
+		selections: []displaySelection{
+			{Ref: firstRight, Left: &firstLeft, Right: &firstRight},
+			{Ref: secondRight, Left: &secondLeft, Right: &secondRight},
+		},
+	}
+
+	state.selectSide("old")
+	state.toggleSelection()
+	state.move(1)
+
+	if state.cursor != 1 {
+		t.Fatalf("cursor = %d, want 1", state.cursor)
+	}
+	if state.current().Side != "old" || state.current().Line != 11 {
+		t.Fatalf("current = %#v, want second old side", state.current())
+	}
+}
+
+func testSelection(ref lineRef) displaySelection {
+	selection := displaySelection{Ref: ref}
+	selection.setSideRef(ref)
+	return selection
 }
 
 func TestReviewCommentPayloadOmitsStartForSingleLine(t *testing.T) {
