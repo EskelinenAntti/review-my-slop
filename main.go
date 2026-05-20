@@ -515,7 +515,7 @@ func render(w io.Writer, state *reviewState, rows, cols int) {
 			continue
 		}
 		line := truncateANSI(state.lines[lineIndex], cols)
-		if selection, ok := state.displayLineSelection(lineIndex); ok {
+		if selection, ok := state.displayLineSelection(lineIndex, cols); ok {
 			fmt.Fprintf(w, "%s\x1b[K\r\n", highlightSelectionSide(line, cols, selection))
 		} else if lineIndex == selectedLine {
 			fmt.Fprintf(w, "%s\x1b[K\r\n", highlightSelectionSide(line, cols, state.selections[state.cursor]))
@@ -663,7 +663,7 @@ func (s *reviewState) currentRange() (reviewRange, error) {
 	return reviewRange{Start: start, End: end}, nil
 }
 
-func (s *reviewState) displayLineSelection(lineIndex int) (displaySelection, bool) {
+func (s *reviewState) displayLineSelection(lineIndex, width int) (displaySelection, bool) {
 	if s.selectionAnchor == nil {
 		return displaySelection{}, false
 	}
@@ -671,12 +671,22 @@ func (s *reviewState) displayLineSelection(lineIndex int) (displaySelection, boo
 	if start > end {
 		start, end = end, start
 	}
+	startLine := s.selections[start].LineIndex
+	endLine := s.selections[end].LineIndex
+	if startLine > endLine {
+		startLine, endLine = endLine, startLine
+	}
+	if lineIndex < startLine || lineIndex > endLine {
+		return displaySelection{}, false
+	}
 	for i := start; i <= end; i++ {
 		if s.selections[i].LineIndex == lineIndex {
 			return s.selections[i], true
 		}
 	}
-	return displaySelection{}, false
+	selection := s.selections[s.cursor]
+	selection.Split = inferredSplit(s.lines[lineIndex], selection, width)
+	return selection, true
 }
 
 func (s *reviewState) selectionRangeValid() bool {
@@ -912,14 +922,6 @@ func highlightPlain(s string, width int) string {
 }
 
 func highlightSelectionSide(s string, width int, selection displaySelection) string {
-	plain := ansiRE.ReplaceAllString(s, "")
-	if len(plain) > width {
-		plain = plain[:width]
-	}
-	if len(plain) < width {
-		plain += strings.Repeat(" ", width-len(plain))
-	}
-
 	start, end := selectionHighlightRange(selection, width)
 	if start < 0 {
 		start = 0
@@ -930,7 +932,7 @@ func highlightSelectionSide(s string, width int, selection displaySelection) str
 	if start >= end {
 		return highlightPlain(s, width)
 	}
-	return plain[:start] + "\x1b[7m" + plain[start:end] + "\x1b[0m" + plain[end:]
+	return highlightANSIRange(s, width, start, end)
 }
 
 func selectionHighlightRange(selection displaySelection, width int) (int, int) {
@@ -944,6 +946,62 @@ func selectionHighlightRange(selection displaySelection, width int) (int, int) {
 		return selection.Split, width
 	}
 	return 0, width
+}
+
+func inferredSplit(line string, selection displaySelection, width int) int {
+	if selection.Split > 0 {
+		return selection.Split
+	}
+	plain := ansiRE.ReplaceAllString(line, "")
+	if matches := anyLineNoRE.FindAllStringSubmatchIndex(plain, -1); len(matches) > 1 {
+		return min(width, matches[len(matches)-1][2])
+	}
+	return 0
+}
+
+func highlightANSIRange(s string, width, start, end int) string {
+	var out strings.Builder
+	visible := 0
+	inverse := false
+
+	for i := 0; i < len(s) && visible < width; {
+		if s[i] == '\x1b' {
+			ansiEnd := ansiEnd(s, i)
+			if ansiEnd > i {
+				out.WriteString(s[i:ansiEnd])
+				i = ansiEnd
+				continue
+			}
+		}
+		if !inverse && visible == start {
+			out.WriteString("\x1b[7m")
+			inverse = true
+		}
+		if inverse && visible == end {
+			out.WriteString("\x1b[27m")
+			inverse = false
+		}
+		out.WriteByte(s[i])
+		visible++
+		i++
+	}
+	for visible < width {
+		if !inverse && visible == start {
+			out.WriteString("\x1b[7m")
+			inverse = true
+		}
+		if inverse && visible == end {
+			out.WriteString("\x1b[27m")
+			inverse = false
+		}
+		out.WriteByte(' ')
+		visible++
+	}
+	if inverse {
+		out.WriteString("\x1b[27m")
+	}
+	out.WriteString("\x1b[0m")
+	return out.String()
 }
 
 func visibleLen(s string) int {

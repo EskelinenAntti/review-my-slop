@@ -88,6 +88,48 @@ func TestHighlightPlainStripsDiffColors(t *testing.T) {
 	}
 }
 
+func TestHighlightSelectionSidePreservesDiffColors(t *testing.T) {
+	selection := displaySelection{
+		Ref:   lineRef{Side: "new"},
+		Split: 8,
+	}
+	got := highlightSelectionSide("\x1b[31mremoved\x1b[0m  \x1b[32madded\x1b[0m", 16, selection)
+	if !strings.Contains(got, "\x1b[31m") {
+		t.Fatalf("expected left-side color to be preserved in %q", got)
+	}
+	if !strings.Contains(got, "\x1b[32m") {
+		t.Fatalf("expected right-side color to be preserved in %q", got)
+	}
+	if !strings.Contains(got, "\x1b[7m") || !strings.Contains(got, "\x1b[27m") {
+		t.Fatalf("expected inverse range in %q", got)
+	}
+}
+
+func TestDisplayLineSelectionIncludesIntermediateRows(t *testing.T) {
+	anchor := 0
+	state := &reviewState{
+		cursor:          1,
+		selectionAnchor: &anchor,
+		lines: []string{
+			"\x1b[2m 10 \x1b[0m old        \x1b[2m 10 \x1b[0m new",
+			"unchanged context between changed rows",
+			"\x1b[2m 12 \x1b[0m old        \x1b[2m 12 \x1b[0m new",
+		},
+		selections: []displaySelection{
+			{LineIndex: 0, Ref: lineRef{File: "a.go", Line: 10, Side: "new"}, Split: 20},
+			{LineIndex: 2, Ref: lineRef{File: "a.go", Line: 12, Side: "new"}, Split: 20},
+		},
+	}
+
+	selection, ok := state.displayLineSelection(1, 80)
+	if !ok {
+		t.Fatal("expected intermediate display line to be highlighted")
+	}
+	if selection.Ref.Side != "new" {
+		t.Fatalf("intermediate selection side = %q, want new", selection.Ref.Side)
+	}
+}
+
 func TestSelectionMovementStaysWithinFileAndSide(t *testing.T) {
 	state := &reviewState{
 		selections: []displaySelection{
