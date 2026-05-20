@@ -969,6 +969,9 @@ func highlightANSIRange(s string, width, start, end int) string {
 			ansiEnd := ansiEnd(s, i)
 			if ansiEnd > i {
 				out.WriteString(s[i:ansiEnd])
+				if inverse {
+					out.WriteString("\x1b[7m")
+				}
 				i = ansiEnd
 				continue
 			}

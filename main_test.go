@@ -105,6 +105,16 @@ func TestHighlightSelectionSidePreservesDiffColors(t *testing.T) {
 	}
 }
 
+func TestHighlightANSIRangeKeepsInverseAcrossResets(t *testing.T) {
+	got := highlightANSIRange("ab\x1b[0mcd", 6, 0, 6)
+	if strings.Count(got, "\x1b[7m") < 2 {
+		t.Fatalf("expected inverse to be reapplied after reset in %q", got)
+	}
+	if visibleLen(got) != 6 {
+		t.Fatalf("visible length = %d, want 6", visibleLen(got))
+	}
+}
+
 func TestDisplayLineSelectionIncludesIntermediateRows(t *testing.T) {
 	anchor := 0
 	state := &reviewState{
@@ -127,6 +137,27 @@ func TestDisplayLineSelectionIncludesIntermediateRows(t *testing.T) {
 	}
 	if selection.Ref.Side != "new" {
 		t.Fatalf("intermediate selection side = %q, want new", selection.Ref.Side)
+	}
+}
+
+func TestRenderCursorKeepsInverseAcrossLineColorResets(t *testing.T) {
+	state := &reviewState{
+		lines: []string{
+			"\x1b[92m 10 right side\x1b[0m",
+		},
+		selections: []displaySelection{
+			testSelection(lineRef{File: "a.go", Line: 10, Side: "new", Content: "right side"}),
+		},
+	}
+	var out strings.Builder
+	render(&out, state, 8, 40)
+
+	got := out.String()
+	if strings.Count(got, "\x1b[7m") < 2 {
+		t.Fatalf("expected cursor inverse to survive line reset in %q", got)
+	}
+	if !strings.Contains(got, "\x1b[92m") {
+		t.Fatalf("expected render to preserve line color in %q", got)
 	}
 }
 
