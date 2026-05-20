@@ -70,6 +70,12 @@ func TestBuildSelectionsUsesDisplayedRows(t *testing.T) {
 	if selections[1].LineIndex != 4 || selections[1].Ref.Line != 11 || selections[1].Ref.Side != "new" {
 		t.Fatalf("second selection = %#v", selections[1])
 	}
+	if selections[1].Left == nil || selections[1].Left.Line != 11 || selections[1].Left.Side != "old" {
+		t.Fatalf("second selection left side = %#v", selections[1].Left)
+	}
+	if selections[1].Right == nil || selections[1].Right.Line != 11 || selections[1].Right.Side != "new" {
+		t.Fatalf("second selection right side = %#v", selections[1].Right)
+	}
 }
 
 func TestHighlightPlainStripsDiffColors(t *testing.T) {
@@ -79,5 +85,241 @@ func TestHighlightPlainStripsDiffColors(t *testing.T) {
 	}
 	if visibleLen(got) != 12 {
 		t.Fatalf("visible length = %d, want 12", visibleLen(got))
+	}
+}
+
+func TestHighlightSelectionSidePreservesColorsOutsideCursor(t *testing.T) {
+	selection := displaySelection{
+		Ref:   lineRef{Side: "new"},
+		Split: 8,
+	}
+	got := highlightSelectionSide("\x1b[31mremoved\x1b[0m  \x1b[32madded\x1b[0m", 16, selection)
+	if !strings.Contains(got, "\x1b[31m") {
+		t.Fatalf("expected left-side color to be preserved in %q", got)
+	}
+	if strings.Contains(got, "\x1b[32m") {
+		t.Fatalf("expected selected right-side color to be suppressed in %q", got)
+	}
+	if !strings.Contains(got, "\x1b[7m") {
+		t.Fatalf("expected inverse range in %q", got)
+	}
+}
+
+func TestHighlightANSIRangeSuppressesStylesInsideCursor(t *testing.T) {
+	got := highlightANSIRange("ab\x1b[0mcd", 6, 0, 6)
+	if strings.Count(got, "\x1b[7m") != 1 {
+		t.Fatalf("expected one inverse span in %q", got)
+	}
+	if strings.Contains(got, "ab\x1b[0mcd") {
+		t.Fatalf("expected reset inside cursor to be suppressed in %q", got)
+	}
+	if visibleLen(got) != 6 {
+		t.Fatalf("visible length = %d, want 6", visibleLen(got))
+	}
+}
+
+func TestDisplayLineSelectionIncludesIntermediateRows(t *testing.T) {
+	anchor := 0
+	state := &reviewState{
+		cursor:          1,
+		selectionAnchor: &anchor,
+		lines: []string{
+			"\x1b[2m 10 \x1b[0m old        \x1b[2m 10 \x1b[0m new",
+			"unchanged context between changed rows",
+			"\x1b[2m 12 \x1b[0m old        \x1b[2m 12 \x1b[0m new",
+		},
+		selections: []displaySelection{
+			{LineIndex: 0, Ref: lineRef{File: "a.go", Line: 10, Side: "new"}, Split: 20},
+			{LineIndex: 2, Ref: lineRef{File: "a.go", Line: 12, Side: "new"}, Split: 20},
+		},
+	}
+
+	selection, ok := state.displayLineSelection(1, 80)
+	if !ok {
+		t.Fatal("expected intermediate display line to be highlighted")
+	}
+	if selection.Ref.Side != "new" {
+		t.Fatalf("intermediate selection side = %q, want new", selection.Ref.Side)
+	}
+}
+
+func TestRenderCursorKeepsInverseAcrossLineColorResets(t *testing.T) {
+	state := &reviewState{
+		lines: []string{
+			"\x1b[92m 10 right side\x1b[0m",
+		},
+		selections: []displaySelection{
+			testSelection(lineRef{File: "a.go", Line: 10, Side: "new", Content: "right side"}),
+		},
+	}
+	var out strings.Builder
+	render(&out, state, 8, 40)
+
+	got := out.String()
+	if !strings.Contains(got, "\x1b[92m") {
+		t.Fatalf("expected render to preserve line color in %q", got)
+	}
+	highlightStart := strings.Index(got, "\x1b[7m")
+	if highlightStart < 0 {
+		t.Fatalf("expected cursor inverse in %q", got)
+	}
+	highlightEnd := strings.Index(got[highlightStart:], "\x1b[0m")
+	if highlightEnd < 0 {
+		t.Fatalf("expected cursor reset in %q", got)
+	}
+	highlighted := got[highlightStart : highlightStart+highlightEnd]
+	if strings.Contains(highlighted, "\x1b[92m") {
+		t.Fatalf("expected selected cursor span to suppress line color in %q", got)
+	}
+}
+
+func TestSelectionMovementStaysWithinFileAndSide(t *testing.T) {
+	state := &reviewState{
+		selections: []displaySelection{
+			testSelection(lineRef{File: "a.go", Line: 10, Side: "new"}),
+			testSelection(lineRef{File: "a.go", Line: 11, Side: "new"}),
+			testSelection(lineRef{File: "a.go", Line: 12, Side: "old"}),
+			testSelection(lineRef{File: "b.go", Line: 1, Side: "new"}),
+		},
+	}
+	state.toggleSelection()
+	state.move(1)
+	if state.cursor != 1 {
+		t.Fatalf("cursor after valid move = %d, want 1", state.cursor)
+	}
+	state.move(1)
+	if state.cursor != 1 {
+		t.Fatalf("cursor after side-violating move = %d, want 1", state.cursor)
+	}
+	state.moveTo(3)
+	if state.cursor != 1 {
+		t.Fatalf("cursor after file-violating move = %d, want 1", state.cursor)
+	}
+}
+
+func TestCurrentRangeSortsByLine(t *testing.T) {
+	anchor := 1
+	state := &reviewState{
+		cursor:          0,
+		selectionAnchor: &anchor,
+		selections: []displaySelection{
+			testSelection(lineRef{File: "a.go", Line: 12, Side: "new"}),
+			testSelection(lineRef{File: "a.go", Line: 10, Side: "new"}),
+		},
+	}
+
+	got, err := state.currentRange()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Start.Line != 10 || got.End.Line != 12 {
+		t.Fatalf("range = %#v, want 10-12", got)
+	}
+}
+
+func TestSelectSideSwitchesReviewTargetOnTwoSidedRow(t *testing.T) {
+	left := lineRef{File: "a.go", Line: 10, Side: "old"}
+	right := lineRef{File: "a.go", Line: 10, Side: "new"}
+	state := &reviewState{
+		selections: []displaySelection{{
+			Ref:   right,
+			Left:  &left,
+			Right: &right,
+			Split: 24,
+		}},
+	}
+
+	state.selectSide("old")
+	if state.current().Side != "old" || state.current().Line != 10 {
+		t.Fatalf("current after h = %#v, want old side", state.current())
+	}
+	start, end := selectionHighlightRange(state.selections[0], 80)
+	if start != 0 || end != 24 {
+		t.Fatalf("old highlight range = %d-%d, want 0-24", start, end)
+	}
+
+	state.selectSide("new")
+	if state.current().Side != "new" || state.current().Line != 10 {
+		t.Fatalf("current after l = %#v, want new side", state.current())
+	}
+	start, end = selectionHighlightRange(state.selections[0], 80)
+	if start != 24 || end != 80 {
+		t.Fatalf("new highlight range = %d-%d, want 24-80", start, end)
+	}
+}
+
+func TestSelectionMovementKeepsAnchorSideOnTwoSidedRows(t *testing.T) {
+	firstLeft := lineRef{File: "a.go", Line: 10, Side: "old"}
+	firstRight := lineRef{File: "a.go", Line: 10, Side: "new"}
+	secondLeft := lineRef{File: "a.go", Line: 11, Side: "old"}
+	secondRight := lineRef{File: "a.go", Line: 11, Side: "new"}
+	state := &reviewState{
+		selections: []displaySelection{
+			{Ref: firstRight, Left: &firstLeft, Right: &firstRight},
+			{Ref: secondRight, Left: &secondLeft, Right: &secondRight},
+		},
+	}
+
+	state.selectSide("old")
+	state.toggleSelection()
+	state.move(1)
+
+	if state.cursor != 1 {
+		t.Fatalf("cursor = %d, want 1", state.cursor)
+	}
+	if state.current().Side != "old" || state.current().Line != 11 {
+		t.Fatalf("current = %#v, want second old side", state.current())
+	}
+}
+
+func TestReviewSuggestionRejectsOldSide(t *testing.T) {
+	state := &reviewState{
+		pr: &prContext{Head: "head", Base: "base"},
+		selections: []displaySelection{
+			testSelection(lineRef{File: "a.go", Line: 10, Side: "old"}),
+		},
+	}
+
+	err := state.reviewSuggestion(&terminalState{})
+	if err == nil {
+		t.Fatal("expected old-side suggestion to be rejected")
+	}
+	if !strings.Contains(err.Error(), "right side") {
+		t.Fatalf("error = %q, want right-side message", err)
+	}
+}
+
+func testSelection(ref lineRef) displaySelection {
+	selection := displaySelection{Ref: ref}
+	selection.setSideRef(ref)
+	return selection
+}
+
+func TestReviewCommentPayloadOmitsStartForSingleLine(t *testing.T) {
+	pr := &prContext{Head: "abc123"}
+	reviewRange := reviewRange{
+		Start: lineRef{File: "a.go", Line: 5, Side: "new"},
+		End:   lineRef{File: "a.go", Line: 5, Side: "new"},
+	}
+
+	got := reviewCommentPayload(pr, reviewRange, "body")
+	if got["line"] != 5 || got["side"] != "RIGHT" || got["commit_id"] != "abc123" {
+		t.Fatalf("payload = %#v", got)
+	}
+	if _, ok := got["start_line"]; ok {
+		t.Fatalf("single-line payload included start_line: %#v", got)
+	}
+}
+
+func TestReviewCommentPayloadIncludesStartForMultiLineOldSide(t *testing.T) {
+	pr := &prContext{Head: "abc123"}
+	reviewRange := reviewRange{
+		Start: lineRef{File: "a.go", Line: 5, Side: "old"},
+		End:   lineRef{File: "a.go", Line: 7, Side: "old"},
+	}
+
+	got := reviewCommentPayload(pr, reviewRange, "body")
+	if got["line"] != 7 || got["side"] != "LEFT" || got["start_line"] != 5 || got["start_side"] != "LEFT" {
+		t.Fatalf("payload = %#v", got)
 	}
 }
