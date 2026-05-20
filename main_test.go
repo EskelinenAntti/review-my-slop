@@ -187,6 +187,23 @@ func TestSelectionMovementKeepsAnchorSideOnTwoSidedRows(t *testing.T) {
 	}
 }
 
+func TestReviewSuggestionRejectsOldSide(t *testing.T) {
+	state := &reviewState{
+		pr: &prContext{Head: "head", Base: "base"},
+		selections: []displaySelection{
+			testSelection(lineRef{File: "a.go", Line: 10, Side: "old"}),
+		},
+	}
+
+	err := state.reviewSuggestion(&terminalState{})
+	if err == nil {
+		t.Fatal("expected old-side suggestion to be rejected")
+	}
+	if !strings.Contains(err.Error(), "right side") {
+		t.Fatalf("error = %q, want right-side message", err)
+	}
+}
+
 func testSelection(ref lineRef) displaySelection {
 	selection := displaySelection{Ref: ref}
 	selection.setSideRef(ref)

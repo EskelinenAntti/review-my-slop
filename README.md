@@ -24,8 +24,8 @@ Keys:
 - `h` / `l` choose the left or right side of a side-by-side changed row
 - `v` starts or clears a visual selection for a same-file, same-side range
 - `c` opens `$VISUAL` or `$EDITOR` and posts the body as an inline PR comment
-- `s` opens `$VISUAL` or `$EDITOR` with a prefilled `suggestion` block, then
-  posts it as an inline PR suggestion
+- `s` opens `$VISUAL` or `$EDITOR` with a prefilled `suggestion` block for the
+  right side, then posts it as an inline PR suggestion
 - `e` or `Enter` opens the selected line in `$VISUAL` or `$EDITOR`
 - `g` / `G` jumps to the first or last changed line
 - `Ctrl-u` / `Ctrl-d` moves by half a page

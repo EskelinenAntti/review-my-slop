@@ -274,6 +274,9 @@ func (s *reviewState) reviewSuggestion(term *terminalState) error {
 	if err != nil {
 		return err
 	}
+	if reviewRange.End.Side != "new" {
+		return errors.New("suggestions are only supported on the right side")
+	}
 	template, err := suggestionTemplate(reviewRange, s.pr)
 	if err != nil {
 		return err
