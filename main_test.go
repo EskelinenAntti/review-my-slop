@@ -323,3 +323,33 @@ func TestReviewCommentPayloadIncludesStartForMultiLineOldSide(t *testing.T) {
 		t.Fatalf("payload = %#v", got)
 	}
 }
+
+func TestReviewThreadVariablesIncludesRange(t *testing.T) {
+	reviewRange := reviewRange{
+		Start: lineRef{File: "a.go", Line: 5, Side: "new"},
+		End:   lineRef{File: "a.go", Line: 7, Side: "new"},
+	}
+
+	got := reviewThreadVariables("review-id", reviewRange, "body")
+	if got["reviewID"] != "review-id" || got["path"] != "a.go" || got["line"] != 7 || got["side"] != "RIGHT" {
+		t.Fatalf("variables = %#v", got)
+	}
+	if got["startLine"] != 5 || got["startSide"] != "RIGHT" || got["body"] != "body" {
+		t.Fatalf("variables = %#v", got)
+	}
+}
+
+func TestReviewThreadVariablesOmitsStartForSingleLine(t *testing.T) {
+	reviewRange := reviewRange{
+		Start: lineRef{File: "a.go", Line: 5, Side: "old"},
+		End:   lineRef{File: "a.go", Line: 5, Side: "old"},
+	}
+
+	got := reviewThreadVariables("review-id", reviewRange, "body")
+	if got["line"] != 5 || got["side"] != "LEFT" {
+		t.Fatalf("variables = %#v", got)
+	}
+	if _, ok := got["startLine"]; ok {
+		t.Fatalf("single-line variables included startLine: %#v", got)
+	}
+}
