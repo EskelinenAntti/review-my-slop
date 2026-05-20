@@ -81,3 +81,76 @@ func TestHighlightPlainStripsDiffColors(t *testing.T) {
 		t.Fatalf("visible length = %d, want 12", visibleLen(got))
 	}
 }
+
+func TestSelectionMovementStaysWithinFileAndSide(t *testing.T) {
+	state := &reviewState{
+		selections: []displaySelection{
+			{Ref: lineRef{File: "a.go", Line: 10, Side: "new"}},
+			{Ref: lineRef{File: "a.go", Line: 11, Side: "new"}},
+			{Ref: lineRef{File: "a.go", Line: 12, Side: "old"}},
+			{Ref: lineRef{File: "b.go", Line: 1, Side: "new"}},
+		},
+	}
+	state.toggleSelection()
+	state.move(1)
+	if state.cursor != 1 {
+		t.Fatalf("cursor after valid move = %d, want 1", state.cursor)
+	}
+	state.move(1)
+	if state.cursor != 1 {
+		t.Fatalf("cursor after side-violating move = %d, want 1", state.cursor)
+	}
+	state.moveTo(3)
+	if state.cursor != 1 {
+		t.Fatalf("cursor after file-violating move = %d, want 1", state.cursor)
+	}
+}
+
+func TestCurrentRangeSortsByLine(t *testing.T) {
+	anchor := 1
+	state := &reviewState{
+		cursor:          0,
+		selectionAnchor: &anchor,
+		selections: []displaySelection{
+			{Ref: lineRef{File: "a.go", Line: 12, Side: "new"}},
+			{Ref: lineRef{File: "a.go", Line: 10, Side: "new"}},
+		},
+	}
+
+	got, err := state.currentRange()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Start.Line != 10 || got.End.Line != 12 {
+		t.Fatalf("range = %#v, want 10-12", got)
+	}
+}
+
+func TestReviewCommentPayloadOmitsStartForSingleLine(t *testing.T) {
+	pr := &prContext{Head: "abc123"}
+	reviewRange := reviewRange{
+		Start: lineRef{File: "a.go", Line: 5, Side: "new"},
+		End:   lineRef{File: "a.go", Line: 5, Side: "new"},
+	}
+
+	got := reviewCommentPayload(pr, reviewRange, "body")
+	if got["line"] != 5 || got["side"] != "RIGHT" || got["commit_id"] != "abc123" {
+		t.Fatalf("payload = %#v", got)
+	}
+	if _, ok := got["start_line"]; ok {
+		t.Fatalf("single-line payload included start_line: %#v", got)
+	}
+}
+
+func TestReviewCommentPayloadIncludesStartForMultiLineOldSide(t *testing.T) {
+	pr := &prContext{Head: "abc123"}
+	reviewRange := reviewRange{
+		Start: lineRef{File: "a.go", Line: 5, Side: "old"},
+		End:   lineRef{File: "a.go", Line: 7, Side: "old"},
+	}
+
+	got := reviewCommentPayload(pr, reviewRange, "body")
+	if got["line"] != 7 || got["side"] != "LEFT" || got["start_line"] != 5 || got["start_side"] != "LEFT" {
+		t.Fatalf("payload = %#v", got)
+	}
+}

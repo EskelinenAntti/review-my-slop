@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"bytes"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -27,6 +28,19 @@ type lineRef struct {
 type displaySelection struct {
 	LineIndex int
 	Ref       lineRef
+}
+
+type prContext struct {
+	Number int    `json:"number"`
+	Owner  string `json:"owner"`
+	Repo   string `json:"repo"`
+	Head   string `json:"head"`
+	Base   string `json:"base"`
+}
+
+type reviewRange struct {
+	Start lineRef
+	End   lineRef
 }
 
 func main() {
@@ -70,20 +84,26 @@ type terminalState struct {
 }
 
 type reviewState struct {
-	args       []string
-	selections []displaySelection
-	lines      []string
-	cursor     int
-	top        int
-	message    string
+	args            []string
+	pr              *prContext
+	selections      []displaySelection
+	lines           []string
+	cursor          int
+	selectionAnchor *int
+	top             int
+	message         string
 }
 
 func reviewTUI(args []string, refs []lineRef, diff []byte, stdout io.Writer) error {
 	lines := splitLines(diffWithUntrackedNotice(args, diff))
 	state := &reviewState{
 		args:       args,
+		pr:         detectPRContext(),
 		selections: buildSelections(lines, refs),
 		lines:      lines,
+	}
+	if state.pr == nil {
+		state.message = "No active GitHub PR found. Comments and suggestions are disabled."
 	}
 
 	term, err := enterTerminal()
@@ -106,21 +126,29 @@ func reviewTUI(args []string, refs []lineRef, diff []byte, stdout io.Writer) err
 		}
 
 		switch key {
-		case "q", "esc":
+		case "q":
+			return nil
+		case "esc":
+			if state.selectionAnchor != nil {
+				state.clearSelection()
+				state.message = ""
+				continue
+			}
 			return nil
 		case "j", "down":
 			state.move(1)
 		case "k", "up":
 			state.move(-1)
 		case "g":
-			state.cursor = 0
+			state.moveTo(0)
 		case "G":
-			state.cursor = len(state.selections) - 1
+			state.moveTo(len(state.selections) - 1)
 		case "ctrl-d", "pagedown":
 			state.move(max(1, (rows-4)/2))
 		case "ctrl-u", "pageup":
 			state.move(-max(1, (rows-4)/2))
 		case "e", "enter":
+			state.clearSelection()
 			ref := state.current()
 			if ref.Side == "old" {
 				state.message = fmt.Sprintf("Cannot open deleted line %s:%d", ref.File, ref.Line)
@@ -134,6 +162,7 @@ func reviewTUI(args []string, refs []lineRef, diff []byte, stdout io.Writer) err
 				state.message = fmt.Sprintf("Opened %s:%d", ref.File, ref.Line)
 			}
 		case "r":
+			state.clearSelection()
 			diff, err := prettyDiff(state.args)
 			if err != nil {
 				state.message = err.Error()
@@ -153,6 +182,16 @@ func reviewTUI(args []string, refs []lineRef, diff []byte, stdout io.Writer) err
 				state.cursor = len(state.selections) - 1
 			}
 			state.message = "Reloaded diff."
+		case "v":
+			state.toggleSelection()
+		case "c":
+			if err := state.reviewComment(term); err != nil {
+				state.message = err.Error()
+			}
+		case "s":
+			if err := state.reviewSuggestion(term); err != nil {
+				state.message = err.Error()
+			}
 		}
 	}
 }
@@ -195,6 +234,186 @@ func withNormalTerminal(t *terminalState, fn func() error) error {
 	_ = raw.Run()
 	fmt.Print("\x1b[?1049h\x1b[?25l")
 	return err
+}
+
+func detectPRContext() *prContext {
+	if _, err := exec.LookPath("gh"); err != nil {
+		return nil
+	}
+	cmd := exec.Command("gh", "pr", "view",
+		"--json", "number,headRefOid,headRepository,headRepositoryOwner,baseRefOid",
+		"--jq", `{"number": .number, "owner": .headRepositoryOwner.login, "repo": .headRepository.name, "head": .headRefOid, "base": .baseRefOid}`,
+	)
+	out, err := cmd.Output()
+	if err != nil {
+		return nil
+	}
+	var pr prContext
+	if err := json.Unmarshal(out, &pr); err != nil {
+		return nil
+	}
+	if pr.Number == 0 || pr.Owner == "" || pr.Repo == "" || pr.Head == "" || pr.Base == "" {
+		return nil
+	}
+	return &pr
+}
+
+func (s *reviewState) reviewComment(term *terminalState) error {
+	return s.reviewWithBody(term, "")
+}
+
+func (s *reviewState) reviewSuggestion(term *terminalState) error {
+	reviewRange, err := s.currentRange()
+	if err != nil {
+		return err
+	}
+	template, err := suggestionTemplate(reviewRange, s.pr)
+	if err != nil {
+		return err
+	}
+	return s.reviewWithBody(term, template)
+}
+
+func (s *reviewState) reviewWithBody(term *terminalState, template string) error {
+	if s.pr == nil {
+		return errors.New("no active GitHub PR found; cannot post review comments")
+	}
+	reviewRange, err := s.currentRange()
+	if err != nil {
+		return err
+	}
+	body, err := editReviewBody(term, template)
+	if err != nil {
+		return err
+	}
+	if strings.TrimSpace(body) == "" {
+		s.message = "Cancelled empty review body."
+		return nil
+	}
+	if err := postReviewComment(s.pr, reviewRange, body); err != nil {
+		return err
+	}
+	s.clearSelection()
+	if reviewRange.Start.Line == reviewRange.End.Line {
+		s.message = fmt.Sprintf("Posted comment on %s:%d.", reviewRange.End.File, reviewRange.End.Line)
+	} else {
+		s.message = fmt.Sprintf("Posted comment on %s:%d-%d.", reviewRange.End.File, reviewRange.Start.Line, reviewRange.End.Line)
+	}
+	return nil
+}
+
+func editReviewBody(term *terminalState, template string) (string, error) {
+	file, err := os.CreateTemp("", "rms-review-*.md")
+	if err != nil {
+		return "", err
+	}
+	path := file.Name()
+	defer os.Remove(path)
+
+	if _, err := file.WriteString(template); err != nil {
+		_ = file.Close()
+		return "", err
+	}
+	if err := file.Close(); err != nil {
+		return "", err
+	}
+
+	if err := withNormalTerminal(term, func() error {
+		return openEditorFile(path)
+	}); err != nil {
+		return "", err
+	}
+
+	body, err := os.ReadFile(path)
+	if err != nil {
+		return "", err
+	}
+	return string(body), nil
+}
+
+func suggestionTemplate(reviewRange reviewRange, pr *prContext) (string, error) {
+	if pr == nil {
+		return "", errors.New("no active GitHub PR found; cannot build suggestion")
+	}
+	lines, err := sourceLines(reviewRange, pr)
+	if err != nil {
+		return "", err
+	}
+	return "```suggestion\n" + strings.Join(lines, "\n") + "\n```\n", nil
+}
+
+func sourceLines(reviewRange reviewRange, pr *prContext) ([]string, error) {
+	ref := pr.Head
+	if reviewRange.End.Side == "old" {
+		ref = pr.Base
+	}
+	out, err := gitShowFile(ref, reviewRange.End.File)
+	if err != nil {
+		return nil, err
+	}
+	lines := splitSourceLines(out)
+	if reviewRange.Start.Line < 1 || reviewRange.End.Line > len(lines) {
+		return nil, fmt.Errorf("cannot read %s:%d-%d from %s", reviewRange.End.File, reviewRange.Start.Line, reviewRange.End.Line, ref)
+	}
+	return lines[reviewRange.Start.Line-1 : reviewRange.End.Line], nil
+}
+
+func gitShowFile(ref, path string) (string, error) {
+	cmd := exec.Command("git", "show", ref+":"+path)
+	out, err := cmd.Output()
+	if err != nil {
+		if exitErr, ok := errors.AsType[*exec.ExitError](err); ok {
+			return "", fmt.Errorf("git show failed: %s", strings.TrimSpace(string(exitErr.Stderr)))
+		}
+		return "", err
+	}
+	return string(out), nil
+}
+
+func splitSourceLines(text string) []string {
+	text = strings.ReplaceAll(text, "\r\n", "\n")
+	text = strings.TrimSuffix(text, "\n")
+	if text == "" {
+		return []string{""}
+	}
+	return strings.Split(text, "\n")
+}
+
+func postReviewComment(pr *prContext, reviewRange reviewRange, body string) error {
+	data, err := json.Marshal(reviewCommentPayload(pr, reviewRange, body))
+	if err != nil {
+		return err
+	}
+	endpoint := fmt.Sprintf("repos/%s/%s/pulls/%d/comments", pr.Owner, pr.Repo, pr.Number)
+	cmd := exec.Command("gh", "api", "-X", "POST", endpoint, "--input", "-")
+	cmd.Stdin = bytes.NewReader(data)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("gh api failed: %s", strings.TrimSpace(string(out)))
+	}
+	return nil
+}
+
+func reviewCommentPayload(pr *prContext, reviewRange reviewRange, body string) map[string]any {
+	payload := map[string]any{
+		"body":      body,
+		"path":      reviewRange.End.File,
+		"line":      reviewRange.End.Line,
+		"side":      githubSide(reviewRange.End.Side),
+		"commit_id": pr.Head,
+	}
+	if reviewRange.Start.Line != reviewRange.End.Line {
+		payload["start_line"] = reviewRange.Start.Line
+		payload["start_side"] = githubSide(reviewRange.Start.Side)
+	}
+	return payload
+}
+
+func githubSide(side string) string {
+	if side == "old" {
+		return "LEFT"
+	}
+	return "RIGHT"
 }
 
 func terminalSize() (int, int) {
@@ -282,7 +501,9 @@ func render(w io.Writer, state *reviewState, rows, cols int) {
 			continue
 		}
 		line := truncateANSI(state.lines[lineIndex], cols)
-		if lineIndex == selectedLine {
+		if state.isDisplayLineSelected(lineIndex) {
+			fmt.Fprintf(w, "%s\x1b[K\r\n", highlightPlain(line, cols))
+		} else if lineIndex == selectedLine {
 			fmt.Fprintf(w, "%s\x1b[K\r\n", highlightPlain(line, cols))
 		} else {
 			fmt.Fprintf(w, "%s\x1b[K\r\n", line)
@@ -294,8 +515,16 @@ func render(w io.Writer, state *reviewState, rows, cols int) {
 	if ref.Side == "old" {
 		marker = "-"
 	}
-	status := fmt.Sprintf(" %d/%d %s %s:%d  %s", state.cursor+1, len(state.selections), marker, ref.File, ref.Line, strings.TrimSpace(ref.Content))
-	help := " j/k move  e/Enter open  g/G top/bottom  ^u/^d page  r reload  q quit "
+	mode := ""
+	if state.selectionAnchor != nil {
+		mode = " [SELECTING]"
+	}
+	pr := " no PR"
+	if state.pr != nil {
+		pr = fmt.Sprintf(" PR #%d", state.pr.Number)
+	}
+	status := fmt.Sprintf(" %d/%d%s%s %s %s:%d  %s", state.cursor+1, len(state.selections), mode, pr, marker, ref.File, ref.Line, strings.TrimSpace(ref.Content))
+	help := " j/k move  v select  c comment  s suggest  e/Enter open  g/G top/bottom  ^u/^d page  r reload  q quit "
 	fmt.Fprintf(w, "\x1b[7m%s\x1b[0m\x1b[K\r\n", fit(status, cols))
 	if state.message != "" {
 		fmt.Fprintf(w, "%s\x1b[K\r\n", fit(" "+state.message, cols))
@@ -310,13 +539,21 @@ func (s *reviewState) current() lineRef {
 }
 
 func (s *reviewState) move(delta int) {
-	s.cursor += delta
-	if s.cursor < 0 {
-		s.cursor = 0
+	next := s.cursor + delta
+	s.moveTo(next)
+}
+
+func (s *reviewState) moveTo(next int) {
+	if next < 0 {
+		next = 0
 	}
-	if s.cursor >= len(s.selections) {
-		s.cursor = len(s.selections) - 1
+	if next >= len(s.selections) {
+		next = len(s.selections) - 1
 	}
+	if s.selectionAnchor != nil && !s.canMoveSelectionTo(next) {
+		return
+	}
+	s.cursor = next
 	s.message = ""
 }
 
@@ -339,6 +576,72 @@ func (s *reviewState) keepSelectionVisible(rows int) {
 
 func (s *reviewState) selectedDisplayLine() int {
 	return s.selections[s.cursor].LineIndex
+}
+
+func (s *reviewState) toggleSelection() {
+	if s.selectionAnchor != nil {
+		s.clearSelection()
+		s.message = "Selection cleared."
+		return
+	}
+	anchor := s.cursor
+	s.selectionAnchor = &anchor
+	ref := s.current()
+	s.message = fmt.Sprintf("Selecting %s %s:%d", githubSide(ref.Side), ref.File, ref.Line)
+}
+
+func (s *reviewState) clearSelection() {
+	s.selectionAnchor = nil
+}
+
+func (s *reviewState) canMoveSelectionTo(cursor int) bool {
+	if s.selectionAnchor == nil {
+		return true
+	}
+	anchor := s.selections[*s.selectionAnchor].Ref
+	next := s.selections[cursor].Ref
+	return sameReviewTarget(anchor, next)
+}
+
+func (s *reviewState) currentRange() (reviewRange, error) {
+	if s.selectionAnchor == nil {
+		ref := s.current()
+		return reviewRange{Start: ref, End: ref}, nil
+	}
+
+	startCursor, endCursor := *s.selectionAnchor, s.cursor
+	if startCursor > endCursor {
+		startCursor, endCursor = endCursor, startCursor
+	}
+	start := s.selections[startCursor].Ref
+	end := s.selections[endCursor].Ref
+	if !sameReviewTarget(start, end) {
+		return reviewRange{}, errors.New("selection must stay within one file and side")
+	}
+	if start.Line > end.Line {
+		start, end = end, start
+	}
+	return reviewRange{Start: start, End: end}, nil
+}
+
+func (s *reviewState) isDisplayLineSelected(lineIndex int) bool {
+	if s.selectionAnchor == nil {
+		return false
+	}
+	start, end := *s.selectionAnchor, s.cursor
+	if start > end {
+		start, end = end, start
+	}
+	for i := start; i <= end; i++ {
+		if s.selections[i].LineIndex == lineIndex {
+			return true
+		}
+	}
+	return false
+}
+
+func sameReviewTarget(a, b lineRef) bool {
+	return a.File == b.File && a.Side == b.Side
 }
 
 func splitLines(data []byte) []string {
@@ -708,6 +1011,27 @@ func openEditor(file string, line int) error {
 		cmd = exec.Command("sh", "-c", fmt.Sprintf("%s %s %s", editor, shellQuote(lineArg), shellQuote(file)))
 	} else {
 		cmd = exec.Command(editor, lineArg, file)
+	}
+	cmd.Stdin = os.Stdin
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	return cmd.Run()
+}
+
+func openEditorFile(file string) error {
+	editor := os.Getenv("VISUAL")
+	if editor == "" {
+		editor = os.Getenv("EDITOR")
+	}
+	if editor == "" {
+		editor = "vi"
+	}
+
+	var cmd *exec.Cmd
+	if strings.ContainsAny(editor, " \t") {
+		cmd = exec.Command("sh", "-c", fmt.Sprintf("%s %s", editor, shellQuote(file)))
+	} else {
+		cmd = exec.Command(editor, file)
 	}
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
