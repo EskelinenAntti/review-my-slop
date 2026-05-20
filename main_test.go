@@ -88,7 +88,7 @@ func TestHighlightPlainStripsDiffColors(t *testing.T) {
 	}
 }
 
-func TestHighlightSelectionSidePreservesDiffColors(t *testing.T) {
+func TestHighlightSelectionSidePreservesColorsOutsideCursor(t *testing.T) {
 	selection := displaySelection{
 		Ref:   lineRef{Side: "new"},
 		Split: 8,
@@ -97,18 +97,21 @@ func TestHighlightSelectionSidePreservesDiffColors(t *testing.T) {
 	if !strings.Contains(got, "\x1b[31m") {
 		t.Fatalf("expected left-side color to be preserved in %q", got)
 	}
-	if !strings.Contains(got, "\x1b[32m") {
-		t.Fatalf("expected right-side color to be preserved in %q", got)
+	if strings.Contains(got, "\x1b[32m") {
+		t.Fatalf("expected selected right-side color to be suppressed in %q", got)
 	}
-	if !strings.Contains(got, "\x1b[7m") || !strings.Contains(got, "\x1b[27m") {
+	if !strings.Contains(got, "\x1b[7m") {
 		t.Fatalf("expected inverse range in %q", got)
 	}
 }
 
-func TestHighlightANSIRangeKeepsInverseAcrossResets(t *testing.T) {
+func TestHighlightANSIRangeSuppressesStylesInsideCursor(t *testing.T) {
 	got := highlightANSIRange("ab\x1b[0mcd", 6, 0, 6)
-	if strings.Count(got, "\x1b[7m") < 2 {
-		t.Fatalf("expected inverse to be reapplied after reset in %q", got)
+	if strings.Count(got, "\x1b[7m") != 1 {
+		t.Fatalf("expected one inverse span in %q", got)
+	}
+	if strings.Contains(got, "ab\x1b[0mcd") {
+		t.Fatalf("expected reset inside cursor to be suppressed in %q", got)
 	}
 	if visibleLen(got) != 6 {
 		t.Fatalf("visible length = %d, want 6", visibleLen(got))
@@ -153,11 +156,20 @@ func TestRenderCursorKeepsInverseAcrossLineColorResets(t *testing.T) {
 	render(&out, state, 8, 40)
 
 	got := out.String()
-	if strings.Count(got, "\x1b[7m") < 2 {
-		t.Fatalf("expected cursor inverse to survive line reset in %q", got)
-	}
 	if !strings.Contains(got, "\x1b[92m") {
 		t.Fatalf("expected render to preserve line color in %q", got)
+	}
+	highlightStart := strings.Index(got, "\x1b[7m")
+	if highlightStart < 0 {
+		t.Fatalf("expected cursor inverse in %q", got)
+	}
+	highlightEnd := strings.Index(got[highlightStart:], "\x1b[0m")
+	if highlightEnd < 0 {
+		t.Fatalf("expected cursor reset in %q", got)
+	}
+	highlighted := got[highlightStart : highlightStart+highlightEnd]
+	if strings.Contains(highlighted, "\x1b[92m") {
+		t.Fatalf("expected selected cursor span to suppress line color in %q", got)
 	}
 }
 

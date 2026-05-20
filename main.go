@@ -968,20 +968,19 @@ func highlightANSIRange(s string, width, start, end int) string {
 		if s[i] == '\x1b' {
 			ansiEnd := ansiEnd(s, i)
 			if ansiEnd > i {
-				out.WriteString(s[i:ansiEnd])
-				if inverse {
-					out.WriteString("\x1b[7m")
+				if !inverse {
+					out.WriteString(s[i:ansiEnd])
 				}
 				i = ansiEnd
 				continue
 			}
 		}
 		if !inverse && visible == start {
-			out.WriteString("\x1b[7m")
+			out.WriteString("\x1b[0m\x1b[7m")
 			inverse = true
 		}
 		if inverse && visible == end {
-			out.WriteString("\x1b[27m")
+			out.WriteString("\x1b[0m")
 			inverse = false
 		}
 		out.WriteByte(s[i])
@@ -990,18 +989,18 @@ func highlightANSIRange(s string, width, start, end int) string {
 	}
 	for visible < width {
 		if !inverse && visible == start {
-			out.WriteString("\x1b[7m")
+			out.WriteString("\x1b[0m\x1b[7m")
 			inverse = true
 		}
 		if inverse && visible == end {
-			out.WriteString("\x1b[27m")
+			out.WriteString("\x1b[0m")
 			inverse = false
 		}
 		out.WriteByte(' ')
 		visible++
 	}
 	if inverse {
-		out.WriteString("\x1b[27m")
+		out.WriteString("\x1b[0m")
 	}
 	out.WriteString("\x1b[0m")
 	return out.String()
