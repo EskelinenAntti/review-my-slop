@@ -79,42 +79,6 @@ func TestDiffWithUntrackedFilesShowsPath(t *testing.T) {
 	}
 }
 
-func TestLoadingTextTypesGatheringDiffWithCursor(t *testing.T) {
-	first := loadingText(0)
-	later := loadingText(100)
-	if !strings.HasPrefix(first, "G") || strings.Contains(first, "Gathering the diff") {
-		t.Fatalf("first loading text = %q, want partially typed text", first)
-	}
-	if !strings.Contains(later, "Gathering the diff") || !strings.Contains(later, "\x1b[7m") {
-		t.Fatalf("later loading text = %q, want full text with block cursor", later)
-	}
-}
-
-func TestInitialDiffResultStopsLoadingTicker(t *testing.T) {
-	state := &reviewState{
-		loading: true,
-		lines:   []string{loadingText(0)},
-	}
-	stopped := false
-
-	applyInitialDiffResult(state, diffResult{
-		Refs: []lineRef{{File: "a.go", Line: 1, Side: "new"}},
-		Lines: []string{
-			"a.go --- Go",
-			"1 added",
-		},
-	}, func() {
-		stopped = true
-	})
-
-	if state.loading {
-		t.Fatal("loading remained active after initial diff")
-	}
-	if !stopped {
-		t.Fatal("loading ticker was not stopped after initial diff")
-	}
-}
-
 func withTempGitRepo(t *testing.T) {
 	t.Helper()
 
@@ -171,6 +135,61 @@ func TestBuildSelectionsUsesDisplayedRows(t *testing.T) {
 	}
 	if selections[1].Right == nil || selections[1].Right.Line != 11 || selections[1].Right.Side != "new" {
 		t.Fatalf("second selection right side = %#v", selections[1].Right)
+	}
+}
+
+func TestBuildSelectionsDoesNotTreatZeroInContentAsLineNumber(t *testing.T) {
+	lines := []string{
+		"\x1b[1minternal/github/github.go\x1b[0m --- Go",
+		"\x1b[92;1m 283 \x1b[0mif len(response.Data) == 0 {",
+	}
+
+	selections := buildSelections(lines, nil)
+	if len(selections) != 1 {
+		t.Fatalf("expected one selectable row, got %d", len(selections))
+	}
+	if selections[0].Ref.Side != "new" || selections[0].Ref.Line != 283 {
+		t.Fatalf("selection = %#v, want new side line 283", selections[0])
+	}
+	if selections[0].Right == nil || selections[0].Right.Line != 283 {
+		t.Fatalf("right side = %#v, want line 283", selections[0].Right)
+	}
+	if selections[0].Left != nil {
+		t.Fatalf("left side = %#v, want nil for single-sided added row", selections[0].Left)
+	}
+}
+
+func TestBuildSelectionsKeepsAddedLineContainingTripleDashSelectable(t *testing.T) {
+	lines := []string{
+		"\x1b[1mmain.go\x1b[0m --- Go",
+		"\x1b[92;1m 561 \x1b[0mbuf.WriteString(\" --- Text\\n\")",
+	}
+
+	selections := buildSelections(lines, nil)
+	if len(selections) != 1 {
+		t.Fatalf("expected one selectable row, got %d", len(selections))
+	}
+	if selections[0].LineIndex != 1 || selections[0].Ref.Line != 561 || selections[0].Ref.Side != "new" {
+		t.Fatalf("selection = %#v, want new side line 561", selections[0])
+	}
+}
+
+func TestBuildSelectionsSplitsBeforeRightLineNumber(t *testing.T) {
+	lines := []string{
+		"\x1b[1mmain.go\x1b[0m --- Go",
+		"\x1b[91m 1387 old\x1b[0m       \x1b[92m 537 new\x1b[0m",
+	}
+
+	selections := buildSelections(lines, nil)
+	if len(selections) != 1 {
+		t.Fatalf("expected one selectable row, got %d", len(selections))
+	}
+	rightLineStart := strings.Index(ansi.Strip(lines[1]), "537")
+	if rightLineStart < 0 {
+		t.Fatalf("right line number not found in %q", ansi.Strip(lines[1]))
+	}
+	if selections[0].Split > rightLineStart {
+		t.Fatalf("split = %d, want before or at right line number column %d", selections[0].Split, rightLineStart)
 	}
 }
 

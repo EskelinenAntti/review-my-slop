@@ -211,6 +211,88 @@ func TestRenderScreenShowsCursorOnSelectedSideOnly(t *testing.T) {
 	}
 }
 
+func TestRenderScreenKeepsCursorAcrossZeroInSelectedLine(t *testing.T) {
+	lines := []string{
+		"\x1b[1minternal/github/github.go\x1b[0m --- Go",
+		"\x1b[92;1m 283 \x1b[0mif len(response.Data) == 0 {",
+	}
+	state := &reviewState{
+		lines:      lines,
+		selections: buildSelections(lines, nil),
+	}
+	if len(state.selections) != 1 {
+		t.Fatalf("expected one selectable row, got %d", len(state.selections))
+	}
+
+	screen := renderScreen(t, state, 8, 80)
+	row := state.selections[0].LineIndex
+	zeroCol := strings.Index(screen.line(row), "0")
+	if zeroCol < 0 {
+		t.Fatalf("selected line did not contain zero: %q", screen.line(row))
+	}
+	if !screen.cells[row][zeroCol].inverse {
+		t.Fatalf("zero column was not inside cursor highlight; line = %q", screen.line(row))
+	}
+	start, end, ok := screen.inverseRange(row)
+	if !ok {
+		t.Fatalf("selected row had no inverse cells: %q", screen.line(row))
+	}
+	if start >= zeroCol || end <= zeroCol {
+		t.Fatalf("inverse range = %d-%d, zero column = %d; line = %q", start, end, zeroCol, screen.line(row))
+	}
+}
+
+func TestRenderScreenKeepsRightLineNumberColorWhenOldSideSelected(t *testing.T) {
+	lines := []string{
+		"\x1b[1mmain.go\x1b[0m --- Go",
+		"\x1b[91m 1387 old name\x1b[0m       \x1b[92m 537 new name\x1b[0m",
+	}
+	state := &reviewState{
+		lines:      lines,
+		selections: buildSelections(lines, nil),
+	}
+	if len(state.selections) != 1 {
+		t.Fatalf("expected one selectable row, got %d", len(state.selections))
+	}
+	state.selectSide("old")
+
+	screen := renderScreen(t, state, 8, 80)
+	row := state.selections[0].LineIndex
+	rightLineCol := strings.Index(screen.line(row), "537")
+	if rightLineCol < 0 {
+		t.Fatalf("right line number not found in rendered line: %q", screen.line(row))
+	}
+	if screen.cells[row][rightLineCol].inverse {
+		t.Fatalf("right line number was inside old-side cursor highlight: %q", screen.line(row))
+	}
+	if screen.cells[row][rightLineCol].fg != "green" {
+		t.Fatalf("right line number fg = %q, want green; line = %q", screen.cells[row][rightLineCol].fg, screen.line(row))
+	}
+}
+
+func TestRenderScreenCanSelectAddedLineContainingTripleDash(t *testing.T) {
+	lines := []string{
+		"\x1b[1mmain.go\x1b[0m --- Go",
+		"\x1b[92;1m 561 \x1b[0mbuf.WriteString(\" --- Text\\n\")",
+	}
+	state := &reviewState{
+		lines:      lines,
+		selections: buildSelections(lines, nil),
+	}
+	if len(state.selections) != 1 {
+		t.Fatalf("expected one selectable row, got %d", len(state.selections))
+	}
+
+	screen := renderScreen(t, state, 8, 100)
+	row := state.selections[0].LineIndex
+	if !strings.Contains(screen.line(row), " --- Text") {
+		t.Fatalf("rendered line missing triple-dash content: %q", screen.line(row))
+	}
+	if _, _, ok := screen.inverseRange(row); !ok {
+		t.Fatalf("added line containing triple dash was not highlighted: %q", screen.line(row))
+	}
+}
+
 func TestRenderScreenClearsStaleContentBetweenFrames(t *testing.T) {
 	state := &reviewState{
 		lines: []string{
