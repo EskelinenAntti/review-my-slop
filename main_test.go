@@ -1,10 +1,13 @@
 package main
 
 import (
+	"os"
+	"os/exec"
 	"strings"
 	"testing"
 
 	"github.com/anttieskelinen/review-my-slop/internal/ansi"
+	"github.com/anttieskelinen/review-my-slop/internal/github"
 )
 
 func TestParseDiff(t *testing.T) {
@@ -40,6 +43,97 @@ index 1111111..2222222 100644
 		if got.Index != want.index || got.File != want.file || got.Line != want.line || got.Side != want.side || got.Content != want.content {
 			t.Fatalf("ref %d = %#v, want %#v", i, got, want)
 		}
+	}
+}
+
+func TestChangedLinesIncludesUntrackedFile(t *testing.T) {
+	withTempGitRepo(t)
+	if err := os.WriteFile("new.txt", []byte("first\nsecond\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	refs, err := changedLines(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(refs) != 2 {
+		t.Fatalf("refs = %#v, want two untracked lines", refs)
+	}
+	if refs[0].File != "new.txt" || refs[0].Line != 1 || refs[0].Side != "new" || refs[0].Content != "first" {
+		t.Fatalf("first untracked ref = %#v", refs[0])
+	}
+	if refs[1].File != "new.txt" || refs[1].Line != 2 || refs[1].Side != "new" || refs[1].Content != "second" {
+		t.Fatalf("second untracked ref = %#v", refs[1])
+	}
+}
+
+func TestDiffWithUntrackedFilesShowsPath(t *testing.T) {
+	withTempGitRepo(t)
+	if err := os.WriteFile("new.txt", []byte("first\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	got := string(diffWithUntrackedFiles(nil, nil))
+	if !strings.Contains(got, "new.txt --- Text") || !strings.Contains(got, "first") {
+		t.Fatalf("untracked diff = %q, want path header and file content", got)
+	}
+}
+
+func TestLoadingTextTypesGatheringDiffWithCursor(t *testing.T) {
+	first := loadingText(0)
+	later := loadingText(100)
+	if !strings.HasPrefix(first, "G") || strings.Contains(first, "Gathering the diff") {
+		t.Fatalf("first loading text = %q, want partially typed text", first)
+	}
+	if !strings.Contains(later, "Gathering the diff") || !strings.Contains(later, "\x1b[7m") {
+		t.Fatalf("later loading text = %q, want full text with block cursor", later)
+	}
+}
+
+func TestInitialDiffResultStopsLoadingTicker(t *testing.T) {
+	state := &reviewState{
+		loading: true,
+		lines:   []string{loadingText(0)},
+	}
+	stopped := false
+
+	applyInitialDiffResult(state, diffResult{
+		Refs: []lineRef{{File: "a.go", Line: 1, Side: "new"}},
+		Lines: []string{
+			"a.go --- Go",
+			"1 added",
+		},
+	}, func() {
+		stopped = true
+	})
+
+	if state.loading {
+		t.Fatal("loading remained active after initial diff")
+	}
+	if !stopped {
+		t.Fatal("loading ticker was not stopped after initial diff")
+	}
+}
+
+func withTempGitRepo(t *testing.T) {
+	t.Helper()
+
+	dir := t.TempDir()
+	previous, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := os.Chdir(previous); err != nil {
+			t.Fatal(err)
+		}
+	})
+	if err := os.Chdir(dir); err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command("git", "init")
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("git init failed: %s", strings.TrimSpace(string(out)))
 	}
 }
 
@@ -310,7 +404,7 @@ func TestReviewCommentPayloadOmitsStartForSingleLine(t *testing.T) {
 		End:   lineRef{File: "a.go", Line: 5, Side: "new"},
 	}
 
-	got := reviewCommentPayload(pr, reviewRange, "body")
+	got := github.ReviewCommentPayload(pr, githubRange(reviewRange), "body")
 	if got["line"] != 5 || got["side"] != "RIGHT" || got["commit_id"] != "abc123" {
 		t.Fatalf("payload = %#v", got)
 	}
@@ -326,7 +420,7 @@ func TestReviewCommentPayloadIncludesStartForMultiLineOldSide(t *testing.T) {
 		End:   lineRef{File: "a.go", Line: 7, Side: "old"},
 	}
 
-	got := reviewCommentPayload(pr, reviewRange, "body")
+	got := github.ReviewCommentPayload(pr, githubRange(reviewRange), "body")
 	if got["line"] != 7 || got["side"] != "LEFT" || got["start_line"] != 5 || got["start_side"] != "LEFT" {
 		t.Fatalf("payload = %#v", got)
 	}
@@ -338,7 +432,7 @@ func TestReviewThreadVariablesIncludesRange(t *testing.T) {
 		End:   lineRef{File: "a.go", Line: 7, Side: "new"},
 	}
 
-	got := reviewThreadVariables("review-id", reviewRange, "body")
+	got := github.ReviewThreadVariables("review-id", githubRange(reviewRange), "body")
 	if got["reviewID"] != "review-id" || got["path"] != "a.go" || got["line"] != 7 || got["side"] != "RIGHT" {
 		t.Fatalf("variables = %#v", got)
 	}
@@ -353,7 +447,7 @@ func TestReviewThreadVariablesOmitsStartForSingleLine(t *testing.T) {
 		End:   lineRef{File: "a.go", Line: 5, Side: "old"},
 	}
 
-	got := reviewThreadVariables("review-id", reviewRange, "body")
+	got := github.ReviewThreadVariables("review-id", githubRange(reviewRange), "body")
 	if got["line"] != 5 || got["side"] != "LEFT" {
 		t.Fatalf("variables = %#v", got)
 	}

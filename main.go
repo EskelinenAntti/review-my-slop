@@ -3,7 +3,6 @@ package main
 import (
 	"bufio"
 	"bytes"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -12,8 +11,10 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/anttieskelinen/review-my-slop/internal/ansi"
+	"github.com/anttieskelinen/review-my-slop/internal/github"
 	"github.com/anttieskelinen/review-my-slop/internal/keys"
 )
 
@@ -35,25 +36,14 @@ type displaySelection struct {
 	Split     int
 }
 
-type prContext struct {
-	Number int    `json:"number"`
-	ID     string `json:"id"`
-	Owner  string `json:"owner"`
-	Repo   string `json:"repo"`
-	Head   string `json:"head"`
-	Base   string `json:"base"`
-}
+type prContext = github.PR
 
 type reviewRange struct {
 	Start lineRef
 	End   lineRef
 }
 
-type reviewDraft struct {
-	Active bool
-	ID     string
-	Count  int
-}
+type reviewDraft = github.Draft
 
 type reviewContext struct {
 	PR    *prContext
@@ -120,6 +110,8 @@ type reviewState struct {
 	selectionAnchor *int
 	top             int
 	message         string
+	loading         bool
+	loadingFrame    int
 }
 
 func reviewTUI(args []string, initialDiff <-chan diffResult, stdout io.Writer) error {
@@ -129,7 +121,8 @@ func reviewTUI(args []string, initialDiff <-chan diffResult, stdout io.Writer) e
 		source:     sourceLocal,
 		sourceArgs: args,
 		prChecking: true,
-		lines:      []string{"Loading uncommitted changes..."},
+		lines:      []string{loadingText(0)},
+		loading:    true,
 	}
 
 	term, err := enterTerminal()
@@ -146,6 +139,8 @@ func reviewTUI(args []string, initialDiff <-chan diffResult, stdout io.Writer) e
 	defer term.restore()
 
 	keyResult := readKeyAsync(os.Stdin)
+	loadingTick := time.NewTicker(60 * time.Millisecond)
+	defer loadingTick.Stop()
 	for {
 		rows, cols := terminalSize()
 		state.keepSelectionVisible(rows)
@@ -154,10 +149,18 @@ func reviewTUI(args []string, initialDiff <-chan diffResult, stdout io.Writer) e
 		var key string
 		select {
 		case result := <-initialDiff:
-			state.applyDiffResult(result)
+			applyInitialDiffResult(state, result, func() {
+				loadingTick.Stop()
+			})
 			continue
 		case context := <-prResult:
 			state.applyReviewContext(context)
+			continue
+		case <-loadingTick.C:
+			if state.loading {
+				state.loadingFrame++
+				state.lines = []string{loadingText(state.loadingFrame)}
+			}
 			continue
 		case result := <-keyResult:
 			if result.Err != nil {
@@ -190,9 +193,9 @@ func reviewTUI(args []string, initialDiff <-chan diffResult, stdout io.Writer) e
 		case "G":
 			state.moveTo(len(state.selections) - 1)
 		case keys.CtrlD, keys.PageDown:
-			state.move(max(1, (rows-4)/2))
+			state.move(max(1, (rows-2)/2))
 		case keys.CtrlU, keys.PageUp:
-			state.move(-max(1, (rows-4)/2))
+			state.move(-max(1, (rows-2)/2))
 		case keys.Tab:
 			if err := state.switchSource(); err != nil {
 				state.message = err.Error()
@@ -273,13 +276,13 @@ func detectReviewContextAsync() <-chan reviewContext {
 }
 
 func detectReviewContext() reviewContext {
-	pr := detectPRContext()
+	pr := github.DetectPR()
 	if pr == nil {
 		return reviewContext{}
 	}
 	return reviewContext{
 		PR:    pr,
-		Draft: detectPendingReview(pr),
+		Draft: github.DetectPendingReview(pr),
 	}
 }
 
@@ -304,6 +307,7 @@ func (s *reviewState) applyReviewContext(context reviewContext) {
 }
 
 func (s *reviewState) applyDiffResult(result diffResult) {
+	s.loading = false
 	if result.Source != "" && result.Source != s.source {
 		if result.Source == sourceLocal {
 			s.localAvailable = len(result.Refs) > 0
@@ -331,6 +335,14 @@ func (s *reviewState) applyDiffResult(result diffResult) {
 	s.top = 0
 	if len(result.Refs) == 0 {
 		s.message = ""
+	}
+}
+
+func applyInitialDiffResult(s *reviewState, result diffResult, stopLoading func()) {
+	wasLoading := s.loading
+	s.applyDiffResult(result)
+	if wasLoading && !s.loading {
+		stopLoading()
 	}
 }
 
@@ -410,7 +422,7 @@ func loadDiff(args []string, source diffSource) ([]lineRef, []string, error) {
 	if err != nil {
 		return nil, nil, err
 	}
-	return refs, splitLines(diffWithUntrackedNotice(args, diff)), nil
+	return refs, splitLines(diffWithUntrackedFiles(args, diff)), nil
 }
 
 func sourceLabel(source diffSource) string {
@@ -418,6 +430,16 @@ func sourceLabel(source diffSource) string {
 		return "branch"
 	}
 	return "uncommitted"
+}
+
+func loadingText(frame int) string {
+	const text = "Gathering the diff"
+	typed := min(len(text), 1+frame/2)
+	cursor := " "
+	if (frame/6)%2 == 0 {
+		cursor = "\x1b[7m \x1b[0m"
+	}
+	return text[:typed] + cursor
 }
 
 func enterTerminal() (*terminalState, error) {
@@ -458,28 +480,6 @@ func withNormalTerminal(t *terminalState, fn func() error) error {
 	_ = raw.Run()
 	fmt.Print("\x1b[?1049h\x1b[?25l")
 	return err
-}
-
-func detectPRContext() *prContext {
-	if _, err := exec.LookPath("gh"); err != nil {
-		return nil
-	}
-	cmd := exec.Command("gh", "pr", "view",
-		"--json", "id,number,headRefOid,headRepository,headRepositoryOwner,baseRefOid",
-		"--jq", `{"id": .id, "number": .number, "owner": .headRepositoryOwner.login, "repo": .headRepository.name, "head": .headRefOid, "base": .baseRefOid}`,
-	)
-	out, err := cmd.Output()
-	if err != nil {
-		return nil
-	}
-	var pr prContext
-	if err := json.Unmarshal(out, &pr); err != nil {
-		return nil
-	}
-	if pr.Number == 0 || pr.ID == "" || pr.Owner == "" || pr.Repo == "" || pr.Head == "" || pr.Base == "" {
-		return nil
-	}
-	return &pr
 }
 
 func (s *reviewState) reviewComment(term *terminalState) error {
@@ -527,7 +527,7 @@ func (s *reviewState) reviewWithBody(term *terminalState, template string) error
 		return nil
 	}
 	if s.draft.Active {
-		if err := addPendingReviewComment(s.draft.ID, reviewRange, body); err != nil {
+		if err := github.AddPendingReviewComment(s.draft.ID, githubRange(reviewRange), body); err != nil {
 			return err
 		}
 		s.draft.Count++
@@ -539,7 +539,7 @@ func (s *reviewState) reviewWithBody(term *terminalState, template string) error
 		}
 		return nil
 	}
-	if err := postReviewComment(s.pr, reviewRange, body); err != nil {
+	if err := github.PostReviewComment(s.pr, githubRange(reviewRange), body); err != nil {
 		return err
 	}
 	s.clearSelection()
@@ -560,7 +560,7 @@ func (s *reviewState) startReview() {
 		s.message = fmt.Sprintf("Review already active with %d draft %s.", s.draft.Count, plural(s.draft.Count, "comment", "comments"))
 		return
 	}
-	reviewID, err := createPendingReview(s.pr)
+	reviewID, err := github.CreatePendingReview(s.pr)
 	if err != nil {
 		s.message = err.Error()
 		return
@@ -576,7 +576,7 @@ func (s *reviewState) discardReview() {
 		return
 	}
 	count := s.draft.Count
-	if err := deletePendingReview(s.draft.ID); err != nil {
+	if err := github.DeletePendingReview(s.draft.ID); err != nil {
 		s.message = err.Error()
 		return
 	}
@@ -603,7 +603,7 @@ func (s *reviewState) submitReview(term *terminalState) error {
 	}
 
 	count := s.draft.Count
-	if err := submitPendingReview(s.draft.ID, body); err != nil {
+	if err := github.SubmitPendingReview(s.draft.ID, body); err != nil {
 		return err
 	}
 	s.draft = reviewDraft{}
@@ -678,6 +678,21 @@ func sourceLines(reviewRange reviewRange, pr *prContext) ([]string, error) {
 	return lines[reviewRange.Start.Line-1 : reviewRange.End.Line], nil
 }
 
+func githubRange(reviewRange reviewRange) github.LineRange {
+	return github.LineRange{
+		Start: github.Line{
+			File: reviewRange.Start.File,
+			Line: reviewRange.Start.Line,
+			Side: reviewRange.Start.Side,
+		},
+		End: github.Line{
+			File: reviewRange.End.File,
+			Line: reviewRange.End.Line,
+			Side: reviewRange.End.Side,
+		},
+	}
+}
+
 func gitShowFile(ref, path string) (string, error) {
 	cmd := exec.Command("git", "show", ref+":"+path)
 	out, err := cmd.Output()
@@ -697,242 +712,6 @@ func splitSourceLines(text string) []string {
 		return []string{""}
 	}
 	return strings.Split(text, "\n")
-}
-
-func postReviewComment(pr *prContext, reviewRange reviewRange, body string) error {
-	data, err := json.Marshal(reviewCommentPayload(pr, reviewRange, body))
-	if err != nil {
-		return err
-	}
-	endpoint := fmt.Sprintf("repos/%s/%s/pulls/%d/comments", pr.Owner, pr.Repo, pr.Number)
-	cmd := exec.Command("gh", "api", "-X", "POST", endpoint, "--input", "-")
-	cmd.Stdin = bytes.NewReader(data)
-	out, err := cmd.CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("gh api failed: %s", strings.TrimSpace(string(out)))
-	}
-	return nil
-}
-
-func reviewCommentPayload(pr *prContext, reviewRange reviewRange, body string) map[string]any {
-	payload := map[string]any{
-		"body":      body,
-		"path":      reviewRange.End.File,
-		"line":      reviewRange.End.Line,
-		"side":      githubSide(reviewRange.End.Side),
-		"commit_id": pr.Head,
-	}
-	if reviewRange.Start.Line != reviewRange.End.Line {
-		payload["start_line"] = reviewRange.Start.Line
-		payload["start_side"] = githubSide(reviewRange.Start.Side)
-	}
-	return payload
-}
-
-func createPendingReview(pr *prContext) (string, error) {
-	const query = `
-mutation($pullRequestID: ID!, $commitOID: GitObjectID!) {
-  addPullRequestReview(input: {pullRequestId: $pullRequestID, commitOID: $commitOID}) {
-    pullRequestReview {
-      id
-    }
-  }
-}`
-	var response struct {
-		AddPullRequestReview struct {
-			PullRequestReview struct {
-				ID string `json:"id"`
-			} `json:"pullRequestReview"`
-		} `json:"addPullRequestReview"`
-	}
-	err := ghGraphQL(query, map[string]any{
-		"pullRequestID": pr.ID,
-		"commitOID":     pr.Head,
-	}, &response)
-	if err != nil {
-		return "", err
-	}
-	if response.AddPullRequestReview.PullRequestReview.ID == "" {
-		return "", errors.New("GitHub did not return a pending review id")
-	}
-	return response.AddPullRequestReview.PullRequestReview.ID, nil
-}
-
-func detectPendingReview(pr *prContext) reviewDraft {
-	const query = `
-query($pullRequestID: ID!) {
-  viewer {
-    login
-  }
-  node(id: $pullRequestID) {
-    ... on PullRequest {
-      reviews(states: PENDING, first: 20) {
-        nodes {
-          id
-          author {
-            login
-          }
-          comments(first: 1) {
-            totalCount
-          }
-        }
-      }
-    }
-  }
-}`
-	var response struct {
-		Viewer struct {
-			Login string `json:"login"`
-		} `json:"viewer"`
-		Node struct {
-			Reviews struct {
-				Nodes []struct {
-					ID     string `json:"id"`
-					Author struct {
-						Login string `json:"login"`
-					} `json:"author"`
-					Comments struct {
-						TotalCount int `json:"totalCount"`
-					} `json:"comments"`
-				} `json:"nodes"`
-			} `json:"reviews"`
-		} `json:"node"`
-	}
-	if err := ghGraphQL(query, map[string]any{"pullRequestID": pr.ID}, &response); err != nil {
-		return reviewDraft{}
-	}
-	for _, review := range response.Node.Reviews.Nodes {
-		if review.ID == "" || review.Author.Login != response.Viewer.Login {
-			continue
-		}
-		return reviewDraft{
-			Active: true,
-			ID:     review.ID,
-			Count:  review.Comments.TotalCount,
-		}
-	}
-	return reviewDraft{}
-}
-
-func addPendingReviewComment(reviewID string, reviewRange reviewRange, body string) error {
-	const query = `
-mutation($reviewID: ID!, $body: String!, $path: String!, $line: Int!, $side: DiffSide!, $startLine: Int, $startSide: DiffSide) {
-  addPullRequestReviewThread(input: {pullRequestReviewId: $reviewID, body: $body, path: $path, line: $line, side: $side, startLine: $startLine, startSide: $startSide}) {
-    thread {
-      id
-    }
-  }
-}`
-	var response struct {
-		AddPullRequestReviewThread struct {
-			Thread struct {
-				ID string `json:"id"`
-			} `json:"thread"`
-		} `json:"addPullRequestReviewThread"`
-	}
-	return ghGraphQL(query, reviewThreadVariables(reviewID, reviewRange, body), &response)
-}
-
-func submitPendingReview(reviewID string, body string) error {
-	const query = `
-mutation($reviewID: ID!, $body: String, $event: PullRequestReviewEvent!) {
-  submitPullRequestReview(input: {pullRequestReviewId: $reviewID, body: $body, event: $event}) {
-    pullRequestReview {
-      id
-    }
-  }
-}`
-	var response struct {
-		SubmitPullRequestReview struct {
-			PullRequestReview struct {
-				ID string `json:"id"`
-			} `json:"pullRequestReview"`
-		} `json:"submitPullRequestReview"`
-	}
-	return ghGraphQL(query, map[string]any{
-		"reviewID": reviewID,
-		"body":     strings.TrimSpace(body),
-		"event":    "COMMENT",
-	}, &response)
-}
-
-func deletePendingReview(reviewID string) error {
-	const query = `
-mutation($reviewID: ID!) {
-  deletePullRequestReview(input: {pullRequestReviewId: $reviewID}) {
-    pullRequestReview {
-      id
-    }
-  }
-}`
-	var response struct {
-		DeletePullRequestReview struct {
-			PullRequestReview struct {
-				ID string `json:"id"`
-			} `json:"pullRequestReview"`
-		} `json:"deletePullRequestReview"`
-	}
-	return ghGraphQL(query, map[string]any{"reviewID": reviewID}, &response)
-}
-
-func reviewThreadVariables(reviewID string, reviewRange reviewRange, body string) map[string]any {
-	payload := map[string]any{
-		"reviewID": reviewID,
-		"body":     body,
-		"path":     reviewRange.End.File,
-		"line":     reviewRange.End.Line,
-		"side":     githubSide(reviewRange.End.Side),
-	}
-	if reviewRange.Start.Line != reviewRange.End.Line {
-		payload["startLine"] = reviewRange.Start.Line
-		payload["startSide"] = githubSide(reviewRange.Start.Side)
-	}
-	return payload
-}
-
-func ghGraphQL(query string, variables map[string]any, target any) error {
-	request := map[string]any{
-		"query":     query,
-		"variables": variables,
-	}
-	data, err := json.Marshal(request)
-	if err != nil {
-		return err
-	}
-	cmd := exec.Command("gh", "api", "graphql", "--input", "-")
-	cmd.Stdin = bytes.NewReader(data)
-	out, err := cmd.CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("gh api graphql failed: %s", strings.TrimSpace(string(out)))
-	}
-
-	var response struct {
-		Data   json.RawMessage `json:"data"`
-		Errors []struct {
-			Message string `json:"message"`
-		} `json:"errors"`
-	}
-	if err := json.Unmarshal(out, &response); err != nil {
-		return err
-	}
-	if len(response.Errors) > 0 {
-		var messages []string
-		for _, graphQLError := range response.Errors {
-			messages = append(messages, graphQLError.Message)
-		}
-		return fmt.Errorf("gh api graphql failed: %s", strings.Join(messages, ", "))
-	}
-	if len(response.Data) == 0 {
-		return errors.New("gh api graphql returned no data")
-	}
-	return json.Unmarshal(response.Data, target)
-}
-
-func githubSide(side string) string {
-	if side == "old" {
-		return "LEFT"
-	}
-	return "RIGHT"
 }
 
 func terminalSize() (int, int) {
@@ -965,7 +744,7 @@ func render(w io.Writer, state *reviewState, rows, cols int) {
 		cols = 40
 	}
 	state.keepSelectionVisible(rows)
-	bodyRows := rows - 4
+	bodyRows := rows - 2
 	selectedLine := -1
 	if state.hasSelection() {
 		selectedLine = state.selectedDisplayLine()
@@ -988,46 +767,12 @@ func render(w io.Writer, state *reviewState, rows, cols int) {
 		}
 	}
 
-	fmt.Fprintf(w, "\x1b[7m%s\x1b[0m\x1b[K\r\n", fit(statusText(state), cols))
 	if state.message != "" {
 		fmt.Fprintf(w, "%s\x1b[K\r\n", fit(" "+state.message, cols))
 	} else {
 		fmt.Fprint(w, "\x1b[K\r\n")
 	}
 	fmt.Fprintf(w, "\x1b[2m%s\x1b[0m\x1b[K", fit(helpText(state), cols))
-}
-
-func statusText(state *reviewState) string {
-	var parts []string
-	if state.hasSelection() {
-		parts = append(parts, fmt.Sprintf("%d/%d", state.cursor+1, len(state.selections)))
-	} else {
-		parts = append(parts, "0/0")
-	}
-	if state.selectionAnchor != nil {
-		parts = append(parts, "Selecting")
-	}
-	if state.draft.Active {
-		parts = append(parts, fmt.Sprintf("Draft review: %d %s", state.draft.Count, plural(state.draft.Count, "comment", "comments")))
-	}
-	if state.prChecking {
-		parts = append(parts, "checking PR")
-	} else if state.pr != nil {
-		parts = append(parts, fmt.Sprintf("PR #%d", state.pr.Number))
-	} else {
-		parts = append(parts, "no PR")
-	}
-	if state.hasSelection() {
-		ref := state.current()
-		marker := "+"
-		if ref.Side == "old" {
-			marker = "-"
-		}
-		parts = append(parts, fmt.Sprintf("%s %s:%d", marker, ref.File, ref.Line))
-	} else {
-		parts = append(parts, "No changes")
-	}
-	return " " + strings.Join(parts, "  ")
 }
 
 func helpText(state *reviewState) string {
@@ -1103,7 +848,7 @@ func (s *reviewState) keepSelectionVisible(rows int) {
 		s.top = 0
 		return
 	}
-	bodyRows := max(1, rows-4)
+	bodyRows := max(1, rows-2)
 	selectedLine := s.selectedDisplayLine()
 	if selectedLine < 0 {
 		return
@@ -1384,7 +1129,7 @@ func hasRed(s string) bool {
 	return strings.Contains(s, "\x1b[31") || strings.Contains(s, "\x1b[91")
 }
 
-func diffWithUntrackedNotice(args []string, diff []byte) []byte {
+func diffWithUntrackedFiles(args []string, diff []byte) []byte {
 	if len(args) != 0 {
 		return diff
 	}
@@ -1395,15 +1140,58 @@ func diffWithUntrackedNotice(args []string, diff []byte) []byte {
 	}
 	var buf bytes.Buffer
 	buf.Write(diff)
-	if !bytes.HasSuffix(diff, []byte("\n")) {
+	if buf.Len() > 0 && !bytes.HasSuffix(diff, []byte("\n")) {
 		buf.WriteByte('\n')
 	}
-	buf.WriteString("\nUntracked files:\n")
 	scanner := bufio.NewScanner(bytes.NewReader(out))
 	for scanner.Scan() {
-		buf.WriteString("  ")
-		buf.WriteString(scanner.Text())
-		buf.WriteByte('\n')
+		path := scanner.Text()
+		if path == "" {
+			continue
+		}
+		if buf.Len() > 0 {
+			buf.WriteByte('\n')
+		}
+		buf.WriteString(path)
+		buf.WriteString(" --- Text\n")
+		rendered, err := prettyUntrackedDiff(path)
+		if err != nil || len(bytes.TrimSpace(rendered)) == 0 {
+			rendered = plainUntrackedDiff(path)
+		}
+		buf.Write(rendered)
+		if !bytes.HasSuffix(rendered, []byte("\n")) {
+			buf.WriteByte('\n')
+		}
+	}
+	return buf.Bytes()
+}
+
+func prettyUntrackedDiff(path string) ([]byte, error) {
+	cmd := exec.Command("difft", "--color=always", "/dev/null", path)
+	cmd.Env = append(os.Environ(), "DFT_COLOR=always")
+	out, err := cmd.CombinedOutput()
+	if err != nil && len(out) == 0 {
+		return nil, err
+	}
+	return out, nil
+}
+
+func plainUntrackedDiff(path string) []byte {
+	file, err := os.Open(path)
+	if err != nil {
+		return nil
+	}
+	defer file.Close()
+
+	var buf bytes.Buffer
+	scanner := bufio.NewScanner(file)
+	line := 1
+	for scanner.Scan() {
+		fmt.Fprintf(&buf, "\x1b[92;1m %d \x1b[0m%s\n", line, scanner.Text())
+		line++
+	}
+	if line == 1 {
+		buf.WriteString("\x1b[92;1m 1 \x1b[0m\n")
 	}
 	return buf.Bytes()
 }
