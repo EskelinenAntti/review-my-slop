@@ -45,6 +45,7 @@ func Truncate(s string, width int) string {
 	}
 	if width <= 1 {
 		return ""
+		//hihi
 	}
 
 	var out strings.Builder
