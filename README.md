@@ -15,9 +15,8 @@ go run .
 
 RMS requires `difft` and shows your current `git diff` through difftastic, then
 opens an interactive review view. If the current branch has an active GitHub pull
-request and `gh` is authenticated, RMS can post inline PR comments and
-suggestions. Use review mode to create a pending GitHub PR review, add draft
-comments to GitHub, and submit them as one review.
+request and `gh` is authenticated, RMS can create a pending GitHub PR review,
+add draft comments and suggestions to it, and submit them as one review.
 
 RMS starts on local uncommitted changes. When PR context is available, `Tab`
 switches between local changes and branch changes.
@@ -27,13 +26,13 @@ Keys:
 - `j` / `k` move the selected changed line
 - `h` / `l` choose the left or right side of a side-by-side changed row
 - `Tab` switches between local changes and branch changes when both are available
-- `v` starts or clears a visual selection for a same-file, same-side range
+- `v` starts or clears a visual selection for a same-file, same-side range while
+  reviewing branch changes
 - `R` starts a pending GitHub PR review
-- `c` opens `$VISUAL` or `$EDITOR` and posts the body as an inline PR comment,
-  or adds it as a GitHub draft comment when review mode is active
+- `c` opens `$VISUAL` or `$EDITOR` and adds the body as a draft comment when
+  review mode is active
 - `s` opens `$VISUAL` or `$EDITOR` with a prefilled `suggestion` block for the
-  right side, then posts it as an inline PR suggestion or adds it as a GitHub
-  draft comment when review mode is active
+  right side, then adds it as a draft comment when review mode is active
 - `p` submits the pending review, opening `$VISUAL` or `$EDITOR` for an optional
   review summary
 - `D` deletes the pending GitHub review

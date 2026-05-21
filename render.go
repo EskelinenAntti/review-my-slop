@@ -48,7 +48,10 @@ func render(w io.Writer, state *reviewState, rows, cols int) {
 }
 
 func helpText(state *reviewState) string {
-	nav := "h/j/k/l move  v select"
+	nav := "h/j/k/l move"
+	if state.canSelectRange() {
+		nav += "  v select"
+	}
 	if !state.hasSelection() {
 		nav = "r reload"
 	}
@@ -69,7 +72,7 @@ func helpText(state *reviewState) string {
 	if state.pr == nil {
 		return fmt.Sprintf(" %s%s  e open  r reload  q quit ", nav, sourceSwitch)
 	}
-	return fmt.Sprintf(" %s%s  R start review  c comment  s suggest  e open  r reload  q quit ", nav, sourceSwitch)
+	return fmt.Sprintf(" %s%s  R start review  e open  r reload  q quit ", nav, sourceSwitch)
 }
 
 func fit(s string, width int) string {

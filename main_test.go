@@ -290,6 +290,8 @@ func TestRenderCursorKeepsInverseAcrossLineColorResets(t *testing.T) {
 
 func TestSelectionMovementStaysWithinFileAndSide(t *testing.T) {
 	state := &reviewState{
+		source: sourceBranch,
+		draft:  reviewDraft{Active: true},
 		selections: []displaySelection{
 			testSelection(lineRef{File: "a.go", Line: 10, Side: "new"}),
 			testSelection(lineRef{File: "a.go", Line: 11, Side: "new"}),
@@ -375,6 +377,8 @@ func TestSelectionMovementKeepsAnchorSideOnTwoSidedRows(t *testing.T) {
 	secondLeft := lineRef{File: "a.go", Line: 11, Side: "old"}
 	secondRight := lineRef{File: "a.go", Line: 11, Side: "new"}
 	state := &reviewState{
+		source: sourceBranch,
+		draft:  reviewDraft{Active: true},
 		selections: []displaySelection{
 			{Ref: firstRight, Left: &firstLeft, Right: &firstRight},
 			{Ref: secondRight, Left: &secondLeft, Right: &secondRight},
@@ -395,7 +399,8 @@ func TestSelectionMovementKeepsAnchorSideOnTwoSidedRows(t *testing.T) {
 
 func TestReviewSuggestionRejectsOldSide(t *testing.T) {
 	state := &reviewState{
-		pr: &prContext{Head: "head", Base: "base"},
+		pr:    &prContext{Head: "head", Base: "base"},
+		draft: reviewDraft{Active: true, ID: "review-id"},
 		selections: []displaySelection{
 			testSelection(lineRef{File: "a.go", Line: 10, Side: "old"}),
 		},
@@ -407,6 +412,60 @@ func TestReviewSuggestionRejectsOldSide(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "right side") {
 		t.Fatalf("error = %q, want right-side message", err)
+	}
+}
+
+func TestToggleSelectionRequiresBranchDraftReview(t *testing.T) {
+	state := &reviewState{
+		source: sourceLocal,
+		draft:  reviewDraft{Active: true},
+		selections: []displaySelection{
+			testSelection(lineRef{File: "a.go", Line: 10, Side: "new"}),
+		},
+	}
+
+	state.toggleSelection()
+	if state.selectionAnchor != nil {
+		t.Fatal("expected local source to reject multi-line selection")
+	}
+	if !strings.Contains(state.message, "reviewing branch changes") {
+		t.Fatalf("message = %q, want reviewing branch changes hint", state.message)
+	}
+
+	state.source = sourceBranch
+	state.draft = reviewDraft{}
+	state.message = ""
+	state.toggleSelection()
+	if state.selectionAnchor != nil {
+		t.Fatal("expected branch source without draft review to reject multi-line selection")
+	}
+	if !strings.Contains(state.message, "reviewing branch changes") {
+		t.Fatalf("message = %q, want reviewing branch changes hint", state.message)
+	}
+
+	state.draft = reviewDraft{Active: true}
+	state.toggleSelection()
+	if state.selectionAnchor == nil {
+		t.Fatal("expected branch source with draft review to start multi-line selection")
+	}
+}
+
+func TestReviewActionsRequireDraft(t *testing.T) {
+	state := &reviewState{
+		pr: &prContext{Head: "head", Base: "base"},
+		selections: []displaySelection{
+			testSelection(lineRef{File: "a.go", Line: 10, Side: "new"}),
+		},
+	}
+
+	err := state.reviewComment(&terminalState{})
+	if err == nil || !strings.Contains(err.Error(), "No draft review active") {
+		t.Fatalf("comment error = %v, want no-draft error", err)
+	}
+
+	err = state.reviewSuggestion(&terminalState{})
+	if err == nil || !strings.Contains(err.Error(), "No draft review active") {
+		t.Fatalf("suggestion error = %v, want no-draft error", err)
 	}
 }
 

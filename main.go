@@ -273,6 +273,10 @@ func (s *reviewState) toggleSelection() {
 		s.message = "No changed line selected."
 		return
 	}
+	if !s.canSelectRange() {
+		s.message = "Multi-line selection is only available while reviewing branch changes."
+		return
+	}
 	if s.selectionAnchor != nil {
 		s.clearSelection()
 		s.message = "Selection cleared."
@@ -281,6 +285,10 @@ func (s *reviewState) toggleSelection() {
 	anchor := s.cursor
 	s.selectionAnchor = &anchor
 	s.message = "Selection started."
+}
+
+func (s *reviewState) canSelectRange() bool {
+	return s.source == sourceBranch && s.draft.Active
 }
 
 func (s *reviewState) selectSide(side string) {

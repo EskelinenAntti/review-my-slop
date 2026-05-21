@@ -319,8 +319,9 @@ func TestRenderScreenClearsStaleContentBetweenFrames(t *testing.T) {
 
 func TestRenderScreenReviewModeTextSnapshot(t *testing.T) {
 	state := &reviewState{
-		pr:    &prContext{Number: 4},
-		draft: reviewDraft{Active: true},
+		source: sourceBranch,
+		pr:     &prContext{Number: 4},
+		draft:  reviewDraft{Active: true},
 		lines: []string{
 			"README.md --- Text",
 			"32 - `s` opens `$VISUAL` or `$EDITOR`",
@@ -406,9 +407,10 @@ func TestRenderScreenOmitsCompletedNoPRStatus(t *testing.T) {
 
 func TestRenderScreenHelpReflectsReviewMode(t *testing.T) {
 	state := &reviewState{
-		pr:    &prContext{Number: 4},
-		draft: reviewDraft{Active: true},
-		lines: []string{"README.md --- Text"},
+		source: sourceBranch,
+		pr:     &prContext{Number: 4},
+		draft:  reviewDraft{Active: true},
+		lines:  []string{"README.md --- Text"},
 		selections: []displaySelection{
 			testSelection(lineRef{File: "README.md", Line: 33, Side: "new"}),
 		},
@@ -452,8 +454,8 @@ func TestRenderScreenHelpReflectsPRStatus(t *testing.T) {
 	state.pr = &prContext{Number: 4}
 	screen = renderScreen(t, state, 8, 100)
 	help = screen.trimmedLine(helpRow(8))
-	if !strings.Contains(help, "R start review") || !strings.Contains(help, "c comment") {
-		t.Fatalf("PR help = %q, want PR actions", help)
+	if !strings.Contains(help, "R start review") || strings.Contains(help, "c comment") || strings.Contains(help, "s suggest") {
+		t.Fatalf("PR help = %q, want start-review without comment actions", help)
 	}
 }
 
@@ -492,9 +494,10 @@ func TestRenderScreenHelpShowsRelevantDiffSwitch(t *testing.T) {
 
 func TestRenderScreenDetectedDraftShowsDraftActions(t *testing.T) {
 	state := &reviewState{
-		pr:    &prContext{Number: 4},
-		draft: reviewDraft{Active: true, ID: "review-id", Count: 3},
-		lines: []string{"README.md --- Text"},
+		source: sourceBranch,
+		pr:     &prContext{Number: 4},
+		draft:  reviewDraft{Active: true, ID: "review-id", Count: 3},
+		lines:  []string{"README.md --- Text"},
 		selections: []displaySelection{
 			testSelection(lineRef{File: "README.md", Line: 33, Side: "new"}),
 		},

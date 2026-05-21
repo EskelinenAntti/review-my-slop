@@ -21,6 +21,9 @@ func (s *reviewState) reviewSuggestion(term *terminalState) error {
 	if err := s.requirePR("build suggestion"); err != nil {
 		return err
 	}
+	if err := s.requireDraft("add suggestion"); err != nil {
+		return err
+	}
 	reviewRange, err := s.currentRange()
 	if err != nil {
 		return err
@@ -42,6 +45,9 @@ func (s *reviewState) reviewWithBody(term *terminalState, template string) error
 	if err := s.requirePR("post review comments"); err != nil {
 		return err
 	}
+	if err := s.requireDraft("add comment"); err != nil {
+		return err
+	}
 	reviewRange, err := s.currentRange()
 	if err != nil {
 		return err
@@ -54,27 +60,15 @@ func (s *reviewState) reviewWithBody(term *terminalState, template string) error
 		s.message = "Cancelled empty review body."
 		return nil
 	}
-	if s.draft.Active {
-		if err := github.AddPendingReviewComment(s.draft.ID, githubRange(reviewRange), body); err != nil {
-			return err
-		}
-		s.draft.Count++
-		s.clearSelection()
-		if reviewRange.Start.Line == reviewRange.End.Line {
-			s.message = fmt.Sprintf("Added draft comment %d on %s:%d.", s.draft.Count, reviewRange.End.File, reviewRange.End.Line)
-		} else {
-			s.message = fmt.Sprintf("Added draft comment %d on %s:%d-%d.", s.draft.Count, reviewRange.End.File, reviewRange.Start.Line, reviewRange.End.Line)
-		}
-		return nil
-	}
-	if err := github.PostReviewComment(s.pr, githubRange(reviewRange), body); err != nil {
+	if err := github.AddPendingReviewComment(s.draft.ID, githubRange(reviewRange), body); err != nil {
 		return err
 	}
+	s.draft.Count++
 	s.clearSelection()
 	if reviewRange.Start.Line == reviewRange.End.Line {
-		s.message = fmt.Sprintf("Posted comment on %s:%d.", reviewRange.End.File, reviewRange.End.Line)
+		s.message = fmt.Sprintf("Added draft comment %d on %s:%d.", s.draft.Count, reviewRange.End.File, reviewRange.End.Line)
 	} else {
-		s.message = fmt.Sprintf("Posted comment on %s:%d-%d.", reviewRange.End.File, reviewRange.Start.Line, reviewRange.End.Line)
+		s.message = fmt.Sprintf("Added draft comment %d on %s:%d-%d.", s.draft.Count, reviewRange.End.File, reviewRange.Start.Line, reviewRange.End.Line)
 	}
 	return nil
 }
@@ -148,6 +142,13 @@ func (s *reviewState) requirePR(action string) error {
 		return fmt.Errorf("Checking for an active GitHub PR. Cannot %s yet.", action)
 	}
 	return fmt.Errorf("No active GitHub PR found. Cannot %s.", action)
+}
+
+func (s *reviewState) requireDraft(action string) error {
+	if s.draft.Active {
+		return nil
+	}
+	return fmt.Errorf("No draft review active. Cannot %s.", action)
 }
 
 func editReviewBody(term *terminalState, template string) (string, error) {
