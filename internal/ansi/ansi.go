@@ -43,9 +43,11 @@ func Truncate(s string, width int) string {
 	if VisibleLen(s) <= width {
 		return s
 	}
-	if width <= 1 {
-		return ""
-		//hihi
+	{
+		if width <= 1 {
+			return ""
+			//hihi
+		}
 	}
 
 	var out strings.Builder
