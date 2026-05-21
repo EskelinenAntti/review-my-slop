@@ -3,6 +3,8 @@ package main
 import (
 	"strings"
 	"testing"
+
+	"github.com/anttieskelinen/review-my-slop/internal/ansi"
 )
 
 func TestParseDiff(t *testing.T) {
@@ -42,12 +44,12 @@ index 1111111..2222222 100644
 }
 
 func TestTruncateANSIPreservesEscapeSequences(t *testing.T) {
-	got := truncateANSI("\x1b[31mabcdef\x1b[0m", 4)
-	if !ansiRE.MatchString(got) {
+	got := ansi.Truncate("\x1b[31mabcdef\x1b[0m", 4)
+	if !strings.Contains(got, "\x1b[31m") {
 		t.Fatalf("expected ansi escapes in %q", got)
 	}
-	if visibleLen(got) != 4 {
-		t.Fatalf("visible length = %d, want 4", visibleLen(got))
+	if ansi.VisibleLen(got) != 4 {
+		t.Fatalf("visible length = %d, want 4", ansi.VisibleLen(got))
 	}
 }
 
@@ -83,8 +85,8 @@ func TestHighlightPlainStripsDiffColors(t *testing.T) {
 	if strings.Contains(got, "\x1b[31m") {
 		t.Fatalf("expected diff color to be stripped from %q", got)
 	}
-	if visibleLen(got) != 12 {
-		t.Fatalf("visible length = %d, want 12", visibleLen(got))
+	if ansi.VisibleLen(got) != 12 {
+		t.Fatalf("visible length = %d, want 12", ansi.VisibleLen(got))
 	}
 }
 
@@ -113,8 +115,8 @@ func TestHighlightANSIRangeSuppressesStylesInsideCursor(t *testing.T) {
 	if strings.Contains(got, "ab\x1b[0mcd") {
 		t.Fatalf("expected reset inside cursor to be suppressed in %q", got)
 	}
-	if visibleLen(got) != 6 {
-		t.Fatalf("visible length = %d, want 6", visibleLen(got))
+	if ansi.VisibleLen(got) != 6 {
+		t.Fatalf("visible length = %d, want 6", ansi.VisibleLen(got))
 	}
 }
 
@@ -233,6 +235,9 @@ func TestSelectSideSwitchesReviewTargetOnTwoSidedRow(t *testing.T) {
 	if state.current().Side != "old" || state.current().Line != 10 {
 		t.Fatalf("current after h = %#v, want old side", state.current())
 	}
+	if state.message != "" {
+		t.Fatalf("side switch message = %q, want no message", state.message)
+	}
 	start, end := selectionHighlightRange(state.selections[0], 80)
 	if start != 0 || end != 24 {
 		t.Fatalf("old highlight range = %d-%d, want 0-24", start, end)
@@ -241,6 +246,9 @@ func TestSelectSideSwitchesReviewTargetOnTwoSidedRow(t *testing.T) {
 	state.selectSide("new")
 	if state.current().Side != "new" || state.current().Line != 10 {
 		t.Fatalf("current after l = %#v, want new side", state.current())
+	}
+	if state.message != "" {
+		t.Fatalf("side switch message = %q, want no message", state.message)
 	}
 	start, end = selectionHighlightRange(state.selections[0], 80)
 	if start != 24 || end != 80 {
@@ -321,5 +329,74 @@ func TestReviewCommentPayloadIncludesStartForMultiLineOldSide(t *testing.T) {
 	got := reviewCommentPayload(pr, reviewRange, "body")
 	if got["line"] != 7 || got["side"] != "LEFT" || got["start_line"] != 5 || got["start_side"] != "LEFT" {
 		t.Fatalf("payload = %#v", got)
+	}
+}
+
+func TestReviewThreadVariablesIncludesRange(t *testing.T) {
+	reviewRange := reviewRange{
+		Start: lineRef{File: "a.go", Line: 5, Side: "new"},
+		End:   lineRef{File: "a.go", Line: 7, Side: "new"},
+	}
+
+	got := reviewThreadVariables("review-id", reviewRange, "body")
+	if got["reviewID"] != "review-id" || got["path"] != "a.go" || got["line"] != 7 || got["side"] != "RIGHT" {
+		t.Fatalf("variables = %#v", got)
+	}
+	if got["startLine"] != 5 || got["startSide"] != "RIGHT" || got["body"] != "body" {
+		t.Fatalf("variables = %#v", got)
+	}
+}
+
+func TestReviewThreadVariablesOmitsStartForSingleLine(t *testing.T) {
+	reviewRange := reviewRange{
+		Start: lineRef{File: "a.go", Line: 5, Side: "old"},
+		End:   lineRef{File: "a.go", Line: 5, Side: "old"},
+	}
+
+	got := reviewThreadVariables("review-id", reviewRange, "body")
+	if got["line"] != 5 || got["side"] != "LEFT" {
+		t.Fatalf("variables = %#v", got)
+	}
+	if _, ok := got["startLine"]; ok {
+		t.Fatalf("single-line variables included startLine: %#v", got)
+	}
+}
+
+func TestReceiveReviewContextUsesAsyncResult(t *testing.T) {
+	ch := make(chan reviewContext, 1)
+	ch <- reviewContext{
+		PR:    &prContext{Number: 4},
+		Draft: reviewDraft{Active: true, ID: "review-id", Count: 2},
+	}
+	state := &reviewState{prChecking: true}
+
+	state.receiveReviewContext(ch)
+	if state.prChecking {
+		t.Fatal("expected PR check to complete")
+	}
+	if state.pr == nil || state.pr.Number != 4 {
+		t.Fatalf("pr = %#v, want PR #4", state.pr)
+	}
+	if !state.draft.Active || state.draft.ID != "review-id" || state.draft.Count != 2 {
+		t.Fatalf("draft = %#v, want detected draft review", state.draft)
+	}
+}
+
+func TestReceiveReviewContextDoesNotBlockWhenPending(t *testing.T) {
+	ch := make(chan reviewContext)
+	state := &reviewState{prChecking: true}
+
+	state.receiveReviewContext(ch)
+	if !state.prChecking {
+		t.Fatal("expected PR check to remain pending")
+	}
+}
+
+func TestRequirePRReportsPendingCheck(t *testing.T) {
+	state := &reviewState{prChecking: true}
+
+	err := state.requirePR("start review")
+	if err == nil || !strings.Contains(err.Error(), "Checking for an active GitHub PR") {
+		t.Fatalf("error = %v, want pending-check message", err)
 	}
 }
