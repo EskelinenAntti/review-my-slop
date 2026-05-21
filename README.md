@@ -19,10 +19,14 @@ request and `gh` is authenticated, RMS can post inline PR comments and
 suggestions. Use review mode to create a pending GitHub PR review, add draft
 comments to GitHub, and submit them as one review.
 
+RMS starts on local uncommitted changes. When PR context is available, `Tab`
+switches between local changes and branch changes.
+
 Keys:
 
 - `j` / `k` move the selected changed line
 - `h` / `l` choose the left or right side of a side-by-side changed row
+- `Tab` switches between local changes and branch changes when both are available
 - `v` starts or clears a visual selection for a same-file, same-side range
 - `R` starts a pending GitHub PR review
 - `c` opens `$VISUAL` or `$EDITOR` and posts the body as an inline PR comment,

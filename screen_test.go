@@ -3,6 +3,8 @@ package main
 import (
 	"strings"
 	"testing"
+
+	"github.com/anttieskelinen/review-my-slop/internal/ansi"
 )
 
 type testCell struct {
@@ -43,7 +45,7 @@ func parseTestScreen(t *testing.T, rows, cols int, stream string) *testScreen {
 	for i := 0; i < len(stream); {
 		switch stream[i] {
 		case '\x1b':
-			end := ansiEnd(stream, i)
+			end := ansi.End(stream, i)
 			if end < 0 {
 				t.Fatalf("unterminated escape sequence at byte %d in %q", i, stream[i:])
 			}
@@ -129,6 +131,18 @@ func (s *testScreen) line(row int) string {
 	return b.String()
 }
 
+func (s *testScreen) trimmedLine(row int) string {
+	return strings.TrimRight(s.line(row), " ")
+}
+
+func (s *testScreen) text() string {
+	var lines []string
+	for row := range s.rows {
+		lines = append(lines, s.trimmedLine(row))
+	}
+	return strings.TrimRight(strings.Join(lines, "\n"), "\n")
+}
+
 func (s *testScreen) inverseRange(row int) (int, int, bool) {
 	start := -1
 	end := -1
@@ -149,6 +163,21 @@ func renderScreen(t *testing.T, state *reviewState, rows, cols int) *testScreen 
 	var out strings.Builder
 	render(&out, state, rows, cols)
 	return parseTestScreen(t, rows, cols, out.String())
+}
+
+func statusRow(rows int) int {
+	if rows < 8 {
+		rows = 8
+	}
+	return rows - 4
+}
+
+func messageRow(rows int) int {
+	return statusRow(rows) + 1
+}
+
+func helpRow(rows int) int {
+	return statusRow(rows) + 2
 }
 
 func TestRenderScreenShowsCursorOnSelectedSideOnly(t *testing.T) {
@@ -204,4 +233,222 @@ func TestRenderScreenClearsStaleContentBetweenFrames(t *testing.T) {
 	if got := strings.TrimRight(screen.line(1), " "); got != "" {
 		t.Fatalf("row after short line = %q, want cleared blank row", got)
 	}
+}
+
+func TestRenderScreenReviewModeTextSnapshot(t *testing.T) {
+	state := &reviewState{
+		pr:    &prContext{Number: 4},
+		draft: reviewDraft{Active: true},
+		lines: []string{
+			"README.md --- Text",
+			"32 - `s` opens `$VISUAL` or `$EDITOR`",
+			"33 - `p` submits the pending review, opening `$VISUAL` or `$EDITOR` for an optional review summary",
+		},
+		selections: []displaySelection{
+			{LineIndex: 1, Ref: lineRef{File: "README.md", Line: 32, Side: "new", Content: "`s` opens `$VISUAL` or `$EDITOR`"}},
+			{LineIndex: 2, Ref: lineRef{File: "README.md", Line: 33, Side: "new", Content: "`p` submits the pending review, opening `$VISUAL` or `$EDITOR` for an optional review summary"}},
+		},
+		cursor: 1,
+	}
+	state.selections[0].setSideRef(state.selections[0].Ref)
+	state.selections[1].setSideRef(state.selections[1].Ref)
+
+	screen := renderScreen(t, state, 8, 160)
+	got := screen.text()
+	want := strings.TrimRight(`README.md --- Text
+32 - `+"`s` opens `$VISUAL` or `$EDITOR`"+`
+33 - `+"`p` submits the pending review, opening `$VISUAL` or `$EDITOR` for an optional review summary"+`
+
+ 2/2  Draft review: 0 comments  PR #4  + README.md:33
+
+ h/j/k/l move  v select  c add comment  s add suggestion  p submit review  D delete draft  e open  r reload  q quit`, "\n")
+	if got != want {
+		t.Fatalf("screen text mismatch\ngot:\n%s\n\nwant:\n%s", got, want)
+	}
+}
+
+func TestRenderScreenStatusAvoidsSelectedLinePreview(t *testing.T) {
+	longContent := "`p` submits the pending review, opening `$VISUAL` or `$EDITOR` for an optional review summary"
+	state := &reviewState{
+		pr:    &prContext{Number: 4},
+		draft: reviewDraft{Active: true, Count: 2},
+		lines: []string{
+			"README.md --- Text",
+			"33 - " + longContent,
+		},
+		selections: []displaySelection{
+			testSelection(lineRef{File: "README.md", Line: 33, Side: "new", Content: longContent}),
+		},
+	}
+
+	screen := renderScreen(t, state, 8, 100)
+	status := screen.trimmedLine(statusRow(8))
+	if !strings.Contains(status, "Draft review: 2 comments") || !strings.Contains(status, "README.md:33") {
+		t.Fatalf("status = %q, want review count and selected location", status)
+	}
+	if strings.Contains(status, "submits the pending review") {
+		t.Fatalf("status included selected line preview: %q", status)
+	}
+}
+
+func TestRenderScreenStatusShowsPRCheckPending(t *testing.T) {
+	state := &reviewState{
+		prChecking: true,
+		lines:      []string{"README.md --- Text"},
+		selections: []displaySelection{
+			testSelection(lineRef{File: "README.md", Line: 33, Side: "new"}),
+		},
+	}
+
+	screen := renderScreen(t, state, 8, 80)
+	status := screen.trimmedLine(statusRow(8))
+	if !strings.Contains(status, "checking PR") {
+		t.Fatalf("status = %q, want PR checking state", status)
+	}
+}
+
+func TestRenderScreenStatusShowsNoPRAfterCheck(t *testing.T) {
+	state := &reviewState{
+		lines: []string{"README.md --- Text"},
+		selections: []displaySelection{
+			testSelection(lineRef{File: "README.md", Line: 33, Side: "new"}),
+		},
+	}
+
+	screen := renderScreen(t, state, 8, 80)
+	status := screen.trimmedLine(statusRow(8))
+	if !strings.Contains(status, "no PR") || strings.Contains(status, "checking PR") {
+		t.Fatalf("status = %q, want completed no-PR state", status)
+	}
+}
+
+func TestRenderScreenHelpReflectsReviewMode(t *testing.T) {
+	state := &reviewState{
+		pr:    &prContext{Number: 4},
+		draft: reviewDraft{Active: true},
+		lines: []string{"README.md --- Text"},
+		selections: []displaySelection{
+			testSelection(lineRef{File: "README.md", Line: 33, Side: "new"}),
+		},
+	}
+
+	screen := renderScreen(t, state, 8, 120)
+	help := screen.trimmedLine(helpRow(8))
+	if strings.Contains(help, "R start review") {
+		t.Fatalf("active review help should not show start-review action: %q", help)
+	}
+	if !strings.Contains(help, "p submit review") || !strings.Contains(help, "D delete draft") {
+		t.Fatalf("active review help = %q, want submit and delete draft actions", help)
+	}
+}
+
+func TestRenderScreenHelpReflectsPRStatus(t *testing.T) {
+	state := &reviewState{
+		prChecking: true,
+		lines:      []string{"README.md --- Text"},
+		selections: []displaySelection{
+			testSelection(lineRef{File: "README.md", Line: 33, Side: "new"}),
+		},
+	}
+
+	screen := renderScreen(t, state, 8, 100)
+	help := screen.trimmedLine(helpRow(8))
+	if strings.Contains(help, "R start review") || strings.Contains(help, "c comment") {
+		t.Fatalf("checking help should not show PR actions: %q", help)
+	}
+	if !strings.Contains(help, "checking PR") {
+		t.Fatalf("checking help = %q, want checking PR hint", help)
+	}
+
+	state.prChecking = false
+	screen = renderScreen(t, state, 8, 100)
+	help = screen.trimmedLine(helpRow(8))
+	if strings.Contains(help, "R start review") || strings.Contains(help, "c comment") {
+		t.Fatalf("no-PR help = %q, want no PR actions", help)
+	}
+
+	state.pr = &prContext{Number: 4}
+	screen = renderScreen(t, state, 8, 100)
+	help = screen.trimmedLine(helpRow(8))
+	if !strings.Contains(help, "R start review") || !strings.Contains(help, "c comment") {
+		t.Fatalf("PR help = %q, want PR actions", help)
+	}
+}
+
+func TestRenderScreenHelpShowsRelevantDiffSwitch(t *testing.T) {
+	state := &reviewState{
+		source:          sourceLocal,
+		branchAvailable: true,
+		pr:              &prContext{Number: 4},
+		lines:           []string{"README.md --- Text"},
+		selections: []displaySelection{
+			testSelection(lineRef{File: "README.md", Line: 33, Side: "new"}),
+		},
+	}
+
+	screen := renderScreen(t, state, 8, 120)
+	help := screen.trimmedLine(helpRow(8))
+	if !strings.Contains(help, "Tab diff branch") || strings.Contains(help, "Tab diff uncommitted") {
+		t.Fatalf("local help = %q, want branch diff switch", help)
+	}
+
+	state.source = sourceBranch
+	state.localAvailable = true
+	screen = renderScreen(t, state, 8, 120)
+	help = screen.trimmedLine(helpRow(8))
+	if !strings.Contains(help, "Tab diff uncommitted") || strings.Contains(help, "Tab diff branch") {
+		t.Fatalf("branch help = %q, want uncommitted diff switch", help)
+	}
+
+	state.localAvailable = false
+	screen = renderScreen(t, state, 8, 120)
+	help = screen.trimmedLine(helpRow(8))
+	if strings.Contains(help, "Tab diff") {
+		t.Fatalf("single-source help = %q, want no diff switch", help)
+	}
+}
+
+func TestRenderScreenDetectedDraftShowsDraftActions(t *testing.T) {
+	state := &reviewState{
+		pr:    &prContext{Number: 4},
+		draft: reviewDraft{Active: true, ID: "review-id", Count: 3},
+		lines: []string{"README.md --- Text"},
+		selections: []displaySelection{
+			testSelection(lineRef{File: "README.md", Line: 33, Side: "new"}),
+		},
+	}
+
+	screen := renderScreen(t, state, 8, 120)
+	status := screen.trimmedLine(statusRow(8))
+	help := screen.trimmedLine(helpRow(8))
+	if !strings.Contains(status, "Draft review: 3 comments") {
+		t.Fatalf("status = %q, want detected draft count", status)
+	}
+	if strings.Contains(help, "R start review") || !strings.Contains(help, "D delete draft") {
+		t.Fatalf("draft help = %q, want draft actions without start-review", help)
+	}
+}
+
+func TestRenderScreenKeepsSelectedRowVisible(t *testing.T) {
+	state := &reviewState{
+		lines: []string{
+			"line 1",
+			"line 2",
+			"line 3",
+			"line 4 selected",
+		},
+		selections: []displaySelection{
+			{LineIndex: 3, Ref: lineRef{File: "a.go", Line: 4, Side: "new", Content: "line 4 selected"}},
+		},
+	}
+	state.selections[0].setSideRef(state.selections[0].Ref)
+
+	screen := renderScreen(t, state, 8, 80)
+	bodyRows := statusRow(8)
+	for row := range bodyRows {
+		if _, _, ok := screen.inverseRange(row); ok && strings.Contains(screen.line(row), "line 4 selected") {
+			return
+		}
+	}
+	t.Fatalf("selected row was not visible in body:\n%s", screen.text())
 }
