@@ -169,15 +169,15 @@ func statusRow(rows int) int {
 	if rows < 8 {
 		rows = 8
 	}
-	return rows - 4
+	return rows - 2
 }
 
 func messageRow(rows int) int {
-	return statusRow(rows) + 1
+	return statusRow(rows)
 }
 
 func helpRow(rows int) int {
-	return statusRow(rows) + 2
+	return statusRow(rows) + 1
 }
 
 func TestRenderScreenShowsCursorOnSelectedSideOnly(t *testing.T) {
@@ -208,6 +208,88 @@ func TestRenderScreenShowsCursorOnSelectedSideOnly(t *testing.T) {
 		if screen.cells[0][col].inverse {
 			t.Fatalf("left side column %d was inverse; line = %q", col, screen.line(0))
 		}
+	}
+}
+
+func TestRenderScreenKeepsCursorAcrossZeroInSelectedLine(t *testing.T) {
+	lines := []string{
+		"\x1b[1minternal/github/github.go\x1b[0m --- Go",
+		"\x1b[92;1m 283 \x1b[0mif len(response.Data) == 0 {",
+	}
+	state := &reviewState{
+		lines:      lines,
+		selections: buildSelections(lines, nil),
+	}
+	if len(state.selections) != 1 {
+		t.Fatalf("expected one selectable row, got %d", len(state.selections))
+	}
+
+	screen := renderScreen(t, state, 8, 80)
+	row := state.selections[0].LineIndex
+	zeroCol := strings.Index(screen.line(row), "0")
+	if zeroCol < 0 {
+		t.Fatalf("selected line did not contain zero: %q", screen.line(row))
+	}
+	if !screen.cells[row][zeroCol].inverse {
+		t.Fatalf("zero column was not inside cursor highlight; line = %q", screen.line(row))
+	}
+	start, end, ok := screen.inverseRange(row)
+	if !ok {
+		t.Fatalf("selected row had no inverse cells: %q", screen.line(row))
+	}
+	if start >= zeroCol || end <= zeroCol {
+		t.Fatalf("inverse range = %d-%d, zero column = %d; line = %q", start, end, zeroCol, screen.line(row))
+	}
+}
+
+func TestRenderScreenKeepsRightLineNumberColorWhenOldSideSelected(t *testing.T) {
+	lines := []string{
+		"\x1b[1mmain.go\x1b[0m --- Go",
+		"\x1b[91m 1387 old name\x1b[0m       \x1b[92m 537 new name\x1b[0m",
+	}
+	state := &reviewState{
+		lines:      lines,
+		selections: buildSelections(lines, nil),
+	}
+	if len(state.selections) != 1 {
+		t.Fatalf("expected one selectable row, got %d", len(state.selections))
+	}
+	state.selectSide("old")
+
+	screen := renderScreen(t, state, 8, 80)
+	row := state.selections[0].LineIndex
+	rightLineCol := strings.Index(screen.line(row), "537")
+	if rightLineCol < 0 {
+		t.Fatalf("right line number not found in rendered line: %q", screen.line(row))
+	}
+	if screen.cells[row][rightLineCol].inverse {
+		t.Fatalf("right line number was inside old-side cursor highlight: %q", screen.line(row))
+	}
+	if screen.cells[row][rightLineCol].fg != "green" {
+		t.Fatalf("right line number fg = %q, want green; line = %q", screen.cells[row][rightLineCol].fg, screen.line(row))
+	}
+}
+
+func TestRenderScreenCanSelectAddedLineContainingTripleDash(t *testing.T) {
+	lines := []string{
+		"\x1b[1mmain.go\x1b[0m --- Go",
+		"\x1b[92;1m 561 \x1b[0mbuf.WriteString(\" --- Text\\n\")",
+	}
+	state := &reviewState{
+		lines:      lines,
+		selections: buildSelections(lines, nil),
+	}
+	if len(state.selections) != 1 {
+		t.Fatalf("expected one selectable row, got %d", len(state.selections))
+	}
+
+	screen := renderScreen(t, state, 8, 100)
+	row := state.selections[0].LineIndex
+	if !strings.Contains(screen.line(row), " --- Text") {
+		t.Fatalf("rendered line missing triple-dash content: %q", screen.line(row))
+	}
+	if _, _, ok := screen.inverseRange(row); !ok {
+		t.Fatalf("added line containing triple dash was not highlighted: %q", screen.line(row))
 	}
 }
 
@@ -259,7 +341,8 @@ func TestRenderScreenReviewModeTextSnapshot(t *testing.T) {
 32 - `+"`s` opens `$VISUAL` or `$EDITOR`"+`
 33 - `+"`p` submits the pending review, opening `$VISUAL` or `$EDITOR` for an optional review summary"+`
 
- 2/2  Draft review: 0 comments  PR #4  + README.md:33
+
+
 
  h/j/k/l move  v select  c add comment  s add suggestion  p submit review  D delete draft  e open  r reload  q quit`, "\n")
 	if got != want {
@@ -267,7 +350,7 @@ func TestRenderScreenReviewModeTextSnapshot(t *testing.T) {
 	}
 }
 
-func TestRenderScreenStatusAvoidsSelectedLinePreview(t *testing.T) {
+func TestRenderScreenOmitsStatusRow(t *testing.T) {
 	longContent := "`p` submits the pending review, opening `$VISUAL` or `$EDITOR` for an optional review summary"
 	state := &reviewState{
 		pr:    &prContext{Number: 4},
@@ -282,16 +365,15 @@ func TestRenderScreenStatusAvoidsSelectedLinePreview(t *testing.T) {
 	}
 
 	screen := renderScreen(t, state, 8, 100)
-	status := screen.trimmedLine(statusRow(8))
-	if !strings.Contains(status, "Draft review: 2 comments") || !strings.Contains(status, "README.md:33") {
-		t.Fatalf("status = %q, want review count and selected location", status)
-	}
-	if strings.Contains(status, "submits the pending review") {
-		t.Fatalf("status included selected line preview: %q", status)
+	got := screen.text()
+	for _, removed := range []string{"Draft review: 2 comments", "PR #4", "README.md:33"} {
+		if strings.Contains(got, removed) {
+			t.Fatalf("screen included removed status text %q:\n%s", removed, got)
+		}
 	}
 }
 
-func TestRenderScreenStatusShowsPRCheckPending(t *testing.T) {
+func TestRenderScreenHelpShowsPRCheckPending(t *testing.T) {
 	state := &reviewState{
 		prChecking: true,
 		lines:      []string{"README.md --- Text"},
@@ -301,13 +383,13 @@ func TestRenderScreenStatusShowsPRCheckPending(t *testing.T) {
 	}
 
 	screen := renderScreen(t, state, 8, 80)
-	status := screen.trimmedLine(statusRow(8))
-	if !strings.Contains(status, "checking PR") {
-		t.Fatalf("status = %q, want PR checking state", status)
+	help := screen.trimmedLine(helpRow(8))
+	if !strings.Contains(help, "checking PR") {
+		t.Fatalf("help = %q, want PR checking state", help)
 	}
 }
 
-func TestRenderScreenStatusShowsNoPRAfterCheck(t *testing.T) {
+func TestRenderScreenOmitsCompletedNoPRStatus(t *testing.T) {
 	state := &reviewState{
 		lines: []string{"README.md --- Text"},
 		selections: []displaySelection{
@@ -316,9 +398,9 @@ func TestRenderScreenStatusShowsNoPRAfterCheck(t *testing.T) {
 	}
 
 	screen := renderScreen(t, state, 8, 80)
-	status := screen.trimmedLine(statusRow(8))
-	if !strings.Contains(status, "no PR") || strings.Contains(status, "checking PR") {
-		t.Fatalf("status = %q, want completed no-PR state", status)
+	got := screen.text()
+	if strings.Contains(got, "no PR") || strings.Contains(got, "checking PR") {
+		t.Fatalf("screen included removed PR status:\n%s", got)
 	}
 }
 
@@ -419,10 +501,9 @@ func TestRenderScreenDetectedDraftShowsDraftActions(t *testing.T) {
 	}
 
 	screen := renderScreen(t, state, 8, 120)
-	status := screen.trimmedLine(statusRow(8))
 	help := screen.trimmedLine(helpRow(8))
-	if !strings.Contains(status, "Draft review: 3 comments") {
-		t.Fatalf("status = %q, want detected draft count", status)
+	if strings.Contains(screen.text(), "Draft review: 3 comments") {
+		t.Fatalf("screen included removed draft status:\n%s", screen.text())
 	}
 	if strings.Contains(help, "R start review") || !strings.Contains(help, "D delete draft") {
 		t.Fatalf("draft help = %q, want draft actions without start-review", help)

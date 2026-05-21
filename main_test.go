@@ -1,10 +1,13 @@
 package main
 
 import (
+	"os"
+	"os/exec"
 	"strings"
 	"testing"
 
 	"github.com/anttieskelinen/review-my-slop/internal/ansi"
+	"github.com/anttieskelinen/review-my-slop/internal/github"
 )
 
 func TestParseDiff(t *testing.T) {
@@ -43,6 +46,61 @@ index 1111111..2222222 100644
 	}
 }
 
+func TestChangedLinesIncludesUntrackedFile(t *testing.T) {
+	withTempGitRepo(t)
+	if err := os.WriteFile("new.txt", []byte("first\nsecond\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	refs, err := changedLines(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(refs) != 2 {
+		t.Fatalf("refs = %#v, want two untracked lines", refs)
+	}
+	if refs[0].File != "new.txt" || refs[0].Line != 1 || refs[0].Side != "new" || refs[0].Content != "first" {
+		t.Fatalf("first untracked ref = %#v", refs[0])
+	}
+	if refs[1].File != "new.txt" || refs[1].Line != 2 || refs[1].Side != "new" || refs[1].Content != "second" {
+		t.Fatalf("second untracked ref = %#v", refs[1])
+	}
+}
+
+func TestDiffWithUntrackedFilesShowsPath(t *testing.T) {
+	withTempGitRepo(t)
+	if err := os.WriteFile("new.txt", []byte("first\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	got := string(diffWithUntrackedFiles(nil, nil))
+	if !strings.Contains(got, "new.txt --- Text") || !strings.Contains(got, "first") {
+		t.Fatalf("untracked diff = %q, want path header and file content", got)
+	}
+}
+
+func withTempGitRepo(t *testing.T) {
+	t.Helper()
+
+	dir := t.TempDir()
+	previous, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := os.Chdir(previous); err != nil {
+			t.Fatal(err)
+		}
+	})
+	if err := os.Chdir(dir); err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command("git", "init")
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("git init failed: %s", strings.TrimSpace(string(out)))
+	}
+}
+
 func TestTruncateANSIPreservesEscapeSequences(t *testing.T) {
 	got := ansi.Truncate("\x1b[31mabcdef\x1b[0m", 4)
 	if !strings.Contains(got, "\x1b[31m") {
@@ -77,6 +135,61 @@ func TestBuildSelectionsUsesDisplayedRows(t *testing.T) {
 	}
 	if selections[1].Right == nil || selections[1].Right.Line != 11 || selections[1].Right.Side != "new" {
 		t.Fatalf("second selection right side = %#v", selections[1].Right)
+	}
+}
+
+func TestBuildSelectionsDoesNotTreatZeroInContentAsLineNumber(t *testing.T) {
+	lines := []string{
+		"\x1b[1minternal/github/github.go\x1b[0m --- Go",
+		"\x1b[92;1m 283 \x1b[0mif len(response.Data) == 0 {",
+	}
+
+	selections := buildSelections(lines, nil)
+	if len(selections) != 1 {
+		t.Fatalf("expected one selectable row, got %d", len(selections))
+	}
+	if selections[0].Ref.Side != "new" || selections[0].Ref.Line != 283 {
+		t.Fatalf("selection = %#v, want new side line 283", selections[0])
+	}
+	if selections[0].Right == nil || selections[0].Right.Line != 283 {
+		t.Fatalf("right side = %#v, want line 283", selections[0].Right)
+	}
+	if selections[0].Left != nil {
+		t.Fatalf("left side = %#v, want nil for single-sided added row", selections[0].Left)
+	}
+}
+
+func TestBuildSelectionsKeepsAddedLineContainingTripleDashSelectable(t *testing.T) {
+	lines := []string{
+		"\x1b[1mmain.go\x1b[0m --- Go",
+		"\x1b[92;1m 561 \x1b[0mbuf.WriteString(\" --- Text\\n\")",
+	}
+
+	selections := buildSelections(lines, nil)
+	if len(selections) != 1 {
+		t.Fatalf("expected one selectable row, got %d", len(selections))
+	}
+	if selections[0].LineIndex != 1 || selections[0].Ref.Line != 561 || selections[0].Ref.Side != "new" {
+		t.Fatalf("selection = %#v, want new side line 561", selections[0])
+	}
+}
+
+func TestBuildSelectionsSplitsBeforeRightLineNumber(t *testing.T) {
+	lines := []string{
+		"\x1b[1mmain.go\x1b[0m --- Go",
+		"\x1b[91m 1387 old\x1b[0m       \x1b[92m 537 new\x1b[0m",
+	}
+
+	selections := buildSelections(lines, nil)
+	if len(selections) != 1 {
+		t.Fatalf("expected one selectable row, got %d", len(selections))
+	}
+	rightLineStart := strings.Index(ansi.Strip(lines[1]), "537")
+	if rightLineStart < 0 {
+		t.Fatalf("right line number not found in %q", ansi.Strip(lines[1]))
+	}
+	if selections[0].Split > rightLineStart {
+		t.Fatalf("split = %d, want before or at right line number column %d", selections[0].Split, rightLineStart)
 	}
 }
 
@@ -310,7 +423,7 @@ func TestReviewCommentPayloadOmitsStartForSingleLine(t *testing.T) {
 		End:   lineRef{File: "a.go", Line: 5, Side: "new"},
 	}
 
-	got := reviewCommentPayload(pr, reviewRange, "body")
+	got := github.ReviewCommentPayload(pr, githubRange(reviewRange), "body")
 	if got["line"] != 5 || got["side"] != "RIGHT" || got["commit_id"] != "abc123" {
 		t.Fatalf("payload = %#v", got)
 	}
@@ -326,7 +439,7 @@ func TestReviewCommentPayloadIncludesStartForMultiLineOldSide(t *testing.T) {
 		End:   lineRef{File: "a.go", Line: 7, Side: "old"},
 	}
 
-	got := reviewCommentPayload(pr, reviewRange, "body")
+	got := github.ReviewCommentPayload(pr, githubRange(reviewRange), "body")
 	if got["line"] != 7 || got["side"] != "LEFT" || got["start_line"] != 5 || got["start_side"] != "LEFT" {
 		t.Fatalf("payload = %#v", got)
 	}
@@ -338,7 +451,7 @@ func TestReviewThreadVariablesIncludesRange(t *testing.T) {
 		End:   lineRef{File: "a.go", Line: 7, Side: "new"},
 	}
 
-	got := reviewThreadVariables("review-id", reviewRange, "body")
+	got := github.ReviewThreadVariables("review-id", githubRange(reviewRange), "body")
 	if got["reviewID"] != "review-id" || got["path"] != "a.go" || got["line"] != 7 || got["side"] != "RIGHT" {
 		t.Fatalf("variables = %#v", got)
 	}
@@ -353,7 +466,7 @@ func TestReviewThreadVariablesOmitsStartForSingleLine(t *testing.T) {
 		End:   lineRef{File: "a.go", Line: 5, Side: "old"},
 	}
 
-	got := reviewThreadVariables("review-id", reviewRange, "body")
+	got := github.ReviewThreadVariables("review-id", githubRange(reviewRange), "body")
 	if got["line"] != 5 || got["side"] != "LEFT" {
 		t.Fatalf("variables = %#v", got)
 	}

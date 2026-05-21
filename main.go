@@ -3,10 +3,8 @@ package main
 import (
 	"bufio"
 	"bytes"
-	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"os/exec"
 	"regexp"
@@ -14,80 +12,16 @@ import (
 	"strings"
 
 	"github.com/anttieskelinen/review-my-slop/internal/ansi"
-	"github.com/anttieskelinen/review-my-slop/internal/keys"
+	"github.com/anttieskelinen/review-my-slop/internal/github"
 )
 
 var changeColorRE = regexp.MustCompile(`\x1b\[[0-9;]*[39][12](?:;[0-9]*)?m`)
-
-type lineRef struct {
-	Index   int
-	File    string
-	Line    int
-	Side    string
-	Content string
-}
-
-type displaySelection struct {
-	LineIndex int
-	Ref       lineRef
-	Left      *lineRef
-	Right     *lineRef
-	Split     int
-}
-
-type prContext struct {
-	Number int    `json:"number"`
-	ID     string `json:"id"`
-	Owner  string `json:"owner"`
-	Repo   string `json:"repo"`
-	Head   string `json:"head"`
-	Base   string `json:"base"`
-}
-
-type reviewRange struct {
-	Start lineRef
-	End   lineRef
-}
-
-type reviewDraft struct {
-	Active bool
-	ID     string
-	Count  int
-}
-
-type reviewContext struct {
-	PR    *prContext
-	Draft reviewDraft
-}
-
-type keyResult struct {
-	Key string
-	Err error
-}
-
-type diffResult struct {
-	Source diffSource
-	Refs   []lineRef
-	Lines  []string
-	Err    error
-}
-
-type diffSource string
-
-const (
-	sourceLocal  diffSource = "local"
-	sourceBranch diffSource = "branch"
-)
 
 func main() {
 	if err := run(os.Args[1:], os.Stdout); err != nil {
 		fmt.Fprintln(os.Stderr, "rms:", err)
 		os.Exit(1)
 	}
-}
-
-func run(args []string, stdout io.Writer) error {
-	return reviewTUI(args, loadDiffAsync(args, sourceLocal), stdout)
 }
 
 func prettyDiff(args []string) ([]byte, error) {
@@ -99,160 +33,6 @@ func prettyDiff(args []string) ([]byte, error) {
 	cmd := exec.Command("git", cmdArgs...)
 	cmd.Env = append(os.Environ(), "DFT_COLOR=always")
 	return cmd.CombinedOutput()
-}
-
-type terminalState struct {
-	settings string
-}
-
-type reviewState struct {
-	args            []string
-	source          diffSource
-	sourceArgs      []string
-	localAvailable  bool
-	branchAvailable bool
-	pr              *prContext
-	prChecking      bool
-	draft           reviewDraft
-	selections      []displaySelection
-	lines           []string
-	cursor          int
-	selectionAnchor *int
-	top             int
-	message         string
-}
-
-func reviewTUI(args []string, initialDiff <-chan diffResult, stdout io.Writer) error {
-	prResult := detectReviewContextAsync()
-	state := &reviewState{
-		args:       args,
-		source:     sourceLocal,
-		sourceArgs: args,
-		prChecking: true,
-		lines:      []string{"Loading uncommitted changes..."},
-	}
-
-	term, err := enterTerminal()
-	if err != nil {
-		result := <-initialDiff
-		if result.Err != nil {
-			return result.Err
-		}
-		fmt.Fprintln(stdout, strings.Join(result.Lines, "\n"))
-		fmt.Fprintln(stdout)
-		fmt.Fprintln(stdout, "Interactive review needs a terminal. Run `go run .` directly, then use j/k to move, e to open, q to quit.")
-		return nil
-	}
-	defer term.restore()
-
-	keyResult := readKeyAsync(os.Stdin)
-	for {
-		rows, cols := terminalSize()
-		state.keepSelectionVisible(rows)
-		render(stdout, state, rows, cols)
-
-		var key string
-		select {
-		case result := <-initialDiff:
-			state.applyDiffResult(result)
-			continue
-		case context := <-prResult:
-			state.applyReviewContext(context)
-			continue
-		case result := <-keyResult:
-			if result.Err != nil {
-				return result.Err
-			}
-			key = result.Key
-			keyResult = nil
-		}
-
-		switch key {
-		case keys.Q:
-			return nil
-		case keys.Esc:
-			if state.selectionAnchor != nil {
-				state.clearSelection()
-				state.message = ""
-				continue
-			}
-			return nil
-		case "j", keys.Down:
-			state.move(1)
-		case "k", keys.Up:
-			state.move(-1)
-		case "h", keys.Left:
-			state.selectSide("old")
-		case "l", keys.Right:
-			state.selectSide("new")
-		case "g":
-			state.moveTo(0)
-		case "G":
-			state.moveTo(len(state.selections) - 1)
-		case keys.CtrlD, keys.PageDown:
-			state.move(max(1, (rows-4)/2))
-		case keys.CtrlU, keys.PageUp:
-			state.move(-max(1, (rows-4)/2))
-		case keys.Tab:
-			if err := state.switchSource(); err != nil {
-				state.message = err.Error()
-			}
-		case "e", keys.Enter:
-			if !state.hasSelection() {
-				state.message = "No changed line selected."
-				continue
-			}
-			state.clearSelection()
-			ref := state.current()
-			if ref.Side == "old" {
-				state.message = fmt.Sprintf("Cannot open deleted line %s:%d", ref.File, ref.Line)
-				continue
-			}
-			if err := withNormalTerminal(term, func() error {
-				return openEditor(ref.File, ref.Line)
-			}); err != nil {
-				state.message = err.Error()
-			} else {
-				state.message = fmt.Sprintf("Opened %s:%d", ref.File, ref.Line)
-			}
-		case "r":
-			if err := state.reloadSource(); err != nil {
-				state.message = err.Error()
-				continue
-			}
-			state.message = "Reloaded diff."
-		case "v":
-			state.toggleSelection()
-		case "R":
-			state.startReview()
-		case "c":
-			if err := state.reviewComment(term); err != nil {
-				state.message = err.Error()
-			}
-		case "s":
-			if err := state.reviewSuggestion(term); err != nil {
-				state.message = err.Error()
-			}
-		case "p":
-			if err := state.submitReview(term); err != nil {
-				state.message = err.Error()
-			}
-		case "D":
-			state.discardReview()
-		}
-		if keyResult == nil {
-			keyResult = readKeyAsync(os.Stdin)
-		}
-	}
-}
-
-func readKeyAsync(r io.Reader) <-chan keyResult {
-	ch := make(chan keyResult, 1)
-	go func() {
-		key, err := keys.Read(r)
-		ch <- keyResult{Key: key, Err: err}
-	}()
-	return ch
 }
 
 func loadDiffAsync(args []string, source diffSource) <-chan diffResult {
@@ -273,13 +53,13 @@ func detectReviewContextAsync() <-chan reviewContext {
 }
 
 func detectReviewContext() reviewContext {
-	pr := detectPRContext()
+	pr := github.DetectPR()
 	if pr == nil {
 		return reviewContext{}
 	}
 	return reviewContext{
 		PR:    pr,
-		Draft: detectPendingReview(pr),
+		Draft: github.DetectPendingReview(pr),
 	}
 }
 
@@ -410,7 +190,7 @@ func loadDiff(args []string, source diffSource) ([]lineRef, []string, error) {
 	if err != nil {
 		return nil, nil, err
 	}
-	return refs, splitLines(diffWithUntrackedNotice(args, diff)), nil
+	return refs, splitLines(diffWithUntrackedFiles(args, diff)), nil
 }
 
 func sourceLabel(source diffSource) string {
@@ -418,641 +198,6 @@ func sourceLabel(source diffSource) string {
 		return "branch"
 	}
 	return "uncommitted"
-}
-
-func enterTerminal() (*terminalState, error) {
-	cmd := exec.Command("stty", "-g")
-	cmd.Stdin = os.Stdin
-	out, err := cmd.Output()
-	if err != nil {
-		return nil, err
-	}
-	state := &terminalState{settings: strings.TrimSpace(string(out))}
-	raw := exec.Command("stty", "raw", "-echo")
-	raw.Stdin = os.Stdin
-	if err := raw.Run(); err != nil {
-		return nil, err
-	}
-	fmt.Print("\x1b[?1049h\x1b[?25l")
-	return state, nil
-}
-
-func (t *terminalState) restore() {
-	fmt.Print("\x1b[?25h\x1b[?1049l")
-	if t.settings == "" {
-		return
-	}
-	cmd := exec.Command("stty", t.settings)
-	cmd.Stdin = os.Stdin
-	_ = cmd.Run()
-}
-
-func withNormalTerminal(t *terminalState, fn func() error) error {
-	fmt.Print("\x1b[?25h\x1b[?1049l")
-	cmd := exec.Command("stty", t.settings)
-	cmd.Stdin = os.Stdin
-	_ = cmd.Run()
-	err := fn()
-	raw := exec.Command("stty", "raw", "-echo")
-	raw.Stdin = os.Stdin
-	_ = raw.Run()
-	fmt.Print("\x1b[?1049h\x1b[?25l")
-	return err
-}
-
-func detectPRContext() *prContext {
-	if _, err := exec.LookPath("gh"); err != nil {
-		return nil
-	}
-	cmd := exec.Command("gh", "pr", "view",
-		"--json", "id,number,headRefOid,headRepository,headRepositoryOwner,baseRefOid",
-		"--jq", `{"id": .id, "number": .number, "owner": .headRepositoryOwner.login, "repo": .headRepository.name, "head": .headRefOid, "base": .baseRefOid}`,
-	)
-	out, err := cmd.Output()
-	if err != nil {
-		return nil
-	}
-	var pr prContext
-	if err := json.Unmarshal(out, &pr); err != nil {
-		return nil
-	}
-	if pr.Number == 0 || pr.ID == "" || pr.Owner == "" || pr.Repo == "" || pr.Head == "" || pr.Base == "" {
-		return nil
-	}
-	return &pr
-}
-
-func (s *reviewState) reviewComment(term *terminalState) error {
-	return s.reviewWithBody(term, "")
-}
-
-func (s *reviewState) reviewSuggestion(term *terminalState) error {
-	if !s.hasSelection() {
-		return errors.New("No changed line selected.")
-	}
-	if err := s.requirePR("build suggestion"); err != nil {
-		return err
-	}
-	reviewRange, err := s.currentRange()
-	if err != nil {
-		return err
-	}
-	if reviewRange.End.Side != "new" {
-		return errors.New("Suggestions are only available on the right side.")
-	}
-	template, err := suggestionTemplate(reviewRange, s.pr)
-	if err != nil {
-		return err
-	}
-	return s.reviewWithBody(term, template)
-}
-
-func (s *reviewState) reviewWithBody(term *terminalState, template string) error {
-	if !s.hasSelection() {
-		return errors.New("No changed line selected.")
-	}
-	if err := s.requirePR("post review comments"); err != nil {
-		return err
-	}
-	reviewRange, err := s.currentRange()
-	if err != nil {
-		return err
-	}
-	body, err := editReviewBody(term, template)
-	if err != nil {
-		return err
-	}
-	if strings.TrimSpace(body) == "" {
-		s.message = "Cancelled empty review body."
-		return nil
-	}
-	if s.draft.Active {
-		if err := addPendingReviewComment(s.draft.ID, reviewRange, body); err != nil {
-			return err
-		}
-		s.draft.Count++
-		s.clearSelection()
-		if reviewRange.Start.Line == reviewRange.End.Line {
-			s.message = fmt.Sprintf("Added draft comment %d on %s:%d.", s.draft.Count, reviewRange.End.File, reviewRange.End.Line)
-		} else {
-			s.message = fmt.Sprintf("Added draft comment %d on %s:%d-%d.", s.draft.Count, reviewRange.End.File, reviewRange.Start.Line, reviewRange.End.Line)
-		}
-		return nil
-	}
-	if err := postReviewComment(s.pr, reviewRange, body); err != nil {
-		return err
-	}
-	s.clearSelection()
-	if reviewRange.Start.Line == reviewRange.End.Line {
-		s.message = fmt.Sprintf("Posted comment on %s:%d.", reviewRange.End.File, reviewRange.End.Line)
-	} else {
-		s.message = fmt.Sprintf("Posted comment on %s:%d-%d.", reviewRange.End.File, reviewRange.Start.Line, reviewRange.End.Line)
-	}
-	return nil
-}
-
-func (s *reviewState) startReview() {
-	if err := s.requirePR("start review"); err != nil {
-		s.message = err.Error()
-		return
-	}
-	if s.draft.Active {
-		s.message = fmt.Sprintf("Review already active with %d draft %s.", s.draft.Count, plural(s.draft.Count, "comment", "comments"))
-		return
-	}
-	reviewID, err := createPendingReview(s.pr)
-	if err != nil {
-		s.message = err.Error()
-		return
-	}
-	s.draft = reviewDraft{Active: true, ID: reviewID}
-	s.clearSelection()
-	s.message = "Draft review started."
-}
-
-func (s *reviewState) discardReview() {
-	if !s.draft.Active {
-		s.message = "No draft review to delete."
-		return
-	}
-	count := s.draft.Count
-	if err := deletePendingReview(s.draft.ID); err != nil {
-		s.message = err.Error()
-		return
-	}
-	s.draft = reviewDraft{}
-	s.clearSelection()
-	s.message = fmt.Sprintf("Deleted draft review with %d %s.", count, plural(count, "comment", "comments"))
-}
-
-func (s *reviewState) submitReview(term *terminalState) error {
-	if err := s.requirePR("submit review"); err != nil {
-		return err
-	}
-	if !s.draft.Active {
-		return errors.New("No draft review active. Press R to start one.")
-	}
-
-	body, err := editReviewBody(term, "")
-	if err != nil {
-		return err
-	}
-	if strings.TrimSpace(body) == "" && s.draft.Count == 0 {
-		s.message = "Cancelled empty review."
-		return nil
-	}
-
-	count := s.draft.Count
-	if err := submitPendingReview(s.draft.ID, body); err != nil {
-		return err
-	}
-	s.draft = reviewDraft{}
-	s.clearSelection()
-	s.message = fmt.Sprintf("Submitted review with %d %s.", count, plural(count, "comment", "comments"))
-	return nil
-}
-
-func (s *reviewState) requirePR(action string) error {
-	if s.pr != nil {
-		return nil
-	}
-	if s.prChecking {
-		return fmt.Errorf("Checking for an active GitHub PR. Cannot %s yet.", action)
-	}
-	return fmt.Errorf("No active GitHub PR found. Cannot %s.", action)
-}
-
-func editReviewBody(term *terminalState, template string) (string, error) {
-	file, err := os.CreateTemp("", "rms-review-*.md")
-	if err != nil {
-		return "", err
-	}
-	path := file.Name()
-	defer os.Remove(path)
-
-	if _, err := file.WriteString(template); err != nil {
-		_ = file.Close()
-		return "", err
-	}
-	if err := file.Close(); err != nil {
-		return "", err
-	}
-
-	if err := withNormalTerminal(term, func() error {
-		return openEditorFile(path)
-	}); err != nil {
-		return "", err
-	}
-
-	body, err := os.ReadFile(path)
-	if err != nil {
-		return "", err
-	}
-	return string(body), nil
-}
-
-func suggestionTemplate(reviewRange reviewRange, pr *prContext) (string, error) {
-	if pr == nil {
-		return "", errors.New("No active GitHub PR found. Cannot build suggestion.")
-	}
-	lines, err := sourceLines(reviewRange, pr)
-	if err != nil {
-		return "", err
-	}
-	return "```suggestion\n" + strings.Join(lines, "\n") + "\n```\n", nil
-}
-
-func sourceLines(reviewRange reviewRange, pr *prContext) ([]string, error) {
-	ref := pr.Head
-	if reviewRange.End.Side == "old" {
-		ref = pr.Base
-	}
-	out, err := gitShowFile(ref, reviewRange.End.File)
-	if err != nil {
-		return nil, err
-	}
-	lines := splitSourceLines(out)
-	if reviewRange.Start.Line < 1 || reviewRange.End.Line > len(lines) {
-		return nil, fmt.Errorf("cannot read %s:%d-%d from %s", reviewRange.End.File, reviewRange.Start.Line, reviewRange.End.Line, ref)
-	}
-	return lines[reviewRange.Start.Line-1 : reviewRange.End.Line], nil
-}
-
-func gitShowFile(ref, path string) (string, error) {
-	cmd := exec.Command("git", "show", ref+":"+path)
-	out, err := cmd.Output()
-	if err != nil {
-		if exitErr, ok := errors.AsType[*exec.ExitError](err); ok {
-			return "", fmt.Errorf("git show failed: %s", strings.TrimSpace(string(exitErr.Stderr)))
-		}
-		return "", err
-	}
-	return string(out), nil
-}
-
-func splitSourceLines(text string) []string {
-	text = strings.ReplaceAll(text, "\r\n", "\n")
-	text = strings.TrimSuffix(text, "\n")
-	if text == "" {
-		return []string{""}
-	}
-	return strings.Split(text, "\n")
-}
-
-func postReviewComment(pr *prContext, reviewRange reviewRange, body string) error {
-	data, err := json.Marshal(reviewCommentPayload(pr, reviewRange, body))
-	if err != nil {
-		return err
-	}
-	endpoint := fmt.Sprintf("repos/%s/%s/pulls/%d/comments", pr.Owner, pr.Repo, pr.Number)
-	cmd := exec.Command("gh", "api", "-X", "POST", endpoint, "--input", "-")
-	cmd.Stdin = bytes.NewReader(data)
-	out, err := cmd.CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("gh api failed: %s", strings.TrimSpace(string(out)))
-	}
-	return nil
-}
-
-func reviewCommentPayload(pr *prContext, reviewRange reviewRange, body string) map[string]any {
-	payload := map[string]any{
-		"body":      body,
-		"path":      reviewRange.End.File,
-		"line":      reviewRange.End.Line,
-		"side":      githubSide(reviewRange.End.Side),
-		"commit_id": pr.Head,
-	}
-	if reviewRange.Start.Line != reviewRange.End.Line {
-		payload["start_line"] = reviewRange.Start.Line
-		payload["start_side"] = githubSide(reviewRange.Start.Side)
-	}
-	return payload
-}
-
-func createPendingReview(pr *prContext) (string, error) {
-	const query = `
-mutation($pullRequestID: ID!, $commitOID: GitObjectID!) {
-  addPullRequestReview(input: {pullRequestId: $pullRequestID, commitOID: $commitOID}) {
-    pullRequestReview {
-      id
-    }
-  }
-}`
-	var response struct {
-		AddPullRequestReview struct {
-			PullRequestReview struct {
-				ID string `json:"id"`
-			} `json:"pullRequestReview"`
-		} `json:"addPullRequestReview"`
-	}
-	err := ghGraphQL(query, map[string]any{
-		"pullRequestID": pr.ID,
-		"commitOID":     pr.Head,
-	}, &response)
-	if err != nil {
-		return "", err
-	}
-	if response.AddPullRequestReview.PullRequestReview.ID == "" {
-		return "", errors.New("GitHub did not return a pending review id")
-	}
-	return response.AddPullRequestReview.PullRequestReview.ID, nil
-}
-
-func detectPendingReview(pr *prContext) reviewDraft {
-	const query = `
-query($pullRequestID: ID!) {
-  viewer {
-    login
-  }
-  node(id: $pullRequestID) {
-    ... on PullRequest {
-      reviews(states: PENDING, first: 20) {
-        nodes {
-          id
-          author {
-            login
-          }
-          comments(first: 1) {
-            totalCount
-          }
-        }
-      }
-    }
-  }
-}`
-	var response struct {
-		Viewer struct {
-			Login string `json:"login"`
-		} `json:"viewer"`
-		Node struct {
-			Reviews struct {
-				Nodes []struct {
-					ID     string `json:"id"`
-					Author struct {
-						Login string `json:"login"`
-					} `json:"author"`
-					Comments struct {
-						TotalCount int `json:"totalCount"`
-					} `json:"comments"`
-				} `json:"nodes"`
-			} `json:"reviews"`
-		} `json:"node"`
-	}
-	if err := ghGraphQL(query, map[string]any{"pullRequestID": pr.ID}, &response); err != nil {
-		return reviewDraft{}
-	}
-	for _, review := range response.Node.Reviews.Nodes {
-		if review.ID == "" || review.Author.Login != response.Viewer.Login {
-			continue
-		}
-		return reviewDraft{
-			Active: true,
-			ID:     review.ID,
-			Count:  review.Comments.TotalCount,
-		}
-	}
-	return reviewDraft{}
-}
-
-func addPendingReviewComment(reviewID string, reviewRange reviewRange, body string) error {
-	const query = `
-mutation($reviewID: ID!, $body: String!, $path: String!, $line: Int!, $side: DiffSide!, $startLine: Int, $startSide: DiffSide) {
-  addPullRequestReviewThread(input: {pullRequestReviewId: $reviewID, body: $body, path: $path, line: $line, side: $side, startLine: $startLine, startSide: $startSide}) {
-    thread {
-      id
-    }
-  }
-}`
-	var response struct {
-		AddPullRequestReviewThread struct {
-			Thread struct {
-				ID string `json:"id"`
-			} `json:"thread"`
-		} `json:"addPullRequestReviewThread"`
-	}
-	return ghGraphQL(query, reviewThreadVariables(reviewID, reviewRange, body), &response)
-}
-
-func submitPendingReview(reviewID string, body string) error {
-	const query = `
-mutation($reviewID: ID!, $body: String, $event: PullRequestReviewEvent!) {
-  submitPullRequestReview(input: {pullRequestReviewId: $reviewID, body: $body, event: $event}) {
-    pullRequestReview {
-      id
-    }
-  }
-}`
-	var response struct {
-		SubmitPullRequestReview struct {
-			PullRequestReview struct {
-				ID string `json:"id"`
-			} `json:"pullRequestReview"`
-		} `json:"submitPullRequestReview"`
-	}
-	return ghGraphQL(query, map[string]any{
-		"reviewID": reviewID,
-		"body":     strings.TrimSpace(body),
-		"event":    "COMMENT",
-	}, &response)
-}
-
-func deletePendingReview(reviewID string) error {
-	const query = `
-mutation($reviewID: ID!) {
-  deletePullRequestReview(input: {pullRequestReviewId: $reviewID}) {
-    pullRequestReview {
-      id
-    }
-  }
-}`
-	var response struct {
-		DeletePullRequestReview struct {
-			PullRequestReview struct {
-				ID string `json:"id"`
-			} `json:"pullRequestReview"`
-		} `json:"deletePullRequestReview"`
-	}
-	return ghGraphQL(query, map[string]any{"reviewID": reviewID}, &response)
-}
-
-func reviewThreadVariables(reviewID string, reviewRange reviewRange, body string) map[string]any {
-	payload := map[string]any{
-		"reviewID": reviewID,
-		"body":     body,
-		"path":     reviewRange.End.File,
-		"line":     reviewRange.End.Line,
-		"side":     githubSide(reviewRange.End.Side),
-	}
-	if reviewRange.Start.Line != reviewRange.End.Line {
-		payload["startLine"] = reviewRange.Start.Line
-		payload["startSide"] = githubSide(reviewRange.Start.Side)
-	}
-	return payload
-}
-
-func ghGraphQL(query string, variables map[string]any, target any) error {
-	request := map[string]any{
-		"query":     query,
-		"variables": variables,
-	}
-	data, err := json.Marshal(request)
-	if err != nil {
-		return err
-	}
-	cmd := exec.Command("gh", "api", "graphql", "--input", "-")
-	cmd.Stdin = bytes.NewReader(data)
-	out, err := cmd.CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("gh api graphql failed: %s", strings.TrimSpace(string(out)))
-	}
-
-	var response struct {
-		Data   json.RawMessage `json:"data"`
-		Errors []struct {
-			Message string `json:"message"`
-		} `json:"errors"`
-	}
-	if err := json.Unmarshal(out, &response); err != nil {
-		return err
-	}
-	if len(response.Errors) > 0 {
-		var messages []string
-		for _, graphQLError := range response.Errors {
-			messages = append(messages, graphQLError.Message)
-		}
-		return fmt.Errorf("gh api graphql failed: %s", strings.Join(messages, ", "))
-	}
-	if len(response.Data) == 0 {
-		return errors.New("gh api graphql returned no data")
-	}
-	return json.Unmarshal(response.Data, target)
-}
-
-func githubSide(side string) string {
-	if side == "old" {
-		return "LEFT"
-	}
-	return "RIGHT"
-}
-
-func terminalSize() (int, int) {
-	cmd := exec.Command("stty", "size")
-	cmd.Stdin = os.Stdin
-	out, err := cmd.Output()
-	if err != nil {
-		return 24, 80
-	}
-	fields := strings.Fields(string(out))
-	if len(fields) != 2 {
-		return 24, 80
-	}
-	rows, err := strconv.Atoi(fields[0])
-	if err != nil {
-		rows = 24
-	}
-	cols, err := strconv.Atoi(fields[1])
-	if err != nil {
-		cols = 80
-	}
-	return rows, cols
-}
-
-func render(w io.Writer, state *reviewState, rows, cols int) {
-	if rows < 8 {
-		rows = 8
-	}
-	if cols < 40 {
-		cols = 40
-	}
-	state.keepSelectionVisible(rows)
-	bodyRows := rows - 4
-	selectedLine := -1
-	if state.hasSelection() {
-		selectedLine = state.selectedDisplayLine()
-	}
-
-	fmt.Fprint(w, "\x1b[H\x1b[2J")
-	for row := range bodyRows {
-		lineIndex := state.top + row
-		if lineIndex >= len(state.lines) {
-			fmt.Fprint(w, "\x1b[K\r\n")
-			continue
-		}
-		line := ansi.Truncate(state.lines[lineIndex], cols)
-		if selection, ok := state.displayLineSelection(lineIndex, cols); ok {
-			fmt.Fprintf(w, "%s\x1b[K\r\n", highlightSelectionSide(line, cols, selection))
-		} else if state.hasSelection() && lineIndex == selectedLine {
-			fmt.Fprintf(w, "%s\x1b[K\r\n", highlightSelectionSide(line, cols, state.selections[state.cursor]))
-		} else {
-			fmt.Fprintf(w, "%s\x1b[K\r\n", line)
-		}
-	}
-
-	fmt.Fprintf(w, "\x1b[7m%s\x1b[0m\x1b[K\r\n", fit(statusText(state), cols))
-	if state.message != "" {
-		fmt.Fprintf(w, "%s\x1b[K\r\n", fit(" "+state.message, cols))
-	} else {
-		fmt.Fprint(w, "\x1b[K\r\n")
-	}
-	fmt.Fprintf(w, "\x1b[2m%s\x1b[0m\x1b[K", fit(helpText(state), cols))
-}
-
-func statusText(state *reviewState) string {
-	var parts []string
-	if state.hasSelection() {
-		parts = append(parts, fmt.Sprintf("%d/%d", state.cursor+1, len(state.selections)))
-	} else {
-		parts = append(parts, "0/0")
-	}
-	if state.selectionAnchor != nil {
-		parts = append(parts, "Selecting")
-	}
-	if state.draft.Active {
-		parts = append(parts, fmt.Sprintf("Draft review: %d %s", state.draft.Count, plural(state.draft.Count, "comment", "comments")))
-	}
-	if state.prChecking {
-		parts = append(parts, "checking PR")
-	} else if state.pr != nil {
-		parts = append(parts, fmt.Sprintf("PR #%d", state.pr.Number))
-	} else {
-		parts = append(parts, "no PR")
-	}
-	if state.hasSelection() {
-		ref := state.current()
-		marker := "+"
-		if ref.Side == "old" {
-			marker = "-"
-		}
-		parts = append(parts, fmt.Sprintf("%s %s:%d", marker, ref.File, ref.Line))
-	} else {
-		parts = append(parts, "No changes")
-	}
-	return " " + strings.Join(parts, "  ")
-}
-
-func helpText(state *reviewState) string {
-	nav := "h/j/k/l move  v select"
-	if !state.hasSelection() {
-		nav = "r reload"
-	}
-	sourceSwitch := ""
-	if state.prChecking {
-		sourceSwitch = "  checking PR"
-	} else if state.source == sourceLocal && state.branchAvailable {
-		sourceSwitch = "  Tab diff branch"
-	} else if state.source == sourceBranch && state.localAvailable {
-		sourceSwitch = "  Tab diff uncommitted"
-	}
-	if state.draft.Active {
-		return fmt.Sprintf(" %s%s  c add comment  s add suggestion  p submit review  D delete draft  e open  r reload  q quit ", nav, sourceSwitch)
-	}
-	if state.prChecking {
-		return fmt.Sprintf(" %s%s  e open  r reload  q quit ", nav, sourceSwitch)
-	}
-	if state.pr == nil {
-		return fmt.Sprintf(" %s%s  e open  r reload  q quit ", nav, sourceSwitch)
-	}
-	return fmt.Sprintf(" %s%s  R start review  c comment  s suggest  e open  r reload  q quit ", nav, sourceSwitch)
 }
 
 func plural(count int, one, many string) string {
@@ -1103,7 +248,7 @@ func (s *reviewState) keepSelectionVisible(rows int) {
 		s.top = 0
 		return
 	}
-	bodyRows := max(1, rows-4)
+	bodyRows := max(1, rows-2)
 	selectedLine := s.selectedDisplayLine()
 	if selectedLine < 0 {
 		return
@@ -1313,7 +458,7 @@ var leadingLineNoRE = regexp.MustCompile(`^\s*(\d+)\s`)
 var anyLineNoRE = regexp.MustCompile(`(?:^|\s)(\d+)\s`)
 
 func parseDifftasticRow(index int, file, line, raw string) (displaySelection, bool) {
-	if strings.Contains(line, "│") || strings.Contains(line, "---") {
+	if strings.Contains(line, "│") {
 		return displaySelection{}, false
 	}
 
@@ -1327,11 +472,16 @@ func parseDifftasticRow(index int, file, line, raw string) (displaySelection, bo
 	allIndexes := anyLineNoRE.FindAllStringSubmatchIndex(line, -1)
 	rightLine := 0
 	split := 0
-	if len(all) > 1 {
+	if len(all) > 0 && hasGreen(raw) && !hasRed(raw) {
+		leftLine = 0
+		rightLine, _ = strconv.Atoi(all[0][1])
+		split = allIndexes[0][2]
+	} else if len(all) > 0 && hasRed(raw) && !hasGreen(raw) {
+		leftLine, _ = strconv.Atoi(all[0][1])
+	} else if len(all) > 1 {
 		rightLine, _ = strconv.Atoi(all[len(all)-1][1])
-		split = allIndexes[len(allIndexes)-1][2]
-	}
-	if len(all) == 1 && leftLine == 0 {
+		split = allIndexes[len(allIndexes)-1][0]
+	} else if len(all) == 1 && leftLine == 0 {
 		lineNo, _ := strconv.Atoi(all[0][1])
 		if hasGreen(raw) {
 			rightLine = lineNo
@@ -1384,7 +534,7 @@ func hasRed(s string) bool {
 	return strings.Contains(s, "\x1b[31") || strings.Contains(s, "\x1b[91")
 }
 
-func diffWithUntrackedNotice(args []string, diff []byte) []byte {
+func diffWithUntrackedFiles(args []string, diff []byte) []byte {
 	if len(args) != 0 {
 		return diff
 	}
@@ -1395,121 +545,60 @@ func diffWithUntrackedNotice(args []string, diff []byte) []byte {
 	}
 	var buf bytes.Buffer
 	buf.Write(diff)
-	if !bytes.HasSuffix(diff, []byte("\n")) {
+	if buf.Len() > 0 && !bytes.HasSuffix(diff, []byte("\n")) {
 		buf.WriteByte('\n')
 	}
-	buf.WriteString("\nUntracked files:\n")
 	scanner := bufio.NewScanner(bytes.NewReader(out))
 	for scanner.Scan() {
-		buf.WriteString("  ")
-		buf.WriteString(scanner.Text())
-		buf.WriteByte('\n')
+		path := scanner.Text()
+		if path == "" {
+			continue
+		}
+		if buf.Len() > 0 {
+			buf.WriteByte('\n')
+		}
+		buf.WriteString(path)
+		buf.WriteString(" --- Text\n")
+		rendered, err := prettyUntrackedDiff(path)
+		if err != nil || len(bytes.TrimSpace(rendered)) == 0 {
+			rendered = plainUntrackedDiff(path)
+		}
+		buf.Write(rendered)
+		if !bytes.HasSuffix(rendered, []byte("\n")) {
+			buf.WriteByte('\n')
+		}
 	}
 	return buf.Bytes()
 }
 
-func fit(s string, width int) string {
-	plainLen := len(ansi.Strip(s))
-	if plainLen <= width {
-		return s
+func prettyUntrackedDiff(path string) ([]byte, error) {
+	cmd := exec.Command("difft", "--color=always", "/dev/null", path)
+	cmd.Env = append(os.Environ(), "DFT_COLOR=always")
+	out, err := cmd.CombinedOutput()
+	if err != nil && len(out) == 0 {
+		return nil, err
 	}
-	return ansi.Truncate(s, width)
+	return out, nil
 }
 
-func highlightPlain(s string, width int) string {
-	plain := ansi.Strip(s)
-	if len(plain) > width {
-		plain = plain[:width]
+func plainUntrackedDiff(path string) []byte {
+	file, err := os.Open(path)
+	if err != nil {
+		return nil
 	}
-	if len(plain) < width {
-		plain += strings.Repeat(" ", width-len(plain))
-	}
-	return "\x1b[7m" + plain + "\x1b[0m"
-}
+	defer file.Close()
 
-func highlightSelectionSide(s string, width int, selection displaySelection) string {
-	start, end := selectionHighlightRange(selection, width)
-	if start < 0 {
-		start = 0
+	var buf bytes.Buffer
+	scanner := bufio.NewScanner(file)
+	line := 1
+	for scanner.Scan() {
+		fmt.Fprintf(&buf, "\x1b[92;1m %d \x1b[0m%s\n", line, scanner.Text())
+		line++
 	}
-	if end > width {
-		end = width
+	if line == 1 {
+		buf.WriteString("\x1b[92;1m 1 \x1b[0m\n")
 	}
-	if start >= end {
-		return highlightPlain(s, width)
-	}
-	return highlightANSIRange(s, width, start, end)
-}
-
-func selectionHighlightRange(selection displaySelection, width int) (int, int) {
-	if selection.Ref.Side == "old" {
-		if selection.Split > 0 {
-			return 0, selection.Split
-		}
-		return 0, width
-	}
-	if selection.Split > 0 {
-		return selection.Split, width
-	}
-	return 0, width
-}
-
-func inferredSplit(line string, selection displaySelection, width int) int {
-	if selection.Split > 0 {
-		return selection.Split
-	}
-	plain := ansi.Strip(line)
-	if matches := anyLineNoRE.FindAllStringSubmatchIndex(plain, -1); len(matches) > 1 {
-		return min(width, matches[len(matches)-1][2])
-	}
-	return 0
-}
-
-func highlightANSIRange(s string, width, start, end int) string {
-	var out strings.Builder
-	visible := 0
-	inverse := false
-
-	for i := 0; i < len(s) && visible < width; {
-		if s[i] == '\x1b' {
-			ansiEnd := ansi.End(s, i)
-			if ansiEnd > i {
-				if !inverse {
-					out.WriteString(s[i:ansiEnd])
-				}
-				i = ansiEnd
-				continue
-			}
-		}
-		if !inverse && visible == start {
-			out.WriteString("\x1b[0m\x1b[7m")
-			inverse = true
-		}
-		if inverse && visible == end {
-			out.WriteString("\x1b[0m")
-			inverse = false
-		}
-		out.WriteByte(s[i])
-		visible++
-		i++
-	}
-	for visible < width {
-		if !inverse && visible == start {
-			out.WriteString("\x1b[0m\x1b[7m")
-			inverse = true
-		}
-		if inverse && visible == end {
-			out.WriteString("\x1b[0m")
-			inverse = false
-		}
-		out.WriteByte(' ')
-		visible++
-	}
-	if inverse {
-		out.WriteString("\x1b[0m")
-	}
-	out.WriteString("\x1b[0m")
-	return out.String()
+	return buf.Bytes()
 }
 
 func changedLines(args []string) ([]lineRef, error) {
@@ -1647,51 +736,4 @@ func cleanDiffPath(path string) string {
 	path = strings.TrimPrefix(path, "a/")
 	path = strings.TrimPrefix(path, "b/")
 	return path
-}
-
-func openEditor(file string, line int) error {
-	editor := os.Getenv("VISUAL")
-	if editor == "" {
-		editor = os.Getenv("EDITOR")
-	}
-	if editor == "" {
-		editor = "vi"
-	}
-
-	var cmd *exec.Cmd
-	lineArg := fmt.Sprintf("+%d", line)
-	if strings.ContainsAny(editor, " \t") {
-		cmd = exec.Command("sh", "-c", fmt.Sprintf("%s %s %s", editor, shellQuote(lineArg), shellQuote(file)))
-	} else {
-		cmd = exec.Command(editor, lineArg, file)
-	}
-	cmd.Stdin = os.Stdin
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	return cmd.Run()
-}
-
-func openEditorFile(file string) error {
-	editor := os.Getenv("VISUAL")
-	if editor == "" {
-		editor = os.Getenv("EDITOR")
-	}
-	if editor == "" {
-		editor = "vi"
-	}
-
-	var cmd *exec.Cmd
-	if strings.ContainsAny(editor, " \t") {
-		cmd = exec.Command("sh", "-c", fmt.Sprintf("%s %s", editor, shellQuote(file)))
-	} else {
-		cmd = exec.Command(editor, file)
-	}
-	cmd.Stdin = os.Stdin
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	return cmd.Run()
-}
-
-func shellQuote(s string) string {
-	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
 }
