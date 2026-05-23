@@ -10,6 +10,9 @@ import (
 )
 
 func run(args []string, stdout io.Writer) error {
+	if len(args) > 0 && args[0] == flowCommand {
+		return runFlow(stdout)
+	}
 	return reviewTUI(args, loadDiffAsync(args, sourceLocal), stdout)
 }
 

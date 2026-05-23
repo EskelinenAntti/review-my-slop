@@ -42,3 +42,25 @@ Keys:
 - `r` reloads the diff
 - `Esc` clears an active visual selection or quits when no selection is active
 - `q` quits
+
+## Codex Flow
+
+```sh
+go run . flow
+```
+
+The `flow` command runs the product loop:
+
+1. Opens `$VISUAL` or `$EDITOR` for the initial prompt and uses it as the draft
+   PR description.
+2. Creates an `rms/...` branch from `main`, runs `codex exec` with the prompt
+   on stdin, commits the result, pushes, and opens a draft PR.
+3. Opens the RMS review UI so you can leave and submit GitHub review comments.
+4. Reads unresolved review threads, sends them back through `codex exec`, commits
+   and pushes the fixes, then resolves the addressed threads.
+5. Repeats until there are no unresolved comments and you leave the follow-up
+   prompt empty, write `READY`, or write `no more changes`; then it marks the PR
+   ready for review.
+
+This uses the installed Codex CLI, not the Codex API directly. `codex exec -`
+reads instructions from stdin, which is the subprocess interface used here.

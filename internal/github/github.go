@@ -24,6 +24,18 @@ type Draft struct {
 	Count  int
 }
 
+type Thread struct {
+	ID       string
+	Path     string
+	Line     int
+	Comments []ThreadComment
+}
+
+type ThreadComment struct {
+	Author string
+	Body   string
+}
+
 type LineRange struct {
 	Start Line
 	End   Line
@@ -231,6 +243,93 @@ mutation($reviewID: ID!) {
 		} `json:"deletePullRequestReview"`
 	}
 	return graphQL(query, map[string]any{"reviewID": reviewID}, &response)
+}
+
+func UnresolvedThreads(pr *PR) ([]Thread, error) {
+	const query = `
+query($pullRequestID: ID!) {
+  node(id: $pullRequestID) {
+    ... on PullRequest {
+      reviewThreads(first: 100) {
+        nodes {
+          id
+          isResolved
+          path
+          line
+          comments(first: 20) {
+            nodes {
+              body
+              author {
+                login
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}`
+	var response struct {
+		Node struct {
+			ReviewThreads struct {
+				Nodes []struct {
+					ID         string `json:"id"`
+					IsResolved bool   `json:"isResolved"`
+					Path       string `json:"path"`
+					Line       int    `json:"line"`
+					Comments   struct {
+						Nodes []struct {
+							Body   string `json:"body"`
+							Author struct {
+								Login string `json:"login"`
+							} `json:"author"`
+						} `json:"nodes"`
+					} `json:"comments"`
+				} `json:"nodes"`
+			} `json:"reviewThreads"`
+		} `json:"node"`
+	}
+	if err := graphQL(query, map[string]any{"pullRequestID": pr.ID}, &response); err != nil {
+		return nil, err
+	}
+	var threads []Thread
+	for _, node := range response.Node.ReviewThreads.Nodes {
+		if node.ID == "" || node.IsResolved {
+			continue
+		}
+		thread := Thread{
+			ID:   node.ID,
+			Path: node.Path,
+			Line: node.Line,
+		}
+		for _, comment := range node.Comments.Nodes {
+			thread.Comments = append(thread.Comments, ThreadComment{
+				Author: comment.Author.Login,
+				Body:   comment.Body,
+			})
+		}
+		threads = append(threads, thread)
+	}
+	return threads, nil
+}
+
+func ResolveThread(threadID string) error {
+	const query = `
+mutation($threadID: ID!) {
+  resolveReviewThread(input: {threadId: $threadID}) {
+    thread {
+      id
+    }
+  }
+}`
+	var response struct {
+		ResolveReviewThread struct {
+			Thread struct {
+				ID string `json:"id"`
+			} `json:"thread"`
+		} `json:"resolveReviewThread"`
+	}
+	return graphQL(query, map[string]any{"threadID": threadID}, &response)
 }
 
 func ReviewThreadVariables(reviewID string, lineRange LineRange, body string) map[string]any {
