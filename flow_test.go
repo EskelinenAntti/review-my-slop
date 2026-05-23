@@ -14,7 +14,7 @@ func TestFlowTitleAndBranchNameUseDescriptionTitle(t *testing.T) {
 	}
 
 	got := branchName(title)
-	want := "automatic-branch-name"
+	want := "rms/automatic-branch-name"
 	if got != want {
 		t.Fatalf("branchName = %q, want %q", got, want)
 	}

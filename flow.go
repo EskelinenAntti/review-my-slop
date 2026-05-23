@@ -328,5 +328,5 @@ func branchName(title string) string {
 	if slug == "" {
 		slug = "change"
 	}
-	return slug
+	return "rms/" + slug
 }
