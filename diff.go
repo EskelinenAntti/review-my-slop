@@ -33,8 +33,8 @@ func prettyDiff(args []string) ([]byte, error) {
 func loadDiffAsync(args []string, source diffSource) <-chan diffResult {
 	ch := make(chan diffResult, 1)
 	go func() {
-		refs, lines, err := loadDiff(args, source)
-		ch <- diffResult{Source: source, Refs: refs, Lines: lines, Err: err}
+		refs, lines, files, err := loadDiff(args, source)
+		ch <- diffResult{Source: source, Refs: refs, Lines: lines, Files: files, Err: err}
 	}()
 	return ch
 }
@@ -62,6 +62,7 @@ func (s *reviewState) applyDiffResult(result diffResult) {
 		return
 	}
 	s.lines = result.Lines
+	s.files = result.Files
 	s.changedLines = buildChangedLines(result.Lines, result.Refs)
 	s.cursor = 0
 	s.top = 0
@@ -95,7 +96,7 @@ func (s *reviewState) switchToSource(source diffSource) error {
 	if err != nil {
 		return err
 	}
-	refs, lines, err := loadDiff(args, source)
+	refs, lines, files, err := loadDiff(args, source)
 	if err != nil {
 		return err
 	}
@@ -109,6 +110,7 @@ func (s *reviewState) switchToSource(source diffSource) error {
 		s.localAvailable = len(refs) > 0
 	}
 	s.lines = lines
+	s.files = files
 	s.changedLines = buildChangedLines(lines, refs)
 	s.cursor = 0
 	s.top = 0
@@ -130,19 +132,20 @@ func (s *reviewState) argsForSource(source diffSource) ([]string, error) {
 	}
 }
 
-func loadDiff(args []string, source diffSource) ([]lineRef, []string, error) {
+func loadDiff(args []string, source diffSource) ([]lineRef, []string, []fileHeader, error) {
 	refs, err := changedLineRefs(args)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 	if len(refs) == 0 {
-		return refs, []string{fmt.Sprintf("No %s changes.", sourceLabel(source))}, nil
+		return refs, []string{fmt.Sprintf("No %s changes.", sourceLabel(source))}, nil, nil
 	}
 	diff, err := prettyDiff(args)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
-	return refs, splitLines(diffWithUntrackedFiles(args, diff)), nil
+	lines := splitLines(diffWithUntrackedFiles(args, diff))
+	return refs, lines, buildFileHeaders(lines), nil
 }
 
 func sourceLabel(source diffSource) string {
@@ -208,6 +211,25 @@ func buildDifftasticChangedLines(lines []string, changedOnly bool) []changedLine
 	}
 
 	return changedLines
+}
+
+type fileHeader struct {
+	Line int
+	File string
+	Text string
+}
+
+func buildFileHeaders(lines []string) []fileHeader {
+	var files []fileHeader
+	for lineIndex, raw := range lines {
+		plain := strings.TrimRight(ansi.Strip(raw), "\r")
+		file, ok := parseDifftasticHeader(plain)
+		if !ok {
+			continue
+		}
+		files = append(files, fileHeader{Line: lineIndex, File: file, Text: raw})
+	}
+	return files
 }
 
 func parseDifftasticHeader(line string) (string, bool) {

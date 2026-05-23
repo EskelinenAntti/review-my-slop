@@ -351,6 +351,23 @@ func TestRenderScreenReviewModeTextSnapshot(t *testing.T) {
 	}
 }
 
+func TestRenderScreenShowsStickyFileHeader(t *testing.T) {
+	state := &reviewState{
+		top: 2,
+		lines: []string{
+			"\x1b[1ma.go\x1b[0m --- Go",
+			" 1 first",
+			" 2 second",
+		},
+		files: []fileHeader{{Line: 0, File: "a.go", Text: "\x1b[1ma.go\x1b[0m --- Go"}},
+	}
+
+	screen := renderScreen(t, state, 8, 40)
+	if got := screen.trimmedLine(0); got != "a.go --- Go" {
+		t.Fatalf("sticky header = %q, want file header", got)
+	}
+}
+
 func TestRenderScreenOmitsStatusRow(t *testing.T) {
 	longContent := "`p` submits the pending review, opening `$VISUAL` or `$EDITOR` for an optional review summary"
 	state := &reviewState{

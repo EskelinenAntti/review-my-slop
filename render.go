@@ -29,6 +29,12 @@ func render(w io.Writer, state *reviewState, rows, cols int) {
 			fmt.Fprint(w, "\x1b[K\r\n")
 			continue
 		}
+		if row == 0 {
+			if header, ok := state.stickyHeader(); ok {
+				fmt.Fprintf(w, "%s\x1b[K\r\n", ansi.Truncate(header.Text, cols))
+				continue
+			}
+		}
 		line := ansi.Truncate(state.lines[lineIndex], cols)
 		if changedLine, ok := state.displayLineSelection(lineIndex, cols); ok {
 			fmt.Fprintf(w, "%s\x1b[K\r\n", highlightChangedLineSide(line, cols, changedLine))
@@ -45,6 +51,23 @@ func render(w io.Writer, state *reviewState, rows, cols int) {
 		fmt.Fprint(w, "\x1b[K\r\n")
 	}
 	fmt.Fprintf(w, "\x1b[2m%s\x1b[0m\x1b[K", fit(helpText(state), cols))
+}
+
+func (s *reviewState) stickyHeader() (fileHeader, bool) {
+	if len(s.files) == 0 || s.top <= 0 {
+		return fileHeader{}, false
+	}
+	var current fileHeader
+	for _, file := range s.files {
+		if file.Line > s.top {
+			break
+		}
+		current = file
+	}
+	if current.Text == "" || current.Line == s.top {
+		return fileHeader{}, false
+	}
+	return current, true
 }
 
 func helpText(state *reviewState) string {

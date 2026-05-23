@@ -41,6 +41,7 @@ type diffResult struct {
 	Source diffSource
 	Refs   []lineRef
 	Lines  []string
+	Files  []fileHeader
 	Err    error
 }
 
@@ -66,6 +67,7 @@ type reviewState struct {
 	draft           reviewDraft
 	changedLines    []changedLine
 	lines           []string
+	files           []fileHeader
 	cursor          int
 	selectionAnchor *int
 	top             int
