@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/anttieskelinen/review-my-slop/internal/ansi"
+	"github.com/anttieskelinen/review-my-slop/internal/github"
 )
 
 type testCell struct {
@@ -201,10 +202,10 @@ func TestRenderScreenShowsCursorOnSelectedSideOnly(t *testing.T) {
 	if !ok {
 		t.Fatal("expected selected row to contain inverse cells")
 	}
-	if start != 18 || end != 40 {
-		t.Fatalf("inverse range = %d-%d, want 18-40; line = %q", start, end, screen.line(0))
+	if start != 20 || end != 40 {
+		t.Fatalf("inverse range = %d-%d, want 20-40; line = %q", start, end, screen.line(0))
 	}
-	for col := 0; col < 18; col++ {
+	for col := 0; col < 20; col++ {
 		if screen.cells[0][col].inverse {
 			t.Fatalf("left side column %d was inverse; line = %q", col, screen.line(0))
 		}
@@ -338,9 +339,9 @@ func TestRenderScreenReviewModeTextSnapshot(t *testing.T) {
 
 	screen := renderScreen(t, state, 8, 160)
 	got := screen.text()
-	want := strings.TrimRight(`README.md --- Text
-32 - `+"`s` opens `$VISUAL` or `$EDITOR`"+`
-33 - `+"`p` submits the pending review, opening `$VISUAL` or `$EDITOR` for an optional review summary"+`
+	want := strings.TrimRight(`  README.md --- Text
+  32 - `+"`s` opens `$VISUAL` or `$EDITOR`"+`
+  33 - `+"`p` submits the pending review, opening `$VISUAL` or `$EDITOR` for an optional review summary"+`
 
 
 
@@ -348,6 +349,44 @@ func TestRenderScreenReviewModeTextSnapshot(t *testing.T) {
  h/j/k/l move  v select  c add comment  s add suggestion  p submit review  D delete draft  e open  r reload  q quit`, "\n")
 	if got != want {
 		t.Fatalf("screen text mismatch\ngot:\n%s\n\nwant:\n%s", got, want)
+	}
+}
+
+func TestRenderScreenShowsStickyFileHeader(t *testing.T) {
+	state := &reviewState{
+		top: 2,
+		lines: []string{
+			"\x1b[1ma.go\x1b[0m --- Go",
+			" 1 first",
+			" 2 second",
+		},
+		files: []fileHeader{{Line: 0, File: "a.go", Text: "\x1b[1ma.go\x1b[0m --- Go"}},
+	}
+
+	screen := renderScreen(t, state, 8, 40)
+	if got := screen.trimmedLine(0); got != "  a.go --- Go" {
+		t.Fatalf("sticky header = %q, want marker column plus file header", got)
+	}
+}
+
+func TestRenderScreenShowsCommentMarkers(t *testing.T) {
+	ref := lineRef{File: "a.go", Line: 10, Side: "new", Content: "added"}
+	state := &reviewState{
+		lines: []string{" 10 added"},
+		changedLines: []changedLine{
+			testChangedLine(ref),
+		},
+		threads: []github.ReviewThread{{
+			File:    ref.File,
+			Line:    ref.Line,
+			Side:    ref.Side,
+			Pending: true,
+		}},
+	}
+
+	screen := renderScreen(t, state, 8, 40)
+	if got := screen.cells[0][0].ch; got != '!' {
+		t.Fatalf("comment marker = %q, want pending marker", got)
 	}
 }
 

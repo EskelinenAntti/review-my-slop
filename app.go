@@ -103,6 +103,9 @@ func (s *reviewState) handleKey(key string, term *terminalState, rows int) bool 
 			s.message = err.Error()
 		}
 	case "e", keys.Enter:
+		if key == keys.Enter && s.openSelectedComment(term) {
+			return false
+		}
 		s.openSelectedLine(term)
 	case "r":
 		if err := s.reloadSource(); err != nil {

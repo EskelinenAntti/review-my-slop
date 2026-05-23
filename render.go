@@ -29,13 +29,21 @@ func render(w io.Writer, state *reviewState, rows, cols int) {
 			fmt.Fprint(w, "\x1b[K\r\n")
 			continue
 		}
-		line := ansi.Truncate(state.lines[lineIndex], cols)
-		if changedLine, ok := state.displayLineSelection(lineIndex, cols); ok {
-			fmt.Fprintf(w, "%s\x1b[K\r\n", highlightChangedLineSide(line, cols, changedLine))
+		if row == 0 {
+			if header, ok := state.stickyHeader(); ok {
+				fmt.Fprintf(w, "%s\x1b[K\r\n", renderDiffLine(" ", header.Text, cols))
+				continue
+			}
+		}
+		lineWidth := diffLineWidth(cols)
+		line := ansi.Truncate(state.lines[lineIndex], lineWidth)
+		mark := state.commentMark(lineIndex)
+		if changedLine, ok := state.displayLineSelection(lineIndex, lineWidth); ok {
+			fmt.Fprintf(w, "%s\x1b[K\r\n", renderDiffLine(mark, highlightChangedLineSide(line, lineWidth, changedLine), cols))
 		} else if state.hasChangedLines() && lineIndex == selectedLine {
-			fmt.Fprintf(w, "%s\x1b[K\r\n", highlightChangedLineSide(line, cols, state.changedLines[state.cursor]))
+			fmt.Fprintf(w, "%s\x1b[K\r\n", renderDiffLine(mark, highlightChangedLineSide(line, lineWidth, state.changedLines[state.cursor]), cols))
 		} else {
-			fmt.Fprintf(w, "%s\x1b[K\r\n", line)
+			fmt.Fprintf(w, "%s\x1b[K\r\n", renderDiffLine(mark, line, cols))
 		}
 	}
 
@@ -45,6 +53,37 @@ func render(w io.Writer, state *reviewState, rows, cols int) {
 		fmt.Fprint(w, "\x1b[K\r\n")
 	}
 	fmt.Fprintf(w, "\x1b[2m%s\x1b[0m\x1b[K", fit(helpText(state), cols))
+}
+
+func diffLineWidth(cols int) int {
+	return max(1, cols-2)
+}
+
+func renderDiffLine(mark, line string, cols int) string {
+	if cols <= 2 {
+		return ansi.Truncate(mark+line, cols)
+	}
+	if mark == "" {
+		mark = " "
+	}
+	return mark[:1] + " " + ansi.Truncate(line, cols-2)
+}
+
+func (s *reviewState) stickyHeader() (fileHeader, bool) {
+	if len(s.files) == 0 || s.top <= 0 {
+		return fileHeader{}, false
+	}
+	var current fileHeader
+	for _, file := range s.files {
+		if file.Line > s.top {
+			break
+		}
+		current = file
+	}
+	if current.Text == "" || current.Line == s.top {
+		return fileHeader{}, false
+	}
+	return current, true
 }
 
 func helpText(state *reviewState) string {

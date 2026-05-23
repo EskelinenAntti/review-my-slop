@@ -15,9 +15,11 @@ func detectReviewContext() reviewContext {
 	if pr == nil {
 		return reviewContext{}
 	}
+	threads := github.DetectReviewThreads(pr)
 	return reviewContext{
-		PR:    pr,
-		Draft: github.DetectPendingReview(pr),
+		PR:      pr,
+		Draft:   github.DetectPendingReview(pr),
+		Threads: threads,
 	}
 }
 
@@ -38,5 +40,6 @@ func (s *reviewState) applyReviewContext(context reviewContext) {
 	s.prChecking = false
 	s.pr = context.PR
 	s.draft = context.Draft
+	s.threads = context.Threads
 	s.branchAvailable = context.PR != nil
 }

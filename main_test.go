@@ -572,3 +572,37 @@ func TestRequirePRReportsPendingCheck(t *testing.T) {
 		t.Fatalf("error = %v, want pending-check message", err)
 	}
 }
+
+func TestThreadForChangedLineFindsCommentOnOtherSide(t *testing.T) {
+	left := lineRef{File: "a.go", Line: 10, Side: "old"}
+	right := lineRef{File: "a.go", Line: 10, Side: "new"}
+	state := &reviewState{
+		threads: []github.ReviewThread{{
+			ID:   "thread-id",
+			File: left.File,
+			Line: left.Line,
+			Side: left.Side,
+		}},
+	}
+	changedLine := changedLine{Ref: right, Left: &left, Right: &right}
+
+	thread := state.threadForChangedLine(changedLine)
+	if thread == nil || thread.ID != "thread-id" {
+		t.Fatalf("thread = %#v, want old-side thread", thread)
+	}
+}
+
+func TestEditablePendingCommentUsesNewestPendingComment(t *testing.T) {
+	thread := &github.ReviewThread{
+		Comments: []github.ReviewComment{
+			{ID: "submitted", Pending: false},
+			{ID: "draft-1", Pending: true},
+			{ID: "draft-2", Pending: true},
+		},
+	}
+
+	comment := editablePendingComment(thread)
+	if comment == nil || comment.ID != "draft-2" {
+		t.Fatalf("comment = %#v, want newest pending comment", comment)
+	}
+}
