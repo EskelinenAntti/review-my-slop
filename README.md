@@ -53,8 +53,9 @@ The `flow` command runs the product loop:
 
 1. Opens `$VISUAL` or `$EDITOR` for the initial prompt and uses it as the draft
    PR description.
-2. Creates an `rms/...` branch from `main`, runs `codex exec` with the prompt
-   on stdin, commits the result, pushes, and opens a draft PR.
+2. Uses the description title as the PR title, creates a kebab-cased branch from
+   that title, runs `codex exec` with the prompt on stdin, commits the result,
+   pushes, and opens a draft PR.
 3. Opens the RMS review UI so you can leave and submit GitHub review comments.
 4. Reads unresolved review threads, sends them back through `codex exec`, commits
    and pushes the fixes, then resolves the addressed threads.

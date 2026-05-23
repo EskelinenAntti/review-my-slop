@@ -3,15 +3,18 @@ package main
 import (
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/anttieskelinen/review-my-slop/internal/github"
 )
 
-func TestFlowBranchNameUsesPromptTitle(t *testing.T) {
-	now := time.Date(2026, 5, 23, 10, 11, 12, 0, time.UTC)
-	got := branchName("# Add Codex review loop!\n\nDetails here.", now)
-	want := "rms/add-codex-review-loop-20260523-101112"
+func TestFlowTitleAndBranchNameUseDescriptionTitle(t *testing.T) {
+	title := prTitle("# Automatic branch name\n\nDetails here.")
+	if title != "Automatic branch name" {
+		t.Fatalf("prTitle = %q, want %q", title, "Automatic branch name")
+	}
+
+	got := branchName(title)
+	want := "automatic-branch-name"
 	if got != want {
 		t.Fatalf("branchName = %q, want %q", got, want)
 	}

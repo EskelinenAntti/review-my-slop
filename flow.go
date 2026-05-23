@@ -7,10 +7,8 @@ import (
 	"io"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"regexp"
 	"strings"
-	"time"
 
 	"github.com/anttieskelinen/review-my-slop/internal/github"
 )
@@ -55,7 +53,6 @@ func (osCommandRunner) Output(name string, args []string, stdin string) (string,
 func runFlow(stdout io.Writer) error {
 	return runFlowWith(flowConfig{
 		Base:     "main",
-		Now:      time.Now,
 		Runner:   osCommandRunner{},
 		Stdout:   stdout,
 		Stderr:   os.Stderr,
@@ -68,7 +65,6 @@ func runFlow(stdout io.Writer) error {
 
 type flowConfig struct {
 	Base     string
-	Now      func() time.Time
 	Runner   commandRunner
 	Stdout   io.Writer
 	Stderr   io.Writer
@@ -79,9 +75,6 @@ type flowConfig struct {
 func runFlowWith(cfg flowConfig) error {
 	if cfg.Base == "" {
 		cfg.Base = "main"
-	}
-	if cfg.Now == nil {
-		cfg.Now = time.Now
 	}
 	if cfg.Runner == nil {
 		cfg.Runner = osCommandRunner{}
@@ -117,8 +110,8 @@ func runFlowWith(cfg flowConfig) error {
 		return errors.New("empty prompt; flow cancelled")
 	}
 
-	branch := branchName(description, cfg.Now())
 	title := prTitle(description)
+	branch := branchName(title)
 	fmt.Fprintf(cfg.Stdout, "Creating branch %s from %s.\n", branch, cfg.Base)
 	if err := cfg.Runner.Run("git", []string{"switch", cfg.Base}, "", cfg.Stdout, cfg.Stderr); err != nil {
 		return err
@@ -322,32 +315,18 @@ func prTitle(description string) string {
 	for _, line := range strings.Split(description, "\n") {
 		line = strings.TrimSpace(strings.TrimPrefix(line, "#"))
 		if line != "" {
-			return truncateWords(line, 80)
+			return line
 		}
 	}
 	return "Codex change"
 }
 
-func truncateWords(s string, limit int) string {
-	if len(s) <= limit {
-		return s
-	}
-	cut := strings.LastIndex(s[:limit], " ")
-	if cut < 20 {
-		cut = limit
-	}
-	return strings.TrimSpace(s[:cut])
-}
-
-func branchName(description string, now time.Time) string {
-	title := strings.ToLower(prTitle(description))
+func branchName(title string) string {
+	title = strings.ToLower(title)
 	re := regexp.MustCompile(`[^a-z0-9]+`)
 	slug := strings.Trim(re.ReplaceAllString(title, "-"), "-")
 	if slug == "" {
 		slug = "change"
 	}
-	if len(slug) > 40 {
-		slug = strings.Trim(slug[:40], "-")
-	}
-	return filepath.ToSlash(fmt.Sprintf("rms/%s-%s", slug, now.Format("20060102-150405")))
+	return slug
 }
