@@ -93,7 +93,7 @@ func (s *reviewState) handleKey(key string, term *terminalState, rows int) bool 
 	case "g":
 		s.moveTo(0)
 	case "G":
-		s.moveTo(len(s.selections) - 1)
+		s.moveTo(len(s.changedLines) - 1)
 	case keys.CtrlD, keys.PageDown:
 		s.move(max(1, (rows-2)/2))
 	case keys.CtrlU, keys.PageUp:
@@ -133,7 +133,7 @@ func (s *reviewState) handleKey(key string, term *terminalState, rows int) bool 
 }
 
 func (s *reviewState) openSelectedLine(term *terminalState) {
-	if !s.hasSelection() {
+	if !s.hasChangedLines() {
 		s.message = "No changed line selected."
 		return
 	}

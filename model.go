@@ -10,7 +10,7 @@ type lineRef struct {
 	Content string
 }
 
-type displaySelection struct {
+type changedLine struct {
 	LineIndex int
 	Ref       lineRef
 	Left      *lineRef
@@ -64,7 +64,7 @@ type reviewState struct {
 	pr              *prContext
 	prChecking      bool
 	draft           reviewDraft
-	selections      []displaySelection
+	changedLines    []changedLine
 	lines           []string
 	cursor          int
 	selectionAnchor *int

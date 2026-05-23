@@ -187,7 +187,7 @@ func TestRenderScreenShowsCursorOnSelectedSideOnly(t *testing.T) {
 		lines: []string{
 			"\x1b[91m 10 removed\x1b[0m       \x1b[92m 10 added\x1b[0m",
 		},
-		selections: []displaySelection{{
+		changedLines: []changedLine{{
 			LineIndex: 0,
 			Ref:       right,
 			Left:      &left,
@@ -217,15 +217,15 @@ func TestRenderScreenKeepsCursorAcrossZeroInSelectedLine(t *testing.T) {
 		"\x1b[92;1m 283 \x1b[0mif len(response.Data) == 0 {",
 	}
 	state := &reviewState{
-		lines:      lines,
-		selections: buildSelections(lines, nil),
+		lines:        lines,
+		changedLines: buildChangedLines(lines, nil),
 	}
-	if len(state.selections) != 1 {
-		t.Fatalf("expected one selectable row, got %d", len(state.selections))
+	if len(state.changedLines) != 1 {
+		t.Fatalf("expected one selectable row, got %d", len(state.changedLines))
 	}
 
 	screen := renderScreen(t, state, 8, 80)
-	row := state.selections[0].LineIndex
+	row := state.changedLines[0].LineIndex
 	zeroCol := strings.Index(screen.line(row), "0")
 	if zeroCol < 0 {
 		t.Fatalf("selected line did not contain zero: %q", screen.line(row))
@@ -248,16 +248,16 @@ func TestRenderScreenKeepsRightLineNumberColorWhenOldSideSelected(t *testing.T) 
 		"\x1b[91m 1387 old name\x1b[0m       \x1b[92m 537 new name\x1b[0m",
 	}
 	state := &reviewState{
-		lines:      lines,
-		selections: buildSelections(lines, nil),
+		lines:        lines,
+		changedLines: buildChangedLines(lines, nil),
 	}
-	if len(state.selections) != 1 {
-		t.Fatalf("expected one selectable row, got %d", len(state.selections))
+	if len(state.changedLines) != 1 {
+		t.Fatalf("expected one selectable row, got %d", len(state.changedLines))
 	}
 	state.selectSide("old")
 
 	screen := renderScreen(t, state, 8, 80)
-	row := state.selections[0].LineIndex
+	row := state.changedLines[0].LineIndex
 	rightLineCol := strings.Index(screen.line(row), "537")
 	if rightLineCol < 0 {
 		t.Fatalf("right line number not found in rendered line: %q", screen.line(row))
@@ -276,15 +276,15 @@ func TestRenderScreenCanSelectAddedLineContainingTripleDash(t *testing.T) {
 		"\x1b[92;1m 561 \x1b[0mbuf.WriteString(\" --- Text\\n\")",
 	}
 	state := &reviewState{
-		lines:      lines,
-		selections: buildSelections(lines, nil),
+		lines:        lines,
+		changedLines: buildChangedLines(lines, nil),
 	}
-	if len(state.selections) != 1 {
-		t.Fatalf("expected one selectable row, got %d", len(state.selections))
+	if len(state.changedLines) != 1 {
+		t.Fatalf("expected one selectable row, got %d", len(state.changedLines))
 	}
 
 	screen := renderScreen(t, state, 8, 100)
-	row := state.selections[0].LineIndex
+	row := state.changedLines[0].LineIndex
 	if !strings.Contains(screen.line(row), " --- Text") {
 		t.Fatalf("rendered line missing triple-dash content: %q", screen.line(row))
 	}
@@ -298,8 +298,8 @@ func TestRenderScreenClearsStaleContentBetweenFrames(t *testing.T) {
 		lines: []string{
 			"short",
 		},
-		selections: []displaySelection{
-			testSelection(lineRef{File: "a.go", Line: 1, Side: "new", Content: "short"}),
+		changedLines: []changedLine{
+			testChangedLine(lineRef{File: "a.go", Line: 1, Side: "new", Content: "short"}),
 		},
 		message: "ok",
 	}
@@ -327,14 +327,14 @@ func TestRenderScreenReviewModeTextSnapshot(t *testing.T) {
 			"32 - `s` opens `$VISUAL` or `$EDITOR`",
 			"33 - `p` submits the pending review, opening `$VISUAL` or `$EDITOR` for an optional review summary",
 		},
-		selections: []displaySelection{
+		changedLines: []changedLine{
 			{LineIndex: 1, Ref: lineRef{File: "README.md", Line: 32, Side: "new", Content: "`s` opens `$VISUAL` or `$EDITOR`"}},
 			{LineIndex: 2, Ref: lineRef{File: "README.md", Line: 33, Side: "new", Content: "`p` submits the pending review, opening `$VISUAL` or `$EDITOR` for an optional review summary"}},
 		},
 		cursor: 1,
 	}
-	state.selections[0].setSideRef(state.selections[0].Ref)
-	state.selections[1].setSideRef(state.selections[1].Ref)
+	state.changedLines[0].setSideRef(state.changedLines[0].Ref)
+	state.changedLines[1].setSideRef(state.changedLines[1].Ref)
 
 	screen := renderScreen(t, state, 8, 160)
 	got := screen.text()
@@ -360,8 +360,8 @@ func TestRenderScreenOmitsStatusRow(t *testing.T) {
 			"README.md --- Text",
 			"33 - " + longContent,
 		},
-		selections: []displaySelection{
-			testSelection(lineRef{File: "README.md", Line: 33, Side: "new", Content: longContent}),
+		changedLines: []changedLine{
+			testChangedLine(lineRef{File: "README.md", Line: 33, Side: "new", Content: longContent}),
 		},
 	}
 
@@ -378,8 +378,8 @@ func TestRenderScreenHelpShowsPRCheckPending(t *testing.T) {
 	state := &reviewState{
 		prChecking: true,
 		lines:      []string{"README.md --- Text"},
-		selections: []displaySelection{
-			testSelection(lineRef{File: "README.md", Line: 33, Side: "new"}),
+		changedLines: []changedLine{
+			testChangedLine(lineRef{File: "README.md", Line: 33, Side: "new"}),
 		},
 	}
 
@@ -393,8 +393,8 @@ func TestRenderScreenHelpShowsPRCheckPending(t *testing.T) {
 func TestRenderScreenOmitsCompletedNoPRStatus(t *testing.T) {
 	state := &reviewState{
 		lines: []string{"README.md --- Text"},
-		selections: []displaySelection{
-			testSelection(lineRef{File: "README.md", Line: 33, Side: "new"}),
+		changedLines: []changedLine{
+			testChangedLine(lineRef{File: "README.md", Line: 33, Side: "new"}),
 		},
 	}
 
@@ -411,8 +411,8 @@ func TestRenderScreenHelpReflectsReviewMode(t *testing.T) {
 		pr:     &prContext{Number: 4},
 		draft:  reviewDraft{Active: true},
 		lines:  []string{"README.md --- Text"},
-		selections: []displaySelection{
-			testSelection(lineRef{File: "README.md", Line: 33, Side: "new"}),
+		changedLines: []changedLine{
+			testChangedLine(lineRef{File: "README.md", Line: 33, Side: "new"}),
 		},
 	}
 
@@ -430,8 +430,8 @@ func TestRenderScreenHelpReflectsPRStatus(t *testing.T) {
 	state := &reviewState{
 		prChecking: true,
 		lines:      []string{"README.md --- Text"},
-		selections: []displaySelection{
-			testSelection(lineRef{File: "README.md", Line: 33, Side: "new"}),
+		changedLines: []changedLine{
+			testChangedLine(lineRef{File: "README.md", Line: 33, Side: "new"}),
 		},
 	}
 
@@ -465,8 +465,8 @@ func TestRenderScreenHelpShowsRelevantDiffSwitch(t *testing.T) {
 		branchAvailable: true,
 		pr:              &prContext{Number: 4},
 		lines:           []string{"README.md --- Text"},
-		selections: []displaySelection{
-			testSelection(lineRef{File: "README.md", Line: 33, Side: "new"}),
+		changedLines: []changedLine{
+			testChangedLine(lineRef{File: "README.md", Line: 33, Side: "new"}),
 		},
 	}
 
@@ -498,8 +498,8 @@ func TestRenderScreenDetectedDraftShowsDraftActions(t *testing.T) {
 		pr:     &prContext{Number: 4},
 		draft:  reviewDraft{Active: true, ID: "review-id", Count: 3},
 		lines:  []string{"README.md --- Text"},
-		selections: []displaySelection{
-			testSelection(lineRef{File: "README.md", Line: 33, Side: "new"}),
+		changedLines: []changedLine{
+			testChangedLine(lineRef{File: "README.md", Line: 33, Side: "new"}),
 		},
 	}
 
@@ -521,11 +521,11 @@ func TestRenderScreenKeepsSelectedRowVisible(t *testing.T) {
 			"line 3",
 			"line 4 selected",
 		},
-		selections: []displaySelection{
+		changedLines: []changedLine{
 			{LineIndex: 3, Ref: lineRef{File: "a.go", Line: 4, Side: "new", Content: "line 4 selected"}},
 		},
 	}
-	state.selections[0].setSideRef(state.selections[0].Ref)
+	state.changedLines[0].setSideRef(state.changedLines[0].Ref)
 
 	screen := renderScreen(t, state, 8, 80)
 	bodyRows := statusRow(8)

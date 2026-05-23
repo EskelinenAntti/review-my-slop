@@ -18,8 +18,8 @@ func render(w io.Writer, state *reviewState, rows, cols int) {
 	state.keepSelectionVisible(rows)
 	bodyRows := rows - 2
 	selectedLine := -1
-	if state.hasSelection() {
-		selectedLine = state.selectedDisplayLine()
+	if state.hasChangedLines() {
+		selectedLine = state.currentDisplayLine()
 	}
 
 	fmt.Fprint(w, "\x1b[H\x1b[2J")
@@ -30,10 +30,10 @@ func render(w io.Writer, state *reviewState, rows, cols int) {
 			continue
 		}
 		line := ansi.Truncate(state.lines[lineIndex], cols)
-		if selection, ok := state.displayLineSelection(lineIndex, cols); ok {
-			fmt.Fprintf(w, "%s\x1b[K\r\n", highlightSelectionSide(line, cols, selection))
-		} else if state.hasSelection() && lineIndex == selectedLine {
-			fmt.Fprintf(w, "%s\x1b[K\r\n", highlightSelectionSide(line, cols, state.selections[state.cursor]))
+		if changedLine, ok := state.displayLineSelection(lineIndex, cols); ok {
+			fmt.Fprintf(w, "%s\x1b[K\r\n", highlightChangedLineSide(line, cols, changedLine))
+		} else if state.hasChangedLines() && lineIndex == selectedLine {
+			fmt.Fprintf(w, "%s\x1b[K\r\n", highlightChangedLineSide(line, cols, state.changedLines[state.cursor]))
 		} else {
 			fmt.Fprintf(w, "%s\x1b[K\r\n", line)
 		}
@@ -52,7 +52,7 @@ func helpText(state *reviewState) string {
 	if state.canSelectRange() {
 		nav += "  v select"
 	}
-	if !state.hasSelection() {
+	if !state.hasChangedLines() {
 		nav = "r reload"
 	}
 	sourceSwitch := ""
@@ -94,8 +94,8 @@ func highlightPlain(s string, width int) string {
 	return "\x1b[7m" + plain + "\x1b[0m"
 }
 
-func highlightSelectionSide(s string, width int, selection displaySelection) string {
-	start, end := selectionHighlightRange(selection, width)
+func highlightChangedLineSide(s string, width int, changedLine changedLine) string {
+	start, end := changedLineHighlightRange(changedLine, width)
 	if start < 0 {
 		start = 0
 	}
@@ -108,22 +108,22 @@ func highlightSelectionSide(s string, width int, selection displaySelection) str
 	return highlightANSIRange(s, width, start, end)
 }
 
-func selectionHighlightRange(selection displaySelection, width int) (int, int) {
-	if selection.Ref.Side == "old" {
-		if selection.Split > 0 {
-			return 0, selection.Split
+func changedLineHighlightRange(changedLine changedLine, width int) (int, int) {
+	if changedLine.Ref.Side == "old" {
+		if changedLine.Split > 0 {
+			return 0, changedLine.Split
 		}
 		return 0, width
 	}
-	if selection.Split > 0 {
-		return selection.Split, width
+	if changedLine.Split > 0 {
+		return changedLine.Split, width
 	}
 	return 0, width
 }
 
-func inferredSplit(line string, selection displaySelection, width int) int {
-	if selection.Split > 0 {
-		return selection.Split
+func inferredSplit(line string, changedLine changedLine, width int) int {
+	if changedLine.Split > 0 {
+		return changedLine.Split
 	}
 	plain := ansi.Strip(line)
 	if matches := anyLineNoRE.FindAllStringSubmatchIndex(plain, -1); len(matches) > 1 {

@@ -52,7 +52,7 @@ func TestChangedLinesIncludesUntrackedFile(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	refs, err := changedLines(nil)
+	refs, err := changedLineRefs(nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -111,7 +111,7 @@ func TestTruncateANSIPreservesEscapeSequences(t *testing.T) {
 	}
 }
 
-func TestBuildSelectionsUsesDisplayedRows(t *testing.T) {
+func TestBuildChangedLinesUsesDisplayedRows(t *testing.T) {
 	lines := []string{
 		"\x1b[1mmain.go\x1b[0m --- Go",
 		"\x1b[2m 10 \x1b[0m old text        \x1b[2m 10 \x1b[0m new text",
@@ -120,76 +120,76 @@ func TestBuildSelectionsUsesDisplayedRows(t *testing.T) {
 		"\x1b[91;1m 11 \x1b[0m removed       \x1b[92;1m 11 \x1b[0m added",
 	}
 
-	selections := buildSelections(lines, nil)
-	if len(selections) != 2 {
-		t.Fatalf("expected 2 selectable rows, got %d", len(selections))
+	changedLines := buildChangedLines(lines, nil)
+	if len(changedLines) != 2 {
+		t.Fatalf("expected 2 selectable rows, got %d", len(changedLines))
 	}
-	if selections[0].LineIndex != 3 || selections[0].Ref.Line != 12 || selections[0].Ref.Side != "new" {
-		t.Fatalf("first selection = %#v", selections[0])
+	if changedLines[0].LineIndex != 3 || changedLines[0].Ref.Line != 12 || changedLines[0].Ref.Side != "new" {
+		t.Fatalf("first changed line = %#v", changedLines[0])
 	}
-	if selections[1].LineIndex != 4 || selections[1].Ref.Line != 11 || selections[1].Ref.Side != "new" {
-		t.Fatalf("second selection = %#v", selections[1])
+	if changedLines[1].LineIndex != 4 || changedLines[1].Ref.Line != 11 || changedLines[1].Ref.Side != "new" {
+		t.Fatalf("second changed line = %#v", changedLines[1])
 	}
-	if selections[1].Left == nil || selections[1].Left.Line != 11 || selections[1].Left.Side != "old" {
-		t.Fatalf("second selection left side = %#v", selections[1].Left)
+	if changedLines[1].Left == nil || changedLines[1].Left.Line != 11 || changedLines[1].Left.Side != "old" {
+		t.Fatalf("second changed line left side = %#v", changedLines[1].Left)
 	}
-	if selections[1].Right == nil || selections[1].Right.Line != 11 || selections[1].Right.Side != "new" {
-		t.Fatalf("second selection right side = %#v", selections[1].Right)
+	if changedLines[1].Right == nil || changedLines[1].Right.Line != 11 || changedLines[1].Right.Side != "new" {
+		t.Fatalf("second changed line right side = %#v", changedLines[1].Right)
 	}
 }
 
-func TestBuildSelectionsDoesNotTreatZeroInContentAsLineNumber(t *testing.T) {
+func TestBuildChangedLinesDoesNotTreatZeroInContentAsLineNumber(t *testing.T) {
 	lines := []string{
 		"\x1b[1minternal/github/github.go\x1b[0m --- Go",
 		"\x1b[92;1m 283 \x1b[0mif len(response.Data) == 0 {",
 	}
 
-	selections := buildSelections(lines, nil)
-	if len(selections) != 1 {
-		t.Fatalf("expected one selectable row, got %d", len(selections))
+	changedLines := buildChangedLines(lines, nil)
+	if len(changedLines) != 1 {
+		t.Fatalf("expected one selectable row, got %d", len(changedLines))
 	}
-	if selections[0].Ref.Side != "new" || selections[0].Ref.Line != 283 {
-		t.Fatalf("selection = %#v, want new side line 283", selections[0])
+	if changedLines[0].Ref.Side != "new" || changedLines[0].Ref.Line != 283 {
+		t.Fatalf("changed line = %#v, want new side line 283", changedLines[0])
 	}
-	if selections[0].Right == nil || selections[0].Right.Line != 283 {
-		t.Fatalf("right side = %#v, want line 283", selections[0].Right)
+	if changedLines[0].Right == nil || changedLines[0].Right.Line != 283 {
+		t.Fatalf("right side = %#v, want line 283", changedLines[0].Right)
 	}
-	if selections[0].Left != nil {
-		t.Fatalf("left side = %#v, want nil for single-sided added row", selections[0].Left)
+	if changedLines[0].Left != nil {
+		t.Fatalf("left side = %#v, want nil for single-sided added row", changedLines[0].Left)
 	}
 }
 
-func TestBuildSelectionsKeepsAddedLineContainingTripleDashSelectable(t *testing.T) {
+func TestBuildChangedLinesKeepsAddedLineContainingTripleDashSelectable(t *testing.T) {
 	lines := []string{
 		"\x1b[1mmain.go\x1b[0m --- Go",
 		"\x1b[92;1m 561 \x1b[0mbuf.WriteString(\" --- Text\\n\")",
 	}
 
-	selections := buildSelections(lines, nil)
-	if len(selections) != 1 {
-		t.Fatalf("expected one selectable row, got %d", len(selections))
+	changedLines := buildChangedLines(lines, nil)
+	if len(changedLines) != 1 {
+		t.Fatalf("expected one selectable row, got %d", len(changedLines))
 	}
-	if selections[0].LineIndex != 1 || selections[0].Ref.Line != 561 || selections[0].Ref.Side != "new" {
-		t.Fatalf("selection = %#v, want new side line 561", selections[0])
+	if changedLines[0].LineIndex != 1 || changedLines[0].Ref.Line != 561 || changedLines[0].Ref.Side != "new" {
+		t.Fatalf("changed line = %#v, want new side line 561", changedLines[0])
 	}
 }
 
-func TestBuildSelectionsSplitsBeforeRightLineNumber(t *testing.T) {
+func TestBuildChangedLinesSplitsBeforeRightLineNumber(t *testing.T) {
 	lines := []string{
 		"\x1b[1mmain.go\x1b[0m --- Go",
 		"\x1b[91m 1387 old\x1b[0m       \x1b[92m 537 new\x1b[0m",
 	}
 
-	selections := buildSelections(lines, nil)
-	if len(selections) != 1 {
-		t.Fatalf("expected one selectable row, got %d", len(selections))
+	changedLines := buildChangedLines(lines, nil)
+	if len(changedLines) != 1 {
+		t.Fatalf("expected one selectable row, got %d", len(changedLines))
 	}
 	rightLineStart := strings.Index(ansi.Strip(lines[1]), "537")
 	if rightLineStart < 0 {
 		t.Fatalf("right line number not found in %q", ansi.Strip(lines[1]))
 	}
-	if selections[0].Split > rightLineStart {
-		t.Fatalf("split = %d, want before or at right line number column %d", selections[0].Split, rightLineStart)
+	if changedLines[0].Split > rightLineStart {
+		t.Fatalf("split = %d, want before or at right line number column %d", changedLines[0].Split, rightLineStart)
 	}
 }
 
@@ -203,12 +203,12 @@ func TestHighlightPlainStripsDiffColors(t *testing.T) {
 	}
 }
 
-func TestHighlightSelectionSidePreservesColorsOutsideCursor(t *testing.T) {
-	selection := displaySelection{
+func TestHighlightChangedLineSidePreservesColorsOutsideCursor(t *testing.T) {
+	row := changedLine{
 		Ref:   lineRef{Side: "new"},
 		Split: 8,
 	}
-	got := highlightSelectionSide("\x1b[31mremoved\x1b[0m  \x1b[32madded\x1b[0m", 16, selection)
+	got := highlightChangedLineSide("\x1b[31mremoved\x1b[0m  \x1b[32madded\x1b[0m", 16, row)
 	if !strings.Contains(got, "\x1b[31m") {
 		t.Fatalf("expected left-side color to be preserved in %q", got)
 	}
@@ -243,18 +243,18 @@ func TestDisplayLineSelectionIncludesIntermediateRows(t *testing.T) {
 			"unchanged context between changed rows",
 			"\x1b[2m 12 \x1b[0m old        \x1b[2m 12 \x1b[0m new",
 		},
-		selections: []displaySelection{
+		changedLines: []changedLine{
 			{LineIndex: 0, Ref: lineRef{File: "a.go", Line: 10, Side: "new"}, Split: 20},
 			{LineIndex: 2, Ref: lineRef{File: "a.go", Line: 12, Side: "new"}, Split: 20},
 		},
 	}
 
-	selection, ok := state.displayLineSelection(1, 80)
+	changedLine, ok := state.displayLineSelection(1, 80)
 	if !ok {
 		t.Fatal("expected intermediate display line to be highlighted")
 	}
-	if selection.Ref.Side != "new" {
-		t.Fatalf("intermediate selection side = %q, want new", selection.Ref.Side)
+	if changedLine.Ref.Side != "new" {
+		t.Fatalf("intermediate changed line side = %q, want new", changedLine.Ref.Side)
 	}
 }
 
@@ -263,8 +263,8 @@ func TestRenderCursorKeepsInverseAcrossLineColorResets(t *testing.T) {
 		lines: []string{
 			"\x1b[92m 10 right side\x1b[0m",
 		},
-		selections: []displaySelection{
-			testSelection(lineRef{File: "a.go", Line: 10, Side: "new", Content: "right side"}),
+		changedLines: []changedLine{
+			testChangedLine(lineRef{File: "a.go", Line: 10, Side: "new", Content: "right side"}),
 		},
 	}
 	var out strings.Builder
@@ -292,11 +292,11 @@ func TestSelectionMovementStaysWithinFileAndSide(t *testing.T) {
 	state := &reviewState{
 		source: sourceBranch,
 		draft:  reviewDraft{Active: true},
-		selections: []displaySelection{
-			testSelection(lineRef{File: "a.go", Line: 10, Side: "new"}),
-			testSelection(lineRef{File: "a.go", Line: 11, Side: "new"}),
-			testSelection(lineRef{File: "a.go", Line: 12, Side: "old"}),
-			testSelection(lineRef{File: "b.go", Line: 1, Side: "new"}),
+		changedLines: []changedLine{
+			testChangedLine(lineRef{File: "a.go", Line: 10, Side: "new"}),
+			testChangedLine(lineRef{File: "a.go", Line: 11, Side: "new"}),
+			testChangedLine(lineRef{File: "a.go", Line: 12, Side: "old"}),
+			testChangedLine(lineRef{File: "b.go", Line: 1, Side: "new"}),
 		},
 	}
 	state.toggleSelection()
@@ -319,9 +319,9 @@ func TestCurrentRangeSortsByLine(t *testing.T) {
 	state := &reviewState{
 		cursor:          0,
 		selectionAnchor: &anchor,
-		selections: []displaySelection{
-			testSelection(lineRef{File: "a.go", Line: 12, Side: "new"}),
-			testSelection(lineRef{File: "a.go", Line: 10, Side: "new"}),
+		changedLines: []changedLine{
+			testChangedLine(lineRef{File: "a.go", Line: 12, Side: "new"}),
+			testChangedLine(lineRef{File: "a.go", Line: 10, Side: "new"}),
 		},
 	}
 
@@ -338,7 +338,7 @@ func TestSelectSideSwitchesReviewTargetOnTwoSidedRow(t *testing.T) {
 	left := lineRef{File: "a.go", Line: 10, Side: "old"}
 	right := lineRef{File: "a.go", Line: 10, Side: "new"}
 	state := &reviewState{
-		selections: []displaySelection{{
+		changedLines: []changedLine{{
 			Ref:   right,
 			Left:  &left,
 			Right: &right,
@@ -353,7 +353,7 @@ func TestSelectSideSwitchesReviewTargetOnTwoSidedRow(t *testing.T) {
 	if state.message != "" {
 		t.Fatalf("side switch message = %q, want no message", state.message)
 	}
-	start, end := selectionHighlightRange(state.selections[0], 80)
+	start, end := changedLineHighlightRange(state.changedLines[0], 80)
 	if start != 0 || end != 24 {
 		t.Fatalf("old highlight range = %d-%d, want 0-24", start, end)
 	}
@@ -365,7 +365,7 @@ func TestSelectSideSwitchesReviewTargetOnTwoSidedRow(t *testing.T) {
 	if state.message != "" {
 		t.Fatalf("side switch message = %q, want no message", state.message)
 	}
-	start, end = selectionHighlightRange(state.selections[0], 80)
+	start, end = changedLineHighlightRange(state.changedLines[0], 80)
 	if start != 24 || end != 80 {
 		t.Fatalf("new highlight range = %d-%d, want 24-80", start, end)
 	}
@@ -379,7 +379,7 @@ func TestSelectionMovementKeepsAnchorSideOnTwoSidedRows(t *testing.T) {
 	state := &reviewState{
 		source: sourceBranch,
 		draft:  reviewDraft{Active: true},
-		selections: []displaySelection{
+		changedLines: []changedLine{
 			{Ref: firstRight, Left: &firstLeft, Right: &firstRight},
 			{Ref: secondRight, Left: &secondLeft, Right: &secondRight},
 		},
@@ -401,8 +401,8 @@ func TestReviewSuggestionRejectsOldSide(t *testing.T) {
 	state := &reviewState{
 		pr:    &prContext{Head: "head", Base: "base"},
 		draft: reviewDraft{Active: true, ID: "review-id"},
-		selections: []displaySelection{
-			testSelection(lineRef{File: "a.go", Line: 10, Side: "old"}),
+		changedLines: []changedLine{
+			testChangedLine(lineRef{File: "a.go", Line: 10, Side: "old"}),
 		},
 	}
 
@@ -419,8 +419,8 @@ func TestToggleSelectionRequiresBranchDraftReview(t *testing.T) {
 	state := &reviewState{
 		source: sourceLocal,
 		draft:  reviewDraft{Active: true},
-		selections: []displaySelection{
-			testSelection(lineRef{File: "a.go", Line: 10, Side: "new"}),
+		changedLines: []changedLine{
+			testChangedLine(lineRef{File: "a.go", Line: 10, Side: "new"}),
 		},
 	}
 
@@ -453,8 +453,8 @@ func TestToggleSelectionRequiresBranchDraftReview(t *testing.T) {
 func TestReviewActionsRequireDraft(t *testing.T) {
 	state := &reviewState{
 		pr: &prContext{Head: "head", Base: "base"},
-		selections: []displaySelection{
-			testSelection(lineRef{File: "a.go", Line: 10, Side: "new"}),
+		changedLines: []changedLine{
+			testChangedLine(lineRef{File: "a.go", Line: 10, Side: "new"}),
 		},
 	}
 
@@ -469,10 +469,10 @@ func TestReviewActionsRequireDraft(t *testing.T) {
 	}
 }
 
-func testSelection(ref lineRef) displaySelection {
-	selection := displaySelection{Ref: ref}
-	selection.setSideRef(ref)
-	return selection
+func testChangedLine(ref lineRef) changedLine {
+	row := changedLine{Ref: ref}
+	row.setSideRef(ref)
+	return row
 }
 
 func TestReviewCommentPayloadOmitsStartForSingleLine(t *testing.T) {

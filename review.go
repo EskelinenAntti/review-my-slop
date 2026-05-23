@@ -15,7 +15,7 @@ func (s *reviewState) reviewComment(term *terminalState) error {
 }
 
 func (s *reviewState) reviewSuggestion(term *terminalState) error {
-	if !s.hasSelection() {
+	if !s.hasChangedLines() {
 		return errors.New("No changed line selected.")
 	}
 	if err := s.requirePR("build suggestion"); err != nil {
@@ -39,7 +39,7 @@ func (s *reviewState) reviewSuggestion(term *terminalState) error {
 }
 
 func (s *reviewState) reviewWithBody(term *terminalState, template string) error {
-	if !s.hasSelection() {
+	if !s.hasChangedLines() {
 		return errors.New("No changed line selected.")
 	}
 	if err := s.requirePR("post review comments"); err != nil {
