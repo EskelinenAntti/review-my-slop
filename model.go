@@ -28,9 +28,8 @@ type reviewRange struct {
 type reviewDraft = github.Draft
 
 type reviewContext struct {
-	PR      *prContext
-	Draft   reviewDraft
-	Threads []github.ReviewThread
+	PR    *prContext
+	Draft reviewDraft
 }
 
 type keyResult struct {
@@ -69,7 +68,6 @@ type reviewState struct {
 	changedLines    []changedLine
 	lines           []string
 	files           []fileHeader
-	threads         []github.ReviewThread
 	cursor          int
 	selectionAnchor *int
 	top             int

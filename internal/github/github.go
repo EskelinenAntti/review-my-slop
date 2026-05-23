@@ -24,23 +24,6 @@ type Draft struct {
 	Count  int
 }
 
-type ReviewThread struct {
-	ID       string
-	File     string
-	Line     int
-	Side     string
-	Pending  bool
-	Comments []ReviewComment
-}
-
-type ReviewComment struct {
-	ID        string
-	Body      string
-	Author    string
-	CreatedAt string
-	Pending   bool
-}
-
 type LineRange struct {
 	Start Line
 	End   Line
@@ -189,101 +172,6 @@ query($pullRequestID: ID!) {
 	return Draft{}
 }
 
-func DetectReviewThreads(pr *PR) []ReviewThread {
-	const query = `
-query($owner: String!, $repo: String!, $number: Int!) {
-  repository(owner: $owner, name: $repo) {
-    pullRequest(number: $number) {
-      reviewThreads(first: 100) {
-        nodes {
-          id
-          path
-          line
-          diffSide
-          isResolved
-          comments(first: 20) {
-            nodes {
-              id
-              body
-              createdAt
-              state
-              author {
-                login
-              }
-              pullRequestReview {
-                state
-              }
-            }
-          }
-        }
-      }
-    }
-  }
-}`
-	var response struct {
-		Repository struct {
-			PullRequest struct {
-				ReviewThreads struct {
-					Nodes []struct {
-						ID         string `json:"id"`
-						Path       string `json:"path"`
-						Line       int    `json:"line"`
-						DiffSide   string `json:"diffSide"`
-						IsResolved bool   `json:"isResolved"`
-						Comments   struct {
-							Nodes []struct {
-								ID        string `json:"id"`
-								Body      string `json:"body"`
-								CreatedAt string `json:"createdAt"`
-								State     string `json:"state"`
-								Author    struct {
-									Login string `json:"login"`
-								} `json:"author"`
-								PullRequestReview struct {
-									State string `json:"state"`
-								} `json:"pullRequestReview"`
-							} `json:"nodes"`
-						} `json:"comments"`
-					} `json:"nodes"`
-				} `json:"reviewThreads"`
-			} `json:"pullRequest"`
-		} `json:"repository"`
-	}
-	err := graphQL(query, map[string]any{
-		"owner":  pr.Owner,
-		"repo":   pr.Repo,
-		"number": pr.Number,
-	}, &response)
-	if err != nil {
-		return nil
-	}
-	var threads []ReviewThread
-	for _, node := range response.Repository.PullRequest.ReviewThreads.Nodes {
-		if node.IsResolved || node.ID == "" || node.Path == "" || node.Line == 0 {
-			continue
-		}
-		thread := ReviewThread{
-			ID:   node.ID,
-			File: node.Path,
-			Line: node.Line,
-			Side: lineSide(node.DiffSide),
-		}
-		for _, commentNode := range node.Comments.Nodes {
-			pending := commentNode.State == "PENDING" || commentNode.PullRequestReview.State == "PENDING"
-			thread.Pending = thread.Pending || pending
-			thread.Comments = append(thread.Comments, ReviewComment{
-				ID:        commentNode.ID,
-				Body:      commentNode.Body,
-				Author:    commentNode.Author.Login,
-				CreatedAt: commentNode.CreatedAt,
-				Pending:   pending,
-			})
-		}
-		threads = append(threads, thread)
-	}
-	return threads
-}
-
 func AddPendingReviewComment(reviewID string, lineRange LineRange, body string) error {
 	const query = `
 mutation($reviewID: ID!, $body: String!, $path: String!, $line: Int!, $side: DiffSide!, $startLine: Int, $startSide: DiffSide) {
@@ -301,28 +189,6 @@ mutation($reviewID: ID!, $body: String!, $path: String!, $line: Int!, $side: Dif
 		} `json:"addPullRequestReviewThread"`
 	}
 	return graphQL(query, ReviewThreadVariables(reviewID, lineRange, body), &response)
-}
-
-func UpdatePendingReviewComment(commentID string, body string) error {
-	const query = `
-mutation($commentID: ID!, $body: String!) {
-  updatePullRequestReviewComment(input: {pullRequestReviewCommentId: $commentID, body: $body}) {
-    pullRequestReviewComment {
-      id
-    }
-  }
-}`
-	var response struct {
-		UpdatePullRequestReviewComment struct {
-			PullRequestReviewComment struct {
-				ID string `json:"id"`
-			} `json:"pullRequestReviewComment"`
-		} `json:"updatePullRequestReviewComment"`
-	}
-	return graphQL(query, map[string]any{
-		"commentID": commentID,
-		"body":      strings.TrimSpace(body),
-	}, &response)
 }
 
 func SubmitPendingReview(reviewID string, body string) error {
@@ -425,11 +291,4 @@ func Side(side string) string {
 		return "LEFT"
 	}
 	return "RIGHT"
-}
-
-func lineSide(side string) string {
-	if side == "LEFT" {
-		return "old"
-	}
-	return "new"
 }

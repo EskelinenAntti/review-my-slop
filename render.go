@@ -31,19 +31,17 @@ func render(w io.Writer, state *reviewState, rows, cols int) {
 		}
 		if row == 0 {
 			if header, ok := state.stickyHeader(); ok {
-				fmt.Fprintf(w, "%s\x1b[K\r\n", renderDiffLine(" ", header.Text, cols))
+				fmt.Fprintf(w, "%s\x1b[K\r\n", ansi.Truncate(header.Text, cols))
 				continue
 			}
 		}
-		lineWidth := diffLineWidth(cols)
-		line := ansi.Truncate(state.lines[lineIndex], lineWidth)
-		mark := state.commentMark(lineIndex)
-		if changedLine, ok := state.displayLineSelection(lineIndex, lineWidth); ok {
-			fmt.Fprintf(w, "%s\x1b[K\r\n", renderDiffLine(mark, highlightChangedLineSide(line, lineWidth, changedLine), cols))
+		line := ansi.Truncate(state.lines[lineIndex], cols)
+		if changedLine, ok := state.displayLineSelection(lineIndex, cols); ok {
+			fmt.Fprintf(w, "%s\x1b[K\r\n", highlightChangedLineSide(line, cols, changedLine))
 		} else if state.hasChangedLines() && lineIndex == selectedLine {
-			fmt.Fprintf(w, "%s\x1b[K\r\n", renderDiffLine(mark, highlightChangedLineSide(line, lineWidth, state.changedLines[state.cursor]), cols))
+			fmt.Fprintf(w, "%s\x1b[K\r\n", highlightChangedLineSide(line, cols, state.changedLines[state.cursor]))
 		} else {
-			fmt.Fprintf(w, "%s\x1b[K\r\n", renderDiffLine(mark, line, cols))
+			fmt.Fprintf(w, "%s\x1b[K\r\n", line)
 		}
 	}
 
@@ -53,20 +51,6 @@ func render(w io.Writer, state *reviewState, rows, cols int) {
 		fmt.Fprint(w, "\x1b[K\r\n")
 	}
 	fmt.Fprintf(w, "\x1b[2m%s\x1b[0m\x1b[K", fit(helpText(state), cols))
-}
-
-func diffLineWidth(cols int) int {
-	return max(1, cols-2)
-}
-
-func renderDiffLine(mark, line string, cols int) string {
-	if cols <= 2 {
-		return ansi.Truncate(mark+line, cols)
-	}
-	if mark == "" {
-		mark = " "
-	}
-	return mark[:1] + " " + ansi.Truncate(line, cols-2)
 }
 
 func (s *reviewState) stickyHeader() (fileHeader, bool) {
