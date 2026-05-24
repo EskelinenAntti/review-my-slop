@@ -251,7 +251,7 @@ func stripHTMLComments(text string) string {
 
 func runCodex(cfg flowConfig, prompt string) error {
 	fmt.Fprintln(cfg.Stdout, "Running codex exec.")
-	return cfg.Runner.Run("codex", []string{"exec", "--cd", mustGetwd(), "--sandbox", "workspace-write", "-"}, prompt, cfg.Stdout, cfg.Stderr)
+	return cfg.Runner.Run("codex", []string{"exec", "--cd", mustGetwd(), "--sandbox", "workspace-write", "--ask-for-approval", "never", "-"}, prompt, cfg.Stdout, cfg.Stderr)
 }
 
 func mustGetwd() string {
