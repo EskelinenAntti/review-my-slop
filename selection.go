@@ -127,7 +127,7 @@ func (s *reviewState) toggleSelection() {
 }
 
 func (s *reviewState) canSelectRange() bool {
-	return s.source == sourceBranch && s.draft.Active
+	return s.canReviewBranchChanges() && s.draft.Active
 }
 
 func (s *reviewState) selectSide(side string) {

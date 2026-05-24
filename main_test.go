@@ -422,8 +422,9 @@ func TestSelectionMovementKeepsAnchorSideOnTwoSidedRows(t *testing.T) {
 
 func TestReviewSuggestionRejectsOldSide(t *testing.T) {
 	state := &reviewState{
-		pr:    &prContext{Head: "head", Base: "base"},
-		draft: reviewDraft{Active: true, ID: "review-id"},
+		source: sourceBranch,
+		pr:     &prContext{Head: "head", Base: "base"},
+		draft:  reviewDraft{Active: true, ID: "review-id"},
 		changedLines: []changedLine{
 			testChangedLine(lineRef{File: "a.go", Line: 10, Side: "old"}),
 		},
@@ -475,7 +476,8 @@ func TestToggleSelectionRequiresBranchDraftReview(t *testing.T) {
 
 func TestReviewActionsRequireDraft(t *testing.T) {
 	state := &reviewState{
-		pr: &prContext{Head: "head", Base: "base"},
+		source: sourceBranch,
+		pr:     &prContext{Head: "head", Base: "base"},
 		changedLines: []changedLine{
 			testChangedLine(lineRef{File: "a.go", Line: 10, Side: "new"}),
 		},
@@ -489,6 +491,76 @@ func TestReviewActionsRequireDraft(t *testing.T) {
 	err = state.reviewSuggestion(&terminalState{})
 	if err == nil || !strings.Contains(err.Error(), "No draft review active") {
 		t.Fatalf("suggestion error = %v, want no-draft error", err)
+	}
+}
+
+func TestReviewActionsRequireBranchChanges(t *testing.T) {
+	state := &reviewState{
+		source: sourceLocal,
+		pr:     &prContext{Head: "head", Base: "base"},
+		draft:  reviewDraft{Active: true, ID: "review-id"},
+		changedLines: []changedLine{
+			testChangedLine(lineRef{File: "a.go", Line: 10, Side: "new"}),
+		},
+	}
+
+	state.startReview()
+	if !strings.Contains(state.message, "reviewing branch changes") {
+		t.Fatalf("start review message = %q, want branch-changes guard", state.message)
+	}
+
+	err := state.reviewComment(&terminalState{})
+	if err == nil || !strings.Contains(err.Error(), "reviewing branch changes") {
+		t.Fatalf("comment error = %v, want branch-changes guard", err)
+	}
+
+	err = state.reviewSuggestion(&terminalState{})
+	if err == nil || !strings.Contains(err.Error(), "reviewing branch changes") {
+		t.Fatalf("suggestion error = %v, want branch-changes guard", err)
+	}
+
+	err = state.submitReview(&terminalState{})
+	if err == nil || !strings.Contains(err.Error(), "reviewing branch changes") {
+		t.Fatalf("submit error = %v, want branch-changes guard", err)
+	}
+
+	state.message = ""
+	state.discardReview()
+	if !strings.Contains(state.message, "reviewing branch changes") {
+		t.Fatalf("delete draft message = %q, want branch-changes guard", state.message)
+	}
+}
+
+func TestReviewabilityFollowsDiffArgs(t *testing.T) {
+	local := newReviewState(nil)
+	if local.canReviewBranchChanges() {
+		t.Fatal("plain local diff should not be reviewable")
+	}
+
+	branch := newReviewState([]string{"main...HEAD"})
+	if !branch.canReviewBranchChanges() {
+		t.Fatal("triple-dot branch diff should be reviewable")
+	}
+
+	staged := newReviewState([]string{"--staged"})
+	if staged.canReviewBranchChanges() {
+		t.Fatal("staged local diff should not be reviewable")
+	}
+}
+
+func TestSubmitReviewUsesUppercaseP(t *testing.T) {
+	state := &reviewState{
+		reviewable: true,
+	}
+
+	state.handleKey("p", &terminalState{}, 8)
+	if state.message != "" {
+		t.Fatalf("lowercase p message = %q, want no action", state.message)
+	}
+
+	state.handleKey("P", &terminalState{}, 8)
+	if !strings.Contains(state.message, "No active GitHub PR") {
+		t.Fatalf("uppercase P message = %q, want submit-review path", state.message)
 	}
 }
 

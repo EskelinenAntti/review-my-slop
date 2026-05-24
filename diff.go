@@ -88,7 +88,7 @@ func (s *reviewState) reloadSourceAt(ref lineRef) error {
 	s.files = files
 	s.changedLines = buildChangedLines(lines, refs)
 	s.restoreCursor(ref)
-	s.message = fmt.Sprintf("Showing %s changes.", sourceLabel(s.source))
+	s.message = fmt.Sprintf("Showing %s changes.", sourceLabel(s.source, s.canReviewBranchChanges()))
 	return nil
 }
 
@@ -98,7 +98,7 @@ func loadDiff(args []string, source diffSource) ([]lineRef, []string, []fileHead
 		return nil, nil, nil, err
 	}
 	if len(refs) == 0 {
-		return refs, []string{fmt.Sprintf("No %s changes.", sourceLabel(source))}, nil, nil
+		return refs, []string{fmt.Sprintf("No %s changes.", sourceLabel(source, reviewableDiffArgs(args)))}, nil, nil
 	}
 	diff, err := prettyDiff(args)
 	if err != nil {
@@ -108,11 +108,23 @@ func loadDiff(args []string, source diffSource) ([]lineRef, []string, []fileHead
 	return refs, lines, buildFileHeaders(lines), nil
 }
 
-func sourceLabel(source diffSource) string {
-	if source == sourceBranch {
+func sourceLabel(source diffSource, reviewable bool) string {
+	if source == sourceBranch || reviewable {
 		return "branch"
 	}
 	return "uncommitted"
+}
+
+func reviewableDiffArgs(args []string) bool {
+	for _, arg := range args {
+		if strings.HasPrefix(arg, "-") {
+			continue
+		}
+		if strings.Contains(arg, "...") {
+			return true
+		}
+	}
+	return false
 }
 
 func splitLines(data []byte) []string {

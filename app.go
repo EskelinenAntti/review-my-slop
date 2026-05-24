@@ -66,6 +66,7 @@ func newReviewState(args []string) *reviewState {
 		args:       args,
 		source:     sourceLocal,
 		sourceArgs: args,
+		reviewable: reviewableDiffArgs(args),
 		prChecking: true,
 		lines:      []string{"Gathering the diff..."},
 	}
@@ -120,7 +121,7 @@ func (s *reviewState) handleKey(key string, term *terminalState, rows int) bool 
 		if err := s.reviewSuggestion(term); err != nil {
 			s.message = err.Error()
 		}
-	case "p":
+	case "P":
 		if err := s.submitReview(term); err != nil {
 			s.message = err.Error()
 		}
@@ -147,7 +148,7 @@ func (s *reviewState) openSelectedLine(term *terminalState) {
 		s.message = err.Error()
 		return
 	}
-	if s.source == sourceLocal {
+	if !s.canReviewBranchChanges() {
 		if err := s.reloadSourceAt(ref); err != nil {
 			s.message = err.Error()
 			return

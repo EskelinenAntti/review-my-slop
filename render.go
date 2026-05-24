@@ -78,11 +78,20 @@ func helpText(state *reviewState) string {
 	if !state.hasChangedLines() {
 		nav = "r reload"
 	}
+	if !state.canReviewBranchChanges() {
+		if state.prChecking {
+			return fmt.Sprintf(" %s  checking PR  e open  r reload  q quit ", nav)
+		}
+		if state.pr != nil {
+			return fmt.Sprintf(" %s  e open  o PR  r reload  q quit ", nav)
+		}
+		return fmt.Sprintf(" %s  e open  r reload  q quit ", nav)
+	}
 	if state.prChecking {
 		return fmt.Sprintf(" %s  checking PR  e open  r reload  q quit ", nav)
 	}
 	if state.draft.Active {
-		return fmt.Sprintf(" %s  c add comment  s add suggestion  p submit review  D delete draft  e open  o PR  r reload  q quit ", nav)
+		return fmt.Sprintf(" %s  c add comment  s add suggestion  P submit review  D delete draft  e open  o PR  r reload  q quit ", nav)
 	}
 	if state.pr == nil {
 		return fmt.Sprintf(" %s  e open  r reload  q quit ", nav)

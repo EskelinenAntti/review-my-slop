@@ -18,6 +18,9 @@ func (s *reviewState) reviewSuggestion(term *terminalState) error {
 	if !s.hasChangedLines() {
 		return errors.New("No changed line selected.")
 	}
+	if err := s.requireReviewableSource("add suggestion"); err != nil {
+		return err
+	}
 	if err := s.requirePR("build suggestion"); err != nil {
 		return err
 	}
@@ -41,6 +44,9 @@ func (s *reviewState) reviewSuggestion(term *terminalState) error {
 func (s *reviewState) reviewWithBody(term *terminalState, template string) error {
 	if !s.hasChangedLines() {
 		return errors.New("No changed line selected.")
+	}
+	if err := s.requireReviewableSource("add comment"); err != nil {
+		return err
 	}
 	if err := s.requirePR("post review comments"); err != nil {
 		return err
@@ -74,6 +80,10 @@ func (s *reviewState) reviewWithBody(term *terminalState, template string) error
 }
 
 func (s *reviewState) startReview() {
+	if err := s.requireReviewableSource("start review"); err != nil {
+		s.message = err.Error()
+		return
+	}
 	if err := s.requirePR("start review"); err != nil {
 		s.message = err.Error()
 		return
@@ -93,6 +103,10 @@ func (s *reviewState) startReview() {
 }
 
 func (s *reviewState) discardReview() {
+	if err := s.requireReviewableSource("delete draft review"); err != nil {
+		s.message = err.Error()
+		return
+	}
 	if !s.draft.Active {
 		s.message = "No draft review to delete."
 		return
@@ -108,6 +122,9 @@ func (s *reviewState) discardReview() {
 }
 
 func (s *reviewState) submitReview(term *terminalState) error {
+	if err := s.requireReviewableSource("submit review"); err != nil {
+		return err
+	}
 	if err := s.requirePR("submit review"); err != nil {
 		return err
 	}
@@ -163,6 +180,17 @@ func (s *reviewState) requireDraft(action string) error {
 		return nil
 	}
 	return fmt.Errorf("No draft review active. Cannot %s.", action)
+}
+
+func (s *reviewState) canReviewBranchChanges() bool {
+	return s.reviewable || s.source == sourceBranch
+}
+
+func (s *reviewState) requireReviewableSource(action string) error {
+	if s.canReviewBranchChanges() {
+		return nil
+	}
+	return fmt.Errorf("Review actions are only available while reviewing branch changes. Cannot %s.", action)
 }
 
 func editReviewBody(term *terminalState, template string) (string, error) {

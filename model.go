@@ -60,6 +60,7 @@ type reviewState struct {
 	args            []string
 	source          diffSource
 	sourceArgs      []string
+	reviewable      bool
 	localAvailable  bool
 	branchAvailable bool
 	pr              *prContext

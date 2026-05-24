@@ -68,12 +68,12 @@ Keys:
 - `h` / `l` choose the left or right side of a side-by-side changed row
 - `v` starts or clears a visual selection for a same-file, same-side range while
   reviewing branch changes
-- `R` starts a pending GitHub PR review
+- `R` starts a pending GitHub PR review while reviewing branch changes
 - `c` opens `$VISUAL` or `$EDITOR` and adds the body as a draft comment when
   review mode is active
 - `s` opens `$VISUAL` or `$EDITOR` with a prefilled `suggestion` block for the
   right side, then adds it as a draft comment when review mode is active
-- `p` submits the pending review, opening `$VISUAL` or `$EDITOR` for an optional
+- `P` submits the pending review, opening `$VISUAL` or `$EDITOR` for an optional
   review summary
 - `D` deletes the pending GitHub review
 - `e` or `Enter` opens the selected line in `$VISUAL` or `$EDITOR`

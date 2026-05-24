@@ -345,7 +345,7 @@ func TestRenderScreenReviewModeTextSnapshot(t *testing.T) {
 
 
 
- h/j/k/l move  v select  c add comment  s add suggestion  p submit review  D delete draft  e open  o PR  r reload  q quit`, "\n")
+ h/j/k/l move  v select  c add comment  s add suggestion  P submit review  D delete draft  e open  o PR  r reload  q quit`, "\n")
 	if got != want {
 		t.Fatalf("screen text mismatch\ngot:\n%s\n\nwant:\n%s", got, want)
 	}
@@ -399,8 +399,9 @@ func TestRenderScreenKeepsSelectedRowBelowStickyFileHeader(t *testing.T) {
 func TestRenderScreenOmitsStatusRow(t *testing.T) {
 	longContent := "`p` submits the pending review, opening `$VISUAL` or `$EDITOR` for an optional review summary"
 	state := &reviewState{
-		pr:    &prContext{Number: 4},
-		draft: reviewDraft{Active: true, Count: 2},
+		source: sourceBranch,
+		pr:     &prContext{Number: 4},
+		draft:  reviewDraft{Active: true, Count: 2},
 		lines: []string{
 			"README.md --- Text",
 			"33 - " + longContent,
@@ -421,6 +422,7 @@ func TestRenderScreenOmitsStatusRow(t *testing.T) {
 
 func TestRenderScreenHelpShowsPRCheckPending(t *testing.T) {
 	state := &reviewState{
+		source:     sourceBranch,
 		prChecking: true,
 		lines:      []string{"README.md --- Text"},
 		changedLines: []changedLine{
@@ -466,13 +468,14 @@ func TestRenderScreenHelpReflectsReviewMode(t *testing.T) {
 	if strings.Contains(help, "R start review") {
 		t.Fatalf("active review help should not show start-review action: %q", help)
 	}
-	if !strings.Contains(help, "p submit review") || !strings.Contains(help, "D delete draft") {
+	if !strings.Contains(help, "P submit review") || !strings.Contains(help, "D delete draft") {
 		t.Fatalf("active review help = %q, want submit and delete draft actions", help)
 	}
 }
 
 func TestRenderScreenHelpReflectsPRStatus(t *testing.T) {
 	state := &reviewState{
+		source:     sourceBranch,
 		prChecking: true,
 		lines:      []string{"README.md --- Text"},
 		changedLines: []changedLine{
