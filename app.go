@@ -1,4 +1,4 @@
-package main
+package slop
 
 import (
 	"fmt"
@@ -9,7 +9,7 @@ import (
 	"github.com/anttieskelinen/review-my-slop/internal/keys"
 )
 
-func run(args []string, stdout io.Writer) error {
+func Run(args []string, stdout io.Writer) error {
 	return reviewTUI(args, loadDiffAsync(args, sourceLocal), stdout)
 }
 

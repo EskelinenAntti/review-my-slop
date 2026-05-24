@@ -1,4 +1,4 @@
-package main
+package slop
 
 import "github.com/anttieskelinen/review-my-slop/internal/github"
 

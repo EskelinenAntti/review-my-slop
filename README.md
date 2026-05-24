@@ -13,6 +13,18 @@ It's written in Go.
 slop
 ```
 
+Install locally with:
+
+```sh
+go install ./cmd/slop
+```
+
+Or from the module path:
+
+```sh
+go install github.com/anttieskelinen/review-my-slop/cmd/slop@latest
+```
+
 Review My Slop requires `difft` and shows the current `git diff` through
 difftastic, then opens an interactive review view. Pass the same arguments you
 would pass to `git diff`.
