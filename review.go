@@ -230,7 +230,25 @@ func suggestionTemplate(reviewRange reviewRange, pr *prContext) (string, error) 
 	if err != nil {
 		return "", err
 	}
-	return "```suggestion\n" + strings.Join(lines, "\n") + "\n```\n", nil
+	content := strings.Join(lines, "\n")
+	fence := suggestionFence(content)
+	return fence + "suggestion\n" + content + "\n" + fence + "\n", nil
+}
+
+func suggestionFence(content string) string {
+	longest := 0
+	current := 0
+	for _, ch := range content {
+		if ch == '`' {
+			current++
+			if current > longest {
+				longest = current
+			}
+			continue
+		}
+		current = 0
+	}
+	return strings.Repeat("`", max(3, longest+1))
 }
 
 func sourceLines(reviewRange reviewRange, pr *prContext) ([]string, error) {

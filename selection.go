@@ -112,8 +112,8 @@ func (s *reviewState) toggleSelection() {
 		s.message = "No changed line selected."
 		return
 	}
-	if !s.canSelectRange() {
-		s.message = "Multi-line selection is only available while reviewing branch changes."
+	if err := s.canSelectRangeError(); err != nil {
+		s.message = err.Error()
 		return
 	}
 	if s.selectionAnchor != nil {
@@ -127,7 +127,20 @@ func (s *reviewState) toggleSelection() {
 }
 
 func (s *reviewState) canSelectRange() bool {
-	return s.canReviewBranchChanges() && s.draft.Active
+	return s.canSelectRangeError() == nil
+}
+
+func (s *reviewState) canSelectRangeError() error {
+	if err := s.requireReviewableSource("select multiple lines"); err != nil {
+		return err
+	}
+	if err := s.requirePR("select multiple lines"); err != nil {
+		return err
+	}
+	if err := s.requireDraft("select multiple lines"); err != nil {
+		return err
+	}
+	return nil
 }
 
 func (s *reviewState) selectSide(side string) {

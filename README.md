@@ -39,12 +39,6 @@ git slop main...HEAD
 
 Option 2: replace `git diff` through Git's external diff configuration.
 
-For one-off usage:
-
-```sh
-git -c diff.external=slop diff
-```
-
 To make `git diff` use Review My Slop by default, add this to `~/.gitconfig`:
 
 ```gitconfig
@@ -56,7 +50,7 @@ Then run `git diff`, `git diff --staged`, or `git diff main...HEAD` as usual.
 Other Git commands that show diffs still need `--ext-diff`, for example
 `git show --ext-diff` or `git log -p --ext-diff`.
 
-To opt out for one command, use `--no-ext-diff`:
+If you need to opt out, you can use `--no-ext-diff`:
 
 ```sh
 git diff --no-ext-diff

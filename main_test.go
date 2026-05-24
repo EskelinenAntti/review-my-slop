@@ -291,6 +291,7 @@ func TestRenderCursorKeepsInverseAcrossLineColorResets(t *testing.T) {
 func TestSelectionMovementStaysWithinFileAndSide(t *testing.T) {
 	state := &reviewState{
 		source: sourceBranch,
+		pr:     &prContext{Head: "head", Base: "base"},
 		draft:  reviewDraft{Active: true},
 		changedLines: []changedLine{
 			testChangedLine(lineRef{File: "a.go", Line: 10, Side: "new"}),
@@ -457,14 +458,25 @@ func TestToggleSelectionRequiresBranchDraftReview(t *testing.T) {
 	}
 
 	state.source = sourceBranch
+	state.draft = reviewDraft{Active: true}
+	state.message = ""
+	state.toggleSelection()
+	if state.selectionAnchor != nil {
+		t.Fatal("expected branch source without PR to reject multi-line selection")
+	}
+	if !strings.Contains(state.message, "No active GitHub PR") {
+		t.Fatalf("message = %q, want no-PR hint", state.message)
+	}
+
+	state.pr = &prContext{Head: "head", Base: "base"}
 	state.draft = reviewDraft{}
 	state.message = ""
 	state.toggleSelection()
 	if state.selectionAnchor != nil {
 		t.Fatal("expected branch source without draft review to reject multi-line selection")
 	}
-	if !strings.Contains(state.message, "reviewing branch changes") {
-		t.Fatalf("message = %q, want reviewing branch changes hint", state.message)
+	if !strings.Contains(state.message, "No draft review active") {
+		t.Fatalf("message = %q, want no-draft hint", state.message)
 	}
 
 	state.draft = reviewDraft{Active: true}
@@ -626,6 +638,22 @@ func TestReviewThreadVariablesOmitsStartForSingleLine(t *testing.T) {
 	}
 	if _, ok := got["startLine"]; ok {
 		t.Fatalf("single-line variables included startLine: %#v", got)
+	}
+}
+
+func TestSuggestionFenceUsesTripleBackticksForPlainContent(t *testing.T) {
+	got := suggestionFence("plain content")
+
+	if got != "```" {
+		t.Fatalf("fence = %q, want triple backticks", got)
+	}
+}
+
+func TestSuggestionFenceOutrunsMarkdownFences(t *testing.T) {
+	got := suggestionFence("before\n```md\n# title\n```\nafter")
+
+	if got != "````" {
+		t.Fatalf("fence = %q, want four backticks", got)
 	}
 }
 
