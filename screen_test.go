@@ -368,6 +368,34 @@ func TestRenderScreenShowsStickyFileHeader(t *testing.T) {
 	}
 }
 
+func TestRenderScreenKeepsSelectedRowBelowStickyFileHeader(t *testing.T) {
+	state := &reviewState{
+		top: 2,
+		lines: []string{
+			"a.go --- Go",
+			" 1 first",
+			" 2 selected",
+			" 3 third",
+		},
+		files: []fileHeader{{Line: 0, File: "a.go", Text: "a.go --- Go"}},
+		changedLines: []changedLine{
+			{LineIndex: 2, Ref: lineRef{File: "a.go", Line: 2, Side: "new", Content: "selected"}},
+		},
+	}
+	state.changedLines[0].setSideRef(state.changedLines[0].Ref)
+
+	screen := renderScreen(t, state, 8, 40)
+	if got := screen.trimmedLine(0); got != "a.go --- Go" {
+		t.Fatalf("sticky header = %q, want file header", got)
+	}
+	if got := screen.trimmedLine(1); got != " 2 selected" {
+		t.Fatalf("selected row = %q, want visible below sticky header", got)
+	}
+	if _, _, ok := screen.inverseRange(1); !ok {
+		t.Fatalf("selected row was not highlighted below sticky header:\n%s", screen.text())
+	}
+}
+
 func TestRenderScreenOmitsStatusRow(t *testing.T) {
 	longContent := "`p` submits the pending review, opening `$VISUAL` or `$EDITOR` for an optional review summary"
 	state := &reviewState{

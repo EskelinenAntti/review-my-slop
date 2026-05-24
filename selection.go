@@ -95,6 +95,12 @@ func (s *reviewState) keepSelectionVisible(rows int) {
 	if s.top < 0 {
 		s.top = 0
 	}
+	if _, ok := s.stickyHeader(); ok && selectedLine == s.top && bodyRows > 1 {
+		s.top--
+		if s.top < 0 {
+			s.top = 0
+		}
+	}
 }
 
 func (s *reviewState) currentDisplayLine() int {
