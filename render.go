@@ -82,12 +82,12 @@ func helpText(state *reviewState) string {
 		return fmt.Sprintf(" %s  checking PR  e open  r reload  q quit ", nav)
 	}
 	if state.draft.Active {
-		return fmt.Sprintf(" %s  c add comment  s add suggestion  p submit review  D delete draft  e open  o open PR  r reload  q quit ", nav)
+		return fmt.Sprintf(" %s  c add comment  s add suggestion  p submit review  D delete draft  e open  o PR  r reload  q quit ", nav)
 	}
 	if state.pr == nil {
 		return fmt.Sprintf(" %s  e open  r reload  q quit ", nav)
 	}
-	return fmt.Sprintf(" %s  R start review  e open  o open PR  r reload  q quit ", nav)
+	return fmt.Sprintf(" %s  R start review  e open  o PR  r reload  q quit ", nav)
 }
 
 func fit(s string, width int) string {

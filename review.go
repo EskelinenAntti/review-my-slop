@@ -135,7 +135,7 @@ func (s *reviewState) submitReview(term *terminalState) error {
 }
 
 func (s *reviewState) openPR(term *terminalState) {
-	if err := s.requirePR("open PR"); err != nil {
+	if err := s.requirePR("PR"); err != nil {
 		s.message = err.Error()
 		return
 	}

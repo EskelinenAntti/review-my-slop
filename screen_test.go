@@ -345,7 +345,7 @@ func TestRenderScreenReviewModeTextSnapshot(t *testing.T) {
 
 
 
- h/j/k/l move  v select  c add comment  s add suggestion  p submit review  D delete draft  e open  o open PR  r reload  q quit`, "\n")
+ h/j/k/l move  v select  c add comment  s add suggestion  p submit review  D delete draft  e open  o PR  r reload  q quit`, "\n")
 	if got != want {
 		t.Fatalf("screen text mismatch\ngot:\n%s\n\nwant:\n%s", got, want)
 	}
@@ -499,7 +499,7 @@ func TestRenderScreenHelpReflectsPRStatus(t *testing.T) {
 	state.pr = &prContext{Number: 4}
 	screen = renderScreen(t, state, 8, 100)
 	help = screen.trimmedLine(helpRow(8))
-	if !strings.Contains(help, "R start review") || !strings.Contains(help, "o open PR") || strings.Contains(help, "c comment") || strings.Contains(help, "s suggest") {
+	if !strings.Contains(help, "R start review") || !strings.Contains(help, "o PR") || strings.Contains(help, "c comment") || strings.Contains(help, "s suggest") {
 		t.Fatalf("PR help = %q, want start-review and open-PR without comment actions", help)
 	}
 }
