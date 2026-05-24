@@ -134,6 +134,20 @@ func (s *reviewState) submitReview(term *terminalState) error {
 	return nil
 }
 
+func (s *reviewState) openPR(term *terminalState) {
+	if err := s.requirePR("open PR"); err != nil {
+		s.message = err.Error()
+		return
+	}
+	if err := withNormalTerminal(term, func() error {
+		return github.OpenPR()
+	}); err != nil {
+		s.message = err.Error()
+		return
+	}
+	s.message = fmt.Sprintf("Opened PR #%d.", s.pr.Number)
+}
+
 func (s *reviewState) requirePR(action string) error {
 	if s.pr != nil {
 		return nil
@@ -152,7 +166,7 @@ func (s *reviewState) requireDraft(action string) error {
 }
 
 func editReviewBody(term *terminalState, template string) (string, error) {
-	file, err := os.CreateTemp("", "rms-review-*.md")
+	file, err := os.CreateTemp("", "slop-review-*.md")
 	if err != nil {
 		return "", err
 	}

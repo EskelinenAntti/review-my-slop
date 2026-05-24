@@ -57,6 +57,15 @@ func DetectPR() *PR {
 	return &pr
 }
 
+func OpenPR() error {
+	cmd := exec.Command("gh", "pr", "view", "--web")
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("gh pr view --web failed: %s", strings.TrimSpace(string(out)))
+	}
+	return nil
+}
+
 func PostReviewComment(pr *PR, lineRange LineRange, body string) error {
 	data, err := json.Marshal(ReviewCommentPayload(pr, lineRange, body))
 	if err != nil {

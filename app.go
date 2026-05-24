@@ -25,7 +25,7 @@ func reviewTUI(args []string, initialDiff <-chan diffResult, stdout io.Writer) e
 		}
 		fmt.Fprintln(stdout, strings.Join(result.Lines, "\n"))
 		fmt.Fprintln(stdout)
-		fmt.Fprintln(stdout, "Interactive review needs a terminal. Run `go run .` directly, then use j/k to move, e to open, q to quit.")
+		fmt.Fprintln(stdout, "Interactive review needs a terminal. Run `slop` directly, then use j/k to move, e to open, q to quit.")
 		return nil
 	}
 	defer term.restore()
@@ -98,12 +98,10 @@ func (s *reviewState) handleKey(key string, term *terminalState, rows int) bool 
 		s.move(max(1, (rows-2)/2))
 	case keys.CtrlU, keys.PageUp:
 		s.move(-max(1, (rows-2)/2))
-	case keys.Tab:
-		if err := s.switchSource(); err != nil {
-			s.message = err.Error()
-		}
 	case "e", keys.Enter:
 		s.openSelectedLine(term)
+	case "o":
+		s.openPR(term)
 	case "r":
 		if err := s.reloadSource(); err != nil {
 			s.message = err.Error()
@@ -147,9 +145,15 @@ func (s *reviewState) openSelectedLine(term *terminalState) {
 		return openEditor(ref.File, ref.Line)
 	}); err != nil {
 		s.message = err.Error()
-	} else {
-		s.message = fmt.Sprintf("Opened %s:%d", ref.File, ref.Line)
+		return
 	}
+	if s.source == sourceLocal {
+		if err := s.reloadSourceAt(ref); err != nil {
+			s.message = err.Error()
+			return
+		}
+	}
+	s.message = fmt.Sprintf("Opened %s:%d", ref.File, ref.Line)
 }
 
 func readKeyAsync(r io.Reader) <-chan keyResult {

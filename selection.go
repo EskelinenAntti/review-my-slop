@@ -44,6 +44,38 @@ func (s *reviewState) moveTo(next int) {
 	s.message = ""
 }
 
+func (s *reviewState) restoreCursor(ref lineRef) {
+	if !s.hasChangedLines() {
+		s.cursor = 0
+		s.top = 0
+		return
+	}
+	if ref.File == "" || ref.Line == 0 {
+		s.cursor = 0
+		s.top = 0
+		return
+	}
+	best := -1
+	for i, changedLine := range s.changedLines {
+		if side := changedLine.sideRef(ref.Side); side != nil {
+			if side.File == ref.File && side.Line == ref.Line {
+				best = i
+				break
+			}
+			if best < 0 && side.File == ref.File {
+				best = i
+			}
+		}
+	}
+	if best < 0 {
+		best = 0
+	}
+	s.cursor = best
+	if ref := s.changedLines[best].sideRef(ref.Side); ref != nil {
+		s.changedLines[best].Ref = *ref
+	}
+}
+
 func (s *reviewState) keepSelectionVisible(rows int) {
 	if !s.hasChangedLines() {
 		s.top = 0

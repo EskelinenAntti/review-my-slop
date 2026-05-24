@@ -71,65 +71,25 @@ func (s *reviewState) applyDiffResult(result diffResult) {
 	}
 }
 
-func (s *reviewState) switchSource() error {
-	if s.source == sourceLocal {
-		if s.prChecking {
-			return errors.New("Checking branch changes.")
-		}
-		if !s.branchAvailable {
-			return errors.New("Branch changes are not available.")
-		}
-		return s.switchToSource(sourceBranch)
-	}
-	if !s.localAvailable {
-		return errors.New("No uncommitted changes found.")
-	}
-	return s.switchToSource(sourceLocal)
-}
-
 func (s *reviewState) reloadSource() error {
-	return s.switchToSource(s.source)
+	return s.reloadSourceAt(s.current())
 }
 
-func (s *reviewState) switchToSource(source diffSource) error {
-	args, err := s.argsForSource(source)
+func (s *reviewState) reloadSourceAt(ref lineRef) error {
+	refs, lines, files, err := loadDiff(s.sourceArgs, s.source)
 	if err != nil {
 		return err
-	}
-	refs, lines, files, err := loadDiff(args, source)
-	if err != nil {
-		return err
-	}
-	if len(refs) == 0 {
-		return fmt.Errorf("No %s changes found.", sourceLabel(source))
 	}
 	s.clearSelection()
-	s.source = source
-	s.sourceArgs = args
-	if source == sourceLocal {
+	if s.source == sourceLocal {
 		s.localAvailable = len(refs) > 0
 	}
 	s.lines = lines
 	s.files = files
 	s.changedLines = buildChangedLines(lines, refs)
-	s.cursor = 0
-	s.top = 0
-	s.message = fmt.Sprintf("Showing %s changes.", sourceLabel(source))
+	s.restoreCursor(ref)
+	s.message = fmt.Sprintf("Showing %s changes.", sourceLabel(s.source))
 	return nil
-}
-
-func (s *reviewState) argsForSource(source diffSource) ([]string, error) {
-	switch source {
-	case sourceLocal:
-		return s.args, nil
-	case sourceBranch:
-		if s.pr == nil {
-			return nil, errors.New("No active GitHub PR found. Branch changes are not available.")
-		}
-		return []string{s.pr.Base + "...HEAD"}, nil
-	default:
-		return nil, fmt.Errorf("unknown diff source %q", source)
-	}
 }
 
 func loadDiff(args []string, source diffSource) ([]lineRef, []string, []fileHeader, error) {

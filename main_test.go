@@ -371,6 +371,29 @@ func TestSelectSideSwitchesReviewTargetOnTwoSidedRow(t *testing.T) {
 	}
 }
 
+func TestRestoreCursorKeepsSameLineAndSide(t *testing.T) {
+	left := lineRef{File: "a.go", Line: 10, Side: "old"}
+	right := lineRef{File: "a.go", Line: 10, Side: "new"}
+	state := &reviewState{
+		cursor: 1,
+		top:    4,
+		changedLines: []changedLine{
+			testChangedLine(lineRef{File: "a.go", Line: 9, Side: "new"}),
+			{Ref: right, Left: &left, Right: &right},
+			testChangedLine(lineRef{File: "b.go", Line: 1, Side: "new"}),
+		},
+	}
+
+	state.restoreCursor(lineRef{File: "a.go", Line: 10, Side: "old"})
+
+	if state.cursor != 1 {
+		t.Fatalf("cursor = %d, want restored row 1", state.cursor)
+	}
+	if state.current().Side != "old" || state.current().Line != 10 {
+		t.Fatalf("current = %#v, want old side line 10", state.current())
+	}
+}
+
 func TestSelectionMovementKeepsAnchorSideOnTwoSidedRows(t *testing.T) {
 	firstLeft := lineRef{File: "a.go", Line: 10, Side: "old"}
 	firstRight := lineRef{File: "a.go", Line: 10, Side: "new"}

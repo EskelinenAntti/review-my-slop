@@ -345,7 +345,7 @@ func TestRenderScreenReviewModeTextSnapshot(t *testing.T) {
 
 
 
- h/j/k/l move  v select  c add comment  s add suggestion  p submit review  D delete draft  e open  r reload  q quit`, "\n")
+ h/j/k/l move  v select  c add comment  s add suggestion  p submit review  D delete draft  e open  o open PR  r reload  q quit`, "\n")
 	if got != want {
 		t.Fatalf("screen text mismatch\ngot:\n%s\n\nwant:\n%s", got, want)
 	}
@@ -471,12 +471,12 @@ func TestRenderScreenHelpReflectsPRStatus(t *testing.T) {
 	state.pr = &prContext{Number: 4}
 	screen = renderScreen(t, state, 8, 100)
 	help = screen.trimmedLine(helpRow(8))
-	if !strings.Contains(help, "R start review") || strings.Contains(help, "c comment") || strings.Contains(help, "s suggest") {
-		t.Fatalf("PR help = %q, want start-review without comment actions", help)
+	if !strings.Contains(help, "R start review") || !strings.Contains(help, "o open PR") || strings.Contains(help, "c comment") || strings.Contains(help, "s suggest") {
+		t.Fatalf("PR help = %q, want start-review and open-PR without comment actions", help)
 	}
 }
 
-func TestRenderScreenHelpShowsRelevantDiffSwitch(t *testing.T) {
+func TestRenderScreenHelpDoesNotShowDiffSwitch(t *testing.T) {
 	state := &reviewState{
 		source:          sourceLocal,
 		branchAvailable: true,
@@ -489,23 +489,8 @@ func TestRenderScreenHelpShowsRelevantDiffSwitch(t *testing.T) {
 
 	screen := renderScreen(t, state, 8, 120)
 	help := screen.trimmedLine(helpRow(8))
-	if !strings.Contains(help, "Tab diff branch") || strings.Contains(help, "Tab diff uncommitted") {
-		t.Fatalf("local help = %q, want branch diff switch", help)
-	}
-
-	state.source = sourceBranch
-	state.localAvailable = true
-	screen = renderScreen(t, state, 8, 120)
-	help = screen.trimmedLine(helpRow(8))
-	if !strings.Contains(help, "Tab diff uncommitted") || strings.Contains(help, "Tab diff branch") {
-		t.Fatalf("branch help = %q, want uncommitted diff switch", help)
-	}
-
-	state.localAvailable = false
-	screen = renderScreen(t, state, 8, 120)
-	help = screen.trimmedLine(helpRow(8))
 	if strings.Contains(help, "Tab diff") {
-		t.Fatalf("single-source help = %q, want no diff switch", help)
+		t.Fatalf("help = %q, want no diff switch", help)
 	}
 }
 
