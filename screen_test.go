@@ -478,6 +478,29 @@ func TestRenderScreenHelpReflectsReviewMode(t *testing.T) {
 	}
 }
 
+func TestRenderScreenHelpHidesOwnPRDecisionActions(t *testing.T) {
+	state := &reviewState{
+		source: sourceBranch,
+		pr:     &prContext{Number: 4, Author: "octo", Viewer: "octo"},
+		draft:  reviewDraft{Active: true},
+		lines:  []string{"README.md --- Text"},
+		changedLines: []changedLine{
+			testChangedLine(lineRef{File: "README.md", Line: 33, Side: "new"}),
+		},
+	}
+
+	screen := renderScreen(t, state, 8, 120)
+	help := screen.trimmedLine(helpRow(8))
+	if strings.Contains(help, "A approve") || strings.Contains(help, "R request changes") {
+		t.Fatalf("own PR help = %q, want no approve/request-changes actions", help)
+	}
+	for _, want := range []string{"C comment", "D delete draft"} {
+		if !strings.Contains(help, want) {
+			t.Fatalf("own PR help = %q, want %q", help, want)
+		}
+	}
+}
+
 func TestRenderScreenHelpReflectsPRStatus(t *testing.T) {
 	state := &reviewState{
 		source:     sourceBranch,

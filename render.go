@@ -97,6 +97,9 @@ func helpText(state *reviewState) string {
 		return fmt.Sprintf(" %s  checking PR  e open  r reload  q quit ", nav)
 	}
 	if state.draft.Active {
+		if state.ownPullRequest() {
+			return fmt.Sprintf(" %s  c add comment  s add suggestion  C comment  D delete draft  e open  o PR  r reload  q quit ", nav)
+		}
 		return fmt.Sprintf(" %s  c add comment  s add suggestion  A approve  C comment  R request changes  D delete draft  e open  o PR  r reload  q quit ", nav)
 	}
 	if state.pr == nil {

@@ -1,6 +1,7 @@
 package slop
 
 import (
+	"encoding/json"
 	"os"
 	"os/exec"
 	"strings"
@@ -579,6 +580,60 @@ func TestSubmitReviewKeys(t *testing.T) {
 	}
 }
 
+func TestSubmitReviewAllowsEmptyBody(t *testing.T) {
+	events := []github.ReviewEvent{
+		github.ReviewComment,
+		github.ReviewApprove,
+		github.ReviewRequestChanges,
+	}
+
+	for _, event := range events {
+		t.Run(string(event), func(t *testing.T) {
+			dir := t.TempDir()
+			inputPath := dir + "/gh-input.json"
+			scriptPath := dir + "/gh"
+			script := "#!/bin/sh\ncat > " + shellQuote(inputPath) + "\nprintf '%s\\n' '{\"data\":{\"submitPullRequestReview\":{\"pullRequestReview\":{\"id\":\"review-id\"}}}}'\n"
+			if err := os.WriteFile(scriptPath, []byte(script), 0755); err != nil {
+				t.Fatal(err)
+			}
+
+			t.Setenv("PATH", dir+":"+os.Getenv("PATH"))
+			t.Setenv("VISUAL", "")
+			t.Setenv("EDITOR", "true")
+
+			state := &reviewState{
+				source: sourceBranch,
+				pr:     &prContext{ID: "pr-id"},
+				draft:  reviewDraft{Active: true, ID: "review-id"},
+			}
+
+			if err := state.submitReview(&terminalState{}, event); err != nil {
+				t.Fatal(err)
+			}
+			if state.draft.Active {
+				t.Fatal("draft remained active after submit")
+			}
+
+			input, err := os.ReadFile(inputPath)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var request struct {
+				Variables map[string]any `json:"variables"`
+			}
+			if err := json.Unmarshal(input, &request); err != nil {
+				t.Fatal(err)
+			}
+			if request.Variables["body"] != nil {
+				t.Fatalf("body = %#v, want nil", request.Variables["body"])
+			}
+			if request.Variables["event"] != string(event) {
+				t.Fatalf("event = %#v, want %q", request.Variables["event"], event)
+			}
+		})
+	}
+}
+
 func TestStartAndRequestChangesKeys(t *testing.T) {
 	state := &reviewState{
 		reviewable: true,
@@ -594,6 +649,25 @@ func TestStartAndRequestChangesKeys(t *testing.T) {
 	state.handleKey("R", &terminalState{}, 8)
 	if !strings.Contains(state.message, "No active GitHub PR") {
 		t.Fatalf("active draft R message = %q, want submit-review path", state.message)
+	}
+}
+
+func TestOwnPRDecisionReviewKeysAreIgnored(t *testing.T) {
+	state := &reviewState{
+		reviewable: true,
+		pr:         &prContext{Number: 4, Author: "octo", Viewer: "Octo"},
+		draft:      reviewDraft{Active: true, ID: "review-id"},
+	}
+
+	state.handleKey("A", &terminalState{}, 8)
+	if !strings.Contains(state.message, "Cannot approve your own pull request") {
+		t.Fatalf("A message = %q, want own-PR guard", state.message)
+	}
+
+	state.message = ""
+	state.handleKey("R", &terminalState{}, 8)
+	if !strings.Contains(state.message, "Cannot request changes on your own pull request") {
+		t.Fatalf("R message = %q, want own-PR guard", state.message)
 	}
 }
 

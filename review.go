@@ -128,6 +128,9 @@ func (s *reviewState) submitReview(term *terminalState, event github.ReviewEvent
 	if err := s.requirePR("submit review"); err != nil {
 		return err
 	}
+	if !s.canSubmitReviewEvent(event) {
+		return ownPullRequestReviewError(event)
+	}
 	if !s.draft.Active {
 		return errors.New("No draft review active. Press P to start one.")
 	}
@@ -135,10 +138,6 @@ func (s *reviewState) submitReview(term *terminalState, event github.ReviewEvent
 	body, err := editReviewBody(term, "")
 	if err != nil {
 		return err
-	}
-	if strings.TrimSpace(body) == "" && s.draft.Count == 0 {
-		s.message = "Cancelled empty review."
-		return nil
 	}
 
 	count := s.draft.Count
@@ -149,6 +148,28 @@ func (s *reviewState) submitReview(term *terminalState, event github.ReviewEvent
 	s.clearSelection()
 	s.message = fmt.Sprintf("Submitted %s review with %d %s.", reviewEventLabel(event), count, plural(count, "comment", "comments"))
 	return nil
+}
+
+func (s *reviewState) canSubmitReviewEvent(event github.ReviewEvent) bool {
+	if event == github.ReviewComment {
+		return true
+	}
+	return !s.ownPullRequest()
+}
+
+func ownPullRequestReviewError(event github.ReviewEvent) error {
+	switch event {
+	case github.ReviewApprove:
+		return errors.New("Cannot approve your own pull request.")
+	case github.ReviewRequestChanges:
+		return errors.New("Cannot request changes on your own pull request.")
+	default:
+		return nil
+	}
+}
+
+func (s *reviewState) ownPullRequest() bool {
+	return s.pr != nil && s.pr.Author != "" && s.pr.Viewer != "" && strings.EqualFold(s.pr.Author, s.pr.Viewer)
 }
 
 func reviewEventLabel(event github.ReviewEvent) string {

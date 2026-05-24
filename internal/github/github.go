@@ -16,6 +16,8 @@ type PR struct {
 	Repo   string `json:"repo"`
 	Head   string `json:"head"`
 	Base   string `json:"base"`
+	Author string `json:"author"`
+	Viewer string `json:"viewer"`
 }
 
 type Draft struct {
@@ -40,8 +42,8 @@ func DetectPR() *PR {
 		return nil
 	}
 	cmd := exec.Command("gh", "pr", "view",
-		"--json", "id,number,headRefOid,headRepository,headRepositoryOwner,baseRefOid",
-		"--jq", `{"id": .id, "number": .number, "owner": .headRepositoryOwner.login, "repo": .headRepository.name, "head": .headRefOid, "base": .baseRefOid}`,
+		"--json", "id,number,author,headRefOid,headRepository,headRepositoryOwner,baseRefOid",
+		"--jq", `{"id": .id, "number": .number, "author": .author.login, "owner": .headRepositoryOwner.login, "repo": .headRepository.name, "head": .headRefOid, "base": .baseRefOid}`,
 	)
 	out, err := cmd.Output()
 	if err != nil {
@@ -144,6 +146,9 @@ query($pullRequestID: ID!) {
           }
         }
       }
+      author {
+        login
+      }
     }
   }
 }`
@@ -163,10 +168,17 @@ query($pullRequestID: ID!) {
 					} `json:"comments"`
 				} `json:"nodes"`
 			} `json:"reviews"`
+			Author struct {
+				Login string `json:"login"`
+			} `json:"author"`
 		} `json:"node"`
 	}
 	if err := graphQL(query, map[string]any{"pullRequestID": pr.ID}, &response); err != nil {
 		return Draft{}
+	}
+	pr.Viewer = response.Viewer.Login
+	if pr.Author == "" {
+		pr.Author = response.Node.Author.Login
 	}
 	for _, review := range response.Node.Reviews.Nodes {
 		if review.ID == "" || review.Author.Login != response.Viewer.Login {
