@@ -121,34 +121,66 @@ func (s *reviewState) discardReview() {
 	s.message = fmt.Sprintf("Deleted draft review with %d %s.", count, plural(count, "comment", "comments"))
 }
 
-func (s *reviewState) submitReview(term *terminalState) error {
+func (s *reviewState) submitReview(term *terminalState, event github.ReviewEvent) error {
 	if err := s.requireReviewableSource("submit review"); err != nil {
 		return err
 	}
 	if err := s.requirePR("submit review"); err != nil {
 		return err
 	}
+	if !s.canSubmitReviewEvent(event) {
+		return ownPullRequestReviewError(event)
+	}
 	if !s.draft.Active {
-		return errors.New("No draft review active. Press R to start one.")
+		return errors.New("No draft review active. Press P to start one.")
 	}
 
 	body, err := editReviewBody(term, "")
 	if err != nil {
 		return err
 	}
-	if strings.TrimSpace(body) == "" && s.draft.Count == 0 {
-		s.message = "Cancelled empty review."
-		return nil
-	}
 
 	count := s.draft.Count
-	if err := github.SubmitPendingReview(s.draft.ID, body); err != nil {
+	if err := github.SubmitPendingReview(s.draft.ID, body, event); err != nil {
 		return err
 	}
 	s.draft = reviewDraft{}
 	s.clearSelection()
-	s.message = fmt.Sprintf("Submitted review with %d %s.", count, plural(count, "comment", "comments"))
+	s.message = fmt.Sprintf("Submitted %s review with %d %s.", reviewEventLabel(event), count, plural(count, "comment", "comments"))
 	return nil
+}
+
+func (s *reviewState) canSubmitReviewEvent(event github.ReviewEvent) bool {
+	if event == github.ReviewComment {
+		return true
+	}
+	return !s.ownPullRequest()
+}
+
+func ownPullRequestReviewError(event github.ReviewEvent) error {
+	switch event {
+	case github.ReviewApprove:
+		return errors.New("Cannot approve your own pull request.")
+	case github.ReviewRequestChanges:
+		return errors.New("Cannot request changes on your own pull request.")
+	default:
+		return nil
+	}
+}
+
+func (s *reviewState) ownPullRequest() bool {
+	return s.pr != nil && s.pr.Author != "" && s.pr.Viewer != "" && strings.EqualFold(s.pr.Author, s.pr.Viewer)
+}
+
+func reviewEventLabel(event github.ReviewEvent) string {
+	switch event {
+	case github.ReviewApprove:
+		return "approval"
+	case github.ReviewRequestChanges:
+		return "request-changes"
+	default:
+		return "comment"
+	}
 }
 
 func (s *reviewState) openPR(term *terminalState) {
