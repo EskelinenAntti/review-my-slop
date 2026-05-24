@@ -1,4 +1,4 @@
-package main
+package slop
 
 import "github.com/anttieskelinen/review-my-slop/internal/github"
 
@@ -60,6 +60,7 @@ type reviewState struct {
 	args            []string
 	source          diffSource
 	sourceArgs      []string
+	reviewable      bool
 	localAvailable  bool
 	branchAvailable bool
 	pr              *prContext

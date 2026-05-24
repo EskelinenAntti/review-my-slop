@@ -1,4 +1,4 @@
-package main
+package slop
 
 import (
 	"errors"
@@ -17,6 +17,9 @@ func (s *reviewState) reviewComment(term *terminalState) error {
 func (s *reviewState) reviewSuggestion(term *terminalState) error {
 	if !s.hasChangedLines() {
 		return errors.New("No changed line selected.")
+	}
+	if err := s.requireReviewableSource("add suggestion"); err != nil {
+		return err
 	}
 	if err := s.requirePR("build suggestion"); err != nil {
 		return err
@@ -41,6 +44,9 @@ func (s *reviewState) reviewSuggestion(term *terminalState) error {
 func (s *reviewState) reviewWithBody(term *terminalState, template string) error {
 	if !s.hasChangedLines() {
 		return errors.New("No changed line selected.")
+	}
+	if err := s.requireReviewableSource("add comment"); err != nil {
+		return err
 	}
 	if err := s.requirePR("post review comments"); err != nil {
 		return err
@@ -74,6 +80,10 @@ func (s *reviewState) reviewWithBody(term *terminalState, template string) error
 }
 
 func (s *reviewState) startReview() {
+	if err := s.requireReviewableSource("start review"); err != nil {
+		s.message = err.Error()
+		return
+	}
 	if err := s.requirePR("start review"); err != nil {
 		s.message = err.Error()
 		return
@@ -93,6 +103,10 @@ func (s *reviewState) startReview() {
 }
 
 func (s *reviewState) discardReview() {
+	if err := s.requireReviewableSource("delete draft review"); err != nil {
+		s.message = err.Error()
+		return
+	}
 	if !s.draft.Active {
 		s.message = "No draft review to delete."
 		return
@@ -108,6 +122,9 @@ func (s *reviewState) discardReview() {
 }
 
 func (s *reviewState) submitReview(term *terminalState) error {
+	if err := s.requireReviewableSource("submit review"); err != nil {
+		return err
+	}
 	if err := s.requirePR("submit review"); err != nil {
 		return err
 	}
@@ -134,6 +151,20 @@ func (s *reviewState) submitReview(term *terminalState) error {
 	return nil
 }
 
+func (s *reviewState) openPR(term *terminalState) {
+	if err := s.requirePR("PR"); err != nil {
+		s.message = err.Error()
+		return
+	}
+	if err := withNormalTerminal(term, func() error {
+		return github.OpenPR()
+	}); err != nil {
+		s.message = err.Error()
+		return
+	}
+	s.message = fmt.Sprintf("Opened PR #%d.", s.pr.Number)
+}
+
 func (s *reviewState) requirePR(action string) error {
 	if s.pr != nil {
 		return nil
@@ -151,8 +182,19 @@ func (s *reviewState) requireDraft(action string) error {
 	return fmt.Errorf("No draft review active. Cannot %s.", action)
 }
 
+func (s *reviewState) canReviewBranchChanges() bool {
+	return s.reviewable || s.source == sourceBranch
+}
+
+func (s *reviewState) requireReviewableSource(action string) error {
+	if s.canReviewBranchChanges() {
+		return nil
+	}
+	return fmt.Errorf("Review actions are only available while reviewing branch changes. Cannot %s.", action)
+}
+
 func editReviewBody(term *terminalState, template string) (string, error) {
-	file, err := os.CreateTemp("", "rms-review-*.md")
+	file, err := os.CreateTemp("", "slop-review-*.md")
 	if err != nil {
 		return "", err
 	}
@@ -188,7 +230,25 @@ func suggestionTemplate(reviewRange reviewRange, pr *prContext) (string, error) 
 	if err != nil {
 		return "", err
 	}
-	return "```suggestion\n" + strings.Join(lines, "\n") + "\n```\n", nil
+	content := strings.Join(lines, "\n")
+	fence := suggestionFence(content)
+	return fence + "suggestion\n" + content + "\n" + fence + "\n", nil
+}
+
+func suggestionFence(content string) string {
+	longest := 0
+	current := 0
+	for _, ch := range content {
+		if ch == '`' {
+			current++
+			if current > longest {
+				longest = current
+			}
+			continue
+		}
+		current = 0
+	}
+	return strings.Repeat("`", max(3, longest+1))
 }
 
 func sourceLines(reviewRange reviewRange, pr *prContext) ([]string, error) {

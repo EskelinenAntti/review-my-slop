@@ -1,4 +1,4 @@
-package main
+package slop
 
 import (
 	"strings"
@@ -345,7 +345,7 @@ func TestRenderScreenReviewModeTextSnapshot(t *testing.T) {
 
 
 
- h/j/k/l move  v select  c add comment  s add suggestion  p submit review  D delete draft  e open  r reload  q quit`, "\n")
+ h/j/k/l move  v select  c add comment  s add suggestion  P submit review  D delete draft  e open  o PR  r reload  q quit`, "\n")
 	if got != want {
 		t.Fatalf("screen text mismatch\ngot:\n%s\n\nwant:\n%s", got, want)
 	}
@@ -368,11 +368,40 @@ func TestRenderScreenShowsStickyFileHeader(t *testing.T) {
 	}
 }
 
+func TestRenderScreenKeepsSelectedRowBelowStickyFileHeader(t *testing.T) {
+	state := &reviewState{
+		top: 2,
+		lines: []string{
+			"a.go --- Go",
+			" 1 first",
+			" 2 selected",
+			" 3 third",
+		},
+		files: []fileHeader{{Line: 0, File: "a.go", Text: "a.go --- Go"}},
+		changedLines: []changedLine{
+			{LineIndex: 2, Ref: lineRef{File: "a.go", Line: 2, Side: "new", Content: "selected"}},
+		},
+	}
+	state.changedLines[0].setSideRef(state.changedLines[0].Ref)
+
+	screen := renderScreen(t, state, 8, 40)
+	if got := screen.trimmedLine(0); got != "a.go --- Go" {
+		t.Fatalf("sticky header = %q, want file header", got)
+	}
+	if got := screen.trimmedLine(1); got != " 2 selected" {
+		t.Fatalf("selected row = %q, want visible below sticky header", got)
+	}
+	if _, _, ok := screen.inverseRange(1); !ok {
+		t.Fatalf("selected row was not highlighted below sticky header:\n%s", screen.text())
+	}
+}
+
 func TestRenderScreenOmitsStatusRow(t *testing.T) {
 	longContent := "`p` submits the pending review, opening `$VISUAL` or `$EDITOR` for an optional review summary"
 	state := &reviewState{
-		pr:    &prContext{Number: 4},
-		draft: reviewDraft{Active: true, Count: 2},
+		source: sourceBranch,
+		pr:     &prContext{Number: 4},
+		draft:  reviewDraft{Active: true, Count: 2},
 		lines: []string{
 			"README.md --- Text",
 			"33 - " + longContent,
@@ -393,6 +422,7 @@ func TestRenderScreenOmitsStatusRow(t *testing.T) {
 
 func TestRenderScreenHelpShowsPRCheckPending(t *testing.T) {
 	state := &reviewState{
+		source:     sourceBranch,
 		prChecking: true,
 		lines:      []string{"README.md --- Text"},
 		changedLines: []changedLine{
@@ -438,13 +468,14 @@ func TestRenderScreenHelpReflectsReviewMode(t *testing.T) {
 	if strings.Contains(help, "R start review") {
 		t.Fatalf("active review help should not show start-review action: %q", help)
 	}
-	if !strings.Contains(help, "p submit review") || !strings.Contains(help, "D delete draft") {
+	if !strings.Contains(help, "P submit review") || !strings.Contains(help, "D delete draft") {
 		t.Fatalf("active review help = %q, want submit and delete draft actions", help)
 	}
 }
 
 func TestRenderScreenHelpReflectsPRStatus(t *testing.T) {
 	state := &reviewState{
+		source:     sourceBranch,
 		prChecking: true,
 		lines:      []string{"README.md --- Text"},
 		changedLines: []changedLine{
@@ -471,12 +502,12 @@ func TestRenderScreenHelpReflectsPRStatus(t *testing.T) {
 	state.pr = &prContext{Number: 4}
 	screen = renderScreen(t, state, 8, 100)
 	help = screen.trimmedLine(helpRow(8))
-	if !strings.Contains(help, "R start review") || strings.Contains(help, "c comment") || strings.Contains(help, "s suggest") {
-		t.Fatalf("PR help = %q, want start-review without comment actions", help)
+	if !strings.Contains(help, "R start review") || !strings.Contains(help, "o PR") || strings.Contains(help, "c comment") || strings.Contains(help, "s suggest") {
+		t.Fatalf("PR help = %q, want start-review and open-PR without comment actions", help)
 	}
 }
 
-func TestRenderScreenHelpShowsRelevantDiffSwitch(t *testing.T) {
+func TestRenderScreenHelpDoesNotShowDiffSwitch(t *testing.T) {
 	state := &reviewState{
 		source:          sourceLocal,
 		branchAvailable: true,
@@ -489,23 +520,8 @@ func TestRenderScreenHelpShowsRelevantDiffSwitch(t *testing.T) {
 
 	screen := renderScreen(t, state, 8, 120)
 	help := screen.trimmedLine(helpRow(8))
-	if !strings.Contains(help, "Tab diff branch") || strings.Contains(help, "Tab diff uncommitted") {
-		t.Fatalf("local help = %q, want branch diff switch", help)
-	}
-
-	state.source = sourceBranch
-	state.localAvailable = true
-	screen = renderScreen(t, state, 8, 120)
-	help = screen.trimmedLine(helpRow(8))
-	if !strings.Contains(help, "Tab diff uncommitted") || strings.Contains(help, "Tab diff branch") {
-		t.Fatalf("branch help = %q, want uncommitted diff switch", help)
-	}
-
-	state.localAvailable = false
-	screen = renderScreen(t, state, 8, 120)
-	help = screen.trimmedLine(helpRow(8))
 	if strings.Contains(help, "Tab diff") {
-		t.Fatalf("single-source help = %q, want no diff switch", help)
+		t.Fatalf("help = %q, want no diff switch", help)
 	}
 }
 

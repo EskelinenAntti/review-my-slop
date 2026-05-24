@@ -1,4 +1,4 @@
-package main
+package slop
 
 import (
 	"fmt"
@@ -9,10 +9,7 @@ import (
 	"github.com/anttieskelinen/review-my-slop/internal/keys"
 )
 
-func run(args []string, stdout io.Writer) error {
-	if len(args) > 0 && args[0] == flowCommand {
-		return runFlow(stdout)
-	}
+func Run(args []string, stdout io.Writer) error {
 	return reviewTUI(args, loadDiffAsync(args, sourceLocal), stdout)
 }
 
@@ -28,7 +25,7 @@ func reviewTUI(args []string, initialDiff <-chan diffResult, stdout io.Writer) e
 		}
 		fmt.Fprintln(stdout, strings.Join(result.Lines, "\n"))
 		fmt.Fprintln(stdout)
-		fmt.Fprintln(stdout, "Interactive review needs a terminal. Run `go run .` directly, then use j/k to move, e to open, q to quit.")
+		fmt.Fprintln(stdout, "Interactive review needs a terminal. Run `slop` directly, then use j/k to move, e to open, q to quit.")
 		return nil
 	}
 	defer term.restore()
@@ -69,6 +66,7 @@ func newReviewState(args []string) *reviewState {
 		args:       args,
 		source:     sourceLocal,
 		sourceArgs: args,
+		reviewable: reviewableDiffArgs(args),
 		prChecking: true,
 		lines:      []string{"Gathering the diff..."},
 	}
@@ -101,12 +99,10 @@ func (s *reviewState) handleKey(key string, term *terminalState, rows int) bool 
 		s.move(max(1, (rows-2)/2))
 	case keys.CtrlU, keys.PageUp:
 		s.move(-max(1, (rows-2)/2))
-	case keys.Tab:
-		if err := s.switchSource(); err != nil {
-			s.message = err.Error()
-		}
 	case "e", keys.Enter:
 		s.openSelectedLine(term)
+	case "o":
+		s.openPR(term)
 	case "r":
 		if err := s.reloadSource(); err != nil {
 			s.message = err.Error()
@@ -125,7 +121,7 @@ func (s *reviewState) handleKey(key string, term *terminalState, rows int) bool 
 		if err := s.reviewSuggestion(term); err != nil {
 			s.message = err.Error()
 		}
-	case "p":
+	case "P":
 		if err := s.submitReview(term); err != nil {
 			s.message = err.Error()
 		}
@@ -150,9 +146,15 @@ func (s *reviewState) openSelectedLine(term *terminalState) {
 		return openEditor(ref.File, ref.Line)
 	}); err != nil {
 		s.message = err.Error()
-	} else {
-		s.message = fmt.Sprintf("Opened %s:%d", ref.File, ref.Line)
+		return
 	}
+	if !s.canReviewBranchChanges() {
+		if err := s.reloadSourceAt(ref); err != nil {
+			s.message = err.Error()
+			return
+		}
+	}
+	s.message = fmt.Sprintf("Opened %s:%d", ref.File, ref.Line)
 }
 
 func readKeyAsync(r io.Reader) <-chan keyResult {

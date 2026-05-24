@@ -1,4 +1,4 @@
-package main
+package slop
 
 import (
 	"fmt"
@@ -78,24 +78,25 @@ func helpText(state *reviewState) string {
 	if !state.hasChangedLines() {
 		nav = "r reload"
 	}
-	sourceSwitch := ""
+	if !state.canReviewBranchChanges() {
+		if state.prChecking {
+			return fmt.Sprintf(" %s  checking PR  e open  r reload  q quit ", nav)
+		}
+		if state.pr != nil {
+			return fmt.Sprintf(" %s  e open  o PR  r reload  q quit ", nav)
+		}
+		return fmt.Sprintf(" %s  e open  r reload  q quit ", nav)
+	}
 	if state.prChecking {
-		sourceSwitch = "  checking PR"
-	} else if state.source == sourceLocal && state.branchAvailable {
-		sourceSwitch = "  Tab diff branch"
-	} else if state.source == sourceBranch && state.localAvailable {
-		sourceSwitch = "  Tab diff uncommitted"
+		return fmt.Sprintf(" %s  checking PR  e open  r reload  q quit ", nav)
 	}
 	if state.draft.Active {
-		return fmt.Sprintf(" %s%s  c add comment  s add suggestion  p submit review  D delete draft  e open  r reload  q quit ", nav, sourceSwitch)
-	}
-	if state.prChecking {
-		return fmt.Sprintf(" %s%s  e open  r reload  q quit ", nav, sourceSwitch)
+		return fmt.Sprintf(" %s  c add comment  s add suggestion  P submit review  D delete draft  e open  o PR  r reload  q quit ", nav)
 	}
 	if state.pr == nil {
-		return fmt.Sprintf(" %s%s  e open  r reload  q quit ", nav, sourceSwitch)
+		return fmt.Sprintf(" %s  e open  r reload  q quit ", nav)
 	}
-	return fmt.Sprintf(" %s%s  R start review  e open  r reload  q quit ", nav, sourceSwitch)
+	return fmt.Sprintf(" %s  R start review  e open  o PR  r reload  q quit ", nav)
 }
 
 func fit(s string, width int) string {

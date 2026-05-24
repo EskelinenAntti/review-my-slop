@@ -1,4 +1,4 @@
-package main
+package slop
 
 import (
 	"errors"
@@ -44,6 +44,38 @@ func (s *reviewState) moveTo(next int) {
 	s.message = ""
 }
 
+func (s *reviewState) restoreCursor(ref lineRef) {
+	if !s.hasChangedLines() {
+		s.cursor = 0
+		s.top = 0
+		return
+	}
+	if ref.File == "" || ref.Line == 0 {
+		s.cursor = 0
+		s.top = 0
+		return
+	}
+	best := -1
+	for i, changedLine := range s.changedLines {
+		if side := changedLine.sideRef(ref.Side); side != nil {
+			if side.File == ref.File && side.Line == ref.Line {
+				best = i
+				break
+			}
+			if best < 0 && side.File == ref.File {
+				best = i
+			}
+		}
+	}
+	if best < 0 {
+		best = 0
+	}
+	s.cursor = best
+	if ref := s.changedLines[best].sideRef(ref.Side); ref != nil {
+		s.changedLines[best].Ref = *ref
+	}
+}
+
 func (s *reviewState) keepSelectionVisible(rows int) {
 	if !s.hasChangedLines() {
 		s.top = 0
@@ -63,6 +95,12 @@ func (s *reviewState) keepSelectionVisible(rows int) {
 	if s.top < 0 {
 		s.top = 0
 	}
+	if _, ok := s.stickyHeader(); ok && selectedLine == s.top && bodyRows > 1 {
+		s.top--
+		if s.top < 0 {
+			s.top = 0
+		}
+	}
 }
 
 func (s *reviewState) currentDisplayLine() int {
@@ -74,8 +112,8 @@ func (s *reviewState) toggleSelection() {
 		s.message = "No changed line selected."
 		return
 	}
-	if !s.canSelectRange() {
-		s.message = "Multi-line selection is only available while reviewing branch changes."
+	if err := s.canSelectRangeError(); err != nil {
+		s.message = err.Error()
 		return
 	}
 	if s.selectionAnchor != nil {
@@ -89,7 +127,20 @@ func (s *reviewState) toggleSelection() {
 }
 
 func (s *reviewState) canSelectRange() bool {
-	return s.source == sourceBranch && s.draft.Active
+	return s.canSelectRangeError() == nil
+}
+
+func (s *reviewState) canSelectRangeError() error {
+	if err := s.requireReviewableSource("select multiple lines"); err != nil {
+		return err
+	}
+	if err := s.requirePR("select multiple lines"); err != nil {
+		return err
+	}
+	if err := s.requireDraft("select multiple lines"); err != nil {
+		return err
+	}
+	return nil
 }
 
 func (s *reviewState) selectSide(side string) {
