@@ -37,8 +37,11 @@ comments and suggestions to it, open the PR, and submit the draft as one review.
 
 Option 1: add `git slop` as an alias.
 
-```sh
-git config --global alias.slop '!slop'
+Add this to `~/.gitconfig`:
+
+```gitconfig
+[alias]
+    slop = !slop
 ```
 
 Then run:
@@ -47,25 +50,6 @@ Then run:
 git slop
 git slop --staged
 git slop main...HEAD
-```
-
-Option 2: replace `git diff` through Git's external diff configuration.
-
-To make `git diff` use Review My Slop by default, add this to `~/.gitconfig`:
-
-```gitconfig
-[diff]
-    external = slop
-```
-
-Then run `git diff`, `git diff --staged`, or `git diff main...HEAD` as usual.
-Other Git commands that show diffs still need `--ext-diff`, for example
-`git show --ext-diff` or `git log -p --ext-diff`.
-
-If you need to opt out, you can use `--no-ext-diff`:
-
-```sh
-git diff --no-ext-diff
 ```
 
 Keys:
