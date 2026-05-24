@@ -35,8 +35,6 @@ comments and suggestions to it, open the PR, and submit the draft as one review.
 
 ## Git configuration
 
-Option 1: add `git slop` as an alias.
-
 Add this to `~/.gitconfig`:
 
 ```gitconfig
