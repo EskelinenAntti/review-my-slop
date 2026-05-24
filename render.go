@@ -15,8 +15,12 @@ func render(w io.Writer, state *reviewState, rows, cols int) {
 	if cols < 40 {
 		cols = 40
 	}
-	state.keepSelectionVisible(rows)
-	bodyRows := rows - 2
+	messageLines := renderMessageLines(state.message, cols, rows-2)
+	bodyRows := rows - len(messageLines) - 1
+	if bodyRows < 1 {
+		bodyRows = 1
+	}
+	state.keepSelectionVisible(bodyRows)
 	selectedLine := -1
 	if state.hasChangedLines() {
 		selectedLine = state.currentDisplayLine()
@@ -45,10 +49,12 @@ func render(w io.Writer, state *reviewState, rows, cols int) {
 		}
 	}
 
-	if state.message != "" {
-		fmt.Fprintf(w, "%s\x1b[K\r\n", fit(" "+state.message, cols))
-	} else {
-		fmt.Fprint(w, "\x1b[K\r\n")
+	for _, line := range messageLines {
+		if line == "" {
+			fmt.Fprint(w, "\x1b[K\r\n")
+			continue
+		}
+		fmt.Fprintf(w, "%s\x1b[K\r\n", line)
 	}
 	fmt.Fprintf(w, "\x1b[2m%s\x1b[0m\x1b[K", fit(helpText(state), cols))
 }
@@ -91,12 +97,12 @@ func helpText(state *reviewState) string {
 		return fmt.Sprintf(" %s  checking PR  e open  r reload  q quit ", nav)
 	}
 	if state.draft.Active {
-		return fmt.Sprintf(" %s  c add comment  s add suggestion  P submit review  D delete draft  e open  o PR  r reload  q quit ", nav)
+		return fmt.Sprintf(" %s  c add comment  s add suggestion  A approve  C comment  R request changes  D delete draft  e open  o PR  r reload  q quit ", nav)
 	}
 	if state.pr == nil {
 		return fmt.Sprintf(" %s  e open  r reload  q quit ", nav)
 	}
-	return fmt.Sprintf(" %s  R start review  e open  o PR  r reload  q quit ", nav)
+	return fmt.Sprintf(" %s  P start review  e open  o PR  r reload  q quit ", nav)
 }
 
 func fit(s string, width int) string {
@@ -105,6 +111,43 @@ func fit(s string, width int) string {
 		return s
 	}
 	return ansi.Truncate(s, width)
+}
+
+func renderMessageLines(message string, width, maxLines int) []string {
+	if maxLines < 1 {
+		maxLines = 1
+	}
+	if strings.TrimSpace(message) == "" {
+		return []string{""}
+	}
+	lines := wrapPlain(" "+message, width)
+	if len(lines) > maxLines {
+		lines = lines[:maxLines]
+	}
+	return lines
+}
+
+func wrapPlain(s string, width int) []string {
+	if width < 1 {
+		width = 1
+	}
+	var lines []string
+	for _, paragraph := range strings.Split(s, "\n") {
+		if paragraph == "" {
+			lines = append(lines, "")
+			continue
+		}
+		for len(paragraph) > width {
+			cut := width
+			if space := strings.LastIndex(paragraph[:width+1], " "); space > 0 {
+				cut = space
+			}
+			lines = append(lines, paragraph[:cut])
+			paragraph = strings.TrimLeft(paragraph[cut:], " ")
+		}
+		lines = append(lines, paragraph)
+	}
+	return lines
 }
 
 func highlightPlain(s string, width int) string {

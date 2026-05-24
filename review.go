@@ -121,7 +121,7 @@ func (s *reviewState) discardReview() {
 	s.message = fmt.Sprintf("Deleted draft review with %d %s.", count, plural(count, "comment", "comments"))
 }
 
-func (s *reviewState) submitReview(term *terminalState) error {
+func (s *reviewState) submitReview(term *terminalState, event github.ReviewEvent) error {
 	if err := s.requireReviewableSource("submit review"); err != nil {
 		return err
 	}
@@ -129,7 +129,7 @@ func (s *reviewState) submitReview(term *terminalState) error {
 		return err
 	}
 	if !s.draft.Active {
-		return errors.New("No draft review active. Press R to start one.")
+		return errors.New("No draft review active. Press P to start one.")
 	}
 
 	body, err := editReviewBody(term, "")
@@ -142,13 +142,24 @@ func (s *reviewState) submitReview(term *terminalState) error {
 	}
 
 	count := s.draft.Count
-	if err := github.SubmitPendingReview(s.draft.ID, body); err != nil {
+	if err := github.SubmitPendingReview(s.draft.ID, body, event); err != nil {
 		return err
 	}
 	s.draft = reviewDraft{}
 	s.clearSelection()
-	s.message = fmt.Sprintf("Submitted review with %d %s.", count, plural(count, "comment", "comments"))
+	s.message = fmt.Sprintf("Submitted %s review with %d %s.", reviewEventLabel(event), count, plural(count, "comment", "comments"))
 	return nil
+}
+
+func reviewEventLabel(event github.ReviewEvent) string {
+	switch event {
+	case github.ReviewApprove:
+		return "approval"
+	case github.ReviewRequestChanges:
+		return "request-changes"
+	default:
+		return "comment"
+	}
 }
 
 func (s *reviewState) openPR(term *terminalState) {

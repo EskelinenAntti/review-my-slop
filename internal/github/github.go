@@ -200,7 +200,15 @@ mutation($reviewID: ID!, $body: String!, $path: String!, $line: Int!, $side: Dif
 	return graphQL(query, ReviewThreadVariables(reviewID, lineRange, body), &response)
 }
 
-func SubmitPendingReview(reviewID string, body string) error {
+type ReviewEvent string
+
+const (
+	ReviewApprove        ReviewEvent = "APPROVE"
+	ReviewComment        ReviewEvent = "COMMENT"
+	ReviewRequestChanges ReviewEvent = "REQUEST_CHANGES"
+)
+
+func SubmitPendingReview(reviewID string, body string, event ReviewEvent) error {
 	const query = `
 mutation($reviewID: ID!, $body: String, $event: PullRequestReviewEvent!) {
   submitPullRequestReview(input: {pullRequestReviewId: $reviewID, body: $body, event: $event}) {
@@ -216,10 +224,14 @@ mutation($reviewID: ID!, $body: String, $event: PullRequestReviewEvent!) {
 			} `json:"pullRequestReview"`
 		} `json:"submitPullRequestReview"`
 	}
+	var reviewBody any = strings.TrimSpace(body)
+	if reviewBody == "" {
+		reviewBody = nil
+	}
 	return graphQL(query, map[string]any{
 		"reviewID": reviewID,
-		"body":     strings.TrimSpace(body),
-		"event":    "COMMENT",
+		"body":     reviewBody,
+		"event":    string(event),
 	}, &response)
 }
 
@@ -270,6 +282,9 @@ func graphQL(query string, variables map[string]any, target any) error {
 	cmd.Stdin = bytes.NewReader(data)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
+		if message, ok := graphQLErrorMessage(out); ok {
+			return fmt.Errorf("gh api graphql failed: %s", message)
+		}
 		return fmt.Errorf("gh api graphql failed: %s", strings.TrimSpace(string(out)))
 	}
 
@@ -283,16 +298,47 @@ func graphQL(query string, variables map[string]any, target any) error {
 		return err
 	}
 	if len(response.Errors) > 0 {
-		var messages []string
-		for _, graphQLError := range response.Errors {
-			messages = append(messages, graphQLError.Message)
+		if message, ok := graphQLErrorMessage(out); ok {
+			return fmt.Errorf("gh api graphql failed: %s", message)
 		}
-		return fmt.Errorf("gh api graphql failed: %s", strings.Join(messages, ", "))
+		return fmt.Errorf("gh api graphql failed: %s", strings.TrimSpace(string(out)))
 	}
 	if len(response.Data) == 0 {
 		return errors.New("gh api graphql returned no data")
 	}
 	return json.Unmarshal(response.Data, target)
+}
+
+func graphQLErrorMessage(out []byte) (string, bool) {
+	var response struct {
+		Errors []struct {
+			Type    string   `json:"type"`
+			Path    []string `json:"path"`
+			Message string   `json:"message"`
+		} `json:"errors"`
+	}
+	decoder := json.NewDecoder(bytes.NewReader(out))
+	if err := decoder.Decode(&response); err != nil || len(response.Errors) == 0 {
+		return "", false
+	}
+	var messages []string
+	for _, graphQLError := range response.Errors {
+		message := strings.TrimSpace(graphQLError.Message)
+		if message == "" {
+			message = strings.TrimSpace(graphQLError.Type)
+		}
+		if message == "" {
+			continue
+		}
+		if len(graphQLError.Path) > 0 {
+			message = fmt.Sprintf("%s: %s", strings.Join(graphQLError.Path, "."), message)
+		}
+		messages = append(messages, message)
+	}
+	if len(messages) == 0 {
+		return "", false
+	}
+	return strings.Join(messages, ", "), true
 }
 
 func Side(side string) string {

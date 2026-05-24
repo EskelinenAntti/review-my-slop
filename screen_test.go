@@ -325,11 +325,11 @@ func TestRenderScreenReviewModeTextSnapshot(t *testing.T) {
 		lines: []string{
 			"README.md --- Text",
 			"32 - `s` opens `$VISUAL` or `$EDITOR`",
-			"33 - `p` submits the pending review, opening `$VISUAL` or `$EDITOR` for an optional review summary",
+			"33 - `A` approves, `C` comments, and `R` requests changes",
 		},
 		changedLines: []changedLine{
 			{LineIndex: 1, Ref: lineRef{File: "README.md", Line: 32, Side: "new", Content: "`s` opens `$VISUAL` or `$EDITOR`"}},
-			{LineIndex: 2, Ref: lineRef{File: "README.md", Line: 33, Side: "new", Content: "`p` submits the pending review, opening `$VISUAL` or `$EDITOR` for an optional review summary"}},
+			{LineIndex: 2, Ref: lineRef{File: "README.md", Line: 33, Side: "new", Content: "`A` approves, `C` comments, and `R` requests changes"}},
 		},
 		cursor: 1,
 	}
@@ -340,12 +340,12 @@ func TestRenderScreenReviewModeTextSnapshot(t *testing.T) {
 	got := screen.text()
 	want := strings.TrimRight(`README.md --- Text
 32 - `+"`s` opens `$VISUAL` or `$EDITOR`"+`
-33 - `+"`p` submits the pending review, opening `$VISUAL` or `$EDITOR` for an optional review summary"+`
+33 - `+"`A` approves, `C` comments, and `R` requests changes"+`
 
 
 
 
- h/j/k/l move  v select  c add comment  s add suggestion  P submit review  D delete draft  e open  o PR  r reload  q quit`, "\n")
+ h/j/k/l move  v select  c add comment  s add suggestion  A approve  C comment  R request changes  D delete draft  e open  o PR  r reload  q quit`, "\n")
 	if got != want {
 		t.Fatalf("screen text mismatch\ngot:\n%s\n\nwant:\n%s", got, want)
 	}
@@ -465,11 +465,16 @@ func TestRenderScreenHelpReflectsReviewMode(t *testing.T) {
 
 	screen := renderScreen(t, state, 8, 120)
 	help := screen.trimmedLine(helpRow(8))
-	if strings.Contains(help, "R start review") {
+	if strings.Contains(help, "P start review") {
 		t.Fatalf("active review help should not show start-review action: %q", help)
 	}
-	if !strings.Contains(help, "P submit review") || !strings.Contains(help, "D delete draft") {
-		t.Fatalf("active review help = %q, want submit and delete draft actions", help)
+	if strings.Contains(help, "P submit review") {
+		t.Fatalf("active review help should not show P submit action: %q", help)
+	}
+	for _, want := range []string{"A approve", "C comment", "R request changes", "D delete draft"} {
+		if !strings.Contains(help, want) {
+			t.Fatalf("active review help = %q, want %q", help, want)
+		}
 	}
 }
 
@@ -485,7 +490,7 @@ func TestRenderScreenHelpReflectsPRStatus(t *testing.T) {
 
 	screen := renderScreen(t, state, 8, 100)
 	help := screen.trimmedLine(helpRow(8))
-	if strings.Contains(help, "R start review") || strings.Contains(help, "c comment") {
+	if strings.Contains(help, "P start review") || strings.Contains(help, "c comment") {
 		t.Fatalf("checking help should not show PR actions: %q", help)
 	}
 	if !strings.Contains(help, "checking PR") {
@@ -495,14 +500,14 @@ func TestRenderScreenHelpReflectsPRStatus(t *testing.T) {
 	state.prChecking = false
 	screen = renderScreen(t, state, 8, 100)
 	help = screen.trimmedLine(helpRow(8))
-	if strings.Contains(help, "R start review") || strings.Contains(help, "c comment") {
+	if strings.Contains(help, "P start review") || strings.Contains(help, "c comment") {
 		t.Fatalf("no-PR help = %q, want no PR actions", help)
 	}
 
 	state.pr = &prContext{Number: 4}
 	screen = renderScreen(t, state, 8, 100)
 	help = screen.trimmedLine(helpRow(8))
-	if !strings.Contains(help, "R start review") || !strings.Contains(help, "o PR") || strings.Contains(help, "c comment") || strings.Contains(help, "s suggest") {
+	if !strings.Contains(help, "P start review") || !strings.Contains(help, "o PR") || strings.Contains(help, "c comment") || strings.Contains(help, "s suggest") {
 		t.Fatalf("PR help = %q, want start-review and open-PR without comment actions", help)
 	}
 }
@@ -541,7 +546,7 @@ func TestRenderScreenDetectedDraftShowsDraftActions(t *testing.T) {
 	if strings.Contains(screen.text(), "Draft review: 3 comments") {
 		t.Fatalf("screen included removed draft status:\n%s", screen.text())
 	}
-	if strings.Contains(help, "R start review") || !strings.Contains(help, "D delete draft") {
+	if strings.Contains(help, "P start review") || !strings.Contains(help, "D delete draft") {
 		t.Fatalf("draft help = %q, want draft actions without start-review", help)
 	}
 }
@@ -568,4 +573,28 @@ func TestRenderScreenKeepsSelectedRowVisible(t *testing.T) {
 		}
 	}
 	t.Fatalf("selected row was not visible in body:\n%s", screen.text())
+}
+
+func TestRenderScreenWrapsLongMessages(t *testing.T) {
+	state := &reviewState{
+		lines:   []string{"README.md --- Text", "body line"},
+		message: `gh api graphql failed: submitPullRequestReview: Could not resolve to a PullRequestReview with the id "review-id"`,
+	}
+
+	screen := renderScreen(t, state, 8, 40)
+	got := screen.text()
+	for _, want := range []string{
+		"gh api graphql failed:",
+		"submitPullRequestReview:",
+		"Could not",
+		"resolve to a PullRequestReview",
+		"review-id",
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("screen missing %q:\n%s", want, got)
+		}
+	}
+	if !strings.Contains(screen.trimmedLine(helpRow(8)), "q quit") {
+		t.Fatalf("help row missing after wrapped message:\n%s", got)
+	}
 }

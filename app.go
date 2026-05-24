@@ -6,6 +6,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/anttieskelinen/review-my-slop/internal/github"
 	"github.com/anttieskelinen/review-my-slop/internal/keys"
 )
 
@@ -112,17 +113,27 @@ func (s *reviewState) handleKey(key string, term *terminalState, rows int) bool 
 	case "v":
 		s.toggleSelection()
 	case "R":
+		if s.draft.Active {
+			if err := s.submitReview(term, github.ReviewRequestChanges); err != nil {
+				s.message = err.Error()
+			}
+		}
+	case "P":
 		s.startReview()
+	case "A":
+		if err := s.submitReview(term, github.ReviewApprove); err != nil {
+			s.message = err.Error()
+		}
+	case "C":
+		if err := s.submitReview(term, github.ReviewComment); err != nil {
+			s.message = err.Error()
+		}
 	case "c":
 		if err := s.reviewComment(term); err != nil {
 			s.message = err.Error()
 		}
 	case "s":
 		if err := s.reviewSuggestion(term); err != nil {
-			s.message = err.Error()
-		}
-	case "P":
-		if err := s.submitReview(term); err != nil {
 			s.message = err.Error()
 		}
 	case "D":
