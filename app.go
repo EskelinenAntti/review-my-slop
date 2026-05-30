@@ -56,9 +56,7 @@ func reviewTUI(args []string, initialDiff <-chan diffResult, stdout io.Writer) e
 		if quit := state.handleKey(key, term, rows); quit {
 			return nil
 		}
-		if keyResult == nil {
-			keyResult = readKeyAsync(os.Stdin)
-		}
+		keyResult = readKeyAsync(os.Stdin)
 	}
 }
 

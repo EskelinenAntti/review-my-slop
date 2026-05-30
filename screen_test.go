@@ -97,7 +97,7 @@ func (s *testScreen) applySGR(seq string) {
 	if params == "" {
 		params = "0"
 	}
-	for _, param := range strings.Split(params, ";") {
+	for param := range strings.SplitSeq(params, ";") {
 		switch param {
 		case "0":
 			s.style = testCell{}
@@ -172,10 +172,6 @@ func statusRow(rows int) int {
 	return rows - 2
 }
 
-func messageRow(rows int) int {
-	return statusRow(rows)
-}
-
 func helpRow(rows int) int {
 	return statusRow(rows) + 1
 }
@@ -204,7 +200,7 @@ func TestRenderScreenShowsCursorOnSelectedSideOnly(t *testing.T) {
 	if start != 18 || end != 40 {
 		t.Fatalf("inverse range = %d-%d, want 18-40; line = %q", start, end, screen.line(0))
 	}
-	for col := 0; col < 18; col++ {
+	for col := range 18 {
 		if screen.cells[0][col].inverse {
 			t.Fatalf("left side column %d was inverse; line = %q", col, screen.line(0))
 		}

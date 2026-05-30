@@ -237,13 +237,6 @@ func sameReviewTarget(a, b lineRef) bool {
 	return a.File == b.File && a.Side == b.Side
 }
 
-func sideLabel(side string) string {
-	if side == "old" {
-		return "left"
-	}
-	return "right"
-}
-
 func plural(count int, one, many string) string {
 	if count == 1 {
 		return one
