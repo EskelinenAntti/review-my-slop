@@ -74,9 +74,60 @@ func TestDiffWithUntrackedFilesShowsPath(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	got := string(diffWithUntrackedFiles(nil, nil))
+	got := string(diffWithUntrackedFiles(sourceLocal, nil))
 	if !strings.Contains(got, "new.txt --- Text") || !strings.Contains(got, "first") {
 		t.Fatalf("untracked diff = %q, want path header and file content", got)
+	}
+}
+
+func TestSelectDiffTargetPrefersUncommittedChanges(t *testing.T) {
+	withTempGitRepo(t)
+	fakeGH(t, `{"id":"pr-id","number":4,"author":"octo","owner":"octo","repo":"repo","head":"headsha","base":"basesha"}`)
+	if err := os.WriteFile("new.txt", []byte("first\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	target, _ := selectDiffTarget()
+	if target.Source != sourceLocal || len(target.Args) != 0 {
+		t.Fatalf("target = %#v, want local uncommitted changes", target)
+	}
+}
+
+func TestSelectDiffTargetIncludesStagedChanges(t *testing.T) {
+	withTempGitRepo(t)
+	fakeGH(t, `{"id":"pr-id","number":4,"author":"octo","owner":"octo","repo":"repo","head":"headsha","base":"basesha"}`)
+	commitFile(t, "tracked.txt", "base\n")
+	if err := os.WriteFile("tracked.txt", []byte("changed\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	runGit(t, "add", "tracked.txt")
+
+	target, _ := selectDiffTarget()
+	if target.Source != sourceLocal || len(target.Args) != 1 || target.Args[0] != "HEAD" {
+		t.Fatalf("target = %#v, want local HEAD diff for staged changes", target)
+	}
+}
+
+func TestSelectDiffTargetFallsBackToPRChanges(t *testing.T) {
+	withTempGitRepo(t)
+	fakeGH(t, `{"id":"pr-id","number":4,"author":"octo","owner":"octo","repo":"repo","head":"headsha","base":"basesha"}`)
+
+	target, _ := selectDiffTarget()
+	if target.Source != sourceBranch || len(target.Args) != 1 || target.Args[0] != "basesha...headsha" {
+		t.Fatalf("target = %#v, want PR branch range", target)
+	}
+}
+
+func TestSelectDiffTargetFallsBackToBranchChanges(t *testing.T) {
+	withTempGitRepo(t)
+	fakeGH(t, "")
+	commitFile(t, "tracked.txt", "base\n")
+	runGit(t, "update-ref", "refs/remotes/origin/main", "HEAD")
+	runGit(t, "symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/main")
+
+	target, _ := selectDiffTarget()
+	if target.Source != sourceBranch || len(target.Args) != 1 || target.Args[0] != "origin/main...HEAD" {
+		t.Fatalf("target = %#v, want default-branch range", target)
 	}
 }
 
@@ -100,6 +151,40 @@ func withTempGitRepo(t *testing.T) {
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("git init failed: %s", strings.TrimSpace(string(out)))
 	}
+}
+
+func commitFile(t *testing.T, path, content string) {
+	t.Helper()
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+	runGit(t, "add", path)
+	runGit(t, "-c", "user.name=Test", "-c", "user.email=test@example.com", "commit", "-m", "commit")
+}
+
+func runGit(t *testing.T, args ...string) {
+	t.Helper()
+	cmd := exec.Command("git", args...)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("git %s failed: %s", strings.Join(args, " "), strings.TrimSpace(string(out)))
+	}
+}
+
+func fakeGH(t *testing.T, prViewJSON string) {
+	t.Helper()
+	dir := t.TempDir()
+	script := "#!/bin/sh\n"
+	if prViewJSON == "" {
+		script += "exit 1\n"
+	} else {
+		script += "printf '%s\\n' " + shellQuote(prViewJSON) + "\n"
+	}
+	path := dir + "/gh"
+	if err := os.WriteFile(path, []byte(script), 0755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", dir+":"+os.Getenv("PATH"))
 }
 
 func TestTruncateANSIPreservesEscapeSequences(t *testing.T) {
@@ -544,26 +629,21 @@ func TestReviewActionsRequireBranchChanges(t *testing.T) {
 	}
 }
 
-func TestReviewabilityFollowsDiffArgs(t *testing.T) {
-	local := newReviewState(nil)
+func TestReviewabilityFollowsSelectedSource(t *testing.T) {
+	local := newReviewState(diffTarget{Source: sourceLocal})
 	if local.canReviewBranchChanges() {
-		t.Fatal("plain local diff should not be reviewable")
+		t.Fatal("local diff should not be reviewable")
 	}
 
-	branch := newReviewState([]string{"main...HEAD"})
+	branch := newReviewState(diffTarget{Source: sourceBranch, Args: []string{"main...HEAD"}})
 	if !branch.canReviewBranchChanges() {
-		t.Fatal("triple-dot branch diff should be reviewable")
-	}
-
-	staged := newReviewState([]string{"--staged"})
-	if staged.canReviewBranchChanges() {
-		t.Fatal("staged local diff should not be reviewable")
+		t.Fatal("branch diff should be reviewable")
 	}
 }
 
 func TestSubmitReviewKeys(t *testing.T) {
 	state := &reviewState{
-		reviewable: true,
+		source: sourceBranch,
 	}
 
 	state.handleKey("R", &terminalState{}, 8)
@@ -636,7 +716,7 @@ func TestSubmitReviewAllowsEmptyBody(t *testing.T) {
 
 func TestStartAndRequestChangesKeys(t *testing.T) {
 	state := &reviewState{
-		reviewable: true,
+		source: sourceBranch,
 	}
 
 	state.handleKey("P", &terminalState{}, 8)
@@ -654,9 +734,9 @@ func TestStartAndRequestChangesKeys(t *testing.T) {
 
 func TestOwnPRDecisionReviewKeysAreIgnored(t *testing.T) {
 	state := &reviewState{
-		reviewable: true,
-		pr:         &prContext{Number: 4, Author: "octo", Viewer: "Octo"},
-		draft:      reviewDraft{Active: true, ID: "review-id"},
+		source: sourceBranch,
+		pr:     &prContext{Number: 4, Author: "octo", Viewer: "Octo"},
+		draft:  reviewDraft{Active: true, ID: "review-id"},
 	}
 
 	state.handleKey("A", &terminalState{}, 8)

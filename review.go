@@ -215,7 +215,7 @@ func (s *reviewState) requireDraft(action string) error {
 }
 
 func (s *reviewState) canReviewBranchChanges() bool {
-	return s.reviewable || s.source == sourceBranch
+	return s.source == sourceBranch
 }
 
 func (s *reviewState) requireReviewableSource(action string) error {

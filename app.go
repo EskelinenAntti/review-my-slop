@@ -10,13 +10,13 @@ import (
 	"github.com/anttieskelinen/review-my-slop/internal/keys"
 )
 
-func Run(args []string, stdout io.Writer) error {
-	return reviewTUI(args, loadDiffAsync(args, sourceLocal), stdout)
+func Run(stdout io.Writer) error {
+	target, prResult := selectDiffTarget()
+	return reviewTUI(target, loadDiffAsync(target.Args, target.Source), prResult, stdout)
 }
 
-func reviewTUI(args []string, initialDiff <-chan diffResult, stdout io.Writer) error {
-	prResult := detectReviewContextAsync()
-	state := newReviewState(args)
+func reviewTUI(target diffTarget, initialDiff <-chan diffResult, prResult <-chan reviewContext, stdout io.Writer) error {
+	state := newReviewState(target)
 
 	term, err := enterTerminal()
 	if err != nil {
@@ -60,12 +60,10 @@ func reviewTUI(args []string, initialDiff <-chan diffResult, stdout io.Writer) e
 	}
 }
 
-func newReviewState(args []string) *reviewState {
+func newReviewState(target diffTarget) *reviewState {
 	return &reviewState{
-		args:       args,
-		source:     sourceLocal,
-		sourceArgs: args,
-		reviewable: reviewableDiffArgs(args),
+		source:     target.Source,
+		sourceArgs: target.Args,
 		prChecking: true,
 		lines:      []string{"Gathering the diff..."},
 	}

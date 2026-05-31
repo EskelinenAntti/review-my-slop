@@ -88,43 +88,31 @@ func (s *reviewState) reloadSourceAt(ref lineRef) error {
 	s.files = files
 	s.changedLines = buildChangedLines(lines, refs)
 	s.restoreCursor(ref)
-	s.message = fmt.Sprintf("Showing %s changes.", sourceLabel(s.source, s.canReviewBranchChanges()))
+	s.message = fmt.Sprintf("Showing %s changes.", sourceLabel(s.source))
 	return nil
 }
 
 func loadDiff(args []string, source diffSource) ([]lineRef, []string, []fileHeader, error) {
-	refs, err := changedLineRefs(args)
+	refs, err := changedLineRefsForSource(args, source)
 	if err != nil {
 		return nil, nil, nil, err
 	}
 	if len(refs) == 0 {
-		return refs, []string{fmt.Sprintf("No %s changes.", sourceLabel(source, reviewableDiffArgs(args)))}, nil, nil
+		return refs, []string{fmt.Sprintf("No %s changes.", sourceLabel(source))}, nil, nil
 	}
 	diff, err := prettyDiff(args)
 	if err != nil {
 		return nil, nil, nil, err
 	}
-	lines := splitLines(diffWithUntrackedFiles(args, diff))
+	lines := splitLines(diffWithUntrackedFiles(source, diff))
 	return refs, lines, buildFileHeaders(lines), nil
 }
 
-func sourceLabel(source diffSource, reviewable bool) string {
-	if source == sourceBranch || reviewable {
+func sourceLabel(source diffSource) string {
+	if source == sourceBranch {
 		return "branch"
 	}
 	return "uncommitted"
-}
-
-func reviewableDiffArgs(args []string) bool {
-	for _, arg := range args {
-		if strings.HasPrefix(arg, "-") {
-			continue
-		}
-		if strings.Contains(arg, "...") {
-			return true
-		}
-	}
-	return false
 }
 
 func splitLines(data []byte) []string {
@@ -277,8 +265,8 @@ func hasRed(s string) bool {
 	return strings.Contains(s, "\x1b[31") || strings.Contains(s, "\x1b[91")
 }
 
-func diffWithUntrackedFiles(args []string, diff []byte) []byte {
-	if len(args) != 0 {
+func diffWithUntrackedFiles(source diffSource, diff []byte) []byte {
+	if source != sourceLocal {
 		return diff
 	}
 	cmd := exec.Command("git", "ls-files", "--others", "--exclude-standard")
@@ -363,6 +351,28 @@ func changedLineRefs(args []string) ([]lineRef, error) {
 		refs = append(refs, untracked...)
 	}
 	return refs, nil
+}
+
+func changedLineRefsForSource(args []string, source diffSource) ([]lineRef, error) {
+	if source == sourceLocal {
+		return localChangedLineRefs(args)
+	}
+	return changedLineRefs(args)
+}
+
+func localChangedLineRefs(args []string) ([]lineRef, error) {
+	refs, err := changedLineRefs(args)
+	if err != nil {
+		return nil, err
+	}
+	if len(args) == 0 {
+		return refs, nil
+	}
+	untracked, err := untrackedLines(len(refs))
+	if err != nil {
+		return nil, err
+	}
+	return append(refs, untracked...), nil
 }
 
 func untrackedLines(offset int) ([]lineRef, error) {

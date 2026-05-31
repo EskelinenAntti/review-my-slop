@@ -45,6 +45,11 @@ type diffResult struct {
 	Err    error
 }
 
+type diffTarget struct {
+	Source diffSource
+	Args   []string
+}
+
 type diffSource string
 
 const (
@@ -57,10 +62,8 @@ type terminalState struct {
 }
 
 type reviewState struct {
-	args            []string
 	source          diffSource
 	sourceArgs      []string
-	reviewable      bool
 	localAvailable  bool
 	branchAvailable bool
 	pr              *prContext
