@@ -158,6 +158,7 @@ func TestLoaderShowsBranchDiffWhenWorktreeIsClean(t *testing.T) {
 	runner := &fakeRunner{responses: []runnerResponse{
 		{},
 		{out: []byte("origin/main\n")},
+		{},
 		{out: []byte("branch\n")},
 	}}
 	parser := &fakeParser{lines: []diffparse.Line{{Text: "parsed"}}}
@@ -169,8 +170,30 @@ func TestLoaderShowsBranchDiffWhenWorktreeIsClean(t *testing.T) {
 		t.Fatal(err)
 	}
 	wantArgs := []string{"-c", "diff.external=difft --color=always", "diff", "--ext-diff", "--color=always", "origin/main...HEAD"}
-	if !reflect.DeepEqual(runner.calls[2].args, wantArgs) {
-		t.Fatalf("git diff args = %#v, want %#v", runner.calls[2].args, wantArgs)
+	if !reflect.DeepEqual(runner.calls[3].args, wantArgs) {
+		t.Fatalf("git diff args = %#v, want %#v", runner.calls[3].args, wantArgs)
+	}
+}
+
+func TestLoaderSkipsMissingOriginHeadTarget(t *testing.T) {
+	runner := &fakeRunner{responses: []runnerResponse{
+		{},
+		{out: []byte("origin/experiment\n")},
+		{err: errors.New("missing origin/experiment")},
+		{},
+		{out: []byte("branch\n")},
+	}}
+	parser := &fakeParser{lines: []diffparse.Line{{Text: "parsed"}}}
+	loader := Loader{Runner: runner, Parser: parser}
+
+	_, err := loader.Load()
+
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantArgs := []string{"-c", "diff.external=difft --color=always", "diff", "--ext-diff", "--color=always", "origin/main...HEAD"}
+	if !reflect.DeepEqual(runner.calls[4].args, wantArgs) {
+		t.Fatalf("git diff args = %#v, want %#v", runner.calls[4].args, wantArgs)
 	}
 }
 

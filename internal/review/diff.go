@@ -176,7 +176,9 @@ func hasLocalChanges(runner Runner) (bool, error) {
 
 func branchBase(runner Runner) (string, bool) {
 	if ref, ok := gitOutput(runner, "symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD"); ok {
-		return ref, true
+		if refExists(runner, ref) {
+			return ref, true
+		}
 	}
 	for _, ref := range []string{"origin/main", "origin/master", "main", "master"} {
 		if refExists(runner, ref) {
