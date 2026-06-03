@@ -417,6 +417,106 @@ func TestAppCanJumpBetweenFiles(t *testing.T) {
 	}
 }
 
+func TestAppCanFoldAndUnfoldCurrentFile(t *testing.T) {
+	loader := &sequenceLoader{
+		loads: [][]diffparse.Line{{
+			{Text: "a.go --- Go", Header: true},
+			{Text: "a line 1", Location: diffparse.Location{File: "a.go", Line: 1}, Selectable: true, Editable: true},
+			{Text: "a line 2", Location: diffparse.Location{File: "a.go", Line: 2}, Selectable: true, Editable: true},
+			{Text: "b.go --- Go", Header: true},
+			{Text: "b line 1", Location: diffparse.Location{File: "b.go", Line: 1}, Selectable: true, Editable: true},
+		}},
+	}
+	app, err := New(Loader{Runner: loader, Parser: loader}, &fakeEditor{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := app.Handle("h", &fakeTerm{}); err != nil {
+		t.Fatal(err)
+	}
+	var folded bytes.Buffer
+	app.Draw(&folded, 5, 40)
+
+	if app.viewport.Cursor != 0 {
+		t.Fatalf("cursor after fold = %d, want folded header", app.viewport.Cursor)
+	}
+	if bytes.Contains(folded.Bytes(), []byte("a line 1")) || bytes.Contains(folded.Bytes(), []byte("a line 2")) {
+		t.Fatalf("folded output still contains folded content: %q", folded.String())
+	}
+	if !bytes.Contains(folded.Bytes(), []byte("a.go --- Go")) || !bytes.Contains(folded.Bytes(), []byte("b line 1")) {
+		t.Fatalf("folded output lost visible rows: %q", folded.String())
+	}
+
+	if _, err := app.Handle("l", &fakeTerm{}); err != nil {
+		t.Fatal(err)
+	}
+	var unfolded bytes.Buffer
+	app.Draw(&unfolded, 5, 40)
+
+	if app.viewport.Cursor != 1 {
+		t.Fatalf("cursor after unfold = %d, want first selectable row", app.viewport.Cursor)
+	}
+	if !bytes.Contains(unfolded.Bytes(), []byte("a line 1")) || !bytes.Contains(unfolded.Bytes(), []byte("a line 2")) {
+		t.Fatalf("unfolded output did not restore content: %q", unfolded.String())
+	}
+}
+
+func TestAppMovementSkipsFoldedContent(t *testing.T) {
+	loader := &sequenceLoader{
+		loads: [][]diffparse.Line{{
+			{Text: "a.go --- Go", Header: true},
+			{Text: "a line 1", Location: diffparse.Location{File: "a.go", Line: 1}, Selectable: true, Editable: true},
+			{Text: "a line 2", Location: diffparse.Location{File: "a.go", Line: 2}, Selectable: true, Editable: true},
+			{Text: "b.go --- Go", Header: true},
+			{Text: "b line 1", Location: diffparse.Location{File: "b.go", Line: 1}, Selectable: true, Editable: true},
+		}},
+	}
+	app, err := New(Loader{Runner: loader, Parser: loader}, &fakeEditor{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := app.Handle("h", &fakeTerm{}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := app.Handle("j", &fakeTerm{}); err != nil {
+		t.Fatal(err)
+	}
+
+	if app.viewport.Cursor != 4 {
+		t.Fatalf("cursor after moving from folded file = %d, want b.go first selectable row", app.viewport.Cursor)
+	}
+}
+
+func TestAppCtrlDUsesLastDrawnViewportHeight(t *testing.T) {
+	loader := &sequenceLoader{
+		loads: [][]diffparse.Line{{
+			{Text: "a.go --- Go", Header: true},
+			{Text: "line 1", Location: diffparse.Location{File: "a.go", Line: 1}, Selectable: true, Editable: true},
+			{Text: "line 2", Location: diffparse.Location{File: "a.go", Line: 2}, Selectable: true, Editable: true},
+			{Text: "line 3", Location: diffparse.Location{File: "a.go", Line: 3}, Selectable: true, Editable: true},
+			{Text: "line 4", Location: diffparse.Location{File: "a.go", Line: 4}, Selectable: true, Editable: true},
+			{Text: "line 5", Location: diffparse.Location{File: "a.go", Line: 5}, Selectable: true, Editable: true},
+			{Text: "line 6", Location: diffparse.Location{File: "a.go", Line: 6}, Selectable: true, Editable: true},
+		}},
+	}
+	app, err := New(Loader{Runner: loader, Parser: loader}, &fakeEditor{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var out bytes.Buffer
+	app.Draw(&out, 6, 40)
+
+	if _, err := app.Handle(tui.KeyCtrlD, &fakeTerm{}); err != nil {
+		t.Fatal(err)
+	}
+
+	if app.viewport.Cursor != 4 {
+		t.Fatalf("cursor after ctrl-d = %d, want half-page move to row 4", app.viewport.Cursor)
+	}
+}
+
 func TestAppDrawHasNoMessagesOrHints(t *testing.T) {
 	parser := &fakeParser{lines: []diffparse.Line{{Text: "only diff"}}}
 	app, err := New(Loader{Runner: &fakeRunner{responses: []runnerResponse{{out: []byte(" M a.go\n")}, {}, {out: []byte("ignored")}, {}}}, Parser: parser}, &fakeEditor{})

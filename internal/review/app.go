@@ -11,6 +11,7 @@ type App struct {
 	Loader   Loader
 	Editor   Editor
 	lines    []diffparse.Line
+	folded   map[string]bool
 	viewport tui.Viewport
 }
 
@@ -18,6 +19,7 @@ func New(loader Loader, editor Editor) (*App, error) {
 	app := &App{
 		Loader: loader,
 		Editor: editor,
+		folded: map[string]bool{},
 	}
 	if app.Editor == nil {
 		app.Editor = ExecEditor{}
@@ -41,13 +43,34 @@ func (a *App) Reload() error {
 }
 
 func (a *App) Draw(w io.Writer, rows, cols int) {
-	a.layoutViewport(rows)
-	text := make([]string, len(a.lines))
-	for i, line := range a.lines {
-		text[i] = line.Text
+	indexes := a.visibleIndexes()
+	viewCursor := a.visiblePosition(indexes, a.viewport.Cursor)
+	if viewCursor < 0 {
+		a.viewport.Cursor = a.nearestSelectable(a.viewport.Cursor)
+		viewCursor = a.visiblePosition(indexes, a.viewport.Cursor)
 	}
-	tui.RenderWithOptions(w, text, a.viewport, cols, tui.RenderOptions{
-		Sticky: a.stickyHeader(),
+	if viewCursor < 0 {
+		viewCursor = 0
+	}
+	viewTop := a.visiblePosition(indexes, a.viewport.Top)
+	if viewTop < 0 {
+		viewTop = 0
+	}
+	view := tui.Viewport{Cursor: viewCursor, Top: viewTop}
+	a.layoutViewport(&view, rows, indexes)
+	a.viewport.Rows = view.Rows
+	if view.Top >= 0 && view.Top < len(indexes) {
+		a.viewport.Top = indexes[view.Top]
+	}
+	text := make([]string, len(indexes))
+	viewLines := make([]diffparse.Line, len(indexes))
+	for i, original := range indexes {
+		line := a.lines[original]
+		text[i] = line.Text
+		viewLines[i] = line
+	}
+	tui.RenderWithOptions(w, text, view, cols, tui.RenderOptions{
+		Sticky: stickyHeader(viewLines, view.Top),
 	})
 }
 
@@ -60,9 +83,9 @@ func (a *App) Handle(key tui.Key, term tui.Terminal) (bool, error) {
 	case "k", tui.KeyUp:
 		a.moveSelection(-1)
 	case "l", tui.KeyRight:
-		a.moveSelection(1)
+		a.unfoldCurrentFile()
 	case "h", tui.KeyLeft:
-		a.moveSelection(-1)
+		a.foldCurrentFile()
 	case tui.KeyCtrlD, tui.KeyPageDown:
 		a.moveSelection(max(1, a.viewport.Rows/2))
 	case tui.KeyCtrlN:
@@ -159,7 +182,6 @@ func (a *App) moveSelection(delta int) {
 		delta--
 	}
 	a.viewport.Cursor = cursor
-	a.viewport.KeepVisible()
 }
 
 func (a *App) nearestSelectable(index int) int {
@@ -195,6 +217,31 @@ func (a *App) nextSelectable(index, step int) int {
 		}
 	}
 	return index
+}
+
+func (a *App) foldCurrentFile() {
+	header := a.currentHeaderIndex()
+	if header < 0 {
+		return
+	}
+	a.folded[a.headerKey(header)] = true
+	a.viewport.Cursor = header
+	a.viewport.Top = header
+}
+
+func (a *App) unfoldCurrentFile() {
+	header := a.currentHeaderIndex()
+	if header < 0 {
+		return
+	}
+	key := a.headerKey(header)
+	if !a.folded[key] {
+		return
+	}
+	delete(a.folded, key)
+	if target, ok := a.firstSelectableAfter(header); ok {
+		a.viewport.Cursor = target
+	}
 }
 
 func (a *App) moveFile(direction int) {
@@ -249,6 +296,9 @@ func (a *App) currentHeaderIndex() int {
 }
 
 func (a *App) firstSelectableAfter(header int) (int, bool) {
+	if a.folded[a.headerKey(header)] {
+		return header, true
+	}
 	for i := header + 1; i < len(a.lines); i++ {
 		if a.lines[i].Header {
 			return 0, false
@@ -264,53 +314,107 @@ func (a *App) selectable(index int) bool {
 	if index < 0 || index >= len(a.lines) {
 		return false
 	}
+	if a.lines[index].Header && a.folded[a.headerKey(index)] {
+		return true
+	}
+	if a.hidden(index) {
+		return false
+	}
 	return a.lines[index].Selectable
 }
 
-func (a *App) keepContextHeaderVisible() {
-	if a.viewport.Rows < 2 || a.viewport.Cursor <= 0 || a.viewport.Top != a.viewport.Cursor {
+func (a *App) keepContextHeaderVisible(v *tui.Viewport, indexes []int) {
+	if v.Rows < 2 || v.Cursor <= 0 || v.Top != v.Cursor {
 		return
 	}
-	if a.selectable(a.viewport.Cursor - 1) {
+	previous := indexes[v.Cursor-1]
+	if a.selectable(previous) {
 		return
 	}
-	a.viewport.Top--
+	v.Top--
 }
 
-func (a *App) layoutViewport(rows int) {
-	a.viewport.Set(len(a.lines), rows)
-	a.keepContextHeaderVisible()
-	for range len(a.lines) + 1 {
-		if !a.stickyHeader().Active || a.viewport.Rows < 2 {
+func (a *App) layoutViewport(v *tui.Viewport, rows int, indexes []int) {
+	v.Set(len(indexes), rows)
+	a.keepContextHeaderVisible(v, indexes)
+	viewLines := make([]diffparse.Line, len(indexes))
+	for i, original := range indexes {
+		viewLines[i] = a.lines[original]
+	}
+	for range len(indexes) + 1 {
+		if !stickyHeader(viewLines, v.Top).Active || v.Rows < 2 {
 			return
 		}
-		visibleRows := a.viewport.Rows - 1
-		if a.viewport.Cursor < a.viewport.Top {
-			a.viewport.Top = a.viewport.Cursor
+		visibleRows := v.Rows - 1
+		if v.Cursor < v.Top {
+			v.Top = v.Cursor
 			continue
 		}
-		bottom := a.viewport.Top + visibleRows - 1
-		if a.viewport.Cursor > bottom {
-			a.viewport.Top = a.viewport.Cursor - visibleRows + 1
+		bottom := v.Top + visibleRows - 1
+		if v.Cursor > bottom {
+			v.Top = v.Cursor - visibleRows + 1
 			continue
 		}
 		return
 	}
 }
 
-func (a *App) stickyHeader() tui.StickyLine {
-	if len(a.lines) == 0 || a.viewport.Top >= len(a.lines) {
+func stickyHeader(lines []diffparse.Line, top int) tui.StickyLine {
+	if len(lines) == 0 || top >= len(lines) {
 		return tui.StickyLine{}
 	}
 	header := -1
-	for i := a.viewport.Top; i >= 0; i-- {
-		if a.lines[i].Header {
+	for i := top; i >= 0; i-- {
+		if lines[i].Header {
 			header = i
 			break
 		}
 	}
-	if header < 0 || header == a.viewport.Top {
+	if header < 0 || header == top {
 		return tui.StickyLine{}
 	}
-	return tui.StickyLine{Text: a.lines[header].Text, Active: true}
+	return tui.StickyLine{Text: lines[header].Text, Active: true}
+}
+
+func (a *App) hidden(index int) bool {
+	if index < 0 || index >= len(a.lines) || a.lines[index].Header {
+		return false
+	}
+	header := a.headerFor(index)
+	return header >= 0 && a.folded[a.headerKey(header)]
+}
+
+func (a *App) headerFor(index int) int {
+	for i := min(index, len(a.lines)-1); i >= 0; i-- {
+		if a.lines[i].Header {
+			return i
+		}
+	}
+	return -1
+}
+
+func (a *App) headerKey(index int) string {
+	if index < 0 || index >= len(a.lines) {
+		return ""
+	}
+	return a.lines[index].Text
+}
+
+func (a *App) visibleIndexes() []int {
+	indexes := make([]int, 0, len(a.lines))
+	for i := range a.lines {
+		if !a.hidden(i) {
+			indexes = append(indexes, i)
+		}
+	}
+	return indexes
+}
+
+func (a *App) visiblePosition(indexes []int, original int) int {
+	for i, index := range indexes {
+		if index == original {
+			return i
+		}
+	}
+	return -1
 }
