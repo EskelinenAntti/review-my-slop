@@ -1,3 +1,3 @@
-module github.com/anttieskelinen/review-my-slop
+module github.com/eskelinenantti/review-my-slop
 
 go 1.26
