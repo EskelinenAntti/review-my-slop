@@ -379,6 +379,44 @@ func TestAppCursorCanSelectDeletedRows(t *testing.T) {
 	}
 }
 
+func TestAppCanJumpBetweenFiles(t *testing.T) {
+	loader := &sequenceLoader{
+		loads: [][]diffparse.Line{{
+			{Text: "a.go --- Go", Header: true},
+			{Text: "a line 1", Location: diffparse.Location{File: "a.go", Line: 1}, Selectable: true, Editable: true},
+			{Text: "empty.go --- Go", Header: true},
+			{Text: "b.go --- Go", Header: true},
+			{Text: "b line 1", Location: diffparse.Location{File: "b.go", Line: 1}, Selectable: true, Editable: true},
+			{Text: "b line 2", Location: diffparse.Location{File: "b.go", Line: 2}, Selectable: true, Editable: true},
+			{Text: "c.go --- Go", Header: true},
+			{Text: "c line 1", Location: diffparse.Location{File: "c.go", Line: 1}, Selectable: true, Editable: true},
+		}},
+	}
+	app, err := New(Loader{Runner: loader, Parser: loader}, &fakeEditor{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := app.Handle(tui.KeyCtrlN, &fakeTerm{}); err != nil {
+		t.Fatal(err)
+	}
+	if app.viewport.Cursor != 4 {
+		t.Fatalf("cursor after ctrl-n = %d, want first selectable row in b.go", app.viewport.Cursor)
+	}
+	if _, err := app.Handle(tui.KeyCtrlN, &fakeTerm{}); err != nil {
+		t.Fatal(err)
+	}
+	if app.viewport.Cursor != 7 {
+		t.Fatalf("cursor after second ctrl-n = %d, want first selectable row in c.go", app.viewport.Cursor)
+	}
+	if _, err := app.Handle(tui.KeyCtrlP, &fakeTerm{}); err != nil {
+		t.Fatal(err)
+	}
+	if app.viewport.Cursor != 4 {
+		t.Fatalf("cursor after ctrl-p = %d, want first selectable row in b.go", app.viewport.Cursor)
+	}
+}
+
 func TestAppDrawHasNoMessagesOrHints(t *testing.T) {
 	parser := &fakeParser{lines: []diffparse.Line{{Text: "only diff"}}}
 	app, err := New(Loader{Runner: &fakeRunner{responses: []runnerResponse{{out: []byte(" M a.go\n")}, {}, {out: []byte("ignored")}, {}}}, Parser: parser}, &fakeEditor{})

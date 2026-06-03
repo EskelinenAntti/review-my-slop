@@ -13,6 +13,8 @@ func TestReadKeyDecodesNavigation(t *testing.T) {
 		"\x1b[C":  KeyRight,
 		"\x1b[D":  KeyLeft,
 		"\x04":    KeyCtrlD,
+		"\x0e":    KeyCtrlN,
+		"\x10":    KeyCtrlP,
 		"\x15":    KeyCtrlU,
 		"\x1b[5~": KeyPageUp,
 		"\x1b[6~": KeyPageDown,

@@ -65,6 +65,10 @@ func (a *App) Handle(key tui.Key, term tui.Terminal) (bool, error) {
 		a.moveSelection(-1)
 	case tui.KeyCtrlD, tui.KeyPageDown:
 		a.moveSelection(max(1, a.viewport.Rows/2))
+	case tui.KeyCtrlN:
+		a.moveFile(1)
+	case tui.KeyCtrlP:
+		a.moveFile(-1)
 	case tui.KeyCtrlU, tui.KeyPageUp:
 		a.moveSelection(-max(1, a.viewport.Rows/2))
 	case "e":
@@ -191,6 +195,69 @@ func (a *App) nextSelectable(index, step int) int {
 		}
 	}
 	return index
+}
+
+func (a *App) moveFile(direction int) {
+	if direction > 0 {
+		if target, ok := a.nextFileSelection(); ok {
+			a.viewport.Cursor = target
+			a.viewport.KeepVisible()
+		}
+		return
+	}
+	if target, ok := a.previousFileSelection(); ok {
+		a.viewport.Cursor = target
+		a.viewport.KeepVisible()
+	}
+}
+
+func (a *App) nextFileSelection() (int, bool) {
+	for i := a.viewport.Cursor + 1; i < len(a.lines); i++ {
+		if !a.lines[i].Header {
+			continue
+		}
+		if target, ok := a.firstSelectableAfter(i); ok {
+			return target, true
+		}
+	}
+	return 0, false
+}
+
+func (a *App) previousFileSelection() (int, bool) {
+	currentHeader := a.currentHeaderIndex()
+	if currentHeader <= 0 {
+		return 0, false
+	}
+	for i := currentHeader - 1; i >= 0; i-- {
+		if !a.lines[i].Header {
+			continue
+		}
+		if target, ok := a.firstSelectableAfter(i); ok {
+			return target, true
+		}
+	}
+	return 0, false
+}
+
+func (a *App) currentHeaderIndex() int {
+	for i := min(a.viewport.Cursor, len(a.lines)-1); i >= 0; i-- {
+		if a.lines[i].Header {
+			return i
+		}
+	}
+	return -1
+}
+
+func (a *App) firstSelectableAfter(header int) (int, bool) {
+	for i := header + 1; i < len(a.lines); i++ {
+		if a.lines[i].Header {
+			return 0, false
+		}
+		if a.selectable(i) {
+			return i, true
+		}
+	}
+	return 0, false
 }
 
 func (a *App) selectable(index int) bool {

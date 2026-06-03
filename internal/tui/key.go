@@ -10,6 +10,8 @@ const (
 	KeyUnknown  Key = ""
 	KeyCtrlC    Key = "ctrl-c"
 	KeyCtrlD    Key = "ctrl-d"
+	KeyCtrlN    Key = "ctrl-n"
+	KeyCtrlP    Key = "ctrl-p"
 	KeyCtrlU    Key = "ctrl-u"
 	KeyEscape   Key = "escape"
 	KeyUp       Key = "up"
@@ -31,6 +33,10 @@ func ReadKey(r io.Reader) (Key, error) {
 		return KeyCtrlC, nil
 	case 4:
 		return KeyCtrlD, nil
+	case 14:
+		return KeyCtrlN, nil
+	case 16:
+		return KeyCtrlP, nil
 	case 21:
 		return KeyCtrlU, nil
 	case 27:
