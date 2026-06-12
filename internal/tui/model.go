@@ -58,6 +58,7 @@ type Model struct {
 	commentRow int
 	cursor     int
 	offset     int
+	xOffset    int
 	width      int
 	height     int
 	selecting  bool
@@ -95,6 +96,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
+		m.xOffset = min(m.xOffset, m.maxHorizontalOffset())
 		m.ensureVisible()
 		return m, nil
 	case externalEditorFinishedMsg:
@@ -156,6 +158,14 @@ func (m Model) updateKey(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	case "k", "up":
 		m.gPending = false
 		m.move(-1)
+	case "h", "left":
+		m.scrollHorizontal(-1)
+	case "l", "right":
+		m.scrollHorizontal(1)
+	case "0":
+		m.xOffset = 0
+	case "$":
+		m.xOffset = m.maxHorizontalOffset()
 	case "ctrl+d":
 		m.move(max(1, m.viewportHeight()/2))
 	case "ctrl+u":
@@ -194,6 +204,7 @@ func (m Model) updateKey(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	case "t":
 		if m.width >= 100 {
 			m.sideBySide = !m.sideBySide
+			m.xOffset = min(m.xOffset, m.maxHorizontalOffset())
 		} else {
 			m.err = fmt.Errorf("side-by-side view requires a terminal at least 100 columns wide")
 		}
@@ -408,7 +419,9 @@ func (m Model) View() tea.View {
 		return tea.NewView("")
 	}
 	content := m.render()
-	return tea.NewView(content)
+	view := tea.NewView(content)
+	view.AltScreen = true
+	return view
 }
 
 func (m Model) render() string {
@@ -473,7 +486,8 @@ func (m Model) renderRow(index int) string {
 			prefix, style = "-", removedStyle
 		}
 		text := current.text
-		line := fmt.Sprintf("%5s %5s %s %s", oldNumber, newNumber, prefix, text)
+		gutter := fmt.Sprintf("%5s %5s %s ", oldNumber, newNumber, prefix)
+		line := gutter + fitANSIWindow(text, m.xOffset, width-lipgloss.Width(gutter))
 		if m.selected(index) {
 			style = selectionStyle
 		}
@@ -501,7 +515,7 @@ func (m Model) renderEditor() string {
 }
 
 func (m Model) renderStatus() string {
-	status := "j/k move  v select  c comment  C inbox  t layout  ? help  q quit"
+	status := "j/k move  h/l scroll  v select  c comment  C inbox  t layout  ? help  q quit"
 	if m.selecting {
 		status = "visual selection  j/k extend  c comment  Esc cancel"
 	}
@@ -547,6 +561,8 @@ func (m Model) renderHelp() string {
 		titleStyle.Render("review-my-slop help"),
 		"",
 		"j/k, arrows       move",
+		"h/l, left/right   scroll horizontally",
+		"0/$               start/end of lines",
 		"gg/G              first/last changed line",
 		"Ctrl-d/Ctrl-u     half-page down/up",
 		"]f/[f             next/previous file",
@@ -576,8 +592,10 @@ func (m Model) renderSideBySide(index int) string {
 		leftText = "  " + current.text
 		rightText = "  " + current.text
 	}
-	left := fitANSI(fmt.Sprintf("%5s %s", leftNumber, leftText), half)
-	right := fitANSI(fmt.Sprintf("%5s %s", rightNumber, rightText), half)
+	leftGutter := fmt.Sprintf("%5s ", leftNumber)
+	rightGutter := fmt.Sprintf("%5s ", rightNumber)
+	left := leftGutter + fitANSIWindow(leftText, m.xOffset, half-lipgloss.Width(leftGutter))
+	right := rightGutter + fitANSIWindow(rightText, m.xOffset, half-lipgloss.Width(rightGutter))
 	style := contextStyle
 	switch current.line.Kind {
 	case review.LineRemoved:
@@ -687,6 +705,27 @@ func (m *Model) ensureVisible() {
 		m.offset = m.cursor - height + 1
 	}
 	m.offset = max(0, min(m.offset, max(0, len(m.rows)-height)))
+}
+
+func (m *Model) scrollHorizontal(delta int) {
+	m.xOffset = max(0, min(m.xOffset+delta, m.maxHorizontalOffset()))
+}
+
+func (m Model) maxHorizontalOffset() int {
+	contentWidth := max(1, m.width-14)
+	extraWidth := 0
+	if m.sideBySide && m.width >= 100 {
+		contentWidth = max(1, (m.width-3)/2-6)
+		extraWidth = 2
+	}
+	longest := 0
+	for _, current := range m.rows {
+		if current.kind != rowCode {
+			continue
+		}
+		longest = max(longest, lipgloss.Width(expandTabs(current.text))+extraWidth)
+	}
+	return max(0, longest-contentWidth)
 }
 
 func (m Model) viewportHeight() int {
@@ -842,14 +881,26 @@ func filterANSIColors(value string, stripForeground bool) string {
 }
 
 func fitANSI(value string, width int) string {
+	return fitANSIWindow(value, 0, width)
+}
+
+func fitANSIWindow(value string, offset, width int) string {
 	if width <= 0 {
 		return ""
+	}
+	value = expandTabs(value)
+	if offset > 0 {
+		value = ansi.TruncateLeft(value, offset, "")
 	}
 	value = ansi.Truncate(value, width, "")
 	if padding := width - lipgloss.Width(value); padding > 0 {
 		value += strings.Repeat(" ", padding)
 	}
 	return value
+}
+
+func expandTabs(value string) string {
+	return strings.ReplaceAll(value, "\t", "    ")
 }
 
 func stylePrefix(style lipgloss.Style) string {

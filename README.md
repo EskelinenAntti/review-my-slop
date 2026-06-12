@@ -21,7 +21,8 @@ Run `review-my-slop` in a Git repository. Use `j` and `k` to move, `v` to
 select a range, and `c` to comment. Press `Enter` to save each comment directly
 to the inbox, `Shift+Enter` for a line break, or `Ctrl+G` to edit it in
 `$EDITOR`. Press `C` to browse pending inbox comments and edit one with
-`Enter`.
+`Enter`. Long lines can be scrolled with `h`/`l` or the left/right arrow keys;
+`0` and `$` jump to the horizontal start and end.
 
 The AI-facing `review-my-comments` command prints and consumes all pending
 feedback for its current repository. Re-run it to retrieve comments saved

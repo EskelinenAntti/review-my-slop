@@ -11,6 +11,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/x/ansi"
 
 	"github.com/anttieskelinen/review-my-slop/internal/review"
 )
@@ -208,6 +209,85 @@ func TestVimSequencesAndLayoutToggle(t *testing.T) {
 	}
 }
 
+func TestSideBySideTabsDoNotShiftLineNumbers(t *testing.T) {
+	model := New(testDiff(), nil, nil)
+	model.width = 120
+	model.sideBySide = true
+	index := findCodeRow(t, model, review.LineContext)
+	model.rows[index].text = "\t\tif err != nil { return fmt.Errorf(\"a deliberately long line\") }"
+
+	rendered := ansi.Strip(model.renderRow(index))
+	if strings.ContainsRune(rendered, '\t') {
+		t.Fatalf("rendered row contains a tab: %q", rendered)
+	}
+	if divider := strings.Index(rendered, "│"); divider != 59 {
+		t.Fatalf("divider column = %d, want 59: %q", divider, rendered)
+	}
+	if width := lipgloss.Width(rendered); width != 120 {
+		t.Fatalf("row width = %d, want 120", width)
+	}
+}
+
+func TestHorizontalScrollKeepsUnifiedGutterFixed(t *testing.T) {
+	model := New(testDiff(), nil, nil)
+	model.width = 37
+	index := findCodeRow(t, model, review.LineContext)
+	model.cursor = index
+	model.rows[index].text = "abcdefghijklmnopqrstuvwxyz0123456789"
+
+	before := ansi.Strip(model.renderRow(index))
+	model = update(t, model, textKey("l"))
+	model = update(t, model, textKey("l"))
+	after := ansi.Strip(model.renderRow(index))
+
+	if before[:14] != after[:14] {
+		t.Fatalf("gutter moved: before=%q after=%q", before[:14], after[:14])
+	}
+	if !strings.Contains(after[14:], "cdefgh") {
+		t.Fatalf("scrolled content = %q, want content starting at offset 2", after[14:])
+	}
+	if model.xOffset != 2 {
+		t.Fatalf("horizontal offset = %d, want 2", model.xOffset)
+	}
+}
+
+func TestHorizontalScrollKeepsSideBySideGuttersAndDividerFixed(t *testing.T) {
+	model := New(testDiff(), nil, nil)
+	model.width = 120
+	model.sideBySide = true
+	index := findCodeRow(t, model, review.LineContext)
+	model.rows[index].text = "abcdefghijklmnopqrstuvwxyz0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+	model.xOffset = 8
+
+	rendered := ansi.Strip(model.renderRow(index))
+	if divider := strings.Index(rendered, "│"); divider != 59 {
+		t.Fatalf("divider column = %d, want 59: %q", divider, rendered)
+	}
+	if rendered[:6] != "    1 " || rendered[63:69] != "    1 " {
+		t.Fatalf("line-number gutters moved: %q", rendered)
+	}
+	if !strings.Contains(rendered[6:59], "ghijkl") ||
+		!strings.Contains(rendered[69:], "ghijkl") {
+		t.Fatalf("panes did not share horizontal offset: %q", rendered)
+	}
+}
+
+func TestHorizontalScrollStartAndEnd(t *testing.T) {
+	model := New(testDiff(), nil, nil)
+	model.width = 37
+	index := findCodeRow(t, model, review.LineContext)
+	model.rows[index].text = strings.Repeat("x", 60)
+
+	model = update(t, model, textKey("$"))
+	if model.xOffset != 37 {
+		t.Fatalf("end offset = %d, want 37", model.xOffset)
+	}
+	model = update(t, model, textKey("0"))
+	if model.xOffset != 0 {
+		t.Fatalf("start offset = %d, want 0", model.xOffset)
+	}
+}
+
 func TestDiffBackgroundAndCursorFillTerminalWidth(t *testing.T) {
 	model := New(testDiff(), nil, nil)
 	model = update(t, model, tea.WindowSizeMsg{Width: 80, Height: 20})
@@ -286,6 +366,9 @@ func TestViewPreservesTerminalColors(t *testing.T) {
 	}
 	if view.ForegroundColor != nil {
 		t.Fatalf("foreground override = %#v, want nil", view.ForegroundColor)
+	}
+	if !view.AltScreen {
+		t.Fatal("view does not use the alternate screen")
 	}
 }
 
