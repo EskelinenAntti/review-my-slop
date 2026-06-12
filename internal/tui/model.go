@@ -383,10 +383,12 @@ func (m Model) renderRow(index int) string {
 		if m.selected(index) {
 			style = selectionStyle
 		}
+		stripForeground := false
 		if index == m.cursor {
 			style = cursorStyle
+			stripForeground = true
 		}
-		return renderStyledRow(style, line, width)
+		return renderStyledRow(style, line, width, stripForeground)
 	default:
 		return ""
 	}
@@ -459,10 +461,12 @@ func (m Model) renderSideBySide(index int) string {
 	if m.selected(index) {
 		style = selectionStyle
 	}
+	stripForeground := false
 	if index == m.cursor {
 		style = cursorStyle
+		stripForeground = true
 	}
-	return renderStyledRow(style, left+" │ "+right, m.width)
+	return renderStyledRow(style, left+" │ "+right, m.width, stripForeground)
 }
 
 func flatten(diff review.Diff) []row {
@@ -642,8 +646,9 @@ func ordered(a, b int) (int, int) {
 	return a, b
 }
 
-func renderStyledRow(style lipgloss.Style, value string, width int) string {
-	fitted := fitANSI(stripANSIBackgrounds(value), width)
+func renderStyledRow(style lipgloss.Style, value string, width int, stripForeground bool) string {
+	value = filterANSIColors(value, stripForeground)
+	fitted := fitANSI(value, width)
 	prefix := stylePrefix(style)
 	if prefix != "" {
 		// Syntax highlighters reset SGR state between tokens. Reapply the row
@@ -655,7 +660,7 @@ func renderStyledRow(style lipgloss.Style, value string, width int) string {
 	return style.Render(fitted)
 }
 
-func stripANSIBackgrounds(value string) string {
+func filterANSIColors(value string, stripForeground bool) string {
 	return ansiSGRPattern.ReplaceAllStringFunc(value, func(sequence string) string {
 		parameters := sequence[2 : len(sequence)-1]
 		if parameters == "" {
@@ -680,9 +685,23 @@ func stripANSIBackgrounds(value string) string {
 					}
 				}
 				continue
+			case stripForeground && code == 38:
+				if index+1 < len(parts) {
+					switch parts[index+1] {
+					case "2":
+						index = min(index+4, len(parts)-1)
+					case "5":
+						index = min(index+2, len(parts)-1)
+					}
+				}
+				continue
 			case code >= 40 && code <= 49:
 				continue
 			case code >= 100 && code <= 107:
+				continue
+			case stripForeground && code >= 30 && code <= 39:
+				continue
+			case stripForeground && code >= 90 && code <= 97:
 				continue
 			default:
 				filtered = append(filtered, parts[index])
@@ -725,17 +744,17 @@ func abs(value int) int {
 
 var (
 	ansiSGRPattern = regexp.MustCompile(`\x1b\[[0-9;]*m`)
-	titleStyle     = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#7aa2f7"))
-	fileStyle      = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#c0caf5")).Background(lipgloss.Color("#24283b"))
-	metadataStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("#7f849c"))
-	hunkStyle      = lipgloss.NewStyle().Foreground(lipgloss.Color("#bb9af7"))
+	titleStyle     = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#83a598"))
+	fileStyle      = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#ebdbb2")).Background(lipgloss.Color("#3c3836"))
+	metadataStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("#928374"))
+	hunkStyle      = lipgloss.NewStyle().Foreground(lipgloss.Color("#d3869b"))
 	contextStyle   = lipgloss.NewStyle()
-	addedStyle     = lipgloss.NewStyle().Background(lipgloss.Color("#183d2b"))
-	removedStyle   = lipgloss.NewStyle().Background(lipgloss.Color("#48242b"))
-	selectionStyle = lipgloss.NewStyle().Background(lipgloss.Color("#364a82")).Bold(true)
-	cursorStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("#1a1b26")).Background(lipgloss.Color("#c0caf5"))
-	mutedStyle     = lipgloss.NewStyle().Foreground(lipgloss.Color("#7f849c"))
-	errorStyle     = lipgloss.NewStyle().Foreground(lipgloss.Color("#f7768e")).Bold(true)
-	warningStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("#e0af68")).Bold(true)
-	commentBorder  = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(lipgloss.Color("#7aa2f7")).Padding(0, 1)
+	addedStyle     = lipgloss.NewStyle().Background(lipgloss.Color("#34432f"))
+	removedStyle   = lipgloss.NewStyle().Background(lipgloss.Color("#4b302e"))
+	selectionStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#282828")).Background(lipgloss.Color("#83a598")).Bold(true)
+	cursorStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("#282828")).Background(lipgloss.Color("#fabd2f"))
+	mutedStyle     = lipgloss.NewStyle().Foreground(lipgloss.Color("#928374"))
+	errorStyle     = lipgloss.NewStyle().Foreground(lipgloss.Color("#fb4934")).Bold(true)
+	warningStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("#fabd2f")).Bold(true)
+	commentBorder  = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(lipgloss.Color("#83a598")).Padding(0, 1)
 )

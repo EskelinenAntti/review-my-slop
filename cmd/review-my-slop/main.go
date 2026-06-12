@@ -30,6 +30,7 @@ func run(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+
 	store, err := inbox.OpenDefault()
 	if err != nil {
 		return err

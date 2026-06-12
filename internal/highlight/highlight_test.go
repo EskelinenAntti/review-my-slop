@@ -22,6 +22,32 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND.
 	}
 }
 
+func TestGruvboxUsesDistinctGoTokenColors(t *testing.T) {
+	lines := render("example.go", `package main
+
+// comment
+func answer(value int) string {
+	if value >= 42 {
+		return "ready"
+	}
+	return ""
+}
+`)
+	rendered := strings.Join(lines, "\n")
+	expected := map[string]string{
+		"keyword":  "\x1b[38;2;254;128;25m",
+		"function": "\x1b[38;2;250;189;47m",
+		"string":   "\x1b[38;2;184;187;38m",
+		"number":   "\x1b[38;2;211;134;155m",
+		"comment":  "\x1b[38;2;146;131;116m",
+	}
+	for token, sequence := range expected {
+		if !strings.Contains(rendered, sequence) {
+			t.Errorf("%s color %q not found in %q", token, sequence, rendered)
+		}
+	}
+}
+
 func stripANSI(value string) string {
 	var result strings.Builder
 	for len(value) > 0 {

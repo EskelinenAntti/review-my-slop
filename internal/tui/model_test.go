@@ -106,22 +106,26 @@ func TestDiffBackgroundAndCursorFillTerminalWidth(t *testing.T) {
 
 	addedIndex := findCodeRow(t, model, review.LineAdded)
 	added := model.renderRow(addedIndex)
-	assertStyledThroughColumn(t, added, 80, sgrExpectation{background: "24;61;43"})
+	assertStyledThroughColumn(t, added, 80, sgrExpectation{background: "52;67;47"})
 
 	removedIndex := findCodeRow(t, model, review.LineRemoved)
 	removed := model.renderRow(removedIndex)
-	assertStyledThroughColumn(t, removed, 80, sgrExpectation{background: "72;36;43"})
+	assertStyledThroughColumn(t, removed, 80, sgrExpectation{background: "75;48;46"})
 
 	model.cursor = addedIndex
 	cursor := model.renderRow(addedIndex)
 	assertStyledThroughColumn(t, cursor, 80, sgrExpectation{
-		background: "192;202;245",
+		background: "250;189;47",
+		foreground: "40;40;40",
 	})
 
 	contextIndex := findCodeRow(t, model, review.LineContext)
 	model.cursor = contextIndex
 	contextCursor := model.renderRow(contextIndex)
-	assertStyledThroughColumn(t, contextCursor, 80, sgrExpectation{background: "192;202;245"})
+	assertStyledThroughColumn(t, contextCursor, 80, sgrExpectation{
+		background: "250;189;47",
+		foreground: "40;40;40",
+	})
 }
 
 func TestSelectionBackgroundSurvivesSyntaxHighlightResets(t *testing.T) {
@@ -133,7 +137,8 @@ func TestSelectionBackgroundSurvivesSyntaxHighlightResets(t *testing.T) {
 
 	rendered := model.renderRow(model.cursor)
 	assertStyledThroughColumn(t, rendered, 72, sgrExpectation{
-		background: "192;202;245",
+		background: "250;189;47",
+		foreground: "40;40;40",
 	})
 }
 
@@ -157,12 +162,22 @@ func TestRenderStyledRowStripsSyntaxBackgroundColors(t *testing.T) {
 		"\x1b[45mstandard",
 		"\x1b[105mbright",
 	}, " ")
-	rendered := renderStyledRow(addedStyle, value, 80)
-	assertStyledThroughColumn(t, rendered, 80, sgrExpectation{background: "24;61;43"})
+	rendered := renderStyledRow(addedStyle, value, 80, false)
+	assertStyledThroughColumn(t, rendered, 80, sgrExpectation{background: "52;67;47"})
 	for _, forbidden := range []string{"48;2;255;0;0", "48;5;123", "[45m", "[105m"} {
 		if strings.Contains(rendered, forbidden) {
 			t.Fatalf("rendered row retains background sequence %q: %q", forbidden, rendered)
 		}
+	}
+}
+
+func TestViewPreservesTerminalColors(t *testing.T) {
+	view := New(testDiff(), nil).View()
+	if view.BackgroundColor != nil {
+		t.Fatalf("background override = %#v, want nil", view.BackgroundColor)
+	}
+	if view.ForegroundColor != nil {
+		t.Fatalf("foreground override = %#v, want nil", view.ForegroundColor)
 	}
 }
 
@@ -198,6 +213,7 @@ func findCodeRow(t *testing.T, model Model, kind review.LineKind) int {
 
 type sgrExpectation struct {
 	background string
+	foreground string
 	reverse    bool
 }
 
@@ -230,6 +246,7 @@ func assertStyledThroughColumn(t *testing.T, rendered string, width int, expecte
 
 type sgrState struct {
 	background string
+	foreground string
 	reverse    bool
 }
 
@@ -247,8 +264,15 @@ func (s *sgrState) apply(parameters string) {
 			s.reverse = true
 		case 27:
 			s.reverse = false
+		case 39:
+			s.foreground = ""
 		case 49:
 			s.background = ""
+		case 38:
+			if index+4 < len(values) && values[index+1] == "2" {
+				s.foreground = strings.Join(values[index+2:index+5], ";")
+				index += 4
+			}
 		case 48:
 			if index+4 < len(values) && values[index+1] == "2" {
 				s.background = strings.Join(values[index+2:index+5], ";")
@@ -262,6 +286,9 @@ func assertSGRState(t *testing.T, column int, state sgrState, expected sgrExpect
 	t.Helper()
 	if state.background != expected.background {
 		t.Fatalf("column %d background = %q, want %q", column, state.background, expected.background)
+	}
+	if expected.foreground != "" && state.foreground != expected.foreground {
+		t.Fatalf("column %d foreground = %q, want %q", column, state.foreground, expected.foreground)
 	}
 	if state.reverse != expected.reverse {
 		t.Fatalf("column %d reverse = %v, want %v", column, state.reverse, expected.reverse)
