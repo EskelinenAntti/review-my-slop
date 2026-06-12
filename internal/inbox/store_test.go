@@ -106,6 +106,38 @@ func TestStoreRejectsEmptyAndOversizedComments(t *testing.T) {
 	}
 }
 
+func TestListAndUpdateComments(t *testing.T) {
+	store := Store{Path: filepath.Join(t.TempDir(), "inbox.db")}
+	batch := testBatch("/repo", "first")
+	batch.Comments = append(batch.Comments, review.Comment{
+		Anchor: review.Anchor{File: "other.go", NewStart: 2, NewEnd: 2},
+		Body:   "second",
+	})
+	if err := store.Put(batch); err != nil {
+		t.Fatal(err)
+	}
+
+	comments, err := store.ListComments("/repo")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(comments) != 2 || comments[1].Comment.Body != "second" {
+		t.Fatalf("comments = %#v", comments)
+	}
+	comments[1].Comment.Body = "edited"
+	if err := store.UpdateComment("/repo", comments[1]); err != nil {
+		t.Fatal(err)
+	}
+
+	updated, err := store.ListComments("/repo")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := updated[1].Comment.Body; got != "edited" {
+		t.Fatalf("body = %q, want edited", got)
+	}
+}
+
 func testBatch(repository, body string) review.Batch {
 	return review.Batch{
 		ID:         body,

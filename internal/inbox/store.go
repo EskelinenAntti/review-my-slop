@@ -89,6 +89,61 @@ func (s Store) Put(batch review.Batch) error {
 	})
 }
 
+func (s Store) ListComments(repository string) ([]review.StoredComment, error) {
+	taken, err := s.Peek(repository)
+	if err != nil {
+		return nil, err
+	}
+	var comments []review.StoredComment
+	for _, batch := range taken.Batches {
+		for index, comment := range batch.Comments {
+			comments = append(comments, review.StoredComment{
+				BatchID: batch.ID,
+				Index:   index,
+				Comment: comment,
+			})
+		}
+	}
+	return comments, nil
+}
+
+func (s Store) UpdateComment(repository string, stored review.StoredComment) error {
+	if repository == "" || stored.BatchID == "" {
+		return errors.New("repository and batch ID are required")
+	}
+	if len(stored.Comment.Body) == 0 {
+		return errors.New("comment body is empty")
+	}
+	if len(stored.Comment.Body) > maxCommentBytes {
+		return fmt.Errorf("comment exceeds %d bytes", maxCommentBytes)
+	}
+	return s.update(func(bucket *bolt.Bucket) error {
+		cursor := bucket.Cursor()
+		for key, value := cursor.First(); key != nil; key, value = cursor.Next() {
+			var batch review.Batch
+			if err := json.Unmarshal(value, &batch); err != nil {
+				return fmt.Errorf("decode feedback batch: %w", err)
+			}
+			if batch.Repository != repository || batch.ID != stored.BatchID {
+				continue
+			}
+			if stored.Index < 0 || stored.Index >= len(batch.Comments) {
+				return fmt.Errorf("comment index %d is out of range", stored.Index)
+			}
+			batch.Comments[stored.Index] = stored.Comment
+			data, err := json.Marshal(batch)
+			if err != nil {
+				return fmt.Errorf("encode feedback batch: %w", err)
+			}
+			if len(data) > maxBatchBytes {
+				return fmt.Errorf("feedback batch exceeds %d bytes", maxBatchBytes)
+			}
+			return bucket.Put(key, data)
+		}
+		return errors.New("comment is no longer in the inbox")
+	})
+}
+
 type Taken struct {
 	Batches []review.Batch
 	keys    [][]byte

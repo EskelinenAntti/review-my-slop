@@ -1,7 +1,10 @@
 package tui
 
 import (
+	"fmt"
+	"os"
 	"regexp"
+	"runtime"
 	"strconv"
 	"strings"
 	"testing"
@@ -13,10 +16,11 @@ import (
 )
 
 func TestVisualSelectionCreatesMappedAnchorAndSubmits(t *testing.T) {
-	var submitted []review.Comment
-	model := New(testDiff(), func(comments []review.Comment) error {
-		submitted = comments
-		return nil
+	var saved []review.Comment
+	model := New(testDiff(), nil, func(stored review.StoredComment) (review.StoredComment, error) {
+		saved = append(saved, stored.Comment)
+		stored.BatchID = "new"
+		return stored, nil
 	})
 
 	model = update(t, model, textKey("j"))
@@ -29,11 +33,11 @@ func TestVisualSelectionCreatesMappedAnchorAndSubmits(t *testing.T) {
 	for _, r := range "fix both lines" {
 		model = update(t, model, textKey(string(r)))
 	}
-	model = update(t, model, controlKey('s'))
-	if len(model.comments) != 1 {
-		t.Fatalf("comments = %d, want 1", len(model.comments))
+	model = update(t, model, specialKey(tea.KeyEnter))
+	if len(saved) != 1 {
+		t.Fatalf("saved comments = %d, want 1", len(saved))
 	}
-	anchor := model.comments[0].Anchor
+	anchor := saved[0].Anchor
 	if anchor.File != "main.go" || anchor.OldStart != 2 || anchor.OldEnd != 2 ||
 		anchor.NewStart != 2 || anchor.NewEnd != 2 {
 		t.Fatalf("unexpected anchor: %#v", anchor)
@@ -44,14 +48,131 @@ func TestVisualSelectionCreatesMappedAnchorAndSubmits(t *testing.T) {
 		t.Fatalf("unexpected quoted lines: %#v", anchor.QuotedLines)
 	}
 
-	model = update(t, model, textKey("s"))
-	if len(submitted) != 1 || submitted[0].Body != "fix both lines" {
-		t.Fatalf("unexpected submitted comments: %#v", submitted)
+	if saved[0].Body != "fix both lines" {
+		t.Fatalf("unexpected saved comment: %#v", saved[0])
+	}
+}
+
+func TestCommentEditorShortcuts(t *testing.T) {
+	var saved review.Comment
+	model := New(testDiff(), nil, func(stored review.StoredComment) (review.StoredComment, error) {
+		saved = stored.Comment
+		stored.BatchID = "new"
+		return stored, nil
+	})
+	model = update(t, model, textKey("c"))
+	model = update(t, model, textKey("first"))
+	model = update(t, model, modifiedKey(tea.KeyEnter, tea.ModShift))
+	model = update(t, model, textKey("second"))
+
+	if got := string(model.editor); got != "first\nsecond" {
+		t.Fatalf("editor = %q, want multiline comment", got)
+	}
+	model = update(t, model, specialKey(tea.KeyEnter))
+	if saved.Body != "first\nsecond" {
+		t.Fatalf("comment = %#v, want multiline comment", saved)
+	}
+}
+
+func TestCommentSaveFailureKeepsDraftOpen(t *testing.T) {
+	model := New(testDiff(), nil, func(review.StoredComment) (review.StoredComment, error) {
+		return review.StoredComment{}, fmt.Errorf("inbox unavailable")
+	})
+	model = update(t, model, textKey("c"))
+	model = update(t, model, textKey("keep this"))
+	model = update(t, model, specialKey(tea.KeyEnter))
+
+	if model.mode != modeComment || string(model.editor) != "keep this" {
+		t.Fatalf("failed save lost draft: mode=%v editor=%q", model.mode, model.editor)
+	}
+	if model.err == nil || model.err.Error() != "inbox unavailable" {
+		t.Fatalf("error = %v, want inbox failure", model.err)
+	}
+}
+
+func TestExternalEditorResultReplacesDraft(t *testing.T) {
+	model := New(testDiff(), nil, nil)
+	model = update(t, model, textKey("c"))
+	model.editor = []rune("old draft")
+
+	model = update(t, model, externalEditorFinishedMsg{body: "edited externally\n"})
+	if got := string(model.editor); got != "edited externally\n" {
+		t.Fatalf("editor = %q, want external editor contents", got)
+	}
+	if model.mode != modeComment {
+		t.Fatalf("mode = %v, want comment", model.mode)
+	}
+}
+
+func TestCtrlGRequiresEditor(t *testing.T) {
+	t.Setenv("EDITOR", "")
+	model := New(testDiff(), nil, nil)
+	model = update(t, model, textKey("c"))
+	model = update(t, model, controlKey('g'))
+
+	if model.err == nil || model.err.Error() != "$EDITOR is not set" {
+		t.Fatalf("error = %v, want missing editor error", model.err)
+	}
+}
+
+func TestExternalEditorCommandReadsEditedDraft(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("test editor command uses sh")
+	}
+	file, err := os.CreateTemp("", "review-my-slop-editor-test-*.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := file.Name()
+	if err := file.Close(); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Remove(path) })
+
+	if err := editorCommand("printf 'edited externally' >", path).Run(); err != nil {
+		t.Fatal(err)
+	}
+	msg := readExternalEditorResult(path, nil)
+	if msg.err != nil {
+		t.Fatal(msg.err)
+	}
+	if msg.body != "edited externally" {
+		t.Fatalf("body = %q, want external editor contents", msg.body)
+	}
+}
+
+func TestInboxCommentsCanBeViewedAndEdited(t *testing.T) {
+	comments := []review.StoredComment{{
+		BatchID: "batch-1",
+		Comment: review.Comment{
+			Anchor: review.Anchor{File: "main.go", NewStart: 2},
+			Body:   "old body",
+		},
+	}}
+	var persisted review.StoredComment
+	model := New(testDiff(), comments, func(stored review.StoredComment) (review.StoredComment, error) {
+		persisted = stored
+		return stored, nil
+	})
+
+	model = update(t, model, textKey("C"))
+	if model.mode != modeComments || !strings.Contains(model.render(), "old body") {
+		t.Fatal("inbox comments view did not open")
+	}
+	model = update(t, model, specialKey(tea.KeyEnter))
+	model.editor = []rune("edited body")
+	model = update(t, model, specialKey(tea.KeyEnter))
+
+	if persisted.BatchID != "batch-1" || persisted.Comment.Body != "edited body" {
+		t.Fatalf("persisted = %#v, want edited existing comment", persisted)
+	}
+	if model.mode != modeComments || model.comments[0].Comment.Body != "edited body" {
+		t.Fatal("edited comment was not reflected in inbox view")
 	}
 }
 
 func TestSelectionCannotCrossHunk(t *testing.T) {
-	model := New(testDiff(), nil)
+	model := New(testDiff(), nil, nil)
 	model = update(t, model, textKey("v"))
 	for range 10 {
 		model = update(t, model, textKey("j"))
@@ -62,7 +183,7 @@ func TestSelectionCannotCrossHunk(t *testing.T) {
 }
 
 func TestVimSequencesAndLayoutToggle(t *testing.T) {
-	model := New(testDiff(), nil)
+	model := New(testDiff(), nil, nil)
 	model = update(t, model, tea.WindowSizeMsg{Width: 120, Height: 20})
 	model = update(t, model, textKey("G"))
 	if model.cursor != lastCodeRow(model.rows) {
@@ -87,21 +208,8 @@ func TestVimSequencesAndLayoutToggle(t *testing.T) {
 	}
 }
 
-func TestQuitRequiresConfirmationWithComments(t *testing.T) {
-	model := New(testDiff(), nil)
-	model.comments = []review.Comment{{Body: "pending"}}
-	model = update(t, model, textKey("q"))
-	if model.mode != modeConfirmQuit {
-		t.Fatalf("mode = %v, want quit confirmation", model.mode)
-	}
-	model = update(t, model, textKey("n"))
-	if model.mode != modeBrowse || model.quitting {
-		t.Fatal("quit cancellation failed")
-	}
-}
-
 func TestDiffBackgroundAndCursorFillTerminalWidth(t *testing.T) {
-	model := New(testDiff(), nil)
+	model := New(testDiff(), nil, nil)
 	model = update(t, model, tea.WindowSizeMsg{Width: 80, Height: 20})
 
 	addedIndex := findCodeRow(t, model, review.LineAdded)
@@ -129,7 +237,7 @@ func TestDiffBackgroundAndCursorFillTerminalWidth(t *testing.T) {
 }
 
 func TestSelectionBackgroundSurvivesSyntaxHighlightResets(t *testing.T) {
-	model := New(testDiff(), nil)
+	model := New(testDiff(), nil, nil)
 	model = update(t, model, tea.WindowSizeMsg{Width: 72, Height: 20})
 	model.cursor = findCodeRow(t, model, review.LineAdded)
 	model.selecting = true
@@ -143,7 +251,7 @@ func TestSelectionBackgroundSurvivesSyntaxHighlightResets(t *testing.T) {
 }
 
 func TestRenderedCodeRowsHaveExactTerminalWidth(t *testing.T) {
-	model := New(testDiff(), nil)
+	model := New(testDiff(), nil, nil)
 	model = update(t, model, tea.WindowSizeMsg{Width: 37, Height: 20})
 	for index, row := range model.rows {
 		if row.kind != rowCode {
@@ -172,7 +280,7 @@ func TestRenderStyledRowStripsSyntaxBackgroundColors(t *testing.T) {
 }
 
 func TestViewPreservesTerminalColors(t *testing.T) {
-	view := New(testDiff(), nil).View()
+	view := New(testDiff(), nil, nil).View()
 	if view.BackgroundColor != nil {
 		t.Fatalf("background override = %#v, want nil", view.BackgroundColor)
 	}
@@ -198,6 +306,14 @@ func textKey(text string) tea.KeyPressMsg {
 
 func controlKey(code rune) tea.KeyPressMsg {
 	return tea.KeyPressMsg(tea.Key{Code: code, Mod: tea.ModCtrl})
+}
+
+func specialKey(code rune) tea.KeyPressMsg {
+	return tea.KeyPressMsg(tea.Key{Code: code})
+}
+
+func modifiedKey(code rune, mod tea.KeyMod) tea.KeyPressMsg {
+	return tea.KeyPressMsg(tea.Key{Code: code, Mod: mod})
 }
 
 func findCodeRow(t *testing.T, model Model, kind review.LineKind) int {

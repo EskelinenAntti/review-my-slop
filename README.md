@@ -18,11 +18,13 @@ go install github.com/anttieskelinen/review-my-slop/cmd/review-my-comments@lates
 ## Usage
 
 Run `review-my-slop` in a Git repository. Use `j` and `k` to move, `v` to
-select a range, `c` to comment, and `s` to submit the review.
+select a range, and `c` to comment. Press `Enter` to save each comment directly
+to the inbox, `Shift+Enter` for a line break, or `Ctrl+G` to edit it in
+`$EDITOR`. Press `C` to browse pending inbox comments and edit one with
+`Enter`.
 
 The AI-facing `review-my-comments` command prints and consumes all pending
-feedback for its current repository. Re-run it to retrieve comments submitted
+feedback for its current repository. Re-run it to retrieve comments saved
 while the AI was working.
 
 Run `?` in the TUI for the complete key map.
-

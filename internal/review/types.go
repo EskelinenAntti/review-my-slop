@@ -57,6 +57,12 @@ type Comment struct {
 	Body   string `json:"body"`
 }
 
+type StoredComment struct {
+	BatchID string
+	Index   int
+	Comment Comment
+}
+
 type Batch struct {
 	ID              string    `json:"id"`
 	Repository      string    `json:"repository"`

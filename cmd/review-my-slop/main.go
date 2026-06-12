@@ -35,15 +35,29 @@ func run(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	submit := func(comments []review.Comment) error {
-		return store.Put(review.Batch{
+	comments, err := store.ListComments(loaded.Repository)
+	if err != nil {
+		return err
+	}
+	saveComment := func(stored review.StoredComment) (review.StoredComment, error) {
+		if stored.BatchID != "" {
+			return stored, store.UpdateComment(loaded.Repository, stored)
+		}
+		batch := review.Batch{
+			ID:              fmt.Sprintf("%d", time.Now().UnixNano()),
 			Repository:      loaded.Repository,
 			DiffFingerprint: loaded.Fingerprint,
 			CreatedAt:       time.Now().UTC(),
-			Comments:        comments,
-		})
+			Comments:        []review.Comment{stored.Comment},
+		}
+		if err := store.Put(batch); err != nil {
+			return review.StoredComment{}, err
+		}
+		stored.BatchID = batch.ID
+		stored.Index = 0
+		return stored, nil
 	}
-	program := tea.NewProgram(tui.New(loaded, submit))
+	program := tea.NewProgram(tui.New(loaded, comments, saveComment))
 	_, err = program.Run()
 	return err
 }

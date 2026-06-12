@@ -2,7 +2,10 @@ package tui
 
 import (
 	"fmt"
+	"os"
+	"os/exec"
 	"regexp"
+	"runtime"
 	"strconv"
 	"strings"
 
@@ -14,7 +17,12 @@ import (
 	"github.com/anttieskelinen/review-my-slop/internal/review"
 )
 
-type SubmitFunc func([]review.Comment) error
+type SaveCommentFunc func(review.StoredComment) (review.StoredComment, error)
+
+type externalEditorFinishedMsg struct {
+	body string
+	err  error
+}
 
 type rowKind uint8
 
@@ -39,14 +47,15 @@ type mode uint8
 const (
 	modeBrowse mode = iota
 	modeComment
+	modeComments
 	modeHelp
-	modeConfirmQuit
 )
 
 type Model struct {
 	diff       review.Diff
 	rows       []row
-	comments   []review.Comment
+	comments   []review.StoredComment
+	commentRow int
 	cursor     int
 	offset     int
 	width      int
@@ -56,7 +65,7 @@ type Model struct {
 	mode       mode
 	editor     []rune
 	editIndex  int
-	submit     SubmitFunc
+	save       SaveCommentFunc
 	err        error
 	quitting   bool
 	gPending   bool
@@ -64,14 +73,15 @@ type Model struct {
 	sideBySide bool
 }
 
-func New(diff review.Diff, submit SubmitFunc) Model {
+func New(diff review.Diff, comments []review.StoredComment, save SaveCommentFunc) Model {
 	model := Model{
 		diff:       diff,
+		comments:   comments,
 		width:      100,
 		height:     30,
 		selectFrom: -1,
 		editIndex:  -1,
-		submit:     submit,
+		save:       save,
 	}
 	model.rows = flatten(diff)
 	model.cursor = firstCodeRow(model.rows)
@@ -87,6 +97,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.height = msg.Height
 		m.ensureVisible()
 		return m, nil
+	case externalEditorFinishedMsg:
+		if msg.err != nil {
+			m.err = msg.err
+		} else {
+			m.editor = []rune(msg.body)
+			m.err = nil
+		}
+		return m, nil
 	case tea.KeyPressMsg:
 		return m.updateKey(msg)
 	}
@@ -98,23 +116,15 @@ func (m Model) updateKey(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	if m.mode == modeComment {
 		return m.updateEditor(name, key)
 	}
+	if m.mode == modeComments {
+		return m.updateComments(name)
+	}
 	if m.mode == modeHelp {
 		if name == "esc" || name == "?" || name == "q" {
 			m.mode = modeBrowse
 		}
 		return m, nil
 	}
-	if m.mode == modeConfirmQuit {
-		switch name {
-		case "y", "Y":
-			m.quitting = true
-			return m, tea.Quit
-		case "n", "N", "esc":
-			m.mode = modeBrowse
-		}
-		return m, nil
-	}
-
 	m.err = nil
 	if m.bracket != "" {
 		prefix := m.bracket
@@ -136,10 +146,6 @@ func (m Model) updateKey(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		m.quitting = true
 		return m, tea.Quit
 	case "q":
-		if len(m.comments) > 0 {
-			m.mode = modeConfirmQuit
-			return m, nil
-		}
 		m.quitting = true
 		return m, tea.Quit
 	case "?":
@@ -181,38 +187,41 @@ func (m Model) updateKey(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	case "esc":
 		m.cancelSelection()
 	case "c":
-		m.beginComment(-1)
-	case "e":
-		if len(m.comments) > 0 {
-			m.editIndex = len(m.comments) - 1
-			m.editor = []rune(m.comments[m.editIndex].Body)
-			m.mode = modeComment
-		}
-	case "d":
-		if len(m.comments) > 0 {
-			m.comments = m.comments[:len(m.comments)-1]
-		}
+		m.beginComment()
+	case "C":
+		m.mode = modeComments
+		m.commentRow = min(m.commentRow, max(0, len(m.comments)-1))
 	case "t":
 		if m.width >= 100 {
 			m.sideBySide = !m.sideBySide
 		} else {
 			m.err = fmt.Errorf("side-by-side view requires a terminal at least 100 columns wide")
 		}
-	case "s":
-		if len(m.comments) == 0 {
-			m.quitting = true
-			return m, tea.Quit
-		}
-		if m.submit == nil {
-			m.err = fmt.Errorf("submit function is unavailable")
-			return m, nil
-		}
-		if err := m.submit(append([]review.Comment(nil), m.comments...)); err != nil {
-			m.err = err
-			return m, nil
-		}
+	}
+	return m, nil
+}
+
+func (m Model) updateComments(name string) (tea.Model, tea.Cmd) {
+	switch name {
+	case "esc", "C":
+		m.mode = modeBrowse
+	case "q", "ctrl+c":
 		m.quitting = true
 		return m, tea.Quit
+	case "j", "down":
+		if m.commentRow < len(m.comments)-1 {
+			m.commentRow++
+		}
+	case "k", "up":
+		if m.commentRow > 0 {
+			m.commentRow--
+		}
+	case "enter", "e":
+		if len(m.comments) > 0 {
+			m.editIndex = m.commentRow
+			m.editor = []rune(m.comments[m.editIndex].Comment.Body)
+			m.mode = modeComment
+		}
 	}
 	return m, nil
 }
@@ -220,36 +229,28 @@ func (m Model) updateKey(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 func (m Model) updateEditor(name string, key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	switch name {
 	case "esc":
-		m.mode = modeBrowse
+		if m.editIndex >= 0 {
+			m.mode = modeComments
+		} else {
+			m.mode = modeBrowse
+		}
 		m.editor = nil
 		m.editIndex = -1
-	case "ctrl+s":
-		body := strings.TrimSpace(string(m.editor))
-		if body == "" {
-			m.err = fmt.Errorf("comment cannot be empty")
+	case "enter":
+		m.saveComment()
+	case "shift+enter":
+		m.editor = append(m.editor, '\n')
+	case "ctrl+g":
+		cmd, err := m.openExternalEditor()
+		if err != nil {
+			m.err = err
 			return m, nil
 		}
-		if m.editIndex >= 0 {
-			m.comments[m.editIndex].Body = body
-		} else {
-			anchor, err := m.currentAnchor()
-			if err != nil {
-				m.err = err
-				m.mode = modeBrowse
-				return m, nil
-			}
-			m.comments = append(m.comments, review.Comment{Anchor: anchor, Body: body})
-		}
-		m.mode = modeBrowse
-		m.editor = nil
-		m.editIndex = -1
-		m.cancelSelection()
+		return m, cmd
 	case "backspace":
 		if len(m.editor) > 0 {
 			m.editor = m.editor[:len(m.editor)-1]
 		}
-	case "enter":
-		m.editor = append(m.editor, '\n')
 	default:
 		if key.Text != "" {
 			m.editor = append(m.editor, []rune(key.Text)...)
@@ -258,7 +259,100 @@ func (m Model) updateEditor(name string, key tea.KeyPressMsg) (tea.Model, tea.Cm
 	return m, nil
 }
 
-func (m *Model) beginComment(editIndex int) {
+func (m *Model) saveComment() {
+	body := strings.TrimSpace(string(m.editor))
+	if body == "" {
+		m.err = fmt.Errorf("comment cannot be empty")
+		return
+	}
+	if m.save == nil {
+		m.err = fmt.Errorf("comment inbox is unavailable")
+		return
+	}
+	var stored review.StoredComment
+	if m.editIndex >= 0 {
+		stored = m.comments[m.editIndex]
+		stored.Comment.Body = body
+	} else {
+		anchor, err := m.currentAnchor()
+		if err != nil {
+			m.err = err
+			return
+		}
+		stored.Comment = review.Comment{Anchor: anchor, Body: body}
+	}
+	saved, err := m.save(stored)
+	if err != nil {
+		m.err = err
+		return
+	}
+	if m.editIndex >= 0 {
+		m.comments[m.editIndex] = saved
+		m.mode = modeComments
+	} else {
+		m.comments = append(m.comments, saved)
+		m.commentRow = len(m.comments) - 1
+		m.mode = modeBrowse
+	}
+	m.editor = nil
+	m.editIndex = -1
+	m.err = nil
+	m.cancelSelection()
+}
+
+func (m Model) openExternalEditor() (tea.Cmd, error) {
+	editor := strings.TrimSpace(os.Getenv("EDITOR"))
+	if editor == "" {
+		return nil, fmt.Errorf("$EDITOR is not set")
+	}
+	file, err := os.CreateTemp("", "review-my-slop-comment-*.md")
+	if err != nil {
+		return nil, fmt.Errorf("create comment file: %w", err)
+	}
+	path := file.Name()
+	cleanup := func() {
+		_ = file.Close()
+		_ = os.Remove(path)
+	}
+	if _, err := file.WriteString(string(m.editor)); err != nil {
+		cleanup()
+		return nil, fmt.Errorf("write comment file: %w", err)
+	}
+	if err := file.Close(); err != nil {
+		_ = os.Remove(path)
+		return nil, fmt.Errorf("close comment file: %w", err)
+	}
+
+	command := editorCommand(editor, path)
+	return tea.ExecProcess(command, func(editorErr error) tea.Msg {
+		return readExternalEditorResult(path, editorErr)
+	}), nil
+}
+
+func readExternalEditorResult(path string, editorErr error) externalEditorFinishedMsg {
+	defer os.Remove(path)
+	if editorErr != nil {
+		return externalEditorFinishedMsg{err: fmt.Errorf("editor: %w", editorErr)}
+	}
+	body, err := os.ReadFile(path)
+	if err != nil {
+		return externalEditorFinishedMsg{err: fmt.Errorf("read comment file: %w", err)}
+	}
+	return externalEditorFinishedMsg{body: string(body)}
+}
+
+func editorCommand(editor, path string) *exec.Cmd {
+	if runtime.GOOS == "windows" {
+		return exec.Command("cmd", "/C", editor+" "+strconv.Quote(path))
+	}
+	return exec.Command("sh", "-c", editor+" "+shellQuote(path))
+}
+
+func shellQuote(value string) string {
+	return "'" + strings.ReplaceAll(value, "'", "'\"'\"'") + "'"
+}
+
+func (m *Model) beginComment() {
 	if !m.isCode(m.cursor) {
 		return
 	}
@@ -268,7 +362,6 @@ func (m *Model) beginComment(editIndex int) {
 	}
 	m.mode = modeComment
 	m.editor = nil
-	m.editIndex = editIndex
 }
 
 func (m Model) currentAnchor() (review.Anchor, error) {
@@ -322,9 +415,12 @@ func (m Model) render() string {
 	if m.mode == modeHelp {
 		return m.renderHelp()
 	}
+	if m.mode == modeComments {
+		return m.renderComments()
+	}
 	var out strings.Builder
 	title := titleStyle.Render("review-my-slop")
-	summary := mutedStyle.Render(fmt.Sprintf("%d files  %d comments", len(m.diff.Files), len(m.comments)))
+	summary := mutedStyle.Render(fmt.Sprintf("%d files  %d comments in inbox", len(m.diff.Files), len(m.comments)))
 	out.WriteString(title + "  " + summary + "\n")
 
 	if len(m.rows) == 0 {
@@ -344,8 +440,6 @@ func (m Model) render() string {
 	if m.mode == modeComment {
 		out.WriteString(commentBorder.Width(max(20, m.width-2)).Render(m.renderEditor()))
 		out.WriteByte('\n')
-	} else if m.mode == modeConfirmQuit {
-		out.WriteString(warningStyle.Render("Discard unsent comments? [y/N]") + "\n")
 	} else if m.err != nil {
 		out.WriteString(errorStyle.Render(m.err.Error()) + "\n")
 	} else {
@@ -397,21 +491,55 @@ func (m Model) renderRow(index int) string {
 func (m Model) renderEditor() string {
 	label := "New comment"
 	if m.editIndex >= 0 {
-		label = "Edit comment"
+		label = "Edit inbox comment"
 	}
 	body := string(m.editor)
 	if body == "" {
 		body = mutedStyle.Render("Type feedback...")
 	}
-	return label + "\n" + body + "\n" + mutedStyle.Render("Ctrl-S save  Esc cancel")
+	return label + "\n" + body + "\n" + mutedStyle.Render("Enter save to inbox  Shift-Enter newline  Ctrl-G $EDITOR  Esc cancel")
 }
 
 func (m Model) renderStatus() string {
-	status := "j/k move  v select  c comment  t layout  s submit  ? help  q quit"
+	status := "j/k move  v select  c comment  C inbox  t layout  ? help  q quit"
 	if m.selecting {
 		status = "visual selection  j/k extend  c comment  Esc cancel"
 	}
 	return mutedStyle.Render(status)
+}
+
+func (m Model) renderComments() string {
+	var out strings.Builder
+	out.WriteString(titleStyle.Render("inbox comments"))
+	out.WriteString("  ")
+	out.WriteString(mutedStyle.Render(fmt.Sprintf("%d pending", len(m.comments))))
+	out.WriteByte('\n')
+	if len(m.comments) == 0 {
+		out.WriteString("\n" + mutedStyle.Render("No comments in the inbox.") + "\n")
+	} else {
+		for index, stored := range m.comments {
+			prefix := "  "
+			style := contextStyle
+			if index == m.commentRow {
+				prefix = "> "
+				style = cursorStyle
+			}
+			comment := stored.Comment
+			location := comment.Anchor.File
+			if comment.Anchor.NewStart > 0 {
+				location += fmt.Sprintf(":%d", comment.Anchor.NewStart)
+			} else if comment.Anchor.OldStart > 0 {
+				location += fmt.Sprintf(":%d", comment.Anchor.OldStart)
+			}
+			body := strings.ReplaceAll(strings.TrimSpace(comment.Body), "\n", " ")
+			line := fmt.Sprintf("%s%s  %s", prefix, location, body)
+			out.WriteString(renderStyledRow(style, line, max(20, m.width), index == m.commentRow))
+			out.WriteByte('\n')
+		}
+	}
+	out.WriteString(mutedStyle.Render("j/k move  Enter/e edit  Esc return  q quit"))
+	out.WriteByte('\n')
+	return out.String()
 }
 
 func (m Model) renderHelp() string {
@@ -425,9 +553,8 @@ func (m Model) renderHelp() string {
 		"]h/[h             next/previous hunk",
 		"v                 select a line range",
 		"c                 comment on selection/current line",
-		"e/d               edit/delete latest comment",
+		"C                 view/edit inbox comments",
 		"t                 toggle unified/side-by-side",
-		"s                 submit comments and exit",
 		"q                 quit",
 		"",
 		mutedStyle.Render("? or Esc closes help"),
@@ -755,6 +882,5 @@ var (
 	cursorStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("#282828")).Background(lipgloss.Color("#fabd2f"))
 	mutedStyle     = lipgloss.NewStyle().Foreground(lipgloss.Color("#928374"))
 	errorStyle     = lipgloss.NewStyle().Foreground(lipgloss.Color("#fb4934")).Bold(true)
-	warningStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("#fabd2f")).Bold(true)
 	commentBorder  = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(lipgloss.Color("#83a598")).Padding(0, 1)
 )
