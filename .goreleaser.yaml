@@ -1,0 +1,38 @@
+version: 2
+
+project_name: review-my-slop
+
+builds:
+  - id: review-my-slop
+    main: ./cmd/review-my-slop
+    binary: review-my-slop
+    env:
+      - CGO_ENABLED=0
+    goos: [darwin, linux]
+    goarch: [amd64, arm64]
+  - id: review-my-comments
+    main: ./cmd/review-my-comments
+    binary: review-my-comments
+    env:
+      - CGO_ENABLED=0
+    goos: [darwin, linux]
+    goarch: [amd64, arm64]
+
+archives:
+  - formats: [tar.gz]
+    files:
+      - LICENSE
+      - README.md
+
+checksum:
+  name_template: checksums.txt
+
+sboms:
+  - artifacts: archive
+
+snapshot:
+  version_template: "{{ incpatch .Version }}-next"
+
+changelog:
+  disable: true
+

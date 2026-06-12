@@ -1,0 +1,108 @@
+package main
+
+import (
+	"bytes"
+	"context"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
+	"testing"
+
+	"github.com/anttieskelinen/review-my-slop/internal/inbox"
+	"github.com/anttieskelinen/review-my-slop/internal/review"
+)
+
+func TestRunAtPrintsAndConsumesCurrentRepositoryFeedback(t *testing.T) {
+	repo, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command("git", "init", "-q")
+	cmd.Dir = repo
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("git init: %v\n%s", err, out)
+	}
+	state := t.TempDir()
+	t.Setenv("REVIEW_MY_SLOP_HOME", state)
+	store, err := inbox.OpenDefault()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Put(review.Batch{
+		Repository: repo,
+		Comments: []review.Comment{{
+			Anchor: review.Anchor{File: "main.go", NewStart: 3, NewEnd: 3},
+			Body:   "Check this error.",
+		}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	var output bytes.Buffer
+	if err := runAt(context.Background(), repo, &output); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(output.String(), "Check this error.") {
+		t.Fatalf("unexpected output:\n%s", output.String())
+	}
+
+	var empty bytes.Buffer
+	if err := runAt(context.Background(), repo, &empty); err != nil {
+		t.Fatal(err)
+	}
+	if strings.TrimSpace(empty.String()) != "No pending review comments." {
+		t.Fatalf("second output = %q", empty.String())
+	}
+
+	info, err := os.Stat(filepath.Join(state, "inbox.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Mode().Perm() != 0o600 {
+		t.Fatalf("database mode = %o", info.Mode().Perm())
+	}
+}
+
+type failingWriter struct{}
+
+func (failingWriter) Write([]byte) (int, error) {
+	return 0, os.ErrClosed
+}
+
+func TestRunAtPreservesFeedbackWhenOutputFails(t *testing.T) {
+	repo, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command("git", "init", "-q")
+	cmd.Dir = repo
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("git init: %v\n%s", err, out)
+	}
+	t.Setenv("REVIEW_MY_SLOP_HOME", t.TempDir())
+	store, err := inbox.OpenDefault()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Put(review.Batch{
+		Repository: repo,
+		Comments: []review.Comment{{
+			Anchor: review.Anchor{File: "main.go", NewStart: 1},
+			Body:   "Preserve me.",
+		}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := runAt(context.Background(), repo, failingWriter{}); err == nil {
+		t.Fatal("output failure was ignored")
+	}
+	taken, err := store.Peek(repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(taken.Batches) != 1 {
+		t.Fatalf("pending batches = %d, want 1", len(taken.Batches))
+	}
+}

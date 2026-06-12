@@ -1,0 +1,741 @@
+package tui
+
+import (
+	"fmt"
+	"regexp"
+	"strconv"
+	"strings"
+
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/x/ansi"
+
+	"github.com/anttieskelinen/review-my-slop/internal/highlight"
+	"github.com/anttieskelinen/review-my-slop/internal/review"
+)
+
+type SubmitFunc func([]review.Comment) error
+
+type rowKind uint8
+
+const (
+	rowFile rowKind = iota
+	rowMetadata
+	rowHunk
+	rowCode
+)
+
+type row struct {
+	kind      rowKind
+	fileIndex int
+	hunkIndex int
+	lineIndex int
+	text      string
+	line      review.Line
+}
+
+type mode uint8
+
+const (
+	modeBrowse mode = iota
+	modeComment
+	modeHelp
+	modeConfirmQuit
+)
+
+type Model struct {
+	diff       review.Diff
+	rows       []row
+	comments   []review.Comment
+	cursor     int
+	offset     int
+	width      int
+	height     int
+	selecting  bool
+	selectFrom int
+	mode       mode
+	editor     []rune
+	editIndex  int
+	submit     SubmitFunc
+	err        error
+	quitting   bool
+	gPending   bool
+	bracket    string
+	sideBySide bool
+}
+
+func New(diff review.Diff, submit SubmitFunc) Model {
+	model := Model{
+		diff:       diff,
+		width:      100,
+		height:     30,
+		selectFrom: -1,
+		editIndex:  -1,
+		submit:     submit,
+	}
+	model.rows = flatten(diff)
+	model.cursor = firstCodeRow(model.rows)
+	return model
+}
+
+func (m Model) Init() tea.Cmd { return nil }
+
+func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	switch msg := msg.(type) {
+	case tea.WindowSizeMsg:
+		m.width = msg.Width
+		m.height = msg.Height
+		m.ensureVisible()
+		return m, nil
+	case tea.KeyPressMsg:
+		return m.updateKey(msg)
+	}
+	return m, nil
+}
+
+func (m Model) updateKey(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+	name := key.String()
+	if m.mode == modeComment {
+		return m.updateEditor(name, key)
+	}
+	if m.mode == modeHelp {
+		if name == "esc" || name == "?" || name == "q" {
+			m.mode = modeBrowse
+		}
+		return m, nil
+	}
+	if m.mode == modeConfirmQuit {
+		switch name {
+		case "y", "Y":
+			m.quitting = true
+			return m, tea.Quit
+		case "n", "N", "esc":
+			m.mode = modeBrowse
+		}
+		return m, nil
+	}
+
+	m.err = nil
+	if m.bracket != "" {
+		prefix := m.bracket
+		m.bracket = ""
+		switch prefix + name {
+		case "]f":
+			m.jump(rowFile, 1)
+		case "[f":
+			m.jump(rowFile, -1)
+		case "]h":
+			m.jump(rowHunk, 1)
+		case "[h":
+			m.jump(rowHunk, -1)
+		}
+		return m, nil
+	}
+	switch name {
+	case "ctrl+c":
+		m.quitting = true
+		return m, tea.Quit
+	case "q":
+		if len(m.comments) > 0 {
+			m.mode = modeConfirmQuit
+			return m, nil
+		}
+		m.quitting = true
+		return m, tea.Quit
+	case "?":
+		m.mode = modeHelp
+	case "j", "down":
+		m.gPending = false
+		m.move(1)
+	case "k", "up":
+		m.gPending = false
+		m.move(-1)
+	case "ctrl+d":
+		m.move(max(1, m.viewportHeight()/2))
+	case "ctrl+u":
+		m.move(-max(1, m.viewportHeight()/2))
+	case "g":
+		if m.gPending {
+			m.cursor = firstCodeRow(m.rows)
+			m.gPending = false
+			m.ensureVisible()
+		} else {
+			m.gPending = true
+		}
+	case "G":
+		m.cursor = lastCodeRow(m.rows)
+		m.gPending = false
+		m.ensureVisible()
+	case "]", "[":
+		m.gPending = false
+		m.bracket = name
+	case "v":
+		if m.isCode(m.cursor) {
+			if m.selecting {
+				m.cancelSelection()
+			} else {
+				m.selecting = true
+				m.selectFrom = m.cursor
+			}
+		}
+	case "esc":
+		m.cancelSelection()
+	case "c":
+		m.beginComment(-1)
+	case "e":
+		if len(m.comments) > 0 {
+			m.editIndex = len(m.comments) - 1
+			m.editor = []rune(m.comments[m.editIndex].Body)
+			m.mode = modeComment
+		}
+	case "d":
+		if len(m.comments) > 0 {
+			m.comments = m.comments[:len(m.comments)-1]
+		}
+	case "t":
+		if m.width >= 100 {
+			m.sideBySide = !m.sideBySide
+		} else {
+			m.err = fmt.Errorf("side-by-side view requires a terminal at least 100 columns wide")
+		}
+	case "s":
+		if len(m.comments) == 0 {
+			m.quitting = true
+			return m, tea.Quit
+		}
+		if m.submit == nil {
+			m.err = fmt.Errorf("submit function is unavailable")
+			return m, nil
+		}
+		if err := m.submit(append([]review.Comment(nil), m.comments...)); err != nil {
+			m.err = err
+			return m, nil
+		}
+		m.quitting = true
+		return m, tea.Quit
+	}
+	return m, nil
+}
+
+func (m Model) updateEditor(name string, key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+	switch name {
+	case "esc":
+		m.mode = modeBrowse
+		m.editor = nil
+		m.editIndex = -1
+	case "ctrl+s":
+		body := strings.TrimSpace(string(m.editor))
+		if body == "" {
+			m.err = fmt.Errorf("comment cannot be empty")
+			return m, nil
+		}
+		if m.editIndex >= 0 {
+			m.comments[m.editIndex].Body = body
+		} else {
+			anchor, err := m.currentAnchor()
+			if err != nil {
+				m.err = err
+				m.mode = modeBrowse
+				return m, nil
+			}
+			m.comments = append(m.comments, review.Comment{Anchor: anchor, Body: body})
+		}
+		m.mode = modeBrowse
+		m.editor = nil
+		m.editIndex = -1
+		m.cancelSelection()
+	case "backspace":
+		if len(m.editor) > 0 {
+			m.editor = m.editor[:len(m.editor)-1]
+		}
+	case "enter":
+		m.editor = append(m.editor, '\n')
+	default:
+		if key.Text != "" {
+			m.editor = append(m.editor, []rune(key.Text)...)
+		}
+	}
+	return m, nil
+}
+
+func (m *Model) beginComment(editIndex int) {
+	if !m.isCode(m.cursor) {
+		return
+	}
+	if _, err := m.currentAnchor(); err != nil {
+		m.err = err
+		return
+	}
+	m.mode = modeComment
+	m.editor = nil
+	m.editIndex = editIndex
+}
+
+func (m Model) currentAnchor() (review.Anchor, error) {
+	start, end := m.cursor, m.cursor
+	if m.selecting {
+		start, end = ordered(m.selectFrom, m.cursor)
+	}
+	if start < 0 || end >= len(m.rows) || !m.isCode(start) || !m.isCode(end) {
+		return review.Anchor{}, fmt.Errorf("select code lines before commenting")
+	}
+	first, last := m.rows[start], m.rows[end]
+	if first.fileIndex != last.fileIndex || first.hunkIndex != last.hunkIndex {
+		return review.Anchor{}, fmt.Errorf("a comment selection cannot cross a hunk")
+	}
+	file := m.diff.Files[first.fileIndex]
+	hunk := file.Hunks[first.hunkIndex]
+	anchor := review.Anchor{
+		File:     file.Display,
+		Hunk:     hunk.Header,
+		StartRow: first.lineIndex,
+		EndRow:   last.lineIndex,
+	}
+	for index := start; index <= end; index++ {
+		current := m.rows[index]
+		if current.kind != rowCode {
+			return review.Anchor{}, fmt.Errorf("a comment selection cannot include headers")
+		}
+		prefix := " "
+		switch current.line.Kind {
+		case review.LineAdded:
+			prefix = "+"
+		case review.LineRemoved:
+			prefix = "-"
+		}
+		anchor.QuotedLines = append(anchor.QuotedLines, prefix+current.line.Text)
+		accumulateRange(&anchor.OldStart, &anchor.OldEnd, current.line.OldNumber)
+		accumulateRange(&anchor.NewStart, &anchor.NewEnd, current.line.NewNumber)
+	}
+	return anchor, nil
+}
+
+func (m Model) View() tea.View {
+	if m.quitting {
+		return tea.NewView("")
+	}
+	content := m.render()
+	return tea.NewView(content)
+}
+
+func (m Model) render() string {
+	if m.mode == modeHelp {
+		return m.renderHelp()
+	}
+	var out strings.Builder
+	title := titleStyle.Render("review-my-slop")
+	summary := mutedStyle.Render(fmt.Sprintf("%d files  %d comments", len(m.diff.Files), len(m.comments)))
+	out.WriteString(title + "  " + summary + "\n")
+
+	if len(m.rows) == 0 {
+		out.WriteString("\n" + mutedStyle.Render("No unstaged or untracked changes.") + "\n")
+	} else {
+		height := m.viewportHeight()
+		end := min(len(m.rows), m.offset+height)
+		for index := m.offset; index < end; index++ {
+			out.WriteString(m.renderRow(index))
+			out.WriteByte('\n')
+		}
+		for index := end; index < m.offset+height; index++ {
+			out.WriteByte('\n')
+		}
+	}
+
+	if m.mode == modeComment {
+		out.WriteString(commentBorder.Width(max(20, m.width-2)).Render(m.renderEditor()))
+		out.WriteByte('\n')
+	} else if m.mode == modeConfirmQuit {
+		out.WriteString(warningStyle.Render("Discard unsent comments? [y/N]") + "\n")
+	} else if m.err != nil {
+		out.WriteString(errorStyle.Render(m.err.Error()) + "\n")
+	} else {
+		out.WriteString(m.renderStatus() + "\n")
+	}
+	return out.String()
+}
+
+func (m Model) renderRow(index int) string {
+	current := m.rows[index]
+	width := max(20, m.width)
+	switch current.kind {
+	case rowFile:
+		return fileStyle.Width(width).Render(current.text)
+	case rowMetadata:
+		return metadataStyle.Render("  " + current.text)
+	case rowHunk:
+		return hunkStyle.Render(current.text)
+	case rowCode:
+		if m.sideBySide && m.width >= 100 {
+			return m.renderSideBySide(index)
+		}
+		oldNumber := number(current.line.OldNumber)
+		newNumber := number(current.line.NewNumber)
+		prefix := " "
+		style := contextStyle
+		switch current.line.Kind {
+		case review.LineAdded:
+			prefix, style = "+", addedStyle
+		case review.LineRemoved:
+			prefix, style = "-", removedStyle
+		}
+		text := current.text
+		line := fmt.Sprintf("%5s %5s %s %s", oldNumber, newNumber, prefix, text)
+		if m.selected(index) {
+			style = selectionStyle
+		}
+		if index == m.cursor {
+			style = cursorStyle
+		}
+		return renderStyledRow(style, line, width)
+	default:
+		return ""
+	}
+}
+
+func (m Model) renderEditor() string {
+	label := "New comment"
+	if m.editIndex >= 0 {
+		label = "Edit comment"
+	}
+	body := string(m.editor)
+	if body == "" {
+		body = mutedStyle.Render("Type feedback...")
+	}
+	return label + "\n" + body + "\n" + mutedStyle.Render("Ctrl-S save  Esc cancel")
+}
+
+func (m Model) renderStatus() string {
+	status := "j/k move  v select  c comment  t layout  s submit  ? help  q quit"
+	if m.selecting {
+		status = "visual selection  j/k extend  c comment  Esc cancel"
+	}
+	return mutedStyle.Render(status)
+}
+
+func (m Model) renderHelp() string {
+	lines := []string{
+		titleStyle.Render("review-my-slop help"),
+		"",
+		"j/k, arrows       move",
+		"gg/G              first/last changed line",
+		"Ctrl-d/Ctrl-u     half-page down/up",
+		"]f/[f             next/previous file",
+		"]h/[h             next/previous hunk",
+		"v                 select a line range",
+		"c                 comment on selection/current line",
+		"e/d               edit/delete latest comment",
+		"t                 toggle unified/side-by-side",
+		"s                 submit comments and exit",
+		"q                 quit",
+		"",
+		mutedStyle.Render("? or Esc closes help"),
+	}
+	return strings.Join(lines, "\n")
+}
+
+func (m Model) renderSideBySide(index int) string {
+	current := m.rows[index]
+	half := max(20, (m.width-3)/2)
+	leftNumber, rightNumber := number(current.line.OldNumber), number(current.line.NewNumber)
+	leftText, rightText := "", ""
+	switch current.line.Kind {
+	case review.LineRemoved:
+		leftText = "- " + current.text
+	case review.LineAdded:
+		rightText = "+ " + current.text
+	default:
+		leftText = "  " + current.text
+		rightText = "  " + current.text
+	}
+	left := fitANSI(fmt.Sprintf("%5s %s", leftNumber, leftText), half)
+	right := fitANSI(fmt.Sprintf("%5s %s", rightNumber, rightText), half)
+	style := contextStyle
+	switch current.line.Kind {
+	case review.LineRemoved:
+		style = removedStyle
+	case review.LineAdded:
+		style = addedStyle
+	}
+	if m.selected(index) {
+		style = selectionStyle
+	}
+	if index == m.cursor {
+		style = cursorStyle
+	}
+	return renderStyledRow(style, left+" │ "+right, m.width)
+}
+
+func flatten(diff review.Diff) []row {
+	var rows []row
+	for fileIndex, file := range diff.Files {
+		rows = append(rows, row{kind: rowFile, fileIndex: fileIndex, hunkIndex: -1, lineIndex: -1, text: file.Display})
+		for _, metadata := range file.Metadata {
+			rows = append(rows, row{kind: rowMetadata, fileIndex: fileIndex, hunkIndex: -1, lineIndex: -1, text: metadata})
+		}
+		highlighted := highlight.Sources(file.Language, file.OldSource, file.NewSource)
+		for hunkIndex, hunk := range file.Hunks {
+			header := hunk.Header
+			if !strings.HasPrefix(header, "@@") {
+				header = "@@ " + header
+			}
+			rows = append(rows, row{kind: rowHunk, fileIndex: fileIndex, hunkIndex: hunkIndex, lineIndex: -1, text: header})
+			for lineIndex, line := range hunk.Lines {
+				text := line.Text
+				switch line.Kind {
+				case review.LineRemoved:
+					text = highlightedLine(highlighted.Old, line.OldNumber, text)
+				default:
+					text = highlightedLine(highlighted.New, line.NewNumber, text)
+				}
+				rows = append(rows, row{
+					kind: rowCode, fileIndex: fileIndex, hunkIndex: hunkIndex,
+					lineIndex: lineIndex, line: line, text: text,
+				})
+			}
+		}
+	}
+	return rows
+}
+
+func highlightedLine(lines []string, number int, fallback string) string {
+	if number <= 0 || number > len(lines) {
+		return fallback
+	}
+	return lines[number-1]
+}
+
+func (m *Model) move(delta int) {
+	if len(m.rows) == 0 {
+		return
+	}
+	target := m.cursor
+	step := 1
+	if delta < 0 {
+		step = -1
+	}
+	for moved := 0; moved < abs(delta); {
+		next := target + step
+		for next >= 0 && next < len(m.rows) && m.rows[next].kind != rowCode {
+			next += step
+		}
+		if next < 0 || next >= len(m.rows) {
+			break
+		}
+		if m.selecting && !m.sameHunk(m.selectFrom, next) {
+			break
+		}
+		target = next
+		moved++
+	}
+	m.cursor = target
+	m.ensureVisible()
+}
+
+func (m *Model) jump(kind rowKind, direction int) {
+	if len(m.rows) == 0 {
+		return
+	}
+	m.cancelSelection()
+	for index := m.cursor + direction; index >= 0 && index < len(m.rows); index += direction {
+		if m.rows[index].kind == kind {
+			if code := codeNear(m.rows, index, direction); code >= 0 {
+				m.cursor = code
+				m.ensureVisible()
+			}
+			return
+		}
+	}
+}
+
+func (m *Model) ensureVisible() {
+	height := m.viewportHeight()
+	if m.cursor < m.offset {
+		m.offset = m.cursor
+	}
+	if m.cursor >= m.offset+height {
+		m.offset = m.cursor - height + 1
+	}
+	m.offset = max(0, min(m.offset, max(0, len(m.rows)-height)))
+}
+
+func (m Model) viewportHeight() int {
+	reserved := 3
+	if m.mode == modeComment {
+		reserved = 8
+	}
+	return max(1, m.height-reserved)
+}
+
+func (m Model) isCode(index int) bool {
+	return index >= 0 && index < len(m.rows) && m.rows[index].kind == rowCode
+}
+
+func (m Model) sameHunk(a, b int) bool {
+	return m.isCode(a) && m.isCode(b) &&
+		m.rows[a].fileIndex == m.rows[b].fileIndex &&
+		m.rows[a].hunkIndex == m.rows[b].hunkIndex
+}
+
+func (m Model) selected(index int) bool {
+	if !m.selecting {
+		return false
+	}
+	start, end := ordered(m.selectFrom, m.cursor)
+	return index >= start && index <= end && m.rows[index].kind == rowCode
+}
+
+func (m *Model) cancelSelection() {
+	m.selecting = false
+	m.selectFrom = -1
+}
+
+func firstCodeRow(rows []row) int {
+	for index, row := range rows {
+		if row.kind == rowCode {
+			return index
+		}
+	}
+	return 0
+}
+
+func lastCodeRow(rows []row) int {
+	for index := len(rows) - 1; index >= 0; index-- {
+		if rows[index].kind == rowCode {
+			return index
+		}
+	}
+	return 0
+}
+
+func codeNear(rows []row, start, direction int) int {
+	for index := start; index >= 0 && index < len(rows); index += direction {
+		if rows[index].kind == rowCode {
+			return index
+		}
+	}
+	return -1
+}
+
+func accumulateRange(start, end *int, value int) {
+	if value == 0 {
+		return
+	}
+	if *start == 0 || value < *start {
+		*start = value
+	}
+	if value > *end {
+		*end = value
+	}
+}
+
+func number(value int) string {
+	if value == 0 {
+		return ""
+	}
+	return fmt.Sprintf("%d", value)
+}
+
+func ordered(a, b int) (int, int) {
+	if a > b {
+		return b, a
+	}
+	return a, b
+}
+
+func renderStyledRow(style lipgloss.Style, value string, width int) string {
+	fitted := fitANSI(stripANSIBackgrounds(value), width)
+	prefix := stylePrefix(style)
+	if prefix != "" {
+		// Syntax highlighters reset SGR state between tokens. Reapply the row
+		// style after those resets so backgrounds and reverse-video cursors span
+		// the complete terminal row.
+		fitted = strings.ReplaceAll(fitted, "\x1b[0m", "\x1b[0m"+prefix)
+		fitted = strings.ReplaceAll(fitted, "\x1b[m", "\x1b[m"+prefix)
+	}
+	return style.Render(fitted)
+}
+
+func stripANSIBackgrounds(value string) string {
+	return ansiSGRPattern.ReplaceAllStringFunc(value, func(sequence string) string {
+		parameters := sequence[2 : len(sequence)-1]
+		if parameters == "" {
+			return sequence
+		}
+		parts := strings.Split(parameters, ";")
+		filtered := make([]string, 0, len(parts))
+		for index := 0; index < len(parts); index++ {
+			code, err := strconv.Atoi(parts[index])
+			if err != nil {
+				filtered = append(filtered, parts[index])
+				continue
+			}
+			switch {
+			case code == 48:
+				if index+1 < len(parts) {
+					switch parts[index+1] {
+					case "2":
+						index = min(index+4, len(parts)-1)
+					case "5":
+						index = min(index+2, len(parts)-1)
+					}
+				}
+				continue
+			case code >= 40 && code <= 49:
+				continue
+			case code >= 100 && code <= 107:
+				continue
+			default:
+				filtered = append(filtered, parts[index])
+			}
+		}
+		if len(filtered) == 0 {
+			return ""
+		}
+		return "\x1b[" + strings.Join(filtered, ";") + "m"
+	})
+}
+
+func fitANSI(value string, width int) string {
+	if width <= 0 {
+		return ""
+	}
+	value = ansi.Truncate(value, width, "")
+	if padding := width - lipgloss.Width(value); padding > 0 {
+		value += strings.Repeat(" ", padding)
+	}
+	return value
+}
+
+func stylePrefix(style lipgloss.Style) string {
+	const marker = "\x00"
+	rendered := style.Render(marker)
+	index := strings.Index(rendered, marker)
+	if index < 0 {
+		return ""
+	}
+	return rendered[:index]
+}
+
+func abs(value int) int {
+	if value < 0 {
+		return -value
+	}
+	return value
+}
+
+var (
+	ansiSGRPattern = regexp.MustCompile(`\x1b\[[0-9;]*m`)
+	titleStyle     = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#7aa2f7"))
+	fileStyle      = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#c0caf5")).Background(lipgloss.Color("#24283b"))
+	metadataStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("#7f849c"))
+	hunkStyle      = lipgloss.NewStyle().Foreground(lipgloss.Color("#bb9af7"))
+	contextStyle   = lipgloss.NewStyle()
+	addedStyle     = lipgloss.NewStyle().Background(lipgloss.Color("#183d2b"))
+	removedStyle   = lipgloss.NewStyle().Background(lipgloss.Color("#48242b"))
+	selectionStyle = lipgloss.NewStyle().Background(lipgloss.Color("#364a82")).Bold(true)
+	cursorStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("#1a1b26")).Background(lipgloss.Color("#c0caf5"))
+	mutedStyle     = lipgloss.NewStyle().Foreground(lipgloss.Color("#7f849c"))
+	errorStyle     = lipgloss.NewStyle().Foreground(lipgloss.Color("#f7768e")).Bold(true)
+	warningStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("#e0af68")).Bold(true)
+	commentBorder  = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(lipgloss.Color("#7aa2f7")).Padding(0, 1)
+)
