@@ -92,6 +92,7 @@ type Model struct {
 	err         error
 	quitting    bool
 	gPending    bool
+	zPending    bool
 	bracket     string
 	sideBySide  bool
 	parents     []string
@@ -320,6 +321,18 @@ func (m Model) updateKey(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 	}
+	if m.zPending {
+		m.zPending = false
+		switch name {
+		case "z":
+			m.alignCursor(m.viewportHeight() / 2)
+		case "t":
+			m.alignCursor(0)
+		case "b":
+			m.alignCursor(m.viewportHeight() - 1)
+		}
+		return m, nil
+	}
 	switch name {
 	case "ctrl+c":
 		m.quitting = true
@@ -369,6 +382,9 @@ func (m Model) updateKey(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		m.cursor = lastCodeRow(m.rows)
 		m.gPending = false
 		m.ensureVisible()
+	case "z":
+		m.gPending = false
+		m.zPending = true
 	case "]", "[":
 		m.gPending = false
 		m.bracket = name
@@ -1019,6 +1035,7 @@ func (m Model) renderHelp() string {
 		{"h/l, left/right", "scroll horizontally"},
 		{"0/$", "start/end of lines"},
 		{"gg/G", "first/last changed line"},
+		{"zz/zt/zb", "center/top/bottom current line"},
 		{"Ctrl-d/Ctrl-u", "half-page down/up"},
 		{"/", "search diff text"},
 		{"n/N", "next/previous search match"},
@@ -1193,6 +1210,12 @@ func (m *Model) ensureVisible() {
 	if m.cursor >= m.offset+height {
 		m.offset = m.cursor - height + 1
 	}
+	m.offset = max(0, min(m.offset, max(0, len(m.rows)-height)))
+}
+
+func (m *Model) alignCursor(viewportRow int) {
+	height := m.viewportHeight()
+	m.offset = m.cursor - viewportRow
 	m.offset = max(0, min(m.offset, max(0, len(m.rows)-height)))
 }
 

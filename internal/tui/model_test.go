@@ -352,6 +352,29 @@ func TestVimSequencesAndLayoutToggle(t *testing.T) {
 	}
 }
 
+func TestZSequencesPositionCurrentLineInViewport(t *testing.T) {
+	model := New(testDiff(), nil, nil)
+	model.rows = make([]row, 20)
+	model.cursor = 10
+	model.height = 9
+
+	for _, test := range []struct {
+		key        string
+		wantOffset int
+	}{
+		{key: "z", wantOffset: 7},
+		{key: "t", wantOffset: 10},
+		{key: "b", wantOffset: 5},
+	} {
+		model.offset = 0
+		model = update(t, model, textKey("z"))
+		model = update(t, model, textKey(test.key))
+		if model.offset != test.wantOffset {
+			t.Errorf("z%s offset = %d, want %d", test.key, model.offset, test.wantOffset)
+		}
+	}
+}
+
 func TestStatusShowsBasicBindingsAndHelpShowsCompleteKeyMap(t *testing.T) {
 	model := New(testDiff(), nil, nil)
 
@@ -375,6 +398,7 @@ func TestStatusShowsBasicBindingsAndHelpShowsCompleteKeyMap(t *testing.T) {
 		{keys: "C", description: "view comments"},
 		{keys: "/", description: "search diff text"},
 		{keys: "n/N", description: "next/previous search match"},
+		{keys: "zz/zt/zb", description: "center/top/bottom current line"},
 		{keys: "Tab", description: "cycle local/parent branch changes"},
 		{keys: "t", description: "toggle unified/side-by-side"},
 	} {
