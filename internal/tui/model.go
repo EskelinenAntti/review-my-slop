@@ -91,9 +91,7 @@ type Model struct {
 	refresh     RefreshDiffFunc
 	err         error
 	quitting    bool
-	gPending    bool
-	zPending    bool
-	bracket     string
+	pendingKey  string
 	sideBySide  bool
 	parents     []string
 	target      int
@@ -310,10 +308,10 @@ func (m Model) updateKey(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return m.updateSearch(name, key)
 	}
 	m.err = nil
-	if m.bracket != "" {
-		prefix := m.bracket
-		m.bracket = ""
-		switch prefix + name {
+	pendingKey := m.pendingKey
+	m.pendingKey = ""
+	if pendingKey == "[" || pendingKey == "]" {
+		switch pendingKey + name {
 		case "]f":
 			m.jump(rowFile, 1)
 		case "[f":
@@ -321,8 +319,7 @@ func (m Model) updateKey(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 	}
-	if m.zPending {
-		m.zPending = false
+	if pendingKey == "z" {
 		switch name {
 		case "z":
 			m.alignCursor(m.viewportHeight() / 2)
@@ -353,10 +350,8 @@ func (m Model) updateKey(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	case "N":
 		m.repeatSearch(-1)
 	case "j", "down":
-		m.gPending = false
 		m.move(1)
 	case "k", "up":
-		m.gPending = false
 		m.move(-1)
 	case "h", "left":
 		m.scrollHorizontal(-1)
@@ -371,23 +366,19 @@ func (m Model) updateKey(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	case "ctrl+u":
 		m.move(-max(1, m.viewportHeight()/2))
 	case "g":
-		if m.gPending {
+		if pendingKey == "g" {
 			m.cursor = firstCodeRow(m.rows)
-			m.gPending = false
 			m.ensureVisible()
 		} else {
-			m.gPending = true
+			m.pendingKey = "g"
 		}
 	case "G":
 		m.cursor = lastCodeRow(m.rows)
-		m.gPending = false
 		m.ensureVisible()
 	case "z":
-		m.gPending = false
-		m.zPending = true
+		m.pendingKey = "z"
 	case "]", "[":
-		m.gPending = false
-		m.bracket = name
+		m.pendingKey = name
 	case "v":
 		if m.isCode(m.cursor) {
 			if m.selecting {

@@ -375,6 +375,23 @@ func TestZSequencesPositionCurrentLineInViewport(t *testing.T) {
 	}
 }
 
+func TestPendingKeyIsConsumedByNextKey(t *testing.T) {
+	model := New(testDiff(), nil, nil)
+	model = update(t, model, textKey("G"))
+	last := model.cursor
+
+	model = update(t, model, textKey("g"))
+	model = update(t, model, textKey("h"))
+	model = update(t, model, textKey("g"))
+
+	if model.cursor != last {
+		t.Fatalf("cursor = %d, want pending g consumed without jumping from %d", model.cursor, last)
+	}
+	if model.pendingKey != "g" {
+		t.Fatalf("pending key = %q, want g", model.pendingKey)
+	}
+}
+
 func TestStatusShowsBasicBindingsAndHelpShowsCompleteKeyMap(t *testing.T) {
 	model := New(testDiff(), nil, nil)
 
