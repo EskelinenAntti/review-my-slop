@@ -138,6 +138,39 @@ func TestListAndUpdateComments(t *testing.T) {
 	}
 }
 
+func TestDeleteCommentRemovesCommentAndEmptyBatch(t *testing.T) {
+	store := Store{Path: filepath.Join(t.TempDir(), "inbox.db")}
+	batch := testBatch("/repo", "first")
+	batch.Comments = append(batch.Comments, review.Comment{Body: "second"})
+	if err := store.Put(batch); err != nil {
+		t.Fatal(err)
+	}
+	comments, err := store.ListComments("/repo")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.DeleteComment("/repo", comments[0]); err != nil {
+		t.Fatal(err)
+	}
+	remaining, err := store.ListComments("/repo")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(remaining) != 1 || remaining[0].Index != 0 || remaining[0].Comment.Body != "second" {
+		t.Fatalf("remaining = %#v", remaining)
+	}
+	if err := store.DeleteComment("/repo", remaining[0]); err != nil {
+		t.Fatal(err)
+	}
+	remaining, err = store.ListComments("/repo")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(remaining) != 0 {
+		t.Fatalf("remaining = %#v, want empty", remaining)
+	}
+}
+
 func testBatch(repository, body string) review.Batch {
 	return review.Batch{
 		ID:         body,

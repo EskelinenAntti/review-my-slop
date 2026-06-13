@@ -144,6 +144,37 @@ func (s Store) UpdateComment(repository string, stored review.StoredComment) err
 	})
 }
 
+func (s Store) DeleteComment(repository string, stored review.StoredComment) error {
+	if repository == "" || stored.BatchID == "" {
+		return errors.New("repository and batch ID are required")
+	}
+	return s.update(func(bucket *bolt.Bucket) error {
+		cursor := bucket.Cursor()
+		for key, value := cursor.First(); key != nil; key, value = cursor.Next() {
+			var batch review.Batch
+			if err := json.Unmarshal(value, &batch); err != nil {
+				return fmt.Errorf("decode feedback batch: %w", err)
+			}
+			if batch.Repository != repository || batch.ID != stored.BatchID {
+				continue
+			}
+			if stored.Index < 0 || stored.Index >= len(batch.Comments) {
+				return fmt.Errorf("comment index %d is out of range", stored.Index)
+			}
+			batch.Comments = append(batch.Comments[:stored.Index], batch.Comments[stored.Index+1:]...)
+			if len(batch.Comments) == 0 {
+				return bucket.Delete(key)
+			}
+			data, err := json.Marshal(batch)
+			if err != nil {
+				return fmt.Errorf("encode feedback batch: %w", err)
+			}
+			return bucket.Put(key, data)
+		}
+		return errors.New("comment is no longer in the inbox")
+	})
+}
+
 type Taken struct {
 	Batches []review.Batch
 	keys    [][]byte

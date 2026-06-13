@@ -20,6 +20,7 @@ import (
 )
 
 type SaveCommentFunc func(review.StoredComment, review.Diff) (review.StoredComment, error)
+type DeleteCommentFunc func(review.StoredComment, review.Diff) error
 type RefreshDiffFunc func(parent string) (review.Diff, error)
 
 const refreshInterval = time.Second
@@ -33,12 +34,12 @@ type refreshDiffMsg struct {
 	err        error
 }
 
-type externalEditorFinishedMsg struct {
+type commentEditorFinishedMsg struct {
 	body string
 	err  error
 }
 
-type lineEditorFinishedMsg struct {
+type sourceEditorFinishedMsg struct {
 	err error
 }
 
@@ -64,42 +65,42 @@ type mode uint8
 
 const (
 	modeBrowse mode = iota
-	modeComment
 	modeComments
 	modeHelp
 	modeSearch
 )
 
 type Model struct {
-	diff       review.Diff
-	rows       []row
-	comments   []review.StoredComment
-	commentRow int
-	cursor     int
-	offset     int
-	xOffset    int
-	width      int
-	height     int
-	selecting  bool
-	selectFrom int
-	mode       mode
-	editor     []rune
-	editorPos  int
-	editIndex  int
-	save       SaveCommentFunc
-	refresh    RefreshDiffFunc
-	err        error
-	quitting   bool
-	gPending   bool
-	bracket    string
-	sideBySide bool
-	parents    []string
-	target     int
-	search     []rune
-	searchTerm string
-	searchFrom int
-	searchMiss bool
-	dark       bool
+	diff        review.Diff
+	rows        []row
+	comments    []review.StoredComment
+	commentRow  int
+	cursor      int
+	offset      int
+	xOffset     int
+	width       int
+	height      int
+	selecting   bool
+	selectFrom  int
+	mode        mode
+	commentBody string
+	editIndex   int
+	editAnchor  review.Anchor
+	save        SaveCommentFunc
+	delete      DeleteCommentFunc
+	refresh     RefreshDiffFunc
+	err         error
+	quitting    bool
+	gPending    bool
+	bracket     string
+	sideBySide  bool
+	parents     []string
+	target      int
+	search      []rune
+	searchTerm  string
+	searchFrom  int
+	searchMiss  bool
+	dark        bool
 }
 
 func New(diff review.Diff, comments []review.StoredComment, save SaveCommentFunc) Model {
@@ -120,6 +121,10 @@ func New(diff review.Diff, comments []review.StoredComment, save SaveCommentFunc
 
 func (m *Model) SetRefresh(refresh RefreshDiffFunc) {
 	m.refresh = refresh
+}
+
+func (m *Model) SetDelete(deleteComment DeleteCommentFunc) {
+	m.delete = deleteComment
 }
 
 func (m *Model) SetParents(parents []string) {
@@ -148,16 +153,16 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.xOffset = min(m.xOffset, m.maxHorizontalOffset())
 		m.ensureVisible()
 		return m, nil
-	case externalEditorFinishedMsg:
+	case commentEditorFinishedMsg:
 		if msg.err != nil {
 			m.err = msg.err
+			m.clearCommentEdit()
 		} else {
-			m.editor = []rune(msg.body)
-			m.editorPos = len(m.editor)
-			m.err = nil
+			m.commentBody = msg.body
+			m.finishCommentEdit()
 		}
 		return m, nil
-	case lineEditorFinishedMsg:
+	case sourceEditorFinishedMsg:
 		if msg.err != nil {
 			m.err = fmt.Errorf("editor: %w", msg.err)
 		}
@@ -291,9 +296,6 @@ func (m Model) rowMatches(anchor rowAnchor, current row, exact bool) bool {
 
 func (m Model) updateKey(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	name := key.String()
-	if m.mode == modeComment {
-		return m.updateEditor(name, key)
-	}
 	if m.mode == modeComments {
 		return m.updateComments(name)
 	}
@@ -382,7 +384,12 @@ func (m Model) updateKey(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	case "esc":
 		m.cancelSelection()
 	case "c":
-		m.beginComment()
+		cmd, err := m.beginComment()
+		if err != nil {
+			m.err = err
+			return m, nil
+		}
+		return m, cmd
 	case "e":
 		cmd, err := m.openCurrentLine()
 		if err != nil {
@@ -483,6 +490,7 @@ func (m Model) findSearch(query string, start, direction int) int {
 }
 
 func (m Model) updateComments(name string) (tea.Model, tea.Cmd) {
+	m.err = nil
 	switch name {
 	case "esc", "C":
 		m.mode = modeBrowse
@@ -500,118 +508,36 @@ func (m Model) updateComments(name string) (tea.Model, tea.Cmd) {
 	case "enter", "e":
 		if len(m.comments) > 0 {
 			m.editIndex = m.commentRow
-			m.editor = []rune(m.comments[m.editIndex].Comment.Body)
-			m.editorPos = len(m.editor)
-			m.mode = modeComment
+			m.commentBody = m.comments[m.editIndex].Comment.Body
+			cmd, err := m.openCommentEditor()
+			if err != nil {
+				m.err = err
+				m.clearCommentEdit()
+				return m, nil
+			}
+			return m, cmd
+		}
+	case "D":
+		if len(m.comments) > 0 {
+			m.deleteComment(m.commentRow)
 		}
 	}
 	return m, nil
 }
 
-func (m Model) updateEditor(name string, key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
-	switch name {
-	case "esc":
-		if m.editIndex >= 0 {
-			m.mode = modeComments
-		} else {
-			m.mode = modeBrowse
-		}
-		m.editor = nil
-		m.editorPos = 0
-		m.editIndex = -1
-	case "enter":
-		m.saveComment()
-	case "shift+enter":
-		m.insertEditorText("\n")
-	case "ctrl+g":
-		cmd, err := m.openExternalEditor()
-		if err != nil {
-			m.err = err
-			return m, nil
-		}
-		return m, cmd
-	case "left":
-		m.editorPos = max(0, m.editorPos-1)
-	case "right":
-		m.editorPos = min(len(m.editor), m.editorPos+1)
-	case "up":
-		m.moveEditorVertically(-1)
-	case "down":
-		m.moveEditorVertically(1)
-	case "home":
-		m.editorPos = editorLineStart(m.editor, m.editorPos)
-	case "end":
-		m.editorPos = editorLineEnd(m.editor, m.editorPos)
-	case "backspace":
-		if m.editorPos > 0 {
-			m.editor = append(m.editor[:m.editorPos-1], m.editor[m.editorPos:]...)
-			m.editorPos--
-		}
-	case "delete":
-		if m.editorPos < len(m.editor) {
-			m.editor = append(m.editor[:m.editorPos], m.editor[m.editorPos+1:]...)
-		}
-	default:
-		if key.Text != "" {
-			m.insertEditorText(key.Text)
-		}
-	}
-	return m, nil
-}
-
-func (m *Model) insertEditorText(text string) {
-	inserted := []rune(text)
-	tail := append([]rune(nil), m.editor[m.editorPos:]...)
-	m.editor = append(m.editor[:m.editorPos], inserted...)
-	m.editor = append(m.editor, tail...)
-	m.editorPos += len(inserted)
-}
-
-func (m *Model) moveEditorVertically(direction int) {
-	start := editorLineStart(m.editor, m.editorPos)
-	column := m.editorPos - start
-	if direction < 0 {
-		if start == 0 {
-			return
-		}
-		previousEnd := start - 1
-		previousStart := editorLineStart(m.editor, previousEnd)
-		m.editorPos = min(previousStart+column, previousEnd)
-		return
-	}
-	end := editorLineEnd(m.editor, m.editorPos)
-	if end == len(m.editor) {
-		return
-	}
-	nextStart := end + 1
-	nextEnd := editorLineEnd(m.editor, nextStart)
-	m.editorPos = min(nextStart+column, nextEnd)
-}
-
-func editorLineStart(text []rune, position int) int {
-	position = min(max(0, position), len(text))
-	for position > 0 && text[position-1] != '\n' {
-		position--
-	}
-	return position
-}
-
-func editorLineEnd(text []rune, position int) int {
-	position = min(max(0, position), len(text))
-	for position < len(text) && text[position] != '\n' {
-		position++
-	}
-	return position
-}
-
-func (m *Model) saveComment() {
-	body := strings.TrimSpace(string(m.editor))
+func (m *Model) finishCommentEdit() {
+	body := strings.TrimSpace(m.commentBody)
 	if body == "" {
-		m.err = fmt.Errorf("comment cannot be empty")
+		if m.editIndex >= 0 {
+			m.deleteComment(m.editIndex)
+		}
+		m.clearCommentEdit()
+		m.cancelSelection()
 		return
 	}
 	if m.save == nil {
 		m.err = fmt.Errorf("comment storage is unavailable")
+		m.clearCommentEdit()
 		return
 	}
 	var stored review.StoredComment
@@ -619,82 +545,108 @@ func (m *Model) saveComment() {
 		stored = m.comments[m.editIndex]
 		stored.Comment.Body = body
 	} else {
-		anchor, err := m.currentAnchor()
-		if err != nil {
-			m.err = err
-			return
-		}
-		stored.Comment = review.Comment{Anchor: anchor, Body: body}
+		stored.Comment = review.Comment{Anchor: m.editAnchor, Body: body}
 	}
 	saved, err := m.save(stored, m.diff)
 	if err != nil {
 		m.err = err
+		m.clearCommentEdit()
 		return
 	}
 	if m.editIndex >= 0 {
 		m.comments[m.editIndex] = saved
-		m.mode = modeComments
 	} else {
 		m.comments = append(m.comments, saved)
 		m.commentRow = len(m.comments) - 1
-		m.mode = modeBrowse
 	}
-	m.editor = nil
-	m.editorPos = 0
-	m.editIndex = -1
+	m.clearCommentEdit()
 	m.err = nil
 	m.cancelSelection()
 }
 
-func (m Model) openExternalEditor() (tea.Cmd, error) {
+func (m *Model) deleteComment(index int) {
+	if index < 0 || index >= len(m.comments) {
+		return
+	}
+	if m.delete == nil {
+		m.err = fmt.Errorf("comment storage is unavailable")
+		return
+	}
+	deleted := m.comments[index]
+	if err := m.delete(deleted, m.diff); err != nil {
+		m.err = err
+		return
+	}
+	m.comments = append(m.comments[:index], m.comments[index+1:]...)
+	for index := range m.comments {
+		if m.comments[index].BatchID == deleted.BatchID && m.comments[index].Index > deleted.Index {
+			m.comments[index].Index--
+		}
+	}
+	m.commentRow = min(m.commentRow, max(0, len(m.comments)-1))
+	m.err = nil
+}
+
+func (m *Model) clearCommentEdit() {
+	m.commentBody = ""
+	m.editIndex = -1
+	m.editAnchor = review.Anchor{}
+}
+
+func (m Model) openCommentEditor() (tea.Cmd, error) {
 	editor := strings.TrimSpace(os.Getenv("EDITOR"))
 	if editor == "" {
 		return nil, fmt.Errorf("$EDITOR is not set")
 	}
-	file, err := os.CreateTemp("", "review-my-slop-comment-*.md")
+	path, err := createCommentFile(m.commentBody)
 	if err != nil {
-		return nil, fmt.Errorf("create comment file: %w", err)
-	}
-	path := file.Name()
-	cleanup := func() {
-		_ = file.Close()
-		_ = os.Remove(path)
-	}
-	if _, err := file.WriteString(string(m.editor)); err != nil {
-		cleanup()
-		return nil, fmt.Errorf("write comment file: %w", err)
-	}
-	if err := file.Close(); err != nil {
-		_ = os.Remove(path)
-		return nil, fmt.Errorf("close comment file: %w", err)
+		return nil, err
 	}
 
-	command := editorCommand(editor, path)
+	command := commentEditorCommand(editor, path)
 	return tea.ExecProcess(command, func(editorErr error) tea.Msg {
-		return readExternalEditorResult(path, editorErr)
+		return readCommentEditorResult(path, editorErr)
 	}), nil
 }
 
-func readExternalEditorResult(path string, editorErr error) externalEditorFinishedMsg {
+func createCommentFile(body string) (string, error) {
+	file, err := os.CreateTemp("", "review-my-slop-comment-*.md")
+	if err != nil {
+		return "", fmt.Errorf("create comment file: %w", err)
+	}
+	path := file.Name()
+	if _, err := file.WriteString(body); err != nil {
+		_ = file.Close()
+		_ = os.Remove(path)
+		return "", fmt.Errorf("write comment file: %w", err)
+	}
+	if err := file.Close(); err != nil {
+		_ = os.Remove(path)
+		return "", fmt.Errorf("close comment file: %w", err)
+	}
+	return path, nil
+}
+
+func readCommentEditorResult(path string, editorErr error) commentEditorFinishedMsg {
 	defer os.Remove(path)
 	if editorErr != nil {
-		return externalEditorFinishedMsg{err: fmt.Errorf("editor: %w", editorErr)}
+		return commentEditorFinishedMsg{err: fmt.Errorf("editor: %w", editorErr)}
 	}
 	body, err := os.ReadFile(path)
 	if err != nil {
-		return externalEditorFinishedMsg{err: fmt.Errorf("read comment file: %w", err)}
+		return commentEditorFinishedMsg{err: fmt.Errorf("read comment file: %w", err)}
 	}
-	return externalEditorFinishedMsg{body: string(body)}
+	return commentEditorFinishedMsg{body: string(body)}
 }
 
-func editorCommand(editor, path string) *exec.Cmd {
+func commentEditorCommand(editor, path string) *exec.Cmd {
 	if runtime.GOOS == "windows" {
 		return exec.Command("cmd", "/C", editor+" "+strconv.Quote(path))
 	}
 	return exec.Command("sh", "-c", editor+" "+shellQuote(path))
 }
 
-func editorLineCommand(editor, path string, line int) *exec.Cmd {
+func sourceEditorCommand(editor, path string, line int) *exec.Cmd {
 	location := "+" + strconv.Itoa(line)
 	if runtime.GOOS == "windows" {
 		return exec.Command("cmd", "/C", editor+" "+location+" "+strconv.Quote(path))
@@ -732,22 +684,28 @@ func (m Model) openCurrentLine() (tea.Cmd, error) {
 		path = filepath.Join(m.diff.Repository, filepath.FromSlash(path))
 	}
 
-	return tea.ExecProcess(editorLineCommand(editor, path, line), func(err error) tea.Msg {
-		return lineEditorFinishedMsg{err: err}
+	return tea.ExecProcess(sourceEditorCommand(editor, path, line), func(err error) tea.Msg {
+		return sourceEditorFinishedMsg{err: err}
 	}), nil
 }
 
-func (m *Model) beginComment() {
+func (m *Model) beginComment() (tea.Cmd, error) {
 	if !m.isCode(m.cursor) {
-		return
+		return nil, nil
 	}
-	if _, err := m.currentAnchor(); err != nil {
-		m.err = err
-		return
+	anchor, err := m.currentAnchor()
+	if err != nil {
+		return nil, err
 	}
-	m.mode = modeComment
-	m.editor = nil
-	m.editorPos = 0
+	m.commentBody = ""
+	m.editIndex = -1
+	m.editAnchor = anchor
+	cmd, err := m.openCommentEditor()
+	if err != nil {
+		m.clearCommentEdit()
+		return nil, err
+	}
+	return cmd, nil
 }
 
 func (m Model) currentAnchor() (review.Anchor, error) {
@@ -830,10 +788,7 @@ func (m Model) render() string {
 		}
 	}
 
-	if m.mode == modeComment {
-		out.WriteString(commentBorder.Width(max(20, m.width-2)).Render(m.renderEditor()))
-		out.WriteByte('\n')
-	} else if m.err != nil {
+	if m.err != nil {
 		out.WriteString(m.renderFooter(errorStyle.Render(m.err.Error())) + "\n")
 	} else {
 		out.WriteString(m.renderStatus() + "\n")
@@ -908,28 +863,6 @@ func (m Model) renderRow(index int) string {
 	}
 }
 
-func (m Model) renderEditor() string {
-	label := "New comment"
-	if m.editIndex >= 0 {
-		label = "Edit comment"
-	}
-	return label + "\n" + m.renderEditorBody() + "\n" +
-		mutedStyle.Render("Enter save  Shift-Enter newline  arrows move  Ctrl-G $EDITOR  Esc cancel")
-}
-
-func (m Model) renderEditorBody() string {
-	if len(m.editor) == 0 {
-		return editorCursorStyle.Render(" ") + mutedStyle.Render("Type feedback...")
-	}
-	position := min(max(0, m.editorPos), len(m.editor))
-	if position == len(m.editor) {
-		return string(m.editor) + editorCursorStyle.Render(" ")
-	}
-	return string(m.editor[:position]) +
-		editorCursorStyle.Render(string(m.editor[position])) +
-		string(m.editor[position+1:])
-}
-
 func (m Model) renderStatus() string {
 	var status string
 	if m.mode == modeSearch {
@@ -999,7 +932,11 @@ func (m Model) renderComments() string {
 			out.WriteByte('\n')
 		}
 	}
-	out.WriteString(mutedStyle.Render("j/k move  Enter/e edit  Esc return  q quit"))
+	footer := mutedStyle.Render("j/k move  Enter/e edit  D delete  Esc return  q quit")
+	if m.err != nil {
+		footer = errorStyle.Render(m.err.Error())
+	}
+	out.WriteString(footer)
 	out.WriteByte('\n')
 	return out.String()
 }
@@ -1017,7 +954,7 @@ func (m Model) renderHelp() string {
 		{"v", "select a line range"},
 		{"c", "comment on selection/current line"},
 		{"e", "open current line in $EDITOR"},
-		{"C", "view/edit comments"},
+		{"C", "view comments"},
 		{"Tab", "cycle local/parent branch changes"},
 		{"t", "toggle unified/side-by-side"},
 		{"q", "quit"},
@@ -1209,11 +1146,7 @@ func (m Model) maxHorizontalOffset() int {
 }
 
 func (m Model) viewportHeight() int {
-	reserved := 3
-	if m.mode == modeComment {
-		reserved = 8
-	}
-	return max(1, m.height-reserved)
+	return max(1, m.height-3)
 }
 
 func (m Model) isCode(index int) bool {
@@ -1414,5 +1347,4 @@ var (
 	editorCursorStyle = lipgloss.NewStyle().Reverse(true)
 	mutedStyle        = lipgloss.NewStyle().Faint(true)
 	errorStyle        = lipgloss.NewStyle().Foreground(lipgloss.Red).Bold(true)
-	commentBorder     = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(lipgloss.Cyan).Padding(0, 1)
 )

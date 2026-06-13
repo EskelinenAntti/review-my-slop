@@ -18,6 +18,7 @@ import (
 )
 
 func TestVisualSelectionCreatesMappedAnchorAndSubmits(t *testing.T) {
+	t.Setenv("EDITOR", "true")
 	var saved []review.Comment
 	model := New(testDiff(), nil, func(stored review.StoredComment, _ review.Diff) (review.StoredComment, error) {
 		saved = append(saved, stored.Comment)
@@ -29,13 +30,7 @@ func TestVisualSelectionCreatesMappedAnchorAndSubmits(t *testing.T) {
 	model = update(t, model, textKey("v"))
 	model = update(t, model, textKey("j"))
 	model = update(t, model, textKey("c"))
-	if model.mode != modeComment {
-		t.Fatalf("mode = %v, want comment", model.mode)
-	}
-	for _, r := range "fix both lines" {
-		model = update(t, model, textKey(string(r)))
-	}
-	update(t, model, specialKey(tea.KeyEnter))
+	model = update(t, model, commentEditorFinishedMsg{body: "fix both lines"})
 	if len(saved) != 1 {
 		t.Fatalf("saved comments = %d, want 1", len(saved))
 	}
@@ -55,104 +50,62 @@ func TestVisualSelectionCreatesMappedAnchorAndSubmits(t *testing.T) {
 	}
 }
 
-func TestCommentEditorShortcuts(t *testing.T) {
-	var saved review.Comment
-	model := New(testDiff(), nil, func(stored review.StoredComment, _ review.Diff) (review.StoredComment, error) {
-		saved = stored.Comment
-		stored.BatchID = "new"
-		return stored, nil
-	})
-	model = update(t, model, textKey("c"))
-	model = update(t, model, textKey("first"))
-	model = update(t, model, modifiedKey(tea.KeyEnter, tea.ModShift))
-	model = update(t, model, textKey("second"))
-
-	if got := string(model.editor); got != "first\nsecond" {
-		t.Fatalf("editor = %q, want multiline comment", got)
-	}
-	model = update(t, model, specialKey(tea.KeyEnter))
-	if saved.Body != "first\nsecond" {
-		t.Fatalf("comment = %#v, want multiline comment", saved)
-	}
-}
-
-func TestCommentSaveFailureKeepsDraftOpen(t *testing.T) {
+func TestCommentSaveFailureClearsPendingEdit(t *testing.T) {
+	t.Setenv("EDITOR", "true")
 	model := New(testDiff(), nil, func(review.StoredComment, review.Diff) (review.StoredComment, error) {
 		return review.StoredComment{}, fmt.Errorf("storage unavailable")
 	})
 	model = update(t, model, textKey("c"))
-	model = update(t, model, textKey("keep this"))
-	model = update(t, model, specialKey(tea.KeyEnter))
+	model = update(t, model, commentEditorFinishedMsg{body: "keep this"})
 
-	if model.mode != modeComment || string(model.editor) != "keep this" {
-		t.Fatalf("failed save lost draft: mode=%v editor=%q", model.mode, model.editor)
+	if model.mode != modeBrowse || model.commentBody != "" {
+		t.Fatalf("failed save retained edit state: mode=%v body=%q", model.mode, model.commentBody)
 	}
 	if model.err == nil || model.err.Error() != "storage unavailable" {
 		t.Fatalf("error = %v, want storage failure", model.err)
 	}
 }
 
-func TestCommentEditorCursorMovementAndEditing(t *testing.T) {
-	model := New(testDiff(), nil, nil)
-	model = update(t, model, textKey("c"))
-	model = update(t, model, textKey("first"))
-	model = update(t, model, modifiedKey(tea.KeyEnter, tea.ModShift))
-	model = update(t, model, textKey("third"))
-
-	model = update(t, model, specialKey(tea.KeyUp))
-	model = update(t, model, specialKey(tea.KeyHome))
-	model = update(t, model, specialKey(tea.KeyRight))
-	model = update(t, model, textKey("X"))
-	if got := string(model.editor); got != "fXirst\nthird" {
-		t.Fatalf("editor after insertion = %q", got)
-	}
-
-	model = update(t, model, specialKey(tea.KeyDown))
-	model = update(t, model, specialKey(tea.KeyEnd))
-	model = update(t, model, specialKey(tea.KeyBackspace))
-	model = update(t, model, specialKey(tea.KeyDelete))
-	if got := string(model.editor); got != "fXirst\nthir" {
-		t.Fatalf("editor after deletion = %q", got)
-	}
-}
-
-func TestCommentEditorRendersVisibleCursor(t *testing.T) {
-	model := New(testDiff(), nil, nil)
-	model = update(t, model, textKey("c"))
-	if rendered := model.renderEditorBody(); !strings.Contains(rendered, "\x1b[7m") {
-		t.Fatalf("empty editor has no visible cursor: %q", rendered)
-	}
-
-	model = update(t, model, textKey("ab"))
-	model = update(t, model, specialKey(tea.KeyLeft))
-	rendered := model.renderEditorBody()
-	if !strings.Contains(rendered, "\x1b[7mb") {
-		t.Fatalf("editor cursor is not rendered on current character: %q", rendered)
-	}
-}
-
-func TestExternalEditorResultReplacesDraft(t *testing.T) {
-	model := New(testDiff(), nil, nil)
-	model = update(t, model, textKey("c"))
-	model.editor = []rune("old draft")
-
-	model = update(t, model, externalEditorFinishedMsg{body: "edited externally\n"})
-	if got := string(model.editor); got != "edited externally\n" {
-		t.Fatalf("editor = %q, want external editor contents", got)
-	}
-	if model.mode != modeComment {
-		t.Fatalf("mode = %v, want comment", model.mode)
-	}
-}
-
-func TestCtrlGRequiresEditor(t *testing.T) {
+func TestCommentRequiresEditor(t *testing.T) {
 	t.Setenv("EDITOR", "")
 	model := New(testDiff(), nil, nil)
 	model = update(t, model, textKey("c"))
-	model = update(t, model, controlKey('g'))
 
 	if model.err == nil || model.err.Error() != "$EDITOR is not set" {
 		t.Fatalf("error = %v, want missing editor error", model.err)
+	}
+}
+
+func TestCommentOpensMarkdownFileInEditor(t *testing.T) {
+	path, err := createCommentFile("existing comment")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.Remove(path)
+	if filepath.Ext(path) != ".md" {
+		t.Fatalf("comment path = %q, want .md extension", path)
+	}
+	body, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(body) != "existing comment" {
+		t.Fatalf("body = %q, want seeded edit content", body)
+	}
+}
+
+func TestEmptyNewCommentIsDiscarded(t *testing.T) {
+	t.Setenv("EDITOR", "true")
+	called := false
+	model := New(testDiff(), nil, func(stored review.StoredComment, diff review.Diff) (review.StoredComment, error) {
+		called = true
+		return stored, nil
+	})
+	model = update(t, model, textKey("c"))
+	model = update(t, model, commentEditorFinishedMsg{body: " \n"})
+
+	if called || model.mode != modeBrowse || len(model.comments) != 0 {
+		t.Fatalf("called=%v mode=%v comments=%d, want discarded comment", called, model.mode, len(model.comments))
 	}
 }
 
@@ -170,10 +123,10 @@ func TestExternalEditorCommandReadsEditedDraft(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = os.Remove(path) })
 
-	if err := editorCommand("printf 'edited externally' >", path).Run(); err != nil {
+	if err := commentEditorCommand("printf 'edited externally' >", path).Run(); err != nil {
 		t.Fatal(err)
 	}
-	msg := readExternalEditorResult(path, nil)
+	msg := readCommentEditorResult(path, nil)
 	if msg.err != nil {
 		t.Fatal(msg.err)
 	}
@@ -199,7 +152,7 @@ func TestOpenCurrentLineUsesEditorWithWorkingTreeLocation(t *testing.T) {
 		t.Fatal("openCurrentLine returned no command")
 	}
 
-	command := editorLineCommand(os.Getenv("EDITOR"), filepath.Join(model.diff.Repository, "main.go"), 2)
+	command := sourceEditorCommand(os.Getenv("EDITOR"), filepath.Join(model.diff.Repository, "main.go"), 2)
 	if got, want := strings.Join(command.Args, "\x00"), "sh\x00-c\x00printf +2 '/tmp/repo with spaces/main.go'"; got != want {
 		t.Fatalf("command = %q, want %q", got, want)
 	}
@@ -216,6 +169,7 @@ func TestOpenCurrentLineRequiresEditor(t *testing.T) {
 }
 
 func TestInboxCommentsCanBeViewedAndEdited(t *testing.T) {
+	t.Setenv("EDITOR", "true")
 	comments := []review.StoredComment{{
 		BatchID: "batch-1",
 		Comment: review.Comment{
@@ -234,14 +188,76 @@ func TestInboxCommentsCanBeViewedAndEdited(t *testing.T) {
 		t.Fatal("inbox comments view did not open")
 	}
 	model = update(t, model, specialKey(tea.KeyEnter))
-	model.editor = []rune("edited body")
-	model = update(t, model, specialKey(tea.KeyEnter))
+	model = update(t, model, commentEditorFinishedMsg{body: "edited body"})
 
 	if persisted.BatchID != "batch-1" || persisted.Comment.Body != "edited body" {
 		t.Fatalf("persisted = %#v, want edited existing comment", persisted)
 	}
 	if model.mode != modeComments || model.comments[0].Comment.Body != "edited body" {
 		t.Fatal("edited comment was not reflected in inbox view")
+	}
+}
+
+func TestEmptyEditedCommentIsDeleted(t *testing.T) {
+	t.Setenv("EDITOR", "true")
+	comments := []review.StoredComment{{
+		BatchID: "batch-1",
+		Comment: review.Comment{Body: "old body"},
+	}}
+	var deleted review.StoredComment
+	model := New(testDiff(), comments, nil)
+	model.SetDelete(func(stored review.StoredComment, _ review.Diff) error {
+		deleted = stored
+		return nil
+	})
+
+	model = update(t, model, textKey("C"))
+	model = update(t, model, specialKey(tea.KeyEnter))
+	model = update(t, model, commentEditorFinishedMsg{body: "\n"})
+
+	if deleted.BatchID != "batch-1" || len(model.comments) != 0 || model.mode != modeComments {
+		t.Fatalf("deleted=%#v comments=%d mode=%v", deleted, len(model.comments), model.mode)
+	}
+}
+
+func TestCommentsCanBeDeletedWithD(t *testing.T) {
+	comments := []review.StoredComment{
+		{BatchID: "batch-1", Index: 0, Comment: review.Comment{Body: "first"}},
+		{BatchID: "batch-1", Index: 1, Comment: review.Comment{Body: "second"}},
+	}
+	var deleted review.StoredComment
+	model := New(testDiff(), comments, nil)
+	model.SetDelete(func(stored review.StoredComment, _ review.Diff) error {
+		deleted = stored
+		return nil
+	})
+
+	model = update(t, model, textKey("C"))
+	model = update(t, model, textKey("D"))
+
+	if deleted.Comment.Body != "first" || len(model.comments) != 1 {
+		t.Fatalf("deleted=%#v comments=%#v", deleted, model.comments)
+	}
+	if model.comments[0].Index != 0 || !strings.Contains(model.renderComments(), "D delete") {
+		t.Fatalf("remaining=%#v footer=%q", model.comments[0], model.renderComments())
+	}
+}
+
+func TestCommentDeleteFailureKeepsCommentAndShowsError(t *testing.T) {
+	comments := []review.StoredComment{{
+		BatchID: "batch-1",
+		Comment: review.Comment{Body: "keep me"},
+	}}
+	model := New(testDiff(), comments, nil)
+	model.SetDelete(func(review.StoredComment, review.Diff) error {
+		return fmt.Errorf("delete failed")
+	})
+
+	model = update(t, model, textKey("C"))
+	model = update(t, model, textKey("D"))
+
+	if len(model.comments) != 1 || !strings.Contains(ansi.Strip(model.renderComments()), "delete failed") {
+		t.Fatalf("comments=%#v view=%q", model.comments, ansi.Strip(model.renderComments()))
 	}
 }
 
@@ -303,7 +319,7 @@ func TestStatusShowsBasicBindingsAndHelpShowsCompleteKeyMap(t *testing.T) {
 	for _, binding := range []keyBinding{
 		{keys: "v", description: "select a line range"},
 		{keys: "e", description: "open current line in $EDITOR"},
-		{keys: "C", description: "view/edit comments"},
+		{keys: "C", description: "view comments"},
 		{keys: "/", description: "search diff text"},
 		{keys: "n/N", description: "next/previous search match"},
 		{keys: "Tab", description: "cycle local/parent branch changes"},
@@ -453,6 +469,7 @@ func TestDiffRefreshPreservesCursorWhenRowsShift(t *testing.T) {
 }
 
 func TestCommentAfterRefreshUsesCurrentDiff(t *testing.T) {
+	t.Setenv("EDITOR", "true")
 	var savedWith review.Diff
 	model := New(testDiff(), nil, func(stored review.StoredComment, diff review.Diff) (review.StoredComment, error) {
 		savedWith = diff
@@ -463,8 +480,7 @@ func TestCommentAfterRefreshUsesCurrentDiff(t *testing.T) {
 	refreshed.Fingerprint = "refreshed"
 	model = update(t, model, refreshDiffMsg{diff: refreshed})
 	model = update(t, model, textKey("c"))
-	model = update(t, model, textKey("comment"))
-	update(t, model, specialKey(tea.KeyEnter))
+	model = update(t, model, commentEditorFinishedMsg{body: "comment"})
 
 	if savedWith.Fingerprint != "refreshed" {
 		t.Fatalf("saved with fingerprint %q, want refreshed", savedWith.Fingerprint)

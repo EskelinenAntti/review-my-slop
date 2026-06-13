@@ -81,6 +81,9 @@ func runCode(ctx context.Context) error {
 		return stored, nil
 	}
 	model := tui.New(loaded, comments, saveComment)
+	model.SetDelete(func(stored review.StoredComment, diff review.Diff) error {
+		return store.DeleteComment(diff.Repository, stored)
+	})
 	model.SetParents(parents)
 	model.SetRefresh(func(parent string) (review.Diff, error) {
 		if parent != "" {
