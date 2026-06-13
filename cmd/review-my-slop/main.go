@@ -39,14 +39,15 @@ func run(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	saveComment := func(stored review.StoredComment) (review.StoredComment, error) {
+	loader := gitdiff.Loader{}
+	saveComment := func(stored review.StoredComment, diff review.Diff) (review.StoredComment, error) {
 		if stored.BatchID != "" {
-			return stored, store.UpdateComment(loaded.Repository, stored)
+			return stored, store.UpdateComment(diff.Repository, stored)
 		}
 		batch := review.Batch{
 			ID:              fmt.Sprintf("%d", time.Now().UnixNano()),
-			Repository:      loaded.Repository,
-			DiffFingerprint: loaded.Fingerprint,
+			Repository:      diff.Repository,
+			DiffFingerprint: diff.Fingerprint,
 			CreatedAt:       time.Now().UTC(),
 			Comments:        []review.Comment{stored.Comment},
 		}
@@ -57,7 +58,11 @@ func run(ctx context.Context) error {
 		stored.Index = 0
 		return stored, nil
 	}
-	program := tea.NewProgram(tui.New(loaded, comments, saveComment))
+	model := tui.New(loaded, comments, saveComment)
+	model.SetRefresh(func() (review.Diff, error) {
+		return loader.Load(ctx, current)
+	})
+	program := tea.NewProgram(model)
 	_, err = program.Run()
 	return err
 }

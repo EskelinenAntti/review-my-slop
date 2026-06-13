@@ -3,6 +3,7 @@ package tui
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"regexp"
 	"runtime"
 	"strconv"
@@ -18,7 +19,7 @@ import (
 
 func TestVisualSelectionCreatesMappedAnchorAndSubmits(t *testing.T) {
 	var saved []review.Comment
-	model := New(testDiff(), nil, func(stored review.StoredComment) (review.StoredComment, error) {
+	model := New(testDiff(), nil, func(stored review.StoredComment, _ review.Diff) (review.StoredComment, error) {
 		saved = append(saved, stored.Comment)
 		stored.BatchID = "new"
 		return stored, nil
@@ -34,7 +35,7 @@ func TestVisualSelectionCreatesMappedAnchorAndSubmits(t *testing.T) {
 	for _, r := range "fix both lines" {
 		model = update(t, model, textKey(string(r)))
 	}
-	model = update(t, model, specialKey(tea.KeyEnter))
+	update(t, model, specialKey(tea.KeyEnter))
 	if len(saved) != 1 {
 		t.Fatalf("saved comments = %d, want 1", len(saved))
 	}
@@ -56,7 +57,7 @@ func TestVisualSelectionCreatesMappedAnchorAndSubmits(t *testing.T) {
 
 func TestCommentEditorShortcuts(t *testing.T) {
 	var saved review.Comment
-	model := New(testDiff(), nil, func(stored review.StoredComment) (review.StoredComment, error) {
+	model := New(testDiff(), nil, func(stored review.StoredComment, _ review.Diff) (review.StoredComment, error) {
 		saved = stored.Comment
 		stored.BatchID = "new"
 		return stored, nil
@@ -76,8 +77,8 @@ func TestCommentEditorShortcuts(t *testing.T) {
 }
 
 func TestCommentSaveFailureKeepsDraftOpen(t *testing.T) {
-	model := New(testDiff(), nil, func(review.StoredComment) (review.StoredComment, error) {
-		return review.StoredComment{}, fmt.Errorf("inbox unavailable")
+	model := New(testDiff(), nil, func(review.StoredComment, review.Diff) (review.StoredComment, error) {
+		return review.StoredComment{}, fmt.Errorf("storage unavailable")
 	})
 	model = update(t, model, textKey("c"))
 	model = update(t, model, textKey("keep this"))
@@ -86,8 +87,47 @@ func TestCommentSaveFailureKeepsDraftOpen(t *testing.T) {
 	if model.mode != modeComment || string(model.editor) != "keep this" {
 		t.Fatalf("failed save lost draft: mode=%v editor=%q", model.mode, model.editor)
 	}
-	if model.err == nil || model.err.Error() != "inbox unavailable" {
-		t.Fatalf("error = %v, want inbox failure", model.err)
+	if model.err == nil || model.err.Error() != "storage unavailable" {
+		t.Fatalf("error = %v, want storage failure", model.err)
+	}
+}
+
+func TestCommentEditorCursorMovementAndEditing(t *testing.T) {
+	model := New(testDiff(), nil, nil)
+	model = update(t, model, textKey("c"))
+	model = update(t, model, textKey("first"))
+	model = update(t, model, modifiedKey(tea.KeyEnter, tea.ModShift))
+	model = update(t, model, textKey("third"))
+
+	model = update(t, model, specialKey(tea.KeyUp))
+	model = update(t, model, specialKey(tea.KeyHome))
+	model = update(t, model, specialKey(tea.KeyRight))
+	model = update(t, model, textKey("X"))
+	if got := string(model.editor); got != "fXirst\nthird" {
+		t.Fatalf("editor after insertion = %q", got)
+	}
+
+	model = update(t, model, specialKey(tea.KeyDown))
+	model = update(t, model, specialKey(tea.KeyEnd))
+	model = update(t, model, specialKey(tea.KeyBackspace))
+	model = update(t, model, specialKey(tea.KeyDelete))
+	if got := string(model.editor); got != "fXirst\nthir" {
+		t.Fatalf("editor after deletion = %q", got)
+	}
+}
+
+func TestCommentEditorRendersVisibleCursor(t *testing.T) {
+	model := New(testDiff(), nil, nil)
+	model = update(t, model, textKey("c"))
+	if rendered := model.renderEditorBody(); !strings.Contains(rendered, "\x1b[7m") {
+		t.Fatalf("empty editor has no visible cursor: %q", rendered)
+	}
+
+	model = update(t, model, textKey("ab"))
+	model = update(t, model, specialKey(tea.KeyLeft))
+	rendered := model.renderEditorBody()
+	if !strings.Contains(rendered, "\x1b[7mb") {
+		t.Fatalf("editor cursor is not rendered on current character: %q", rendered)
 	}
 }
 
@@ -142,6 +182,39 @@ func TestExternalEditorCommandReadsEditedDraft(t *testing.T) {
 	}
 }
 
+func TestOpenCurrentLineUsesEditorWithWorkingTreeLocation(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("test editor command uses sh")
+	}
+	t.Setenv("EDITOR", "printf")
+	model := New(testDiff(), nil, nil)
+	model.diff.Repository = filepath.Join(string(filepath.Separator), "tmp", "repo with spaces")
+	model.cursor = findCodeRow(t, model, review.LineAdded)
+
+	cmd, err := model.openCurrentLine()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cmd == nil {
+		t.Fatal("openCurrentLine returned no command")
+	}
+
+	command := editorLineCommand(os.Getenv("EDITOR"), filepath.Join(model.diff.Repository, "main.go"), 2)
+	if got, want := strings.Join(command.Args, "\x00"), "sh\x00-c\x00printf +2 '/tmp/repo with spaces/main.go'"; got != want {
+		t.Fatalf("command = %q, want %q", got, want)
+	}
+}
+
+func TestOpenCurrentLineRequiresEditor(t *testing.T) {
+	t.Setenv("EDITOR", "")
+	model := New(testDiff(), nil, nil)
+	model = update(t, model, textKey("e"))
+
+	if model.err == nil || model.err.Error() != "$EDITOR is not set" {
+		t.Fatalf("error = %v, want missing editor error", model.err)
+	}
+}
+
 func TestInboxCommentsCanBeViewedAndEdited(t *testing.T) {
 	comments := []review.StoredComment{{
 		BatchID: "batch-1",
@@ -151,7 +224,7 @@ func TestInboxCommentsCanBeViewedAndEdited(t *testing.T) {
 		},
 	}}
 	var persisted review.StoredComment
-	model := New(testDiff(), comments, func(stored review.StoredComment) (review.StoredComment, error) {
+	model := New(testDiff(), comments, func(stored review.StoredComment, _ review.Diff) (review.StoredComment, error) {
 		persisted = stored
 		return stored, nil
 	})
@@ -206,6 +279,77 @@ func TestVimSequencesAndLayoutToggle(t *testing.T) {
 	}
 	if !strings.Contains(model.render(), "│") {
 		t.Fatal("side-by-side render lacks divider")
+	}
+}
+
+func TestStatusShowsBasicBindingsAndHelpShowsCompleteKeyMap(t *testing.T) {
+	model := New(testDiff(), nil, nil)
+
+	status := ansi.Strip(model.renderStatus())
+	if status != "j/k/h/l move  c comment  ? help  q quit" {
+		t.Fatalf("status = %q", status)
+	}
+	if strings.Contains(status, "select") || strings.Contains(status, "inbox") || strings.Contains(status, "layout") {
+		t.Fatalf("status contains advanced bindings: %q", status)
+	}
+
+	help := ansi.Strip(model.renderHelp())
+	for _, binding := range []keyBinding{
+		{keys: "v", description: "select a line range"},
+		{keys: "e", description: "open current line in $EDITOR"},
+		{keys: "C", description: "view/edit comments"},
+		{keys: "t", description: "toggle unified/side-by-side"},
+	} {
+		if !strings.Contains(help, binding.keys) || !strings.Contains(help, binding.description) {
+			t.Fatalf("help does not contain %#v:\n%s", binding, help)
+		}
+	}
+}
+
+func TestRenderKeyBindingsAlignsDescriptions(t *testing.T) {
+	lines := renderKeyBindings([]keyBinding{
+		{keys: "x", description: "alpha"},
+		{keys: "long keys", description: "beta"},
+	})
+	if strings.Index(lines[0], "alpha") != strings.Index(lines[1], "beta") {
+		t.Fatalf("descriptions are not aligned: %#v", lines)
+	}
+}
+
+func TestDiffRefreshPreservesCursorWhenRowsShift(t *testing.T) {
+	model := New(testDiff(), nil, nil)
+	model.cursor = findCodeRow(t, model, review.LineAdded)
+	current := model.rows[model.cursor].line
+
+	refreshed := testDiff()
+	refreshed.Fingerprint = "refreshed"
+	refreshed.Files[0].Metadata = []string{"new metadata row"}
+	model = update(t, model, refreshDiffMsg{diff: refreshed})
+
+	if model.diff.Fingerprint != "refreshed" {
+		t.Fatalf("fingerprint = %q, want refreshed", model.diff.Fingerprint)
+	}
+	if got := model.rows[model.cursor].line; got != current {
+		t.Fatalf("cursor moved to %#v, want %#v", got, current)
+	}
+}
+
+func TestCommentAfterRefreshUsesCurrentDiff(t *testing.T) {
+	var savedWith review.Diff
+	model := New(testDiff(), nil, func(stored review.StoredComment, diff review.Diff) (review.StoredComment, error) {
+		savedWith = diff
+		stored.BatchID = "new"
+		return stored, nil
+	})
+	refreshed := testDiff()
+	refreshed.Fingerprint = "refreshed"
+	model = update(t, model, refreshDiffMsg{diff: refreshed})
+	model = update(t, model, textKey("c"))
+	model = update(t, model, textKey("comment"))
+	update(t, model, specialKey(tea.KeyEnter))
+
+	if savedWith.Fingerprint != "refreshed" {
+		t.Fatalf("saved with fingerprint %q, want refreshed", savedWith.Fingerprint)
 	}
 }
 
@@ -500,6 +644,8 @@ func testDiff() review.Diff {
 		Fingerprint: "fingerprint",
 		Files: []review.File{{
 			Display:   "main.go",
+			OldPath:   "main.go",
+			NewPath:   "main.go",
 			Language:  "main.go",
 			OldSource: "package main\nold()\nkeep()\n",
 			NewSource: "package main\nnew()\nkeep()\nmore()\n",

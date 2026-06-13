@@ -4,10 +4,12 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"regexp"
 	"runtime"
 	"strconv"
 	"strings"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
@@ -17,11 +19,25 @@ import (
 	"github.com/anttieskelinen/review-my-slop/internal/review"
 )
 
-type SaveCommentFunc func(review.StoredComment) (review.StoredComment, error)
+type SaveCommentFunc func(review.StoredComment, review.Diff) (review.StoredComment, error)
+type RefreshDiffFunc func() (review.Diff, error)
+
+const refreshInterval = time.Second
+
+type refreshTickMsg struct{}
+
+type refreshDiffMsg struct {
+	diff review.Diff
+	err  error
+}
 
 type externalEditorFinishedMsg struct {
 	body string
 	err  error
+}
+
+type lineEditorFinishedMsg struct {
+	err error
 }
 
 type rowKind uint8
@@ -65,8 +81,10 @@ type Model struct {
 	selectFrom int
 	mode       mode
 	editor     []rune
+	editorPos  int
 	editIndex  int
 	save       SaveCommentFunc
+	refresh    RefreshDiffFunc
 	err        error
 	quitting   bool
 	gPending   bool
@@ -89,7 +107,13 @@ func New(diff review.Diff, comments []review.StoredComment, save SaveCommentFunc
 	return model
 }
 
-func (m Model) Init() tea.Cmd { return nil }
+func (m *Model) SetRefresh(refresh RefreshDiffFunc) {
+	m.refresh = refresh
+}
+
+func (m Model) Init() tea.Cmd {
+	return m.nextRefresh()
+}
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
@@ -104,13 +128,129 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.err = msg.err
 		} else {
 			m.editor = []rune(msg.body)
+			m.editorPos = len(m.editor)
 			m.err = nil
 		}
 		return m, nil
+	case lineEditorFinishedMsg:
+		if msg.err != nil {
+			m.err = fmt.Errorf("editor: %w", msg.err)
+		}
+		return m, nil
+	case refreshTickMsg:
+		return m, m.loadRefresh()
+	case refreshDiffMsg:
+		if msg.err != nil {
+			m.err = fmt.Errorf("refresh diff: %w", msg.err)
+		} else if msg.diff.Fingerprint != m.diff.Fingerprint {
+			m.applyDiff(msg.diff)
+			m.err = nil
+		}
+		return m, m.nextRefresh()
 	case tea.KeyPressMsg:
 		return m.updateKey(msg)
 	}
 	return m, nil
+}
+
+func (m Model) nextRefresh() tea.Cmd {
+	if m.refresh == nil {
+		return nil
+	}
+	return tea.Tick(refreshInterval, func(time.Time) tea.Msg {
+		return refreshTickMsg{}
+	})
+}
+
+func (m Model) loadRefresh() tea.Cmd {
+	if m.refresh == nil {
+		return nil
+	}
+	return func() tea.Msg {
+		diff, err := m.refresh()
+		return refreshDiffMsg{diff: diff, err: err}
+	}
+}
+
+func (m *Model) applyDiff(diff review.Diff) {
+	cursor := m.rowAnchor(m.cursor)
+	selection := m.rowAnchor(m.selectFrom)
+	cursorFallback := m.cursor
+	selectionFallback := m.selectFrom
+
+	m.diff = diff
+	m.rows = flatten(diff)
+	m.cursor = m.findRow(cursor, cursorFallback)
+	if m.selecting {
+		m.selectFrom = m.findRow(selection, selectionFallback)
+		if !m.isCode(m.selectFrom) || !m.isCode(m.cursor) ||
+			m.rows[m.selectFrom].fileIndex != m.rows[m.cursor].fileIndex ||
+			m.rows[m.selectFrom].hunkIndex != m.rows[m.cursor].hunkIndex {
+			m.cancelSelection()
+		}
+	}
+	m.xOffset = min(m.xOffset, m.maxHorizontalOffset())
+	m.ensureVisible()
+}
+
+type rowAnchor struct {
+	valid     bool
+	file      string
+	kind      rowKind
+	lineKind  review.LineKind
+	oldNumber int
+	newNumber int
+	text      string
+}
+
+func (m Model) rowAnchor(index int) rowAnchor {
+	if index < 0 || index >= len(m.rows) {
+		return rowAnchor{}
+	}
+	current := m.rows[index]
+	anchor := rowAnchor{
+		valid: true,
+		file:  m.diff.Files[current.fileIndex].Display,
+		kind:  current.kind,
+		text:  current.text,
+	}
+	if current.kind == rowCode {
+		anchor.lineKind = current.line.Kind
+		anchor.oldNumber = current.line.OldNumber
+		anchor.newNumber = current.line.NewNumber
+	}
+	return anchor
+}
+
+func (m Model) findRow(anchor rowAnchor, fallback int) int {
+	if !anchor.valid || len(m.rows) == 0 {
+		return min(max(0, fallback), max(0, len(m.rows)-1))
+	}
+	for index, current := range m.rows {
+		if m.rowMatches(anchor, current, true) {
+			return index
+		}
+	}
+	for index, current := range m.rows {
+		if m.rowMatches(anchor, current, false) {
+			return index
+		}
+	}
+	return min(max(0, fallback), len(m.rows)-1)
+}
+
+func (m Model) rowMatches(anchor rowAnchor, current row, exact bool) bool {
+	if current.fileIndex < 0 || current.fileIndex >= len(m.diff.Files) ||
+		m.diff.Files[current.fileIndex].Display != anchor.file ||
+		current.kind != anchor.kind {
+		return false
+	}
+	if exact && current.kind == rowCode {
+		return current.line.Kind == anchor.lineKind &&
+			current.line.OldNumber == anchor.oldNumber &&
+			current.line.NewNumber == anchor.newNumber
+	}
+	return current.text == anchor.text
 }
 
 func (m Model) updateKey(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
@@ -198,6 +338,13 @@ func (m Model) updateKey(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		m.cancelSelection()
 	case "c":
 		m.beginComment()
+	case "e":
+		cmd, err := m.openCurrentLine()
+		if err != nil {
+			m.err = err
+			return m, nil
+		}
+		return m, cmd
 	case "C":
 		m.mode = modeComments
 		m.commentRow = min(m.commentRow, max(0, len(m.comments)-1))
@@ -231,6 +378,7 @@ func (m Model) updateComments(name string) (tea.Model, tea.Cmd) {
 		if len(m.comments) > 0 {
 			m.editIndex = m.commentRow
 			m.editor = []rune(m.comments[m.editIndex].Comment.Body)
+			m.editorPos = len(m.editor)
 			m.mode = modeComment
 		}
 	}
@@ -246,11 +394,12 @@ func (m Model) updateEditor(name string, key tea.KeyPressMsg) (tea.Model, tea.Cm
 			m.mode = modeBrowse
 		}
 		m.editor = nil
+		m.editorPos = 0
 		m.editIndex = -1
 	case "enter":
 		m.saveComment()
 	case "shift+enter":
-		m.editor = append(m.editor, '\n')
+		m.insertEditorText("\n")
 	case "ctrl+g":
 		cmd, err := m.openExternalEditor()
 		if err != nil {
@@ -258,16 +407,78 @@ func (m Model) updateEditor(name string, key tea.KeyPressMsg) (tea.Model, tea.Cm
 			return m, nil
 		}
 		return m, cmd
+	case "left":
+		m.editorPos = max(0, m.editorPos-1)
+	case "right":
+		m.editorPos = min(len(m.editor), m.editorPos+1)
+	case "up":
+		m.moveEditorVertically(-1)
+	case "down":
+		m.moveEditorVertically(1)
+	case "home":
+		m.editorPos = editorLineStart(m.editor, m.editorPos)
+	case "end":
+		m.editorPos = editorLineEnd(m.editor, m.editorPos)
 	case "backspace":
-		if len(m.editor) > 0 {
-			m.editor = m.editor[:len(m.editor)-1]
+		if m.editorPos > 0 {
+			m.editor = append(m.editor[:m.editorPos-1], m.editor[m.editorPos:]...)
+			m.editorPos--
+		}
+	case "delete":
+		if m.editorPos < len(m.editor) {
+			m.editor = append(m.editor[:m.editorPos], m.editor[m.editorPos+1:]...)
 		}
 	default:
 		if key.Text != "" {
-			m.editor = append(m.editor, []rune(key.Text)...)
+			m.insertEditorText(key.Text)
 		}
 	}
 	return m, nil
+}
+
+func (m *Model) insertEditorText(text string) {
+	inserted := []rune(text)
+	tail := append([]rune(nil), m.editor[m.editorPos:]...)
+	m.editor = append(m.editor[:m.editorPos], inserted...)
+	m.editor = append(m.editor, tail...)
+	m.editorPos += len(inserted)
+}
+
+func (m *Model) moveEditorVertically(direction int) {
+	start := editorLineStart(m.editor, m.editorPos)
+	column := m.editorPos - start
+	if direction < 0 {
+		if start == 0 {
+			return
+		}
+		previousEnd := start - 1
+		previousStart := editorLineStart(m.editor, previousEnd)
+		m.editorPos = min(previousStart+column, previousEnd)
+		return
+	}
+	end := editorLineEnd(m.editor, m.editorPos)
+	if end == len(m.editor) {
+		return
+	}
+	nextStart := end + 1
+	nextEnd := editorLineEnd(m.editor, nextStart)
+	m.editorPos = min(nextStart+column, nextEnd)
+}
+
+func editorLineStart(text []rune, position int) int {
+	position = min(max(0, position), len(text))
+	for position > 0 && text[position-1] != '\n' {
+		position--
+	}
+	return position
+}
+
+func editorLineEnd(text []rune, position int) int {
+	position = min(max(0, position), len(text))
+	for position < len(text) && text[position] != '\n' {
+		position++
+	}
+	return position
 }
 
 func (m *Model) saveComment() {
@@ -277,7 +488,7 @@ func (m *Model) saveComment() {
 		return
 	}
 	if m.save == nil {
-		m.err = fmt.Errorf("comment inbox is unavailable")
+		m.err = fmt.Errorf("comment storage is unavailable")
 		return
 	}
 	var stored review.StoredComment
@@ -292,7 +503,7 @@ func (m *Model) saveComment() {
 		}
 		stored.Comment = review.Comment{Anchor: anchor, Body: body}
 	}
-	saved, err := m.save(stored)
+	saved, err := m.save(stored, m.diff)
 	if err != nil {
 		m.err = err
 		return
@@ -306,6 +517,7 @@ func (m *Model) saveComment() {
 		m.mode = modeBrowse
 	}
 	m.editor = nil
+	m.editorPos = 0
 	m.editIndex = -1
 	m.err = nil
 	m.cancelSelection()
@@ -359,8 +571,47 @@ func editorCommand(editor, path string) *exec.Cmd {
 	return exec.Command("sh", "-c", editor+" "+shellQuote(path))
 }
 
+func editorLineCommand(editor, path string, line int) *exec.Cmd {
+	location := "+" + strconv.Itoa(line)
+	if runtime.GOOS == "windows" {
+		return exec.Command("cmd", "/C", editor+" "+location+" "+strconv.Quote(path))
+	}
+	return exec.Command("sh", "-c", editor+" "+location+" "+shellQuote(path))
+}
+
 func shellQuote(value string) string {
 	return "'" + strings.ReplaceAll(value, "'", "'\"'\"'") + "'"
+}
+
+func (m Model) openCurrentLine() (tea.Cmd, error) {
+	editor := strings.TrimSpace(os.Getenv("EDITOR"))
+	if editor == "" {
+		return nil, fmt.Errorf("$EDITOR is not set")
+	}
+	if !m.isCode(m.cursor) {
+		return nil, fmt.Errorf("select a code line to open in $EDITOR")
+	}
+
+	current := m.rows[m.cursor]
+	file := m.diff.Files[current.fileIndex]
+	path := file.NewPath
+	line := current.line.NewNumber
+	if path == "" || path == "/dev/null" {
+		path = file.OldPath
+	}
+	if line == 0 {
+		line = current.line.OldNumber
+	}
+	if path == "" || path == "/dev/null" || line < 1 {
+		return nil, fmt.Errorf("current line has no editable working-tree location")
+	}
+	if !filepath.IsAbs(path) {
+		path = filepath.Join(m.diff.Repository, filepath.FromSlash(path))
+	}
+
+	return tea.ExecProcess(editorLineCommand(editor, path, line), func(err error) tea.Msg {
+		return lineEditorFinishedMsg{err: err}
+	}), nil
 }
 
 func (m *Model) beginComment() {
@@ -373,6 +624,7 @@ func (m *Model) beginComment() {
 	}
 	m.mode = modeComment
 	m.editor = nil
+	m.editorPos = 0
 }
 
 func (m Model) currentAnchor() (review.Anchor, error) {
@@ -433,7 +685,7 @@ func (m Model) render() string {
 	}
 	var out strings.Builder
 	title := titleStyle.Render("review-my-slop")
-	summary := mutedStyle.Render(fmt.Sprintf("%d files  %d comments in inbox", len(m.diff.Files), len(m.comments)))
+	summary := mutedStyle.Render(fmt.Sprintf("%d files  %d pending comments", len(m.diff.Files), len(m.comments)))
 	out.WriteString(title + "  " + summary + "\n")
 
 	if len(m.rows) == 0 {
@@ -505,17 +757,27 @@ func (m Model) renderRow(index int) string {
 func (m Model) renderEditor() string {
 	label := "New comment"
 	if m.editIndex >= 0 {
-		label = "Edit inbox comment"
+		label = "Edit comment"
 	}
-	body := string(m.editor)
-	if body == "" {
-		body = mutedStyle.Render("Type feedback...")
+	return label + "\n" + m.renderEditorBody() + "\n" +
+		mutedStyle.Render("Enter save  Shift-Enter newline  arrows move  Ctrl-G $EDITOR  Esc cancel")
+}
+
+func (m Model) renderEditorBody() string {
+	if len(m.editor) == 0 {
+		return editorCursorStyle.Render(" ") + mutedStyle.Render("Type feedback...")
 	}
-	return label + "\n" + body + "\n" + mutedStyle.Render("Enter save to inbox  Shift-Enter newline  Ctrl-G $EDITOR  Esc cancel")
+	position := min(max(0, m.editorPos), len(m.editor))
+	if position == len(m.editor) {
+		return string(m.editor) + editorCursorStyle.Render(" ")
+	}
+	return string(m.editor[:position]) +
+		editorCursorStyle.Render(string(m.editor[position])) +
+		string(m.editor[position+1:])
 }
 
 func (m Model) renderStatus() string {
-	status := "j/k move  h/l scroll  v select  c comment  C inbox  t layout  ? help  q quit"
+	status := "j/k/h/l move  c comment  ? help  q quit"
 	if m.selecting {
 		status = "visual selection  j/k extend  c comment  Esc cancel"
 	}
@@ -524,12 +786,12 @@ func (m Model) renderStatus() string {
 
 func (m Model) renderComments() string {
 	var out strings.Builder
-	out.WriteString(titleStyle.Render("inbox comments"))
+	out.WriteString(titleStyle.Render("comments"))
 	out.WriteString("  ")
 	out.WriteString(mutedStyle.Render(fmt.Sprintf("%d pending", len(m.comments))))
 	out.WriteByte('\n')
 	if len(m.comments) == 0 {
-		out.WriteString("\n" + mutedStyle.Render("No comments in the inbox.") + "\n")
+		out.WriteString("\n" + mutedStyle.Render("No pending comments.") + "\n")
 	} else {
 		for index, stored := range m.comments {
 			prefix := "  "
@@ -557,25 +819,43 @@ func (m Model) renderComments() string {
 }
 
 func (m Model) renderHelp() string {
-	lines := []string{
-		titleStyle.Render("review-my-slop help"),
-		"",
-		"j/k, arrows       move",
-		"h/l, left/right   scroll horizontally",
-		"0/$               start/end of lines",
-		"gg/G              first/last changed line",
-		"Ctrl-d/Ctrl-u     half-page down/up",
-		"]f/[f             next/previous file",
-		"]h/[h             next/previous hunk",
-		"v                 select a line range",
-		"c                 comment on selection/current line",
-		"C                 view/edit inbox comments",
-		"t                 toggle unified/side-by-side",
-		"q                 quit",
-		"",
-		mutedStyle.Render("? or Esc closes help"),
+	bindings := []keyBinding{
+		{"j/k, arrows", "move"},
+		{"h/l, left/right", "scroll horizontally"},
+		{"0/$", "start/end of lines"},
+		{"gg/G", "first/last changed line"},
+		{"Ctrl-d/Ctrl-u", "half-page down/up"},
+		{"]f/[f", "next/previous file"},
+		{"]h/[h", "next/previous hunk"},
+		{"v", "select a line range"},
+		{"c", "comment on selection/current line"},
+		{"e", "open current line in $EDITOR"},
+		{"C", "view/edit comments"},
+		{"t", "toggle unified/side-by-side"},
+		{"q", "quit"},
 	}
+	lines := []string{titleStyle.Render("review-my-slop help"), ""}
+	lines = append(lines, renderKeyBindings(bindings)...)
+	lines = append(lines, "", mutedStyle.Render("? or Esc closes help"))
 	return strings.Join(lines, "\n")
+}
+
+type keyBinding struct {
+	keys        string
+	description string
+}
+
+func renderKeyBindings(bindings []keyBinding) []string {
+	width := 0
+	for _, binding := range bindings {
+		width = max(width, lipgloss.Width(binding.keys))
+	}
+	lines := make([]string, 0, len(bindings))
+	for _, binding := range bindings {
+		padding := strings.Repeat(" ", width-lipgloss.Width(binding.keys))
+		lines = append(lines, binding.keys+padding+"  "+binding.description)
+	}
+	return lines
 }
 
 func (m Model) renderSideBySide(index int) string {
@@ -921,17 +1201,18 @@ func abs(value int) int {
 }
 
 var (
-	ansiSGRPattern = regexp.MustCompile(`\x1b\[[0-9;]*m`)
-	titleStyle     = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#83a598"))
-	fileStyle      = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#ebdbb2")).Background(lipgloss.Color("#3c3836"))
-	metadataStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("#928374"))
-	hunkStyle      = lipgloss.NewStyle().Foreground(lipgloss.Color("#d3869b"))
-	contextStyle   = lipgloss.NewStyle()
-	addedStyle     = lipgloss.NewStyle().Background(lipgloss.Color("#34432f"))
-	removedStyle   = lipgloss.NewStyle().Background(lipgloss.Color("#4b302e"))
-	selectionStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#282828")).Background(lipgloss.Color("#83a598")).Bold(true)
-	cursorStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("#282828")).Background(lipgloss.Color("#fabd2f"))
-	mutedStyle     = lipgloss.NewStyle().Foreground(lipgloss.Color("#928374"))
-	errorStyle     = lipgloss.NewStyle().Foreground(lipgloss.Color("#fb4934")).Bold(true)
-	commentBorder  = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(lipgloss.Color("#83a598")).Padding(0, 1)
+	ansiSGRPattern    = regexp.MustCompile(`\x1b\[[0-9;]*m`)
+	titleStyle        = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#83a598"))
+	fileStyle         = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#ebdbb2")).Background(lipgloss.Color("#3c3836"))
+	metadataStyle     = lipgloss.NewStyle().Foreground(lipgloss.Color("#928374"))
+	hunkStyle         = lipgloss.NewStyle().Foreground(lipgloss.Color("#d3869b"))
+	contextStyle      = lipgloss.NewStyle()
+	addedStyle        = lipgloss.NewStyle().Background(lipgloss.Color("#34432f"))
+	removedStyle      = lipgloss.NewStyle().Background(lipgloss.Color("#4b302e"))
+	selectionStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("#282828")).Background(lipgloss.Color("#83a598")).Bold(true)
+	cursorStyle       = lipgloss.NewStyle().Foreground(lipgloss.Color("#282828")).Background(lipgloss.Color("#fabd2f"))
+	editorCursorStyle = lipgloss.NewStyle().Reverse(true)
+	mutedStyle        = lipgloss.NewStyle().Foreground(lipgloss.Color("#928374"))
+	errorStyle        = lipgloss.NewStyle().Foreground(lipgloss.Color("#fb4934")).Bold(true)
+	commentBorder     = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(lipgloss.Color("#83a598")).Padding(0, 1)
 )
