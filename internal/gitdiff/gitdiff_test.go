@@ -5,7 +5,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"testing"
 
@@ -140,9 +139,6 @@ func TestParentBranchesOrdersDistinctStackedParentsNearestFirst(t *testing.T) {
 }
 
 func TestLoaderDoesNotFollowUntrackedSymlink(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("symlink semantics differ on Windows")
-	}
 	repo := newRepository(t)
 	outside := filepath.Join(t.TempDir(), "secret")
 	if err := os.WriteFile(outside, []byte("do not read"), 0o600); err != nil {

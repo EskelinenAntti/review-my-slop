@@ -8,6 +8,9 @@ repository and can be pulled into an AI coding session with:
 !review-my-slop comments
 ```
 
+Supported platforms are macOS and Linux on amd64 and arm64. The program
+requires `git`, a POSIX shell, and a terminal.
+
 ## Install from source
 
 ```sh

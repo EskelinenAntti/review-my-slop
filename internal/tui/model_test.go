@@ -5,7 +5,6 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
-	"runtime"
 	"strconv"
 	"strings"
 	"testing"
@@ -170,9 +169,6 @@ func TestEmptyNewCommentIsDiscarded(t *testing.T) {
 }
 
 func TestExternalEditorCommandReadsEditedDraft(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("test editor command uses sh")
-	}
 	file, err := os.CreateTemp("", "review-my-slop-editor-test-*.md")
 	if err != nil {
 		t.Fatal(err)
@@ -196,9 +192,6 @@ func TestExternalEditorCommandReadsEditedDraft(t *testing.T) {
 }
 
 func TestOpenCurrentLineUsesEditorWithWorkingTreeLocation(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("test editor command uses sh")
-	}
 	t.Setenv("EDITOR", "printf")
 	model := New(testDiff(), nil, nil)
 	model.diff.Repository = filepath.Join(string(filepath.Separator), "tmp", "repo with spaces")

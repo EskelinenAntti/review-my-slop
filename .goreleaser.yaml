@@ -10,13 +10,6 @@ builds:
       - CGO_ENABLED=0
     goos: [darwin, linux]
     goarch: [amd64, arm64]
-  - id: review-my-comments
-    main: ./cmd/review-my-comments
-    binary: review-my-comments
-    env:
-      - CGO_ENABLED=0
-    goos: [darwin, linux]
-    goarch: [amd64, arm64]
 
 archives:
   - formats: [tar.gz]
@@ -35,4 +28,3 @@ snapshot:
 
 changelog:
   disable: true
-

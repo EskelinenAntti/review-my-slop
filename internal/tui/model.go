@@ -6,7 +6,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
-	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -719,17 +718,11 @@ func stripUnchangedSuggestion(body string, lines []string) string {
 }
 
 func commentEditorCommand(editor, path string) *exec.Cmd {
-	if runtime.GOOS == "windows" {
-		return exec.Command("cmd", "/C", editor+" "+strconv.Quote(path))
-	}
 	return exec.Command("sh", "-c", editor+" "+shellQuote(path))
 }
 
 func sourceEditorCommand(editor, path string, line int) *exec.Cmd {
 	location := "+" + strconv.Itoa(line)
-	if runtime.GOOS == "windows" {
-		return exec.Command("cmd", "/C", editor+" "+location+" "+strconv.Quote(path))
-	}
 	return exec.Command("sh", "-c", editor+" "+location+" "+shellQuote(path))
 }
 
