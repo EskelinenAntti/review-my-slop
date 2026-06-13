@@ -81,7 +81,7 @@ func TestWritePrompt(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, expected := range []string{
-		"Comments added since last run:",
+		"New comments since last run:",
 		"`main.go`",
 		"old lines 10-11",
 		"new lines 12-13",

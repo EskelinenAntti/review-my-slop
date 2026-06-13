@@ -13,7 +13,7 @@ func WritePrompt(w io.Writer, batches []review.Batch) error {
 		_, err := fmt.Fprintln(w, "No pending review comments.")
 		return err
 	}
-	if _, err := fmt.Fprintln(w, "Comments added since last run:"); err != nil {
+	if _, err := fmt.Fprintln(w, "New comments since last run:"); err != nil {
 		return err
 	}
 	commentIndex := 0
