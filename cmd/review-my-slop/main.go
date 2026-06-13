@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"time"
 
@@ -15,13 +16,30 @@ import (
 )
 
 func main() {
-	if err := run(context.Background()); err != nil {
+	if err := run(context.Background(), os.Args[1:], os.Stdout); err != nil {
 		fmt.Fprintln(os.Stderr, "review-my-slop:", err)
 		os.Exit(1)
 	}
 }
 
-func run(ctx context.Context) error {
+func run(ctx context.Context, args []string, output io.Writer) error {
+	if len(args) == 0 {
+		return runCode(ctx)
+	}
+	if len(args) > 1 {
+		return fmt.Errorf("usage: review-my-slop [code|comments]")
+	}
+	switch args[0] {
+	case "code":
+		return runCode(ctx)
+	case "comments":
+		return runComments(ctx, output)
+	default:
+		return fmt.Errorf("unknown subcommand %q; usage: review-my-slop [code|comments]", args[0])
+	}
+}
+
+func runCode(ctx context.Context) error {
 	current, err := os.Getwd()
 	if err != nil {
 		return err
@@ -73,4 +91,31 @@ func run(ctx context.Context) error {
 	program := tea.NewProgram(model)
 	_, err = program.Run()
 	return err
+}
+
+func runComments(ctx context.Context, output io.Writer) error {
+	current, err := os.Getwd()
+	if err != nil {
+		return err
+	}
+	return runCommentsAt(ctx, current, output)
+}
+
+func runCommentsAt(ctx context.Context, current string, output io.Writer) error {
+	root, err := (gitdiff.Loader{}).Root(ctx, current)
+	if err != nil {
+		return err
+	}
+	store, err := inbox.OpenDefault()
+	if err != nil {
+		return err
+	}
+	taken, err := store.Peek(root)
+	if err != nil {
+		return err
+	}
+	if err := inbox.WritePrompt(output, taken.Batches); err != nil {
+		return err
+	}
+	return store.Delete(taken)
 }

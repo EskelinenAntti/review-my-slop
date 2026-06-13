@@ -13,16 +13,8 @@ import (
 	"github.com/anttieskelinen/review-my-slop/internal/review"
 )
 
-func TestRunAtPrintsAndConsumesCurrentRepositoryFeedback(t *testing.T) {
-	repo, err := filepath.EvalSymlinks(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	cmd := exec.Command("git", "init", "-q")
-	cmd.Dir = repo
-	if out, err := cmd.CombinedOutput(); err != nil {
-		t.Fatalf("git init: %v\n%s", err, out)
-	}
+func TestRunCommentsPrintsAndConsumesCurrentRepositoryFeedback(t *testing.T) {
+	repo := initRepository(t)
 	state := t.TempDir()
 	t.Setenv("REVIEW_MY_SLOP_HOME", state)
 	store, err := inbox.OpenDefault()
@@ -40,7 +32,7 @@ func TestRunAtPrintsAndConsumesCurrentRepositoryFeedback(t *testing.T) {
 	}
 
 	var output bytes.Buffer
-	if err := runAt(context.Background(), repo, &output); err != nil {
+	if err := runCommentsAt(context.Background(), repo, &output); err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(output.String(), "Check this error.") {
@@ -48,7 +40,7 @@ func TestRunAtPrintsAndConsumesCurrentRepositoryFeedback(t *testing.T) {
 	}
 
 	var empty bytes.Buffer
-	if err := runAt(context.Background(), repo, &empty); err != nil {
+	if err := runCommentsAt(context.Background(), repo, &empty); err != nil {
 		t.Fatal(err)
 	}
 	if strings.TrimSpace(empty.String()) != "No pending review comments." {
@@ -64,22 +56,8 @@ func TestRunAtPrintsAndConsumesCurrentRepositoryFeedback(t *testing.T) {
 	}
 }
 
-type failingWriter struct{}
-
-func (failingWriter) Write([]byte) (int, error) {
-	return 0, os.ErrClosed
-}
-
-func TestRunAtPreservesFeedbackWhenOutputFails(t *testing.T) {
-	repo, err := filepath.EvalSymlinks(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	cmd := exec.Command("git", "init", "-q")
-	cmd.Dir = repo
-	if out, err := cmd.CombinedOutput(); err != nil {
-		t.Fatalf("git init: %v\n%s", err, out)
-	}
+func TestRunCommentsPreservesFeedbackWhenOutputFails(t *testing.T) {
+	repo := initRepository(t)
 	t.Setenv("REVIEW_MY_SLOP_HOME", t.TempDir())
 	store, err := inbox.OpenDefault()
 	if err != nil {
@@ -95,7 +73,7 @@ func TestRunAtPreservesFeedbackWhenOutputFails(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := runAt(context.Background(), repo, failingWriter{}); err == nil {
+	if err := runCommentsAt(context.Background(), repo, failingWriter{}); err == nil {
 		t.Fatal("output failure was ignored")
 	}
 	taken, err := store.Peek(repo)
@@ -105,4 +83,31 @@ func TestRunAtPreservesFeedbackWhenOutputFails(t *testing.T) {
 	if len(taken.Batches) != 1 {
 		t.Fatalf("pending batches = %d, want 1", len(taken.Batches))
 	}
+}
+
+func TestRunRejectsUnknownSubcommand(t *testing.T) {
+	err := run(context.Background(), []string{"unknown"}, &bytes.Buffer{})
+	if err == nil || !strings.Contains(err.Error(), `unknown subcommand "unknown"`) {
+		t.Fatalf("error = %v", err)
+	}
+}
+
+type failingWriter struct{}
+
+func (failingWriter) Write([]byte) (int, error) {
+	return 0, os.ErrClosed
+}
+
+func initRepository(t *testing.T) string {
+	t.Helper()
+	repo, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command("git", "init", "-q")
+	cmd.Dir = repo
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("git init: %v\n%s", err, out)
+	}
+	return repo
 }

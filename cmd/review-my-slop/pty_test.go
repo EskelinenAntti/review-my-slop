@@ -18,6 +18,28 @@ import (
 )
 
 func TestCommandStartsAndQuitsInPTY(t *testing.T) {
+	binary := filepath.Join(t.TempDir(), "review-my-slop")
+	build := exec.Command("go", "build", "-o", binary, ".")
+	build.Dir = "."
+	if output, err := build.CombinedOutput(); err != nil {
+		t.Fatalf("build command: %v\n%s", err, output)
+	}
+
+	for _, test := range []struct {
+		name string
+		args []string
+	}{
+		{name: "default"},
+		{name: "code subcommand", args: []string{"code"}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			testCommandStartsAndQuitsInPTY(t, binary, test.args)
+		})
+	}
+}
+
+func testCommandStartsAndQuitsInPTY(t *testing.T, binary string, args []string) {
+	t.Helper()
 	repo, err := filepath.EvalSymlinks(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -27,16 +49,9 @@ func TestCommandStartsAndQuitsInPTY(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	binary := filepath.Join(t.TempDir(), "review-my-slop")
-	build := exec.Command("go", "build", "-o", binary, ".")
-	build.Dir = "."
-	if output, err := build.CombinedOutput(); err != nil {
-		t.Fatalf("build command: %v\n%s", err, output)
-	}
-
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	command := exec.CommandContext(ctx, binary)
+	command := exec.CommandContext(ctx, binary, args...)
 	command.Dir = repo
 	command.Env = append(os.Environ(),
 		"TERM=xterm-256color",
