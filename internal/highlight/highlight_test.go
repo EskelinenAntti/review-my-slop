@@ -11,7 +11,7 @@ func TestLicenseHighlightFixture(t *testing.T) {
 Copyright (c) 2026 Antti Eskelinen
 
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND.
-`)
+`, true)
 	if len(lines) != 5 {
 		t.Fatalf("highlighted lines = %d, want 5", len(lines))
 	}
@@ -22,8 +22,8 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND.
 	}
 }
 
-func TestGruvboxUsesDistinctGoTokenColors(t *testing.T) {
-	lines := render("example.go", `package main
+func TestHighlightAdaptsToTerminalBackground(t *testing.T) {
+	source := `package main
 
 // comment
 func answer(value int) string {
@@ -32,18 +32,18 @@ func answer(value int) string {
 	}
 	return ""
 }
-`)
-	rendered := strings.Join(lines, "\n")
-	expected := map[string]string{
-		"keyword":  "\x1b[38;2;254;128;25m",
-		"function": "\x1b[38;2;250;189;47m",
-		"string":   "\x1b[38;2;184;187;38m",
-		"number":   "\x1b[38;2;211;134;155m",
-		"comment":  "\x1b[38;2;146;131;116m",
+`
+	dark := strings.Join(render("example.go", source, true), "\n")
+	light := strings.Join(render("example.go", source, false), "\n")
+	if dark == light {
+		t.Fatal("light and dark terminal backgrounds use identical highlighting")
 	}
-	for token, sequence := range expected {
-		if !strings.Contains(rendered, sequence) {
-			t.Errorf("%s color %q not found in %q", token, sequence, rendered)
+	for name, rendered := range map[string]string{"dark": dark, "light": light} {
+		if !strings.Contains(rendered, "[38;2;") {
+			t.Errorf("%s theme does not use truecolor syntax highlighting: %q", name, rendered)
+		}
+		if strings.Contains(rendered, "[48;2;") {
+			t.Errorf("%s theme overrides terminal background: %q", name, rendered)
 		}
 	}
 }

@@ -550,35 +550,39 @@ func TestHorizontalScrollStartAndEnd(t *testing.T) {
 	}
 }
 
-func TestDiffBackgroundAndCursorFillTerminalWidth(t *testing.T) {
+func TestDiffMarkersUseTerminalColorsAndCursorFillsTerminalWidth(t *testing.T) {
 	model := New(testDiff(), nil, nil)
 	model = update(t, model, tea.WindowSizeMsg{Width: 80, Height: 20})
 
 	addedIndex := findCodeRow(t, model, review.LineAdded)
 	added := model.renderRow(addedIndex)
-	assertStyledThroughColumn(t, added, 80, sgrExpectation{background: "52;67;47"})
+	if !strings.Contains(added, "\x1b[32m+\x1b[m") {
+		t.Fatalf("added row does not use terminal green: %q", added)
+	}
+	if !strings.Contains(added, "[38;2;") || !strings.Contains(added, "new") {
+		t.Fatalf("added row lost syntax highlighting: %q", added)
+	}
 
 	removedIndex := findCodeRow(t, model, review.LineRemoved)
 	removed := model.renderRow(removedIndex)
-	assertStyledThroughColumn(t, removed, 80, sgrExpectation{background: "75;48;46"})
+	if !strings.Contains(removed, "\x1b[31m-\x1b[m") {
+		t.Fatalf("removed row does not use terminal red: %q", removed)
+	}
+	if !strings.Contains(removed, "[38;2;") || !strings.Contains(removed, "old") {
+		t.Fatalf("removed row lost syntax highlighting: %q", removed)
+	}
 
 	model.cursor = addedIndex
 	cursor := model.renderRow(addedIndex)
-	assertStyledThroughColumn(t, cursor, 80, sgrExpectation{
-		background: "250;189;47",
-		foreground: "40;40;40",
-	})
+	assertStyledThroughColumn(t, cursor, 80, sgrExpectation{reverse: true})
 
 	contextIndex := findCodeRow(t, model, review.LineContext)
 	model.cursor = contextIndex
 	contextCursor := model.renderRow(contextIndex)
-	assertStyledThroughColumn(t, contextCursor, 80, sgrExpectation{
-		background: "250;189;47",
-		foreground: "40;40;40",
-	})
+	assertStyledThroughColumn(t, contextCursor, 80, sgrExpectation{reverse: true})
 }
 
-func TestSelectionBackgroundSurvivesSyntaxHighlightResets(t *testing.T) {
+func TestSelectionReverseVideoSurvivesSyntaxHighlightResets(t *testing.T) {
 	model := New(testDiff(), nil, nil)
 	model = update(t, model, tea.WindowSizeMsg{Width: 72, Height: 20})
 	model.cursor = findCodeRow(t, model, review.LineAdded)
@@ -586,10 +590,7 @@ func TestSelectionBackgroundSurvivesSyntaxHighlightResets(t *testing.T) {
 	model.selectFrom = model.cursor
 
 	rendered := model.renderRow(model.cursor)
-	assertStyledThroughColumn(t, rendered, 72, sgrExpectation{
-		background: "250;189;47",
-		foreground: "40;40;40",
-	})
+	assertStyledThroughColumn(t, rendered, 72, sgrExpectation{reverse: true})
 }
 
 func TestRenderedCodeRowsHaveExactTerminalWidth(t *testing.T) {
@@ -613,7 +614,6 @@ func TestRenderStyledRowStripsSyntaxBackgroundColors(t *testing.T) {
 		"\x1b[105mbright",
 	}, " ")
 	rendered := renderStyledRow(addedStyle, value, 80, false)
-	assertStyledThroughColumn(t, rendered, 80, sgrExpectation{background: "52;67;47"})
 	for _, forbidden := range []string{"48;2;255;0;0", "48;5;123", "[45m", "[105m"} {
 		if strings.Contains(rendered, forbidden) {
 			t.Fatalf("rendered row retains background sequence %q: %q", forbidden, rendered)

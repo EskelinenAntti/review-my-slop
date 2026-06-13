@@ -99,6 +99,7 @@ type Model struct {
 	searchTerm string
 	searchFrom int
 	searchMiss bool
+	dark       bool
 }
 
 func New(diff review.Diff, comments []review.StoredComment, save SaveCommentFunc) Model {
@@ -110,8 +111,9 @@ func New(diff review.Diff, comments []review.StoredComment, save SaveCommentFunc
 		selectFrom: -1,
 		editIndex:  -1,
 		save:       save,
+		dark:       true,
 	}
-	model.rows = flatten(diff)
+	model.rows = flatten(diff, model.dark)
 	model.cursor = firstCodeRow(model.rows)
 	return model
 }
@@ -126,11 +128,20 @@ func (m *Model) SetParents(parents []string) {
 }
 
 func (m Model) Init() tea.Cmd {
-	return m.nextRefresh()
+	return tea.Batch(m.nextRefresh(), func() tea.Msg {
+		return tea.RequestBackgroundColor()
+	})
 }
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
+	case tea.BackgroundColorMsg:
+		dark := msg.IsDark()
+		if dark != m.dark {
+			m.dark = dark
+			m.applyDiff(m.diff)
+		}
+		return m, nil
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
@@ -204,7 +215,7 @@ func (m *Model) applyDiff(diff review.Diff) {
 	selectionFallback := m.selectFrom
 
 	m.diff = diff
-	m.rows = flatten(diff)
+	m.rows = flatten(diff, m.dark)
 	m.cursor = m.findRow(cursor, cursorFallback)
 	if m.selecting {
 		m.selectFrom = m.findRow(selection, selectionFallback)
@@ -873,20 +884,20 @@ func (m Model) renderRow(index int) string {
 		oldNumber := number(current.line.OldNumber)
 		newNumber := number(current.line.NewNumber)
 		prefix := " "
-		style := contextStyle
 		switch current.line.Kind {
 		case review.LineAdded:
-			prefix, style = "+", addedStyle
+			prefix = addedStyle.Render("+")
 		case review.LineRemoved:
-			prefix, style = "-", removedStyle
+			prefix = removedStyle.Render("-")
 		}
 		text := current.text
 		gutter := fmt.Sprintf("%5s %5s %s ", oldNumber, newNumber, prefix)
 		line := gutter + fitANSIWindow(text, m.xOffset, width-lipgloss.Width(gutter))
+		style := lineStyle(current.line.Kind, m.dark)
 		if m.selected(index) {
 			style = selectionStyle
 		}
-		stripForeground := false
+		stripForeground := m.selected(index)
 		if index == m.cursor {
 			style = cursorStyle
 			stripForeground = true
@@ -1042,9 +1053,9 @@ func (m Model) renderSideBySide(index int) string {
 	leftText, rightText := "", ""
 	switch current.line.Kind {
 	case review.LineRemoved:
-		leftText = "- " + current.text
+		leftText = removedStyle.Render("-") + " " + current.text
 	case review.LineAdded:
-		rightText = "+ " + current.text
+		rightText = addedStyle.Render("+") + " " + current.text
 	default:
 		leftText = "  " + current.text
 		rightText = "  " + current.text
@@ -1053,17 +1064,11 @@ func (m Model) renderSideBySide(index int) string {
 	rightGutter := fmt.Sprintf("%5s ", rightNumber)
 	left := leftGutter + fitANSIWindow(leftText, m.xOffset, half-lipgloss.Width(leftGutter))
 	right := rightGutter + fitANSIWindow(rightText, m.xOffset, half-lipgloss.Width(rightGutter))
-	style := contextStyle
-	switch current.line.Kind {
-	case review.LineRemoved:
-		style = removedStyle
-	case review.LineAdded:
-		style = addedStyle
-	}
+	style := lineStyle(current.line.Kind, m.dark)
 	if m.selected(index) {
 		style = selectionStyle
 	}
-	stripForeground := false
+	stripForeground := m.selected(index)
 	if index == m.cursor {
 		style = cursorStyle
 		stripForeground = true
@@ -1071,14 +1076,14 @@ func (m Model) renderSideBySide(index int) string {
 	return renderStyledRow(style, left+" │ "+right, m.width, stripForeground)
 }
 
-func flatten(diff review.Diff) []row {
+func flatten(diff review.Diff, darkBackground bool) []row {
 	var rows []row
 	for fileIndex, file := range diff.Files {
 		rows = append(rows, row{kind: rowFile, fileIndex: fileIndex, hunkIndex: -1, lineIndex: -1, text: file.Display})
 		for _, metadata := range file.Metadata {
 			rows = append(rows, row{kind: rowMetadata, fileIndex: fileIndex, hunkIndex: -1, lineIndex: -1, text: metadata})
 		}
-		highlighted := highlight.Sources(file.Language, file.OldSource, file.NewSource)
+		highlighted := highlight.Sources(file.Language, file.OldSource, file.NewSource, darkBackground)
 		for hunkIndex, hunk := range file.Hunks {
 			header := hunk.Header
 			if !strings.HasPrefix(header, "@@") {
@@ -1101,6 +1106,24 @@ func flatten(diff review.Diff) []row {
 		}
 	}
 	return rows
+}
+
+func lineStyle(kind review.LineKind, darkBackground bool) lipgloss.Style {
+	lightDark := lipgloss.LightDark(darkBackground)
+	switch kind {
+	case review.LineAdded:
+		return lipgloss.NewStyle().Background(lightDark(
+			lipgloss.Color("#dafbe1"),
+			lipgloss.Color("#1b3823"),
+		))
+	case review.LineRemoved:
+		return lipgloss.NewStyle().Background(lightDark(
+			lipgloss.Color("#ffebe9"),
+			lipgloss.Color("#402222"),
+		))
+	default:
+		return contextStyle
+	}
 }
 
 func highlightedLine(lines []string, number int, fallback string) string {
@@ -1379,17 +1402,17 @@ func abs(value int) int {
 
 var (
 	ansiSGRPattern    = regexp.MustCompile(`\x1b\[[0-9;]*m`)
-	titleStyle        = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#83a598"))
-	fileStyle         = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#ebdbb2")).Background(lipgloss.Color("#3c3836"))
-	metadataStyle     = lipgloss.NewStyle().Foreground(lipgloss.Color("#928374"))
-	hunkStyle         = lipgloss.NewStyle().Foreground(lipgloss.Color("#d3869b"))
+	titleStyle        = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Cyan)
+	fileStyle         = lipgloss.NewStyle().Bold(true)
+	metadataStyle     = lipgloss.NewStyle().Faint(true)
+	hunkStyle         = lipgloss.NewStyle().Foreground(lipgloss.Magenta)
 	contextStyle      = lipgloss.NewStyle()
-	addedStyle        = lipgloss.NewStyle().Background(lipgloss.Color("#34432f"))
-	removedStyle      = lipgloss.NewStyle().Background(lipgloss.Color("#4b302e"))
-	selectionStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("#282828")).Background(lipgloss.Color("#83a598")).Bold(true)
-	cursorStyle       = lipgloss.NewStyle().Foreground(lipgloss.Color("#282828")).Background(lipgloss.Color("#fabd2f"))
+	addedStyle        = lipgloss.NewStyle().Foreground(lipgloss.Green)
+	removedStyle      = lipgloss.NewStyle().Foreground(lipgloss.Red)
+	selectionStyle    = lipgloss.NewStyle().Reverse(true).Bold(true)
+	cursorStyle       = lipgloss.NewStyle().Reverse(true)
 	editorCursorStyle = lipgloss.NewStyle().Reverse(true)
-	mutedStyle        = lipgloss.NewStyle().Foreground(lipgloss.Color("#928374"))
-	errorStyle        = lipgloss.NewStyle().Foreground(lipgloss.Color("#fb4934")).Bold(true)
-	commentBorder     = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(lipgloss.Color("#83a598")).Padding(0, 1)
+	mutedStyle        = lipgloss.NewStyle().Faint(true)
+	errorStyle        = lipgloss.NewStyle().Foreground(lipgloss.Red).Bold(true)
+	commentBorder     = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(lipgloss.Cyan).Padding(0, 1)
 )
