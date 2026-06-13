@@ -20,15 +20,17 @@ import (
 )
 
 type SaveCommentFunc func(review.StoredComment, review.Diff) (review.StoredComment, error)
-type RefreshDiffFunc func() (review.Diff, error)
+type RefreshDiffFunc func(parent string) (review.Diff, error)
 
 const refreshInterval = time.Second
 
 type refreshTickMsg struct{}
 
 type refreshDiffMsg struct {
-	diff review.Diff
-	err  error
+	diff       review.Diff
+	parent     string
+	reschedule bool
+	err        error
 }
 
 type externalEditorFinishedMsg struct {
@@ -65,6 +67,7 @@ const (
 	modeComment
 	modeComments
 	modeHelp
+	modeSearch
 )
 
 type Model struct {
@@ -90,6 +93,12 @@ type Model struct {
 	gPending   bool
 	bracket    string
 	sideBySide bool
+	parents    []string
+	target     int
+	search     []rune
+	searchTerm string
+	searchFrom int
+	searchMiss bool
 }
 
 func New(diff review.Diff, comments []review.StoredComment, save SaveCommentFunc) Model {
@@ -109,6 +118,11 @@ func New(diff review.Diff, comments []review.StoredComment, save SaveCommentFunc
 
 func (m *Model) SetRefresh(refresh RefreshDiffFunc) {
 	m.refresh = refresh
+}
+
+func (m *Model) SetParents(parents []string) {
+	m.parents = append([]string(nil), parents...)
+	m.target = min(m.target, len(m.parents))
 }
 
 func (m Model) Init() tea.Cmd {
@@ -138,15 +152,18 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 	case refreshTickMsg:
-		return m, m.loadRefresh()
+		return m, m.loadRefresh(true)
 	case refreshDiffMsg:
+		if msg.parent != m.currentParent() {
+			return m, rescheduleRefresh(m, msg.reschedule)
+		}
 		if msg.err != nil {
 			m.err = fmt.Errorf("refresh diff: %w", msg.err)
 		} else if msg.diff.Fingerprint != m.diff.Fingerprint {
 			m.applyDiff(msg.diff)
 			m.err = nil
 		}
-		return m, m.nextRefresh()
+		return m, rescheduleRefresh(m, msg.reschedule)
 	case tea.KeyPressMsg:
 		return m.updateKey(msg)
 	}
@@ -162,14 +179,22 @@ func (m Model) nextRefresh() tea.Cmd {
 	})
 }
 
-func (m Model) loadRefresh() tea.Cmd {
+func (m Model) loadRefresh(reschedule bool) tea.Cmd {
 	if m.refresh == nil {
 		return nil
 	}
+	parent := m.currentParent()
 	return func() tea.Msg {
-		diff, err := m.refresh()
-		return refreshDiffMsg{diff: diff, err: err}
+		diff, err := m.refresh(parent)
+		return refreshDiffMsg{diff: diff, parent: parent, reschedule: reschedule, err: err}
 	}
+}
+
+func rescheduleRefresh(m Model, reschedule bool) tea.Cmd {
+	if !reschedule {
+		return nil
+	}
+	return m.nextRefresh()
 }
 
 func (m *Model) applyDiff(diff review.Diff) {
@@ -267,6 +292,9 @@ func (m Model) updateKey(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 	}
+	if m.mode == modeSearch {
+		return m.updateSearch(name, key)
+	}
 	m.err = nil
 	if m.bracket != "" {
 		prefix := m.bracket
@@ -292,6 +320,16 @@ func (m Model) updateKey(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return m, tea.Quit
 	case "?":
 		m.mode = modeHelp
+	case "/":
+		m.cancelSelection()
+		m.mode = modeSearch
+		m.search = nil
+		m.searchFrom = m.cursor
+		m.searchMiss = false
+	case "n":
+		m.repeatSearch(1)
+	case "N":
+		m.repeatSearch(-1)
 	case "j", "down":
 		m.gPending = false
 		m.move(1)
@@ -348,6 +386,10 @@ func (m Model) updateKey(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	case "C":
 		m.mode = modeComments
 		m.commentRow = min(m.commentRow, max(0, len(m.comments)-1))
+	case "tab":
+		m.target = (m.target + 1) % (len(m.parents) + 1)
+		m.cancelSelection()
+		return m, m.loadRefresh(false)
 	case "t":
 		if m.width >= 100 {
 			m.sideBySide = !m.sideBySide
@@ -357,6 +399,80 @@ func (m Model) updateKey(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		}
 	}
 	return m, nil
+}
+
+func (m Model) updateSearch(name string, key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+	switch name {
+	case "esc":
+		m.cursor = m.searchFrom
+		m.ensureVisible()
+		m.mode = modeBrowse
+		m.search = nil
+		m.searchMiss = false
+	case "enter":
+		if len(m.search) > 0 && !m.searchMiss {
+			m.searchTerm = string(m.search)
+		}
+		m.mode = modeBrowse
+		m.search = nil
+		m.searchMiss = false
+	case "backspace":
+		if len(m.search) > 0 {
+			m.search = m.search[:len(m.search)-1]
+		}
+		m.updateIncrementalSearch()
+	default:
+		if key.Text != "" {
+			m.search = append(m.search, []rune(key.Text)...)
+			m.updateIncrementalSearch()
+		}
+	}
+	return m, nil
+}
+
+func (m *Model) updateIncrementalSearch() {
+	if len(m.search) == 0 {
+		m.cursor = m.searchFrom
+		m.searchMiss = false
+		m.ensureVisible()
+		return
+	}
+	match := m.findSearch(string(m.search), m.searchFrom, 1)
+	m.searchMiss = match < 0
+	if match >= 0 {
+		m.cursor = match
+		m.ensureVisible()
+	}
+}
+
+func (m *Model) repeatSearch(direction int) {
+	if m.searchTerm == "" {
+		return
+	}
+	match := m.findSearch(m.searchTerm, m.cursor, direction)
+	if match < 0 {
+		m.err = fmt.Errorf("no matches for %q", m.searchTerm)
+		return
+	}
+	m.cursor = match
+	m.ensureVisible()
+}
+
+func (m Model) findSearch(query string, start, direction int) int {
+	if query == "" || len(m.rows) == 0 {
+		return -1
+	}
+	query = strings.ToLower(query)
+	for step := 1; step <= len(m.rows); step++ {
+		index := (start + direction*step) % len(m.rows)
+		if index < 0 {
+			index += len(m.rows)
+		}
+		if strings.Contains(strings.ToLower(ansi.Strip(m.rows[index].text)), query) {
+			return index
+		}
+	}
+	return -1
 }
 
 func (m Model) updateComments(name string) (tea.Model, tea.Cmd) {
@@ -685,11 +801,16 @@ func (m Model) render() string {
 	}
 	var out strings.Builder
 	title := titleStyle.Render("review-my-slop")
-	summary := mutedStyle.Render(fmt.Sprintf("%d files  %d pending comments", len(m.diff.Files), len(m.comments)))
+	added, removed := diffLineCounts(m.diff)
+	summary := mutedStyle.Render(fmt.Sprintf("+%d-%d", added, removed))
 	out.WriteString(title + "  " + summary + "\n")
 
 	if len(m.rows) == 0 {
-		out.WriteString("\n" + mutedStyle.Render("No unstaged or untracked changes.") + "\n")
+		empty := "No unstaged or untracked changes."
+		if m.currentParent() != "" {
+			empty = "No branch or worktree changes."
+		}
+		out.WriteString("\n" + mutedStyle.Render(empty) + "\n")
 	} else {
 		height := m.viewportHeight()
 		end := min(len(m.rows), m.offset+height)
@@ -706,11 +827,27 @@ func (m Model) render() string {
 		out.WriteString(commentBorder.Width(max(20, m.width-2)).Render(m.renderEditor()))
 		out.WriteByte('\n')
 	} else if m.err != nil {
-		out.WriteString(errorStyle.Render(m.err.Error()) + "\n")
+		out.WriteString(m.renderFooter(errorStyle.Render(m.err.Error())) + "\n")
 	} else {
 		out.WriteString(m.renderStatus() + "\n")
 	}
 	return out.String()
+}
+
+func diffLineCounts(diff review.Diff) (added, removed int) {
+	for _, file := range diff.Files {
+		for _, hunk := range file.Hunks {
+			for _, line := range hunk.Lines {
+				switch line.Kind {
+				case review.LineAdded:
+					added++
+				case review.LineRemoved:
+					removed++
+				}
+			}
+		}
+	}
+	return added, removed
 }
 
 func (m Model) renderRow(index int) string {
@@ -718,10 +855,20 @@ func (m Model) renderRow(index int) string {
 	width := max(20, m.width)
 	switch current.kind {
 	case rowFile:
-		return fileStyle.Width(width).Render(current.text)
+		style := fileStyle
+		if index == m.cursor {
+			style = cursorStyle
+		}
+		return style.Width(width).Render(current.text)
 	case rowMetadata:
+		if index == m.cursor {
+			return renderStyledRow(cursorStyle, "  "+current.text, width, true)
+		}
 		return metadataStyle.Render("  " + current.text)
 	case rowHunk:
+		if index == m.cursor {
+			return renderStyledRow(cursorStyle, current.text, width, true)
+		}
 		return hunkStyle.Render(current.text)
 	case rowCode:
 		if m.sideBySide && m.width >= 100 {
@@ -777,11 +924,43 @@ func (m Model) renderEditorBody() string {
 }
 
 func (m Model) renderStatus() string {
-	status := "j/k/h/l move  c comment  ? help  q quit"
-	if m.selecting {
+	var status string
+	if m.mode == modeSearch {
+		status = "/" + string(m.search) + editorCursorStyle.Render(" ")
+		if m.searchMiss {
+			status += errorStyle.Render("  no matches")
+		}
+	} else if m.selecting {
 		status = "visual selection  j/k extend  c comment  Esc cancel"
+		status = mutedStyle.Render(status)
+	} else {
+		status = mutedStyle.Render("j/k/h/l move  c comment  ? help  q quit")
 	}
-	return mutedStyle.Render(status)
+	return m.renderFooter(status)
+}
+
+func (m Model) renderFooter(left string) string {
+	right := mutedStyle.Render(m.viewLabel())
+	width := max(20, m.width)
+	rightWidth := lipgloss.Width(right)
+	left = ansi.Truncate(left, max(0, width-rightWidth-1), "")
+	padding := max(1, width-lipgloss.Width(left)-rightWidth)
+	return left + strings.Repeat(" ", padding) + right
+}
+
+func (m Model) viewLabel() string {
+	parent := m.currentParent()
+	if parent == "" {
+		return "local changes"
+	}
+	return "branch changes from " + parent
+}
+
+func (m Model) currentParent() string {
+	if m.target <= 0 || m.target > len(m.parents) {
+		return ""
+	}
+	return m.parents[m.target-1]
 }
 
 func (m Model) renderComments() string {
@@ -825,12 +1004,15 @@ func (m Model) renderHelp() string {
 		{"0/$", "start/end of lines"},
 		{"gg/G", "first/last changed line"},
 		{"Ctrl-d/Ctrl-u", "half-page down/up"},
+		{"/", "search diff text"},
+		{"n/N", "next/previous search match"},
 		{"]f/[f", "next/previous file"},
 		{"]h/[h", "next/previous hunk"},
 		{"v", "select a line range"},
 		{"c", "comment on selection/current line"},
 		{"e", "open current line in $EDITOR"},
 		{"C", "view/edit comments"},
+		{"Tab", "cycle local/parent branch changes"},
 		{"t", "toggle unified/side-by-side"},
 		{"q", "quit"},
 	}

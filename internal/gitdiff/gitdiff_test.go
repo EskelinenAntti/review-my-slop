@@ -59,6 +59,86 @@ func TestLoaderIncludesUnstagedAndUntrackedButNotStagedOnly(t *testing.T) {
 	}
 }
 
+func TestLoadBranchIncludesCommittedStagedUnstagedAndUntrackedChanges(t *testing.T) {
+	repo := newRepository(t)
+	git(t, repo, "branch", "-M", "main")
+	writeFile(t, repo, "committed.txt", "base\n")
+	writeFile(t, repo, "mixed.txt", "base\n")
+	writeFile(t, repo, "staged.txt", "base\n")
+	git(t, repo, "add", ".")
+	git(t, repo, "commit", "-m", "base")
+
+	git(t, repo, "switch", "-c", "feature")
+	writeFile(t, repo, "committed.txt", "committed on feature\n")
+	git(t, repo, "add", "committed.txt")
+	git(t, repo, "commit", "-m", "feature commit")
+	writeFile(t, repo, "staged.txt", "staged on feature\n")
+	git(t, repo, "add", "staged.txt")
+	writeFile(t, repo, "mixed.txt", "unstaged on feature\n")
+	writeFile(t, repo, "untracked.txt", "untracked on feature\n")
+
+	got, err := (Loader{}).LoadBranch(context.Background(), repo, "main")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if got.Base != "main" {
+		t.Fatalf("base = %q, want main", got.Base)
+	}
+	want := []string{"committed.txt", "mixed.txt", "staged.txt", "untracked.txt"}
+	if len(got.Files) != len(want) {
+		t.Fatalf("files = %d, want %d: %#v", len(got.Files), len(want), got.Files)
+	}
+	for i, name := range want {
+		if got.Files[i].Display != name {
+			t.Fatalf("file %d = %q, want %q", i, got.Files[i].Display, name)
+		}
+	}
+	if !containsKind(got.Files[0], review.LineAdded, "committed on feature") ||
+		!containsKind(got.Files[1], review.LineAdded, "unstaged on feature") ||
+		!containsKind(got.Files[2], review.LineAdded, "staged on feature") ||
+		!containsKind(got.Files[3], review.LineAdded, "untracked on feature") {
+		t.Fatalf("branch diff lacks expected changes: %#v", got.Files)
+	}
+	if got.Files[0].OldSource != "base\n" || got.Files[0].NewSource != "committed on feature\n" {
+		t.Fatalf("unexpected branch sources: old=%q new=%q", got.Files[0].OldSource, got.Files[0].NewSource)
+	}
+}
+
+func TestParentBranchesOrdersDistinctStackedParentsNearestFirst(t *testing.T) {
+	repo := newRepository(t)
+	git(t, repo, "branch", "-M", "main")
+	writeFile(t, repo, "stack.txt", "main\n")
+	git(t, repo, "add", ".")
+	git(t, repo, "commit", "-m", "main")
+
+	git(t, repo, "switch", "-c", "stack-one")
+	writeFile(t, repo, "stack.txt", "stack one\n")
+	git(t, repo, "commit", "-am", "stack one")
+	git(t, repo, "branch", "duplicate-stack-one")
+
+	git(t, repo, "switch", "-c", "stack-two")
+	writeFile(t, repo, "stack.txt", "stack two\n")
+	git(t, repo, "commit", "-am", "stack two")
+	git(t, repo, "switch", "-c", "child")
+	writeFile(t, repo, "stack.txt", "child\n")
+	git(t, repo, "commit", "-am", "child")
+	git(t, repo, "switch", "stack-two")
+	remote := filepath.Join(t.TempDir(), "remote.git")
+	git(t, filepath.Dir(remote), "init", "--bare", "-q", remote)
+	git(t, repo, "remote", "add", "origin", remote)
+	git(t, repo, "push", "-u", "origin", "stack-two")
+
+	got, err := (Loader{}).ParentBranches(context.Background(), repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"duplicate-stack-one", "main"}
+	if strings.Join(got, ",") != strings.Join(want, ",") {
+		t.Fatalf("parents = %#v, want %#v", got, want)
+	}
+}
+
 func TestLoaderDoesNotFollowUntrackedSymlink(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("symlink semantics differ on Windows")

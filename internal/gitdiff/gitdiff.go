@@ -11,6 +11,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/sourcegraph/go-diff/diff"
@@ -73,17 +74,131 @@ func (l Loader) Load(ctx context.Context, dir string) (review.Diff, error) {
 		return review.Diff{}, err
 	}
 
-	raw, err := l.Runner.Run(ctx, root,
+	raw, err := l.diff(ctx, root)
+	if err != nil {
+		return review.Diff{}, err
+	}
+	return l.build(ctx, root, "", raw, readIndex)
+}
+
+func (l Loader) LoadBranch(ctx context.Context, dir, parent string) (review.Diff, error) {
+	if l.Runner == nil {
+		l.Runner = ExecRunner{}
+	}
+	root, err := l.Root(ctx, dir)
+	if err != nil {
+		return review.Diff{}, err
+	}
+	baseBytes, err := l.Runner.Run(ctx, root, "merge-base", parent, "HEAD")
+	if err != nil {
+		return review.Diff{}, fmt.Errorf("find branch point with %s: %w", parent, err)
+	}
+	base := strings.TrimSpace(string(baseBytes))
+	raw, err := l.diff(ctx, root, base)
+	if err != nil {
+		return review.Diff{}, err
+	}
+	readBase := func(ctx context.Context, runner Runner, root, path string) string {
+		return readRevision(ctx, runner, root, base, path)
+	}
+	return l.build(ctx, root, parent, raw, readBase)
+}
+
+func (l Loader) ParentBranches(ctx context.Context, dir string) ([]string, error) {
+	if l.Runner == nil {
+		l.Runner = ExecRunner{}
+	}
+	root, err := l.Root(ctx, dir)
+	if err != nil {
+		return nil, err
+	}
+	currentBytes, err := l.Runner.Run(ctx, root, "symbolic-ref", "--quiet", "--short", "HEAD")
+	if err != nil {
+		return nil, nil
+	}
+	current := strings.TrimSpace(string(currentBytes))
+	upstream := ""
+	if upstreamBytes, upstreamErr := l.Runner.Run(ctx, root, "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}"); upstreamErr == nil {
+		upstream = strings.TrimSpace(string(upstreamBytes))
+	}
+	defaultBranch := l.defaultBranch(ctx, root)
+	refsBytes, err := l.Runner.Run(ctx, root, "for-each-ref", "--format=%(refname:short)", "refs/heads", "refs/remotes")
+	if err != nil {
+		return nil, fmt.Errorf("list branches: %w", err)
+	}
+
+	type candidate struct {
+		name     string
+		base     string
+		distance int
+		priority int
+	}
+	byBase := make(map[string]candidate)
+	for _, name := range strings.Fields(string(refsBytes)) {
+		if name == current || name == upstream || name == "origin/HEAD" || strings.HasSuffix(name, "/HEAD") {
+			continue
+		}
+		if name != defaultBranch {
+			if _, ancestorErr := l.Runner.Run(ctx, root, "merge-base", "--is-ancestor", name, "HEAD"); ancestorErr != nil {
+				continue
+			}
+		}
+		baseBytes, mergeErr := l.Runner.Run(ctx, root, "merge-base", name, "HEAD")
+		if mergeErr != nil {
+			continue
+		}
+		base := strings.TrimSpace(string(baseBytes))
+		distanceBytes, countErr := l.Runner.Run(ctx, root, "rev-list", "--count", base+"..HEAD")
+		if countErr != nil {
+			continue
+		}
+		distance, parseErr := strconv.Atoi(strings.TrimSpace(string(distanceBytes)))
+		if parseErr != nil {
+			continue
+		}
+		next := candidate{name: name, base: base, distance: distance, priority: branchPriority(name, defaultBranch)}
+		if previous, ok := byBase[base]; !ok ||
+			next.priority < previous.priority ||
+			next.priority == previous.priority && next.name < previous.name {
+			byBase[base] = next
+		}
+	}
+	candidates := make([]candidate, 0, len(byBase))
+	for _, item := range byBase {
+		candidates = append(candidates, item)
+	}
+	sort.Slice(candidates, func(i, j int) bool {
+		if candidates[i].distance != candidates[j].distance {
+			return candidates[i].distance < candidates[j].distance
+		}
+		if candidates[i].priority != candidates[j].priority {
+			return candidates[i].priority < candidates[j].priority
+		}
+		return candidates[i].name < candidates[j].name
+	})
+	parents := make([]string, len(candidates))
+	for i, item := range candidates {
+		parents[i] = item.name
+	}
+	return parents, nil
+}
+
+func (l Loader) diff(ctx context.Context, root string, revisions ...string) ([]byte, error) {
+	args := []string{
 		"-c", "core.quotepath=false",
 		"-c", "diff.external=",
 		"--no-pager", "diff", "--no-ext-diff", "--no-color", "--find-renames",
 		"--src-prefix=a/", "--dst-prefix=b/", "--unified=3",
-	)
-	if err != nil {
-		return review.Diff{}, err
 	}
+	args = append(args, revisions...)
+	args = append(args, "--")
+	return l.Runner.Run(ctx, root, args...)
+}
 
-	files, err := parseTracked(ctx, l.Runner, root, raw)
+type sourceReader func(context.Context, Runner, string, string) string
+
+func (l Loader) build(ctx context.Context, root, base string, raw []byte, readOld sourceReader) (review.Diff, error) {
+	files, err := parseTracked(ctx, l.Runner, root, raw, readOld)
 	if err != nil {
 		return review.Diff{}, err
 	}
@@ -95,6 +210,7 @@ func (l Loader) Load(ctx context.Context, dir string) (review.Diff, error) {
 	sort.SliceStable(files, func(i, j int) bool { return files[i].Display < files[j].Display })
 
 	hash := sha256.New()
+	_, _ = hash.Write([]byte(base))
 	_, _ = hash.Write(raw)
 	for _, file := range untracked {
 		_, _ = hash.Write([]byte(file.Display))
@@ -104,11 +220,34 @@ func (l Loader) Load(ctx context.Context, dir string) (review.Diff, error) {
 	return review.Diff{
 		Repository:  root,
 		Fingerprint: hex.EncodeToString(hash.Sum(nil)),
+		Base:        base,
 		Files:       files,
 	}, nil
 }
 
-func parseTracked(ctx context.Context, runner Runner, root string, raw []byte) ([]review.File, error) {
+func (l Loader) defaultBranch(ctx context.Context, root string) string {
+	if out, err := l.Runner.Run(ctx, root, "symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD"); err == nil {
+		return strings.TrimSpace(string(out))
+	}
+	for _, candidate := range []string{"origin/main", "main", "origin/master", "master"} {
+		if _, err := l.Runner.Run(ctx, root, "rev-parse", "--verify", "--quiet", candidate+"^{commit}"); err == nil {
+			return candidate
+		}
+	}
+	return ""
+}
+
+func branchPriority(name, defaultBranch string) int {
+	if name == defaultBranch {
+		return 0
+	}
+	if !strings.Contains(name, "/") {
+		return 1
+	}
+	return 2
+}
+
+func parseTracked(ctx context.Context, runner Runner, root string, raw []byte, readOld sourceReader) ([]review.File, error) {
 	if len(bytes.TrimSpace(raw)) == 0 {
 		return nil, nil
 	}
@@ -131,7 +270,7 @@ func parseTracked(ctx context.Context, runner Runner, root string, raw []byte) (
 			Language: display,
 			Metadata: visibleStrings(fd.Extended),
 		}
-		file.OldSource = readIndex(ctx, runner, root, oldPath)
+		file.OldSource = readOld(ctx, runner, root, oldPath)
 		file.NewSource = readWorkingTree(root, newPath)
 		for _, h := range fd.Hunks {
 			lines, parseErr := parseHunkBody(h.OrigStartLine, h.NewStartLine, h.Body)
@@ -261,6 +400,17 @@ func readIndex(ctx context.Context, runner Runner, root, path string) string {
 		return ""
 	}
 	out, err := runner.Run(ctx, root, "show", ":"+path)
+	if err != nil || len(out) > maxFileBytes || bytes.IndexByte(out, 0) >= 0 {
+		return ""
+	}
+	return visibleSource(string(out))
+}
+
+func readRevision(ctx context.Context, runner Runner, root, revision, path string) string {
+	if path == "" || path == "/dev/null" {
+		return ""
+	}
+	out, err := runner.Run(ctx, root, "show", revision+":"+path)
 	if err != nil || len(out) > maxFileBytes || bytes.IndexByte(out, 0) >= 0 {
 		return ""
 	}

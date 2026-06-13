@@ -40,6 +40,10 @@ func run(ctx context.Context) error {
 		return err
 	}
 	loader := gitdiff.Loader{}
+	parents, err := loader.ParentBranches(ctx, current)
+	if err != nil {
+		return err
+	}
 	saveComment := func(stored review.StoredComment, diff review.Diff) (review.StoredComment, error) {
 		if stored.BatchID != "" {
 			return stored, store.UpdateComment(diff.Repository, stored)
@@ -59,7 +63,11 @@ func run(ctx context.Context) error {
 		return stored, nil
 	}
 	model := tui.New(loaded, comments, saveComment)
-	model.SetRefresh(func() (review.Diff, error) {
+	model.SetParents(parents)
+	model.SetRefresh(func(parent string) (review.Diff, error) {
+		if parent != "" {
+			return loader.LoadBranch(ctx, current, parent)
+		}
 		return loader.Load(ctx, current)
 	})
 	program := tea.NewProgram(model)

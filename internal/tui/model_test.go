@@ -286,7 +286,9 @@ func TestStatusShowsBasicBindingsAndHelpShowsCompleteKeyMap(t *testing.T) {
 	model := New(testDiff(), nil, nil)
 
 	status := ansi.Strip(model.renderStatus())
-	if status != "j/k/h/l move  c comment  ? help  q quit" {
+	if !strings.HasPrefix(status, "j/k/h/l move  c comment  ? help  q quit") ||
+		!strings.HasSuffix(status, "local changes") ||
+		lipgloss.Width(status) != model.width {
 		t.Fatalf("status = %q", status)
 	}
 	if strings.Contains(status, "select") || strings.Contains(status, "inbox") || strings.Contains(status, "layout") {
@@ -298,11 +300,123 @@ func TestStatusShowsBasicBindingsAndHelpShowsCompleteKeyMap(t *testing.T) {
 		{keys: "v", description: "select a line range"},
 		{keys: "e", description: "open current line in $EDITOR"},
 		{keys: "C", description: "view/edit comments"},
+		{keys: "/", description: "search diff text"},
+		{keys: "n/N", description: "next/previous search match"},
+		{keys: "Tab", description: "cycle local/parent branch changes"},
 		{keys: "t", description: "toggle unified/side-by-side"},
 	} {
 		if !strings.Contains(help, binding.keys) || !strings.Contains(help, binding.description) {
 			t.Fatalf("help does not contain %#v:\n%s", binding, help)
 		}
+	}
+}
+
+func TestHeaderShowsAddedAndRemovedLineCounts(t *testing.T) {
+	model := New(testDiff(), nil, nil)
+	header := strings.SplitN(ansi.Strip(model.render()), "\n", 2)[0]
+	if header != "review-my-slop  +2-1" {
+		t.Fatalf("header = %q", header)
+	}
+	if strings.Contains(header, "files") || strings.Contains(header, "pending") {
+		t.Fatalf("header retains old summary: %q", header)
+	}
+}
+
+func TestSearchMovesIncrementallyAndRepeats(t *testing.T) {
+	model := New(testDiff(), nil, nil)
+	start := model.cursor
+	model = update(t, model, textKey("/"))
+	model = update(t, model, textKey("keep"))
+
+	if model.mode != modeSearch || model.rows[model.cursor].line.Text != "keep()" {
+		t.Fatalf("search mode=%v cursor row=%#v", model.mode, model.rows[model.cursor])
+	}
+	first := model.cursor
+	model = update(t, model, specialKey(tea.KeyEnter))
+	model = update(t, model, textKey("n"))
+	if model.cursor == first || model.rows[model.cursor].line.Text != "keep()" {
+		t.Fatalf("next match cursor row=%#v", model.rows[model.cursor])
+	}
+	model = update(t, model, textKey("N"))
+	if model.cursor != first {
+		t.Fatalf("previous match cursor=%d, want %d", model.cursor, first)
+	}
+
+	model = update(t, model, textKey("/"))
+	model = update(t, model, textKey("missing"))
+	if !model.searchMiss || !strings.Contains(ansi.Strip(model.renderStatus()), "no matches") {
+		t.Fatalf("missing search status=%q", ansi.Strip(model.renderStatus()))
+	}
+	model = update(t, model, specialKey(tea.KeyEsc))
+	if model.cursor != first || model.mode != modeBrowse {
+		t.Fatalf("cancel cursor=%d mode=%v, want cursor=%d browse", model.cursor, model.mode, first)
+	}
+	if start == first {
+		t.Fatal("search did not move from its initial row")
+	}
+}
+
+func TestSearchMatchesFileNamesAndBackspaceRestoresOrigin(t *testing.T) {
+	model := New(testDiff(), nil, nil)
+	origin := model.cursor
+	model = update(t, model, textKey("/"))
+	model = update(t, model, textKey("main.go"))
+	if model.cursor != 0 {
+		t.Fatalf("file search cursor=%d, want file header", model.cursor)
+	}
+	model = update(t, model, specialKey(tea.KeyBackspace))
+	for range len("main.g") {
+		model = update(t, model, specialKey(tea.KeyBackspace))
+	}
+	if model.cursor != origin || len(model.search) != 0 {
+		t.Fatalf("cleared search cursor=%d query=%q, want origin=%d", model.cursor, model.search, origin)
+	}
+}
+
+func TestTabCyclesParentBranchesAndIgnoresStaleRefresh(t *testing.T) {
+	model := New(testDiff(), nil, nil)
+	model.SetParents([]string{"stack-one", "main"})
+	var requested string
+	model.SetRefresh(func(parent string) (review.Diff, error) {
+		requested = parent
+		diff := testDiff()
+		diff.Base = parent
+		diff.Fingerprint = parent
+		return diff, nil
+	})
+
+	next, cmd := model.Update(specialKey(tea.KeyTab))
+	model = next.(Model)
+	if model.currentParent() != "stack-one" || cmd == nil {
+		t.Fatalf("parent = %q cmd = %v, want stack-one load", model.currentParent(), cmd)
+	}
+	msg := cmd()
+	model = update(t, model, msg)
+	if requested != "stack-one" || model.diff.Fingerprint != "stack-one" {
+		t.Fatalf("requested parent=%q fingerprint=%q", requested, model.diff.Fingerprint)
+	}
+	if rendered := ansi.Strip(model.renderStatus()); !strings.HasSuffix(rendered, "branch changes from stack-one") {
+		t.Fatalf("branch view lacks mode label:\n%s", rendered)
+	}
+
+	stale := testDiff()
+	stale.Fingerprint = "stale-local"
+	model = update(t, model, refreshDiffMsg{diff: stale})
+	if model.diff.Fingerprint != "stack-one" {
+		t.Fatalf("stale local refresh replaced branch diff: %q", model.diff.Fingerprint)
+	}
+
+	next, cmd = model.Update(specialKey(tea.KeyTab))
+	model = next.(Model)
+	model = update(t, model, cmd())
+	if model.currentParent() != "main" || requested != "main" {
+		t.Fatalf("second parent=%q requested=%q", model.currentParent(), requested)
+	}
+	next, cmd = model.Update(specialKey(tea.KeyTab))
+	model = next.(Model)
+	model = update(t, model, cmd())
+	if model.currentParent() != "" || requested != "" {
+		t.Fatalf("wrapped parent=%q requested=%q, want local", model.currentParent(), requested)
 	}
 }
 

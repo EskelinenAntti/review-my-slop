@@ -37,6 +37,7 @@ type File struct {
 type Diff struct {
 	Repository  string
 	Fingerprint string
+	Base        string
 	Files       []File
 }
 
