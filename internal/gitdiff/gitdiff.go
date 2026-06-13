@@ -39,8 +39,7 @@ func (ExecRunner) Run(ctx context.Context, dir string, args ...string) ([]byte, 
 	if err == nil {
 		return out, nil
 	}
-	var exitErr *exec.ExitError
-	if errors.As(err, &exitErr) {
+	if exitErr, ok := errors.AsType[*exec.ExitError](err); ok {
 		return nil, fmt.Errorf("git %s: %s", strings.Join(args, " "), strings.TrimSpace(string(exitErr.Stderr)))
 	}
 	return nil, fmt.Errorf("git %s: %w", strings.Join(args, " "), err)
@@ -134,7 +133,7 @@ func (l Loader) ParentBranches(ctx context.Context, dir string) ([]string, error
 		priority int
 	}
 	byBase := make(map[string]candidate)
-	for _, name := range strings.Fields(string(refsBytes)) {
+	for name := range strings.FieldsSeq(string(refsBytes)) {
 		if name == current || name == upstream || name == "origin/HEAD" || strings.HasSuffix(name, "/HEAD") {
 			continue
 		}
@@ -294,7 +293,7 @@ func (l Loader) loadUntracked(ctx context.Context, root string) ([]review.File, 
 		return nil, err
 	}
 	var files []review.File
-	for _, rawPath := range bytes.Split(out, []byte{0}) {
+	for rawPath := range bytes.SplitSeq(out, []byte{0}) {
 		if len(rawPath) == 0 {
 			continue
 		}
