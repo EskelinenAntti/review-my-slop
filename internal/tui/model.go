@@ -304,10 +304,6 @@ func (m Model) updateKey(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			m.jump(rowFile, 1)
 		case "[f":
 			m.jump(rowFile, -1)
-		case "]h":
-			m.jump(rowHunk, 1)
-		case "[h":
-			m.jump(rowHunk, -1)
 		}
 		return m, nil
 	}
@@ -1007,7 +1003,6 @@ func (m Model) renderHelp() string {
 		{"/", "search diff text"},
 		{"n/N", "next/previous search match"},
 		{"]f/[f", "next/previous file"},
-		{"]h/[h", "next/previous hunk"},
 		{"v", "select a line range"},
 		{"c", "comment on selection/current line"},
 		{"e", "open current line in $EDITOR"},

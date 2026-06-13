@@ -268,10 +268,11 @@ func TestVimSequencesAndLayoutToggle(t *testing.T) {
 	if model.cursor != firstCodeRow(model.rows) {
 		t.Fatalf("gg cursor = %d, want %d", model.cursor, firstCodeRow(model.rows))
 	}
+	cursor := model.cursor
 	model = update(t, model, textKey("]"))
 	model = update(t, model, textKey("h"))
-	if model.rows[model.cursor].hunkIndex != 1 {
-		t.Fatalf("]h hunk = %d, want 1", model.rows[model.cursor].hunkIndex)
+	if model.cursor != cursor {
+		t.Fatalf("]h cursor = %d, want unchanged at %d", model.cursor, cursor)
 	}
 	model = update(t, model, textKey("t"))
 	if !model.sideBySide {
@@ -296,6 +297,9 @@ func TestStatusShowsBasicBindingsAndHelpShowsCompleteKeyMap(t *testing.T) {
 	}
 
 	help := ansi.Strip(model.renderHelp())
+	if strings.Contains(help, "]h/[h") || strings.Contains(help, "next/previous hunk") {
+		t.Fatalf("help retains hunk navigation binding:\n%s", help)
+	}
 	for _, binding := range []keyBinding{
 		{keys: "v", description: "select a line range"},
 		{keys: "e", description: "open current line in $EDITOR"},
