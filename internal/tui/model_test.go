@@ -30,7 +30,7 @@ func TestVisualSelectionCreatesMappedAnchorAndSubmits(t *testing.T) {
 	model = update(t, model, textKey("v"))
 	model = update(t, model, textKey("j"))
 	model = update(t, model, textKey("c"))
-	model = update(t, model, commentEditorFinishedMsg{body: "fix both lines"})
+	_ = update(t, model, commentEditorFinishedMsg{body: "fix both lines"})
 	if len(saved) != 1 {
 		t.Fatalf("saved comments = %d, want 1", len(saved))
 	}
@@ -540,7 +540,7 @@ func TestCommentAfterRefreshUsesCurrentDiff(t *testing.T) {
 	refreshed.Fingerprint = "refreshed"
 	model = update(t, model, refreshDiffMsg{diff: refreshed})
 	model = update(t, model, textKey("c"))
-	model = update(t, model, commentEditorFinishedMsg{body: "comment"})
+	_ = update(t, model, commentEditorFinishedMsg{body: "comment"})
 
 	if savedWith.Fingerprint != "refreshed" {
 		t.Fatalf("saved with fingerprint %q, want refreshed", savedWith.Fingerprint)
@@ -725,16 +725,8 @@ func textKey(text string) tea.KeyPressMsg {
 	return tea.KeyPressMsg(tea.Key{Text: text, Code: runes[0]})
 }
 
-func controlKey(code rune) tea.KeyPressMsg {
-	return tea.KeyPressMsg(tea.Key{Code: code, Mod: tea.ModCtrl})
-}
-
 func specialKey(code rune) tea.KeyPressMsg {
 	return tea.KeyPressMsg(tea.Key{Code: code})
-}
-
-func modifiedKey(code rune, mod tea.KeyMod) tea.KeyPressMsg {
-	return tea.KeyPressMsg(tea.Key{Code: code, Mod: mod})
 }
 
 func findCodeRow(t *testing.T, model Model, kind review.LineKind) int {
