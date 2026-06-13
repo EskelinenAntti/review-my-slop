@@ -8,7 +8,6 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
-	"time"
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
@@ -23,15 +22,10 @@ type SaveCommentFunc func(review.StoredComment, review.Diff) (review.StoredComme
 type DeleteCommentFunc func(review.StoredComment, review.Diff) error
 type RefreshDiffFunc func(parent string) (review.Diff, error)
 
-const refreshInterval = time.Second
-
-type refreshTickMsg struct{}
-
 type refreshDiffMsg struct {
-	diff       review.Diff
-	parent     string
-	reschedule bool
-	err        error
+	diff   review.Diff
+	parent string
+	err    error
 }
 
 type commentEditorFinishedMsg struct {
@@ -132,9 +126,9 @@ func (m *Model) SetParents(parents []string) {
 }
 
 func (m Model) Init() tea.Cmd {
-	return tea.Batch(m.nextRefresh(), func() tea.Msg {
+	return func() tea.Msg {
 		return tea.RequestBackgroundColor()
-	})
+	}
 }
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -166,11 +160,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.err = fmt.Errorf("editor: %w", msg.err)
 		}
 		return m, nil
-	case refreshTickMsg:
-		return m, m.loadRefresh(true)
+	case tea.FocusMsg:
+		return m, m.loadRefresh()
 	case refreshDiffMsg:
 		if msg.parent != m.currentParent() {
-			return m, rescheduleRefresh(m, msg.reschedule)
+			return m, nil
 		}
 		if msg.err != nil {
 			m.err = fmt.Errorf("refresh diff: %w", msg.err)
@@ -178,38 +172,22 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.applyDiff(msg.diff)
 			m.err = nil
 		}
-		return m, rescheduleRefresh(m, msg.reschedule)
+		return m, nil
 	case tea.KeyPressMsg:
 		return m.updateKey(msg)
 	}
 	return m, nil
 }
 
-func (m Model) nextRefresh() tea.Cmd {
-	if m.refresh == nil {
-		return nil
-	}
-	return tea.Tick(refreshInterval, func(time.Time) tea.Msg {
-		return refreshTickMsg{}
-	})
-}
-
-func (m Model) loadRefresh(reschedule bool) tea.Cmd {
+func (m Model) loadRefresh() tea.Cmd {
 	if m.refresh == nil {
 		return nil
 	}
 	parent := m.currentParent()
 	return func() tea.Msg {
 		diff, err := m.refresh(parent)
-		return refreshDiffMsg{diff: diff, parent: parent, reschedule: reschedule, err: err}
+		return refreshDiffMsg{diff: diff, parent: parent, err: err}
 	}
-}
-
-func rescheduleRefresh(m Model, reschedule bool) tea.Cmd {
-	if !reschedule {
-		return nil
-	}
-	return m.nextRefresh()
 }
 
 func (m *Model) applyDiff(diff review.Diff) {
@@ -407,10 +385,12 @@ func (m Model) updateKey(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	case "C":
 		m.mode = modeComments
 		m.commentRow = min(m.commentRow, max(0, len(m.comments)-1))
+	case "R":
+		return m, m.loadRefresh()
 	case "tab":
 		m.target = (m.target + 1) % (len(m.parents) + 1)
 		m.cancelSelection()
-		return m, m.loadRefresh(false)
+		return m, m.loadRefresh()
 	case "t":
 		if m.width >= 100 {
 			m.sideBySide = !m.sideBySide
@@ -833,6 +813,7 @@ func (m Model) View() tea.View {
 	content := m.render()
 	view := tea.NewView(content)
 	view.AltScreen = true
+	view.ReportFocus = true
 	return view
 }
 
@@ -1035,6 +1016,7 @@ func (m Model) renderHelp() string {
 		{"c", "comment on selection/current line"},
 		{"e", "open current line in $EDITOR"},
 		{"C", "view comments"},
+		{"R", "refresh diff"},
 		{"Tab", "cycle local/parent branch changes"},
 		{"t", "toggle unified/side-by-side"},
 		{"q", "quit"},

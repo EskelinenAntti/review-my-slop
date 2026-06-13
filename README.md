@@ -29,13 +29,13 @@ comment. Press `C` to browse pending comments, edit one with `Enter`, or delete
 one with `D`.
 Long lines can be scrolled with `h`/`l` or the left/right arrow keys;
 `0` and `$` jump to the horizontal start and end. Press `e` to open the current
-line in `$EDITOR`. The diff refreshes as files change and keeps the cursor on
-the same changed line when possible. Press `Tab` to cycle through local changes
-and available parent branches, ordered from the nearest stacked parent to the
-default branch. Each branch view compares that branch's merge-base commit with
-the worktree, so committed, staged, unstaged, and untracked changes are all
-included. Press `/` to search the diff, then use `n` and `N` to move between
-matches.
+line in `$EDITOR`. The diff refreshes when the terminal gains focus and keeps
+the cursor on the same changed line when possible; press `R` to refresh it
+manually. Press `Tab` to cycle through local changes and available parent
+branches, ordered from the nearest stacked parent to the default branch. Each
+branch view compares that branch's merge-base commit with the worktree, so
+committed, staged, unstaged, and untracked changes are all included. Press `/`
+to search the diff, then use `n` and `N` to move between matches.
 
 The AI-facing `review-my-slop comments` command prints and consumes all pending
 feedback for its current repository. Re-run it to retrieve comments saved while

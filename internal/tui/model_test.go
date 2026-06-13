@@ -413,6 +413,7 @@ func TestStatusShowsBasicBindingsAndHelpShowsCompleteKeyMap(t *testing.T) {
 		{keys: "v", description: "select a line range"},
 		{keys: "e", description: "open current line in $EDITOR"},
 		{keys: "C", description: "view comments"},
+		{keys: "R", description: "refresh diff"},
 		{keys: "/", description: "search diff text"},
 		{keys: "n/N", description: "next/previous search match"},
 		{keys: "zz/zt/zb", description: "center/top/bottom current line"},
@@ -422,6 +423,40 @@ func TestStatusShowsBasicBindingsAndHelpShowsCompleteKeyMap(t *testing.T) {
 		if !strings.Contains(help, binding.keys) || !strings.Contains(help, binding.description) {
 			t.Fatalf("help does not contain %#v:\n%s", binding, help)
 		}
+	}
+}
+
+func TestFocusAndManualRefreshLoadCurrentView(t *testing.T) {
+	model := New(testDiff(), nil, nil)
+	model.SetParents([]string{"main"})
+	model.target = 1
+	var requested []string
+	model.SetRefresh(func(parent string) (review.Diff, error) {
+		requested = append(requested, parent)
+		diff := testDiff()
+		diff.Fingerprint = fmt.Sprintf("refresh-%d", len(requested))
+		return diff, nil
+	})
+
+	next, cmd := model.Update(tea.FocusMsg{})
+	model = next.(Model)
+	if cmd == nil {
+		t.Fatal("focus did not request a refresh")
+	}
+	model = update(t, model, cmd())
+
+	next, cmd = model.Update(textKey("R"))
+	model = next.(Model)
+	if cmd == nil {
+		t.Fatal("R did not request a refresh")
+	}
+	model = update(t, model, cmd())
+
+	if len(requested) != 2 || requested[0] != "main" || requested[1] != "main" {
+		t.Fatalf("refresh parents = %#v, want current branch twice", requested)
+	}
+	if model.diff.Fingerprint != "refresh-2" {
+		t.Fatalf("fingerprint = %q, want second refresh", model.diff.Fingerprint)
 	}
 }
 
@@ -741,6 +776,9 @@ func TestViewPreservesTerminalColors(t *testing.T) {
 	}
 	if !view.AltScreen {
 		t.Fatal("view does not use the alternate screen")
+	}
+	if !view.ReportFocus {
+		t.Fatal("view does not request terminal focus events")
 	}
 }
 
