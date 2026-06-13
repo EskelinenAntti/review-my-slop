@@ -38,6 +38,12 @@ func TestRunCommentsPrintsAndConsumesCurrentRepositoryFeedback(t *testing.T) {
 	if !strings.Contains(output.String(), "Check this error.") {
 		t.Fatalf("unexpected output:\n%s", output.String())
 	}
+	if !strings.HasPrefix(output.String(), "Comments added since last run:\n") {
+		t.Fatalf("unexpected output heading:\n%s", output.String())
+	}
+	if strings.Contains(output.String(), "batch") {
+		t.Fatalf("output exposes internal batches:\n%s", output.String())
+	}
 
 	var empty bytes.Buffer
 	if err := runCommentsAt(context.Background(), repo, &empty); err != nil {

@@ -13,16 +13,15 @@ func WritePrompt(w io.Writer, batches []review.Batch) error {
 		_, err := fmt.Fprintln(w, "No pending review comments.")
 		return err
 	}
-	if _, err := fmt.Fprintln(w, "Apply the following review feedback to the current repository. Address every comment, run relevant tests, and report what changed."); err != nil {
+	if _, err := fmt.Fprintln(w, "Comments added since last run:"); err != nil {
 		return err
 	}
-	for batchIndex, batch := range batches {
-		if _, err := fmt.Fprintf(w, "\n## Review batch %d\n", batchIndex+1); err != nil {
-			return err
-		}
-		for commentIndex, comment := range batch.Comments {
+	commentIndex := 0
+	for _, batch := range batches {
+		for _, comment := range batch.Comments {
+			commentIndex++
 			a := comment.Anchor
-			if _, err := fmt.Fprintf(w, "\n### %d. `%s` (%s)\n\n", commentIndex+1, a.File, describeRange(a)); err != nil {
+			if _, err := fmt.Fprintf(w, "\n### %d. `%s` (%s)\n\n", commentIndex, a.File, describeRange(a)); err != nil {
 				return err
 			}
 			if len(a.QuotedLines) > 0 {

@@ -81,13 +81,31 @@ func TestWritePrompt(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, expected := range []string{
-		"Apply the following review feedback",
+		"Comments added since last run:",
 		"`main.go`",
 		"old lines 10-11",
 		"new lines 12-13",
 		"```diff",
 		"Handle the nil case.",
 	} {
+		if !strings.Contains(out.String(), expected) {
+			t.Fatalf("output lacks %q:\n%s", expected, out.String())
+		}
+	}
+	if strings.Contains(out.String(), "batch") {
+		t.Fatalf("output exposes internal batches:\n%s", out.String())
+	}
+}
+
+func TestWritePromptNumbersCommentsAcrossBatches(t *testing.T) {
+	var out bytes.Buffer
+	if err := WritePrompt(&out, []review.Batch{
+		testBatch("/repo", "First."),
+		testBatch("/repo", "Second."),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	for _, expected := range []string{"### 1.", "### 2."} {
 		if !strings.Contains(out.String(), expected) {
 			t.Fatalf("output lacks %q:\n%s", expected, out.String())
 		}
