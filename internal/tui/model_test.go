@@ -108,7 +108,7 @@ func TestCommentOpensMarkdownFileInEditor(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := string(body); got != "existing comment\n\n````suggestion\n-old()```x\n+new()\n````\n" {
+	if got := string(body); got != "existing comment\n\n```suggestion\nnew()\n```\n" {
 		t.Fatalf("body = %q, want comment and selected-code suggestion", got)
 	}
 }
@@ -118,7 +118,7 @@ func TestCommentEditorEscapesSelectedMarkdownCodeFence(t *testing.T) {
 		QuotedLines: []string{"+````go", `+fmt.Println("hello")`, "+````"},
 	}
 	draft := commentEditorDraft("explain this", anchor)
-	want := "explain this\n\n`````suggestion\n+````go\n+fmt.Println(\"hello\")\n+````\n`````\n"
+	want := "explain this\n\n`````suggestion\n````go\nfmt.Println(\"hello\")\n````\n`````\n"
 	if draft != want {
 		t.Fatalf("draft = %q, want escaped Markdown code fence", draft)
 	}
@@ -129,13 +129,13 @@ func TestCommentEditorEscapesSelectedMarkdownCodeFence(t *testing.T) {
 
 func TestCommentEditorContextIsNotSaved(t *testing.T) {
 	path, err := createCommentFile("fix this", review.Anchor{
-		QuotedLines: []string{"-old()", "+new()"},
+		QuotedLines: []string{" unchanged()", "-old()", "+new()"},
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	anchor := review.Anchor{QuotedLines: []string{"-old()", "+new()"}}
+	anchor := review.Anchor{QuotedLines: []string{" unchanged()", "-old()", "+new()"}}
 	msg := readCommentEditorResult(path, anchor, nil)
 	if msg.err != nil {
 		t.Fatal(msg.err)
@@ -147,9 +147,19 @@ func TestCommentEditorContextIsNotSaved(t *testing.T) {
 
 func TestCommentEditorKeepsEditedSuggestion(t *testing.T) {
 	lines := []string{"-old()", "+new()"}
-	body := "comment\n\n```suggestion\n-better()\n+new()\n```\n"
+	body := "comment\n\n```suggestion\nbetter()\nnew()\n```\n"
 	if got := stripUnchangedSuggestion(body, lines); got != body {
 		t.Fatalf("body = %q, want edited suggestion preserved", got)
+	}
+}
+
+func TestCommentEditorSuggestionContainsOnlyNewVersion(t *testing.T) {
+	anchor := review.Anchor{
+		QuotedLines: []string{" unchanged()", "-old()", "+new()"},
+	}
+	want := "comment\n\n```suggestion\nunchanged()\nnew()\n```\n"
+	if got := commentEditorDraft("comment", anchor); got != want {
+		t.Fatalf("draft = %q, want suggestion with only new-version code", got)
 	}
 }
 
@@ -251,6 +261,16 @@ func TestInboxCommentsCanBeViewedAndEdited(t *testing.T) {
 	}
 }
 
+func TestQReturnsFromCommentsToDiff(t *testing.T) {
+	model := New(testDiff(), nil, nil)
+	model = update(t, model, textKey("C"))
+	model = update(t, model, textKey("q"))
+
+	if model.mode != modeBrowse || model.quitting {
+		t.Fatalf("mode=%v quitting=%v, want diff view without quitting", model.mode, model.quitting)
+	}
+}
+
 func TestEmptyEditedCommentIsDeleted(t *testing.T) {
 	t.Setenv("EDITOR", "true")
 	comments := []review.StoredComment{{
@@ -322,6 +342,33 @@ func TestSelectionCannotCrossHunk(t *testing.T) {
 	}
 	if model.rows[model.cursor].hunkIndex != 0 {
 		t.Fatalf("selection crossed into hunk %d", model.rows[model.cursor].hunkIndex)
+	}
+}
+
+func TestHalfPageMovementUsesRenderedRows(t *testing.T) {
+	model := New(testDiff(), nil, nil)
+	model.rows = make([]row, 30)
+	for index := range model.rows {
+		model.rows[index].kind = rowCode
+	}
+	model.rows[4].kind = rowFile
+	model.rows[5].kind = rowHunk
+	model.height = 11
+	model.offset = 0
+	model.cursor = 1
+	delta := max(1, model.viewportHeight()/2)
+
+	model = update(t, model, controlKey('d'))
+	if model.offset != delta {
+		t.Fatalf("Ctrl-d offset = %d, want %d rendered rows", model.offset, delta)
+	}
+	if model.cursor < model.offset || model.cursor >= model.offset+model.viewportHeight() {
+		t.Fatalf("Ctrl-d cursor %d is outside viewport starting at %d", model.cursor, model.offset)
+	}
+
+	model = update(t, model, controlKey('u'))
+	if model.offset != 0 {
+		t.Fatalf("Ctrl-u offset = %d, want original viewport", model.offset)
 	}
 }
 
@@ -727,15 +774,23 @@ func TestDiffMarkersUseTerminalColorsAndCursorFillsTerminalWidth(t *testing.T) {
 	assertStyledThroughColumn(t, contextCursor, 80, sgrExpectation{reverse: true})
 }
 
-func TestSelectionReverseVideoSurvivesSyntaxHighlightResets(t *testing.T) {
+func TestSelectionBackgroundKeepsDefaultCursorAndTextWeight(t *testing.T) {
 	model := New(testDiff(), nil, nil)
 	model = update(t, model, tea.WindowSizeMsg{Width: 72, Height: 20})
+	model.dark = false
+	model.selectFrom = findCodeRow(t, model, review.LineRemoved)
 	model.cursor = findCodeRow(t, model, review.LineAdded)
 	model.selecting = true
-	model.selectFrom = model.cursor
 
-	rendered := model.renderRow(model.cursor)
-	assertStyledThroughColumn(t, rendered, 72, sgrExpectation{reverse: true})
+	selected := model.renderRow(model.selectFrom)
+	cursor := model.renderRow(model.cursor)
+	assertStyledThroughColumn(t, selected, 72, sgrExpectation{background: "219;234;254"})
+	assertStyledThroughColumn(t, cursor, 72, sgrExpectation{reverse: true})
+	for name, rendered := range map[string]string{"selected": selected, "cursor": cursor} {
+		if strings.Contains(rendered, "\x1b[1m") {
+			t.Fatalf("%s row uses bold text: %q", name, rendered)
+		}
+	}
 }
 
 func TestRenderedCodeRowsHaveExactTerminalWidth(t *testing.T) {
@@ -799,6 +854,10 @@ func textKey(text string) tea.KeyPressMsg {
 
 func specialKey(code rune) tea.KeyPressMsg {
 	return tea.KeyPressMsg(tea.Key{Code: code})
+}
+
+func controlKey(code rune) tea.KeyPressMsg {
+	return tea.KeyPressMsg(tea.Key{Code: code, Mod: tea.ModCtrl})
 }
 
 func findCodeRow(t *testing.T, model Model, kind review.LineKind) int {

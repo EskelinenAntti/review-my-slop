@@ -340,9 +340,9 @@ func (m Model) updateKey(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	case "$":
 		m.xOffset = m.maxHorizontalOffset()
 	case "ctrl+d":
-		m.move(max(1, m.viewportHeight()/2))
+		m.moveHalfPage(1)
 	case "ctrl+u":
-		m.move(-max(1, m.viewportHeight()/2))
+		m.moveHalfPage(-1)
 	case "g":
 		if pendingKey == "g" {
 			m.cursor = firstCodeRow(m.rows)
@@ -479,9 +479,9 @@ func (m Model) findSearch(query string, start, direction int) int {
 func (m Model) updateComments(name string) (tea.Model, tea.Cmd) {
 	m.err = nil
 	switch name {
-	case "esc", "C":
+	case "esc", "C", "q":
 		m.mode = modeBrowse
-	case "q", "ctrl+c":
+	case "ctrl+c":
 		m.quitting = true
 		return m, tea.Quit
 	case "j", "down":
@@ -642,22 +642,34 @@ func commentEditorDraft(body string, anchor review.Anchor) string {
 		return body
 	}
 
+	lines := suggestionLines(anchor.QuotedLines)
 	var draft strings.Builder
 	draft.WriteString(body)
 	if body != "" && !strings.HasSuffix(body, "\n") {
 		draft.WriteByte('\n')
 	}
 	draft.WriteString("\n")
-	fence := commentContextFence(anchor.QuotedLines)
+	fence := commentContextFence(lines)
 	draft.WriteString(fence)
 	draft.WriteString("suggestion\n")
-	for _, line := range anchor.QuotedLines {
+	for _, line := range lines {
 		draft.WriteString(line)
 		draft.WriteByte('\n')
 	}
 	draft.WriteString(fence)
 	draft.WriteByte('\n')
 	return draft.String()
+}
+
+func suggestionLines(quotedLines []string) []string {
+	lines := make([]string, 0, len(quotedLines))
+	for _, line := range quotedLines {
+		if line == "" || line[0] == '-' {
+			continue
+		}
+		lines = append(lines, line[1:])
+	}
+	return lines
 }
 
 func commentContextFence(lines []string) string {
@@ -681,6 +693,7 @@ func stripUnchangedSuggestion(body string, lines []string) string {
 		return body
 	}
 
+	lines = suggestionLines(lines)
 	fence := commentContextFence(lines)
 	var suggestion strings.Builder
 	suggestion.WriteString(fence)
@@ -910,7 +923,7 @@ func (m Model) renderRow(index int) string {
 		line := gutter + fitANSIWindow(text, m.xOffset, width-lipgloss.Width(gutter))
 		style := lineStyle(current.line.Kind, m.dark)
 		if m.selected(index) {
-			style = selectionStyle
+			style = selectionRowStyle(m.dark)
 		}
 		stripForeground := m.selected(index)
 		if index == m.cursor {
@@ -992,7 +1005,7 @@ func (m Model) renderComments() string {
 			out.WriteByte('\n')
 		}
 	}
-	footer := mutedStyle.Render("j/k move  Enter/e edit  D delete  Esc return  q quit")
+	footer := mutedStyle.Render("j/k move  Enter/e edit  D delete  Esc/q return")
 	if m.err != nil {
 		footer = errorStyle.Render(m.err.Error())
 	}
@@ -1065,7 +1078,7 @@ func (m Model) renderSideBySide(index int) string {
 	right := rightGutter + fitANSIWindow(rightText, m.xOffset, half-lipgloss.Width(rightGutter))
 	style := lineStyle(current.line.Kind, m.dark)
 	if m.selected(index) {
-		style = selectionStyle
+		style = selectionRowStyle(m.dark)
 	}
 	stripForeground := m.selected(index)
 	if index == m.cursor {
@@ -1125,6 +1138,14 @@ func lineStyle(kind review.LineKind, darkBackground bool) lipgloss.Style {
 	}
 }
 
+func selectionRowStyle(darkBackground bool) lipgloss.Style {
+	lightDark := lipgloss.LightDark(darkBackground)
+	return lipgloss.NewStyle().Background(lightDark(
+		lipgloss.Color("#dbeafe"),
+		lipgloss.Color("#1e3a5f"),
+	))
+}
+
 func highlightedLine(lines []string, number int, fallback string) string {
 	if number <= 0 || number > len(lines) {
 		return fallback
@@ -1157,6 +1178,30 @@ func (m *Model) move(delta int) {
 	}
 	m.cursor = target
 	m.ensureVisible()
+}
+
+func (m *Model) moveHalfPage(direction int) {
+	if len(m.rows) == 0 {
+		return
+	}
+
+	height := m.viewportHeight()
+	delta := max(1, height/2) * direction
+	maxOffset := max(0, len(m.rows)-height)
+	offset := max(0, min(m.offset+delta, maxOffset))
+	cursorTarget := m.cursor + offset - m.offset
+	first, last := offset, min(len(m.rows)-1, offset+height-1)
+	cursorTarget = max(first, min(cursorTarget, last))
+	cursor := codeNearBetween(m.rows, cursorTarget, direction, first, last)
+	if cursor < 0 {
+		cursor = codeNearBetween(m.rows, cursorTarget, -direction, first, last)
+	}
+	if cursor < 0 || m.selecting && !m.sameHunk(m.selectFrom, cursor) {
+		return
+	}
+
+	m.cursor = cursor
+	m.offset = offset
 }
 
 func (m *Model) jump(kind rowKind, direction int) {
@@ -1260,6 +1305,15 @@ func lastCodeRow(rows []row) int {
 
 func codeNear(rows []row, start, direction int) int {
 	for index := start; index >= 0 && index < len(rows); index += direction {
+		if rows[index].kind == rowCode {
+			return index
+		}
+	}
+	return -1
+}
+
+func codeNearBetween(rows []row, start, direction, first, last int) int {
+	for index := start; index >= first && index <= last; index += direction {
 		if rows[index].kind == rowCode {
 			return index
 		}
@@ -1410,7 +1464,6 @@ var (
 	contextStyle      = lipgloss.NewStyle()
 	addedStyle        = lipgloss.NewStyle().Foreground(lipgloss.Green)
 	removedStyle      = lipgloss.NewStyle().Foreground(lipgloss.Red)
-	selectionStyle    = lipgloss.NewStyle().Reverse(true).Bold(true)
 	cursorStyle       = lipgloss.NewStyle().Reverse(true)
 	editorCursorStyle = lipgloss.NewStyle().Reverse(true)
 	mutedStyle        = lipgloss.NewStyle().Faint(true)
