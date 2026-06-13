@@ -509,6 +509,7 @@ func (m Model) updateComments(name string) (tea.Model, tea.Cmd) {
 		if len(m.comments) > 0 {
 			m.editIndex = m.commentRow
 			m.commentBody = m.comments[m.editIndex].Comment.Body
+			m.editAnchor = m.comments[m.editIndex].Comment.Anchor
 			cmd, err := m.openCommentEditor()
 			if err != nil {
 				m.err = err
@@ -598,24 +599,24 @@ func (m Model) openCommentEditor() (tea.Cmd, error) {
 	if editor == "" {
 		return nil, fmt.Errorf("$EDITOR is not set")
 	}
-	path, err := createCommentFile(m.commentBody)
+	path, err := createCommentFile(m.commentBody, m.editAnchor)
 	if err != nil {
 		return nil, err
 	}
 
 	command := commentEditorCommand(editor, path)
 	return tea.ExecProcess(command, func(editorErr error) tea.Msg {
-		return readCommentEditorResult(path, editorErr)
+		return readCommentEditorResult(path, m.editAnchor, editorErr)
 	}), nil
 }
 
-func createCommentFile(body string) (string, error) {
+func createCommentFile(body string, anchor review.Anchor) (string, error) {
 	file, err := os.CreateTemp("", "review-my-slop-comment-*.md")
 	if err != nil {
 		return "", fmt.Errorf("create comment file: %w", err)
 	}
 	path := file.Name()
-	if _, err := file.WriteString(body); err != nil {
+	if _, err := file.WriteString(commentEditorDraft(body, anchor)); err != nil {
 		_ = file.Close()
 		_ = os.Remove(path)
 		return "", fmt.Errorf("write comment file: %w", err)
@@ -627,7 +628,7 @@ func createCommentFile(body string) (string, error) {
 	return path, nil
 }
 
-func readCommentEditorResult(path string, editorErr error) commentEditorFinishedMsg {
+func readCommentEditorResult(path string, anchor review.Anchor, editorErr error) commentEditorFinishedMsg {
 	defer os.Remove(path)
 	if editorErr != nil {
 		return commentEditorFinishedMsg{err: fmt.Errorf("editor: %w", editorErr)}
@@ -636,7 +637,74 @@ func readCommentEditorResult(path string, editorErr error) commentEditorFinished
 	if err != nil {
 		return commentEditorFinishedMsg{err: fmt.Errorf("read comment file: %w", err)}
 	}
-	return commentEditorFinishedMsg{body: string(body)}
+	return commentEditorFinishedMsg{body: stripUnchangedSuggestion(string(body), anchor.QuotedLines)}
+}
+
+func commentEditorDraft(body string, anchor review.Anchor) string {
+	if len(anchor.QuotedLines) == 0 {
+		return body
+	}
+
+	var draft strings.Builder
+	draft.WriteString(body)
+	if body != "" && !strings.HasSuffix(body, "\n") {
+		draft.WriteByte('\n')
+	}
+	draft.WriteString("\n")
+	fence := commentContextFence(anchor.QuotedLines)
+	draft.WriteString(fence)
+	draft.WriteString("suggestion\n")
+	for _, line := range anchor.QuotedLines {
+		draft.WriteString(line)
+		draft.WriteByte('\n')
+	}
+	draft.WriteString(fence)
+	draft.WriteByte('\n')
+	return draft.String()
+}
+
+func commentContextFence(lines []string) string {
+	longest := 0
+	for _, line := range lines {
+		run := 0
+		for _, char := range line {
+			if char == '`' {
+				run++
+				longest = max(longest, run)
+			} else {
+				run = 0
+			}
+		}
+	}
+	return strings.Repeat("`", max(3, longest+1))
+}
+
+func stripUnchangedSuggestion(body string, lines []string) string {
+	if len(lines) == 0 {
+		return body
+	}
+
+	fence := commentContextFence(lines)
+	var suggestion strings.Builder
+	suggestion.WriteString(fence)
+	suggestion.WriteString("suggestion\n")
+	for _, line := range lines {
+		suggestion.WriteString(line)
+		suggestion.WriteByte('\n')
+	}
+	suggestion.WriteString(fence)
+
+	start := strings.Index(body, suggestion.String())
+	if start < 0 {
+		return body
+	}
+	end := start + suggestion.Len()
+	before := strings.TrimRight(body[:start], "\n")
+	after := body[end:]
+	if strings.TrimSpace(after) == "" {
+		return before
+	}
+	return before + "\n" + strings.TrimLeft(after, "\n")
 }
 
 func commentEditorCommand(editor, path string) *exec.Cmd {

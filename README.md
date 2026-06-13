@@ -18,9 +18,12 @@ go install github.com/anttieskelinen/review-my-slop/cmd/review-my-slop@latest
 
 Run `review-my-slop` or `review-my-slop code` in a Git repository. Use `j` and
 `k` to move, `v` to select a range, and `c` to comment in `$EDITOR` using a
-temporary Markdown file. Saving an empty file discards the comment, including
-when editing an existing comment. Press `C` to browse pending comments, edit one
-with `Enter`, or delete one with `D`.
+temporary Markdown file. The file includes the selected lines in a fenced
+`suggestion` block for reference; the unchanged block is removed before the
+comment is saved.
+Saving an empty file discards the comment, including when editing an existing
+comment. Press `C` to browse pending comments, edit one with `Enter`, or delete
+one with `D`.
 Long lines can be scrolled with `h`/`l` or the left/right arrow keys;
 `0` and `$` jump to the horizontal start and end. Press `e` to open the current
 line in `$EDITOR`. The diff refreshes as files change and keeps the cursor on

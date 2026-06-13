@@ -77,7 +77,8 @@ func TestCommentRequiresEditor(t *testing.T) {
 }
 
 func TestCommentOpensMarkdownFileInEditor(t *testing.T) {
-	path, err := createCommentFile("existing comment")
+	anchor := review.Anchor{QuotedLines: []string{"-old()```x", "+new()"}}
+	path, err := createCommentFile("existing comment", anchor)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -89,8 +90,48 @@ func TestCommentOpensMarkdownFileInEditor(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if string(body) != "existing comment" {
-		t.Fatalf("body = %q, want seeded edit content", body)
+	if got := string(body); got != "existing comment\n\n````suggestion\n-old()```x\n+new()\n````\n" {
+		t.Fatalf("body = %q, want comment and selected-code suggestion", got)
+	}
+}
+
+func TestCommentEditorEscapesSelectedMarkdownCodeFence(t *testing.T) {
+	anchor := review.Anchor{
+		QuotedLines: []string{"+````go", `+fmt.Println("hello")`, "+````"},
+	}
+	draft := commentEditorDraft("explain this", anchor)
+	want := "explain this\n\n`````suggestion\n+````go\n+fmt.Println(\"hello\")\n+````\n`````\n"
+	if draft != want {
+		t.Fatalf("draft = %q, want escaped Markdown code fence", draft)
+	}
+	if got := stripUnchangedSuggestion(draft, anchor.QuotedLines); got != "explain this" {
+		t.Fatalf("body = %q, want unchanged escaped suggestion removed", got)
+	}
+}
+
+func TestCommentEditorContextIsNotSaved(t *testing.T) {
+	path, err := createCommentFile("fix this", review.Anchor{
+		QuotedLines: []string{"-old()", "+new()"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	anchor := review.Anchor{QuotedLines: []string{"-old()", "+new()"}}
+	msg := readCommentEditorResult(path, anchor, nil)
+	if msg.err != nil {
+		t.Fatal(msg.err)
+	}
+	if msg.body != "fix this" {
+		t.Fatalf("body = %q, want selected-code context removed", msg.body)
+	}
+}
+
+func TestCommentEditorKeepsEditedSuggestion(t *testing.T) {
+	lines := []string{"-old()", "+new()"}
+	body := "comment\n\n```suggestion\n-better()\n+new()\n```\n"
+	if got := stripUnchangedSuggestion(body, lines); got != body {
+		t.Fatalf("body = %q, want edited suggestion preserved", got)
 	}
 }
 
@@ -126,7 +167,7 @@ func TestExternalEditorCommandReadsEditedDraft(t *testing.T) {
 	if err := commentEditorCommand("printf 'edited externally' >", path).Run(); err != nil {
 		t.Fatal(err)
 	}
-	msg := readCommentEditorResult(path, nil)
+	msg := readCommentEditorResult(path, review.Anchor{}, nil)
 	if msg.err != nil {
 		t.Fatal(msg.err)
 	}
