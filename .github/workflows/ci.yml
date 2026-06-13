@@ -21,5 +21,4 @@ jobs:
           cache: true
       - run: go test -race ./...
       - run: go vet ./...
-      - run: go build ./cmd/review-my-slop ./cmd/review-my-comments
-
+      - run: go build ./cmd/review-my-slop
