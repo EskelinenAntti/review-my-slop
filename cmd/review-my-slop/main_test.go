@@ -15,8 +15,8 @@ import (
 
 func TestRunCommentsPrintsAndConsumesCurrentRepositoryFeedback(t *testing.T) {
 	repo := initRepository(t)
-	state := t.TempDir()
-	t.Setenv("REVIEW_MY_SLOP_HOME", state)
+	data := t.TempDir()
+	t.Setenv("XDG_DATA_HOME", data)
 	store, err := inbox.OpenDefault()
 	if err != nil {
 		t.Fatal(err)
@@ -47,7 +47,7 @@ func TestRunCommentsPrintsAndConsumesCurrentRepositoryFeedback(t *testing.T) {
 		t.Fatalf("second output = %q", empty.String())
 	}
 
-	info, err := os.Stat(filepath.Join(state, "inbox.db"))
+	info, err := os.Stat(filepath.Join(data, "review-my-slop", "inbox.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -58,7 +58,7 @@ func TestRunCommentsPrintsAndConsumesCurrentRepositoryFeedback(t *testing.T) {
 
 func TestRunCommentsPreservesFeedbackWhenOutputFails(t *testing.T) {
 	repo := initRepository(t)
-	t.Setenv("REVIEW_MY_SLOP_HOME", t.TempDir())
+	t.Setenv("XDG_DATA_HOME", t.TempDir())
 	store, err := inbox.OpenDefault()
 	if err != nil {
 		t.Fatal(err)

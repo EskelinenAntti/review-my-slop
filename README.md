@@ -38,4 +38,10 @@ The AI-facing `review-my-slop comments` command prints and consumes all pending
 feedback for its current repository. Re-run it to retrieve comments saved while
 the AI was working.
 
+Pending comments are stored in
+`$XDG_DATA_HOME/review-my-slop/inbox.db`, defaulting to
+`~/.local/share/review-my-slop/inbox.db`. Temporary editor drafts use
+`$XDG_STATE_HOME/review-my-slop`, defaulting to
+`~/.local/state/review-my-slop`.
+
 Run `?` in the TUI for the complete key map.

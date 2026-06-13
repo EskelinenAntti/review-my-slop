@@ -77,6 +77,8 @@ func TestCommentRequiresEditor(t *testing.T) {
 }
 
 func TestCommentOpensMarkdownFileInEditor(t *testing.T) {
+	state := t.TempDir()
+	t.Setenv("XDG_STATE_HOME", state)
 	anchor := review.Anchor{QuotedLines: []string{"-old()```x", "+new()"}}
 	path, err := createCommentFile("existing comment", anchor)
 	if err != nil {
@@ -85,6 +87,23 @@ func TestCommentOpensMarkdownFileInEditor(t *testing.T) {
 	defer os.Remove(path)
 	if filepath.Ext(path) != ".md" {
 		t.Fatalf("comment path = %q, want .md extension", path)
+	}
+	if filepath.Dir(path) != filepath.Join(state, "review-my-slop") {
+		t.Fatalf("comment directory = %q, want XDG state directory", filepath.Dir(path))
+	}
+	dirInfo, err := os.Stat(filepath.Dir(path))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if dirInfo.Mode().Perm() != 0o700 {
+		t.Fatalf("state directory mode = %o, want 700", dirInfo.Mode().Perm())
+	}
+	fileInfo, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fileInfo.Mode().Perm() != 0o600 {
+		t.Fatalf("comment file mode = %o, want 600", fileInfo.Mode().Perm())
 	}
 	body, err := os.ReadFile(path)
 	if err != nil {

@@ -55,7 +55,8 @@ func testCommandStartsAndQuitsInPTY(t *testing.T, binary string, args []string) 
 	command.Dir = repo
 	command.Env = append(os.Environ(),
 		"TERM=xterm-256color",
-		"REVIEW_MY_SLOP_HOME="+t.TempDir(),
+		"XDG_DATA_HOME="+t.TempDir(),
+		"XDG_STATE_HOME="+t.TempDir(),
 	)
 	terminal, err := pty.StartWithSize(command, &pty.Winsize{Rows: 24, Cols: 100})
 	if err != nil {

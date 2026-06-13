@@ -12,6 +12,7 @@ import (
 	bolt "go.etcd.io/bbolt"
 
 	"github.com/anttieskelinen/review-my-slop/internal/review"
+	"github.com/anttieskelinen/review-my-slop/internal/xdg"
 )
 
 const (
@@ -27,14 +28,11 @@ type Store struct {
 }
 
 func DefaultPath() (string, error) {
-	if home := os.Getenv("REVIEW_MY_SLOP_HOME"); home != "" {
-		return filepath.Join(home, "inbox.db"), nil
-	}
-	state, err := os.UserConfigDir()
+	data, err := xdg.DataDir()
 	if err != nil {
-		return "", fmt.Errorf("resolve user config directory: %w", err)
+		return "", err
 	}
-	return filepath.Join(state, "review-my-slop", "inbox.db"), nil
+	return filepath.Join(data, "inbox.db"), nil
 }
 
 func OpenDefault() (Store, error) {

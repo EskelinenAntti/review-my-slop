@@ -17,6 +17,7 @@ import (
 
 	"github.com/anttieskelinen/review-my-slop/internal/highlight"
 	"github.com/anttieskelinen/review-my-slop/internal/review"
+	"github.com/anttieskelinen/review-my-slop/internal/xdg"
 )
 
 type SaveCommentFunc func(review.StoredComment, review.Diff) (review.StoredComment, error)
@@ -611,7 +612,17 @@ func (m Model) openCommentEditor() (tea.Cmd, error) {
 }
 
 func createCommentFile(body string, anchor review.Anchor) (string, error) {
-	file, err := os.CreateTemp("", "review-my-slop-comment-*.md")
+	state, err := xdg.StateDir()
+	if err != nil {
+		return "", err
+	}
+	if err := os.MkdirAll(state, 0o700); err != nil {
+		return "", fmt.Errorf("create state directory: %w", err)
+	}
+	if err := os.Chmod(state, 0o700); err != nil {
+		return "", fmt.Errorf("secure state directory: %w", err)
+	}
+	file, err := os.CreateTemp(state, "comment-*.md")
 	if err != nil {
 		return "", fmt.Errorf("create comment file: %w", err)
 	}
