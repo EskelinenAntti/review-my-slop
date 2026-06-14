@@ -15,16 +15,6 @@ import (
 
 func TestRunCommentsPrintsAndConsumesCurrentRepositoryFeedback(t *testing.T) {
 	repo := initRepository(t)
-	writeRepositoryFile(t, repo, "modified.txt", "before\n")
-	writeRepositoryFile(t, repo, "deleted.txt", "delete me\n")
-	gitCommand(t, repo, "add", ".")
-	gitCommand(t, repo, "commit", "-m", "base")
-	writeRepositoryFile(t, repo, "modified.txt", "after\n")
-	if err := os.Remove(filepath.Join(repo, "deleted.txt")); err != nil {
-		t.Fatal(err)
-	}
-	writeRepositoryFile(t, repo, "untracked.txt", "new\n")
-
 	data := t.TempDir()
 	t.Setenv("XDG_DATA_HOME", data)
 	store, err := inbox.OpenDefault()
@@ -53,17 +43,6 @@ func TestRunCommentsPrintsAndConsumesCurrentRepositoryFeedback(t *testing.T) {
 	}
 	if strings.Contains(output.String(), "batch") {
 		t.Fatalf("output exposes internal batches:\n%s", output.String())
-	}
-	staged := gitCommand(t, repo, "diff", "--cached", "--name-status")
-	for _, change := range []string{"D\tdeleted.txt", "M\tmodified.txt", "A\tuntracked.txt"} {
-		if !strings.Contains(staged, change) {
-			t.Fatalf("staged changes missing %q:\n%s", change, staged)
-		}
-	}
-	if remaining := gitCommand(t, repo, "status", "--short"); strings.Contains(remaining, "??") ||
-		strings.Contains(remaining, " M") ||
-		strings.Contains(remaining, " D") {
-		t.Fatalf("unstaged local changes remain:\n%s", remaining)
 	}
 
 	var empty bytes.Buffer
@@ -136,25 +115,5 @@ func initRepository(t *testing.T) string {
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("git init: %v\n%s", err, out)
 	}
-	gitCommand(t, repo, "config", "user.email", "test@example.com")
-	gitCommand(t, repo, "config", "user.name", "Test User")
 	return repo
-}
-
-func writeRepositoryFile(t *testing.T, repo, name, contents string) {
-	t.Helper()
-	if err := os.WriteFile(filepath.Join(repo, name), []byte(contents), 0o600); err != nil {
-		t.Fatal(err)
-	}
-}
-
-func gitCommand(t *testing.T, repo string, args ...string) string {
-	t.Helper()
-	cmd := exec.Command("git", args...)
-	cmd.Dir = repo
-	out, err := cmd.CombinedOutput()
-	if err != nil {
-		t.Fatalf("git %s: %v\n%s", strings.Join(args, " "), err, out)
-	}
-	return string(out)
 }

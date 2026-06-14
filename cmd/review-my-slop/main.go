@@ -109,12 +109,8 @@ func runComments(ctx context.Context, output io.Writer) error {
 }
 
 func runCommentsAt(ctx context.Context, current string, output io.Writer) error {
-	loader := gitdiff.Loader{}
-	root, err := loader.Root(ctx, current)
+	root, err := (gitdiff.Loader{}).Root(ctx, current)
 	if err != nil {
-		return err
-	}
-	if err := loader.StageAll(ctx, root); err != nil {
 		return err
 	}
 	store, err := inbox.OpenDefault()
