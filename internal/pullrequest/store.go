@@ -35,13 +35,13 @@ func (ExecRunner) Run(ctx context.Context, dir string, input []byte, args ...str
 	return nil, fmt.Errorf("gh %s: %w", strings.Join(args, " "), err)
 }
 
-type Store struct {
-	Runner        Runner
-	Dir           string
-	Repo          string
-	Number        int
-	Base          string
-	PullRequestID string
+type Session struct {
+	runner        Runner
+	dir           string
+	repo          string
+	number        int
+	baseBranch    string
+	pullRequestID string
 	reviewID      int64
 	reviewNodeID  string
 }
@@ -87,7 +87,7 @@ type graphQLComment struct {
 	OriginalStartLine int    `json:"originalStartLine"`
 }
 
-func Open(ctx context.Context, dir string, number int, runner Runner) (*Store, error) {
+func Open(ctx context.Context, dir string, number int, runner Runner) (*Session, error) {
 	if number <= 0 {
 		return nil, errors.New("pull request number must be positive")
 	}
@@ -117,14 +117,22 @@ func Open(ctx context.Context, dir string, number int, runner Runner) (*Store, e
 	if pr.Number == 0 || pr.BaseRefName == "" || pr.ID == "" || repo.NameWithOwner == "" {
 		return nil, errors.New("gh returned incomplete pull request metadata")
 	}
-	return &Store{
-		Runner:        runner,
-		Dir:           dir,
-		Repo:          repo.NameWithOwner,
-		Number:        pr.Number,
-		Base:          pr.BaseRefName,
-		PullRequestID: pr.ID,
+	return &Session{
+		runner:        runner,
+		dir:           dir,
+		repo:          repo.NameWithOwner,
+		number:        pr.Number,
+		baseBranch:    pr.BaseRefName,
+		pullRequestID: pr.ID,
 	}, nil
+}
+
+func (s *Session) BaseBranch() string {
+	return s.baseBranch
+}
+
+func (s *Session) OpenBrowser(ctx context.Context) error {
+	return OpenBrowser(ctx, s.dir, s.number, s.runner)
 }
 
 func OpenBrowser(ctx context.Context, dir string, number int, runner Runner) error {
@@ -140,7 +148,7 @@ func OpenBrowser(ctx context.Context, dir string, number int, runner Runner) err
 	return err
 }
 
-func (s *Store) List(ctx context.Context, _ review.Diff) ([]review.StoredComment, error) {
+func (s *Session) List(ctx context.Context, _ review.Diff) ([]review.StoredComment, error) {
 	reviewID, err := s.pendingReview(ctx)
 	if err != nil || reviewID == 0 {
 		return nil, err
@@ -156,7 +164,7 @@ func (s *Store) List(ctx context.Context, _ review.Diff) ([]review.StoredComment
 	return result, nil
 }
 
-func (s *Store) Save(ctx context.Context, stored review.StoredComment, _ review.Diff) (review.StoredComment, error) {
+func (s *Session) Save(ctx context.Context, stored review.StoredComment, _ review.Diff) (review.StoredComment, error) {
 	if stored.ID != "" {
 		var response struct {
 			Update struct {
@@ -192,7 +200,7 @@ func (s *Store) Save(ctx context.Context, stored review.StoredComment, _ review.
 			} `json:"addPullRequestReview"`
 		}
 		if err := s.graphql(ctx, createReviewMutation, map[string]any{
-			"pullRequestId": s.PullRequestID,
+			"pullRequestId": s.pullRequestID,
 			"threads":       []any{payload},
 		}, &response); err != nil {
 			return review.StoredComment{}, err
@@ -224,14 +232,14 @@ func (s *Store) Save(ctx context.Context, stored review.StoredComment, _ review.
 	return storedGraphQLComment(response.Add.Thread.Comments.Nodes[0], commentSide(stored.Comment.Anchor)), nil
 }
 
-func (s *Store) Delete(ctx context.Context, stored review.StoredComment, _ review.Diff) error {
+func (s *Session) Delete(ctx context.Context, stored review.StoredComment, _ review.Diff) error {
 	if stored.ID == "" {
 		return errors.New("review comment ID is required")
 	}
 	return s.graphql(ctx, deleteCommentMutation, map[string]any{"id": stored.ID}, nil)
 }
 
-func (s *Store) pendingReview(ctx context.Context) (int64, error) {
+func (s *Session) pendingReview(ctx context.Context) (int64, error) {
 	if s.reviewID != 0 {
 		return s.reviewID, nil
 	}
@@ -249,11 +257,11 @@ func (s *Store) pendingReview(ctx context.Context) (int64, error) {
 	return 0, nil
 }
 
-func (s *Store) endpoint(format string, args ...any) string {
-	return fmt.Sprintf("repos/%s/pulls/%d/"+format, append([]any{s.Repo, s.Number}, args...)...)
+func (s *Session) endpoint(format string, args ...any) string {
+	return fmt.Sprintf("repos/%s/pulls/%d/"+format, append([]any{s.repo, s.number}, args...)...)
 }
 
-func (s *Store) api(ctx context.Context, method, endpoint string, payload any, result any) error {
+func (s *Session) api(ctx context.Context, method, endpoint string, payload any, result any) error {
 	args := []string{"api", "--method", method, endpoint}
 	var input []byte
 	var err error
@@ -264,7 +272,7 @@ func (s *Store) api(ctx context.Context, method, endpoint string, payload any, r
 		}
 		args = append(args, "--input", "-")
 	}
-	out, err := s.Runner.Run(ctx, s.Dir, input, args...)
+	out, err := s.runner.Run(ctx, s.dir, input, args...)
 	if err != nil {
 		return err
 	}
@@ -284,7 +292,7 @@ type graphQLResponse struct {
 	} `json:"errors"`
 }
 
-func (s *Store) graphql(ctx context.Context, query string, input map[string]any, result any) error {
+func (s *Session) graphql(ctx context.Context, query string, input map[string]any, result any) error {
 	request, err := json.Marshal(map[string]any{
 		"query":     query,
 		"variables": map[string]any{"input": input},
@@ -292,7 +300,7 @@ func (s *Store) graphql(ctx context.Context, query string, input map[string]any,
 	if err != nil {
 		return fmt.Errorf("encode GitHub GraphQL request: %w", err)
 	}
-	out, err := s.Runner.Run(ctx, s.Dir, request, "api", "graphql", "--input", "-")
+	out, err := s.runner.Run(ctx, s.dir, request, "api", "graphql", "--input", "-")
 	if err != nil {
 		return err
 	}

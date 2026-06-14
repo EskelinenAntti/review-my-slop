@@ -74,9 +74,27 @@ func runCode(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	loader := gitdiff.Loader{}
+	parents, err := loader.ParentBranches(ctx, current)
+	if err != nil {
+		return err
+	}
 	backend := localStore{store: store}
-	return runReview(ctx, current, gitdiff.Loader{}, loaded, backend, true, sideBySide, store.SetSideBySide, func() error {
-		return pullrequest.OpenBrowser(ctx, current, 0, nil)
+	return runReview(ctx, reviewConfig{
+		diff:        loaded,
+		store:       backend,
+		diffTargets: append([]string{""}, parents...),
+		refresh: func(target string) (review.Diff, error) {
+			if target != "" {
+				return loader.LoadBranch(ctx, current, target)
+			}
+			return loader.Load(ctx, current)
+		},
+		sideBySide:     sideBySide,
+		saveSideBySide: store.SetSideBySide,
+		openPullRequest: func() error {
+			return pullrequest.OpenBrowser(ctx, current, 0, nil)
+		},
 	})
 }
 
@@ -94,16 +112,26 @@ func runPR(ctx context.Context, number int) error {
 		return err
 	}
 	loader := gitdiff.Loader{}
-	store, err := pullrequest.Open(ctx, current, number, nil)
+	session, err := pullrequest.Open(ctx, current, number, nil)
 	if err != nil {
 		return err
 	}
-	loaded, err := loader.LoadBranch(ctx, current, store.Base)
+	loaded, err := loader.LoadBranch(ctx, current, session.BaseBranch())
 	if err != nil {
 		return err
 	}
-	return runReview(ctx, current, loader, loaded, store, false, sideBySide, settings.SetSideBySide, func() error {
-		return pullrequest.OpenBrowser(ctx, current, number, store.Runner)
+	return runReview(ctx, reviewConfig{
+		diff:        loaded,
+		store:       session,
+		diffTargets: []string{session.BaseBranch()},
+		refresh: func(target string) (review.Diff, error) {
+			return loader.LoadBranch(ctx, current, target)
+		},
+		sideBySide:     sideBySide,
+		saveSideBySide: settings.SetSideBySide,
+		openPullRequest: func() error {
+			return session.OpenBrowser(ctx)
+		},
 	})
 }
 
@@ -113,36 +141,31 @@ type reviewStore interface {
 	Delete(context.Context, review.StoredComment, review.Diff) error
 }
 
-func runReview(ctx context.Context, current string, loader gitdiff.Loader, loaded review.Diff, store reviewStore, allowParents bool, sideBySide bool, saveSideBySide tui.SaveSideBySideFunc, openPR tui.OpenPullRequestFunc) error {
-	comments, err := store.List(ctx, loaded)
+type reviewConfig struct {
+	diff            review.Diff
+	store           reviewStore
+	diffTargets     []string
+	refresh         tui.RefreshDiffFunc
+	sideBySide      bool
+	saveSideBySide  tui.SaveSideBySideFunc
+	openPullRequest tui.OpenPullRequestFunc
+}
+
+func runReview(ctx context.Context, config reviewConfig) error {
+	comments, err := config.store.List(ctx, config.diff)
 	if err != nil {
 		return err
 	}
-	model := tui.New(loaded, comments, func(stored review.StoredComment, diff review.Diff) (review.StoredComment, error) {
-		return store.Save(ctx, stored, diff)
+	model := tui.New(config.diff, comments, func(stored review.StoredComment, diff review.Diff) (review.StoredComment, error) {
+		return config.store.Save(ctx, stored, diff)
 	})
-	model.SetSideBySide(sideBySide, saveSideBySide)
+	model.SetSideBySide(config.sideBySide, config.saveSideBySide)
 	model.SetDelete(func(stored review.StoredComment, diff review.Diff) error {
-		return store.Delete(ctx, stored, diff)
+		return config.store.Delete(ctx, stored, diff)
 	})
-	model.SetOpenPullRequest(openPR)
-	if allowParents {
-		parents, err := loader.ParentBranches(ctx, current)
-		if err != nil {
-			return err
-		}
-		model.SetParents(parents)
-		model.SetRefresh(func(parent string) (review.Diff, error) {
-			if parent != "" {
-				return loader.LoadBranch(ctx, current, parent)
-			}
-			return loader.Load(ctx, current)
-		})
-	} else {
-		model.SetRefresh(func(string) (review.Diff, error) {
-			return loader.LoadBranch(ctx, current, loaded.Base)
-		})
-	}
+	model.SetOpenPullRequest(config.openPullRequest)
+	model.SetDiffTargets(config.diffTargets)
+	model.SetRefresh(config.refresh)
 	program := tea.NewProgram(model)
 	_, err = program.Run()
 	return err

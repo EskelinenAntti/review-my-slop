@@ -17,12 +17,12 @@ func TestOpenChecksOutPullRequestAndLoadsMetadata(t *testing.T) {
 		[]byte(`{"id":"PR_node","number":123,"baseRefName":"main"}`),
 		[]byte(`{"nameWithOwner":"owner/repo"}`),
 	}}
-	store, err := Open(context.Background(), "/repo", 123, runner)
+	session, err := Open(context.Background(), "/repo", 123, runner)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if store.Number != 123 || store.Base != "main" || store.Repo != "owner/repo" || store.PullRequestID != "PR_node" {
-		t.Fatalf("store = %#v", store)
+	if session.number != 123 || session.BaseBranch() != "main" || session.repo != "owner/repo" || session.pullRequestID != "PR_node" {
+		t.Fatalf("session = %#v", session)
 	}
 	want := [][]string{
 		{"pr", "checkout", "123"},
@@ -55,13 +55,13 @@ func TestOpenBrowserUsesCurrentOrExplicitPullRequest(t *testing.T) {
 	}
 }
 
-func TestStoreListsPendingReviewComments(t *testing.T) {
+func TestSessionListsPendingReviewComments(t *testing.T) {
 	runner := &fakeRunner{responses: [][]byte{
 		[]byte(`[{"id":7,"node_id":"review-node","state":"PENDING"}]`),
 		[]byte(`[{"id":9,"node_id":"comment-node","body":"fix this","path":"main.go","diff_hunk":"@@ -1 +1 @@","line":4,"start_line":3,"side":"RIGHT"}]`),
 	}}
-	store := testStore(runner)
-	comments, err := store.List(context.Background(), review.Diff{})
+	session := testSession(runner)
+	comments, err := session.List(context.Background(), review.Diff{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -70,18 +70,18 @@ func TestStoreListsPendingReviewComments(t *testing.T) {
 	}
 }
 
-func TestStoreCreatesPendingReviewForFirstComment(t *testing.T) {
+func TestSessionCreatesPendingReviewForFirstComment(t *testing.T) {
 	runner := &fakeRunner{responses: [][]byte{
 		[]byte(`[]`),
 		[]byte(`{"data":{"addPullRequestReview":{"pullRequestReview":{"id":"review-node","databaseId":7,"comments":{"nodes":[{"id":"comment-node","body":"fix this","path":"main.go","diffHunk":"@@","line":4,"startLine":3}]}}}}}`),
 	}}
-	store := testStore(runner)
-	saved, err := store.Save(context.Background(), newComment(), review.Diff{})
+	session := testSession(runner)
+	saved, err := session.Save(context.Background(), newComment(), review.Diff{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if saved.ID != "comment-node" || store.reviewNodeID != "review-node" {
-		t.Fatalf("saved = %#v, review node = %q", saved, store.reviewNodeID)
+	if saved.ID != "comment-node" || session.reviewNodeID != "review-node" {
+		t.Fatalf("saved = %#v, review node = %q", saved, session.reviewNodeID)
 	}
 	input := runner.requests[1].inputMap(t)
 	variables := input["variables"].(map[string]any)
@@ -96,27 +96,27 @@ func TestStoreCreatesPendingReviewForFirstComment(t *testing.T) {
 	}
 }
 
-func TestStoreAddsUpdatesAndDeletesDraftComment(t *testing.T) {
+func TestSessionAddsUpdatesAndDeletesDraftComment(t *testing.T) {
 	runner := &fakeRunner{responses: [][]byte{
 		[]byte(`[{"id":7,"node_id":"review-node","state":"PENDING"}]`),
 		[]byte(`{"data":{"addPullRequestReviewThread":{"thread":{"comments":{"nodes":[{"id":"comment-node","body":"fix this","path":"main.go","diffHunk":"@@","line":4,"startLine":3}]}}}}}`),
 		[]byte(`{"data":{"updatePullRequestReviewComment":{"pullRequestReviewComment":{"id":"comment-node","body":"edited","path":"main.go","diffHunk":"@@","line":4,"startLine":3}}}}`),
 		[]byte(`{"data":{"deletePullRequestReviewComment":{"clientMutationId":null}}}`),
 	}}
-	store := testStore(runner)
-	saved, err := store.Save(context.Background(), newComment(), review.Diff{})
+	session := testSession(runner)
+	saved, err := session.Save(context.Background(), newComment(), review.Diff{})
 	if err != nil {
 		t.Fatal(err)
 	}
 	saved.Comment.Body = "edited"
-	updated, err := store.Save(context.Background(), saved, review.Diff{})
+	updated, err := session.Save(context.Background(), saved, review.Diff{})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if updated.ID != "comment-node" || updated.Comment.Body != "edited" {
 		t.Fatalf("updated = %#v", updated)
 	}
-	if err := store.Delete(context.Background(), updated, review.Diff{}); err != nil {
+	if err := session.Delete(context.Background(), updated, review.Diff{}); err != nil {
 		t.Fatal(err)
 	}
 	for index, mutation := range []string{"addPullRequestReviewThread", "updatePullRequestReviewComment", "deletePullRequestReviewComment"} {
@@ -126,12 +126,12 @@ func TestStoreAddsUpdatesAndDeletesDraftComment(t *testing.T) {
 	}
 }
 
-func TestStorePreservesLeftSideForGraphQLComments(t *testing.T) {
+func TestSessionPreservesLeftSideForGraphQLComments(t *testing.T) {
 	runner := &fakeRunner{responses: [][]byte{
 		[]byte(`[]`),
 		[]byte(`{"data":{"addPullRequestReview":{"pullRequestReview":{"id":"review-node","databaseId":7,"comments":{"nodes":[{"id":"comment-node","body":"fix this","path":"main.go","diffHunk":"@@","line":4,"startLine":3}]}}}}}`),
 	}}
-	store := testStore(runner)
+	session := testSession(runner)
 	comment := newComment()
 	comment.Comment.Anchor = review.Anchor{
 		File:        "main.go",
@@ -140,7 +140,7 @@ func TestStorePreservesLeftSideForGraphQLComments(t *testing.T) {
 		QuotedLines: []string{"-first", "-second"},
 	}
 
-	saved, err := store.Save(context.Background(), comment, review.Diff{})
+	saved, err := session.Save(context.Background(), comment, review.Diff{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -172,14 +172,14 @@ func newComment() review.StoredComment {
 	}}
 }
 
-func testStore(runner Runner) *Store {
-	return &Store{
-		Runner:        runner,
-		Dir:           "/repo",
-		Repo:          "owner/repo",
-		Number:        123,
-		Base:          "main",
-		PullRequestID: "PR_node",
+func testSession(runner Runner) *Session {
+	return &Session{
+		runner:        runner,
+		dir:           "/repo",
+		repo:          "owner/repo",
+		number:        123,
+		baseBranch:    "main",
+		pullRequestID: "PR_node",
 	}
 }
 

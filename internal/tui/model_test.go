@@ -583,11 +583,10 @@ func TestOpenPullRequestKeyRemainsSearchInput(t *testing.T) {
 
 func TestFocusAndManualRefreshLoadCurrentView(t *testing.T) {
 	model := New(testDiff(), nil, nil)
-	model.SetParents([]string{"main"})
-	model.target = 1
+	model.SetDiffTargets([]string{"main"})
 	var requested []string
-	model.SetRefresh(func(parent string) (review.Diff, error) {
-		requested = append(requested, parent)
+	model.SetRefresh(func(target string) (review.Diff, error) {
+		requested = append(requested, target)
 		diff := testDiff()
 		diff.Fingerprint = fmt.Sprintf("refresh-%d", len(requested))
 		return diff, nil
@@ -608,7 +607,7 @@ func TestFocusAndManualRefreshLoadCurrentView(t *testing.T) {
 	model = update(t, model, cmd())
 
 	if len(requested) != 2 || requested[0] != "main" || requested[1] != "main" {
-		t.Fatalf("refresh parents = %#v, want current branch twice", requested)
+		t.Fatalf("refresh targets = %#v, want current branch twice", requested)
 	}
 	if model.diff.Fingerprint != "refresh-2" {
 		t.Fatalf("fingerprint = %q, want second refresh", model.diff.Fingerprint)
@@ -725,20 +724,20 @@ func TestSideBySideCancelledSearchRestoresPane(t *testing.T) {
 
 func TestTabCyclesParentBranchesAndIgnoresStaleRefresh(t *testing.T) {
 	model := New(testDiff(), nil, nil)
-	model.SetParents([]string{"stack-one", "main"})
+	model.SetDiffTargets([]string{"", "stack-one", "main"})
 	var requested string
-	model.SetRefresh(func(parent string) (review.Diff, error) {
-		requested = parent
+	model.SetRefresh(func(target string) (review.Diff, error) {
+		requested = target
 		diff := testDiff()
-		diff.Base = parent
-		diff.Fingerprint = parent
+		diff.Base = target
+		diff.Fingerprint = target
 		return diff, nil
 	})
 
 	next, cmd := model.Update(specialKey(tea.KeyTab))
 	model = next.(Model)
-	if model.currentParent() != "stack-one" || cmd == nil {
-		t.Fatalf("parent = %q cmd = %v, want stack-one load", model.currentParent(), cmd)
+	if model.currentDiffTarget() != "stack-one" || cmd == nil {
+		t.Fatalf("target = %q cmd = %v, want stack-one load", model.currentDiffTarget(), cmd)
 	}
 	msg := cmd()
 	model = update(t, model, msg)
@@ -759,14 +758,14 @@ func TestTabCyclesParentBranchesAndIgnoresStaleRefresh(t *testing.T) {
 	next, cmd = model.Update(specialKey(tea.KeyTab))
 	model = next.(Model)
 	model = update(t, model, cmd())
-	if model.currentParent() != "main" || requested != "main" {
-		t.Fatalf("second parent=%q requested=%q", model.currentParent(), requested)
+	if model.currentDiffTarget() != "main" || requested != "main" {
+		t.Fatalf("second target=%q requested=%q", model.currentDiffTarget(), requested)
 	}
 	next, cmd = model.Update(specialKey(tea.KeyTab))
 	model = next.(Model)
 	model = update(t, model, cmd())
-	if model.currentParent() != "" || requested != "" {
-		t.Fatalf("wrapped parent=%q requested=%q, want local", model.currentParent(), requested)
+	if model.currentDiffTarget() != "" || requested != "" {
+		t.Fatalf("wrapped target=%q requested=%q, want local", model.currentDiffTarget(), requested)
 	}
 }
 

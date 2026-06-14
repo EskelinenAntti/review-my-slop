@@ -20,13 +20,13 @@ import (
 
 type SaveCommentFunc func(review.StoredComment, review.Diff) (review.StoredComment, error)
 type DeleteCommentFunc func(review.StoredComment, review.Diff) error
-type RefreshDiffFunc func(parent string) (review.Diff, error)
+type RefreshDiffFunc func(target string) (review.Diff, error)
 type SaveSideBySideFunc func(bool) error
 type OpenPullRequestFunc func() error
 
 type refreshDiffMsg struct {
 	diff   review.Diff
-	parent string
+	target string
 	err    error
 }
 
@@ -98,7 +98,7 @@ type Model struct {
 	sideBySide  bool
 	saveLayout  SaveSideBySideFunc
 	activePane  pane
-	parents     []string
+	diffTargets []string
 	target      int
 	search      []rune
 	searchTerm  string
@@ -132,9 +132,9 @@ func (m *Model) SetDelete(deleteComment DeleteCommentFunc) {
 	m.delete = deleteComment
 }
 
-func (m *Model) SetParents(parents []string) {
-	m.parents = append([]string(nil), parents...)
-	m.target = min(m.target, len(m.parents))
+func (m *Model) SetDiffTargets(targets []string) {
+	m.diffTargets = append([]string(nil), targets...)
+	m.target = min(m.target, max(0, len(m.diffTargets)-1))
 }
 
 func (m *Model) SetSideBySide(enabled bool, save SaveSideBySideFunc) {
@@ -194,7 +194,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.FocusMsg:
 		return m, m.loadRefresh()
 	case refreshDiffMsg:
-		if msg.parent != m.currentParent() {
+		if msg.target != m.currentDiffTarget() {
 			return m, nil
 		}
 		if msg.err != nil {
@@ -214,10 +214,10 @@ func (m Model) loadRefresh() tea.Cmd {
 	if m.refresh == nil {
 		return nil
 	}
-	parent := m.currentParent()
+	target := m.currentDiffTarget()
 	return func() tea.Msg {
-		diff, err := m.refresh(parent)
-		return refreshDiffMsg{diff: diff, parent: parent, err: err}
+		diff, err := m.refresh(target)
+		return refreshDiffMsg{diff: diff, target: target, err: err}
 	}
 }
 
@@ -445,7 +445,10 @@ func (m Model) updateKey(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	case "R":
 		return m, m.loadRefresh()
 	case "tab":
-		m.target = (m.target + 1) % (len(m.parents) + 1)
+		if len(m.diffTargets) == 0 {
+			return m, nil
+		}
+		m.target = (m.target + 1) % len(m.diffTargets)
 		m.cancelSelection()
 		return m, m.loadRefresh()
 	case "t":
@@ -919,7 +922,7 @@ func (m Model) render() string {
 
 	if len(m.rows) == 0 {
 		empty := "No unstaged or untracked changes."
-		if m.currentParent() != "" {
+		if m.currentDiffTarget() != "" {
 			empty = "No branch or worktree changes."
 		}
 		out.WriteString("\n" + mutedStyle.Render(empty) + "\n")
@@ -1046,18 +1049,18 @@ func (m Model) renderFooter(left string) string {
 }
 
 func (m Model) viewLabel() string {
-	parent := m.currentParent()
-	if parent == "" {
+	target := m.currentDiffTarget()
+	if target == "" {
 		return "local changes"
 	}
-	return "branch changes from " + parent
+	return "branch changes from " + target
 }
 
-func (m Model) currentParent() string {
-	if m.target <= 0 || m.target > len(m.parents) {
+func (m Model) currentDiffTarget() string {
+	if m.target < 0 || m.target >= len(m.diffTargets) {
 		return ""
 	}
-	return m.parents[m.target-1]
+	return m.diffTargets[m.target]
 }
 
 func (m Model) renderComments() string {
