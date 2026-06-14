@@ -47,6 +47,8 @@ const (
 	rowCode
 )
 
+const horizontalScrollStep = 4
+
 type row struct {
 	kind      rowKind
 	fileIndex int
@@ -359,9 +361,9 @@ func (m Model) updateKey(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	case "k", "up":
 		m.moveVertical(-1)
 	case "h", "left":
-		m.scrollHorizontal(-1)
+		m.scrollHorizontal(-horizontalScrollStep)
 	case "l", "right":
-		m.scrollHorizontal(1)
+		m.scrollHorizontal(horizontalScrollStep)
 	case "0":
 		m.xOffset = 0
 	case "$":

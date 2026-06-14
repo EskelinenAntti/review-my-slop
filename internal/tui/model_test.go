@@ -959,17 +959,43 @@ func TestHorizontalScrollKeepsUnifiedGutterFixed(t *testing.T) {
 
 	before := ansi.Strip(model.renderRow(index))
 	model = update(t, model, textKey("l"))
-	model = update(t, model, textKey("l"))
 	after := ansi.Strip(model.renderRow(index))
 
 	if before[:14] != after[:14] {
 		t.Fatalf("gutter moved: before=%q after=%q", before[:14], after[:14])
 	}
-	if !strings.Contains(after[14:], "cdefgh") {
-		t.Fatalf("scrolled content = %q, want content starting at offset 2", after[14:])
+	if !strings.Contains(after[14:], "efghij") {
+		t.Fatalf("scrolled content = %q, want content starting at offset 4", after[14:])
 	}
-	if model.xOffset != 2 {
-		t.Fatalf("horizontal offset = %d, want 2", model.xOffset)
+	if model.xOffset != horizontalScrollStep {
+		t.Fatalf("horizontal offset = %d, want %d", model.xOffset, horizontalScrollStep)
+	}
+}
+
+func TestHorizontalScrollKeysMoveByStep(t *testing.T) {
+	model := New(testDiff(), nil, nil)
+	model.width = 37
+	index := findCodeRow(t, model, review.LineContext)
+	model.rows[index].text = strings.Repeat("x", 80)
+
+	for _, key := range []tea.KeyPressMsg{
+		textKey("l"),
+		{Code: tea.KeyRight},
+	} {
+		model = update(t, model, key)
+	}
+	if model.xOffset != 2*horizontalScrollStep {
+		t.Fatalf("rightward offset = %d, want %d", model.xOffset, 2*horizontalScrollStep)
+	}
+
+	for _, key := range []tea.KeyPressMsg{
+		textKey("h"),
+		{Code: tea.KeyLeft},
+	} {
+		model = update(t, model, key)
+	}
+	if model.xOffset != 0 {
+		t.Fatalf("leftward offset = %d, want 0", model.xOffset)
 	}
 }
 

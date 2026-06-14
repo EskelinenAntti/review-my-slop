@@ -27,7 +27,8 @@ comment is saved.
 Saving an empty file discards the comment, including when editing an existing
 comment. Press `C` to browse pending comments, edit one with `Enter`, or delete
 one with `D`.
-Long lines can be scrolled with `h`/`l` or the left/right arrow keys;
+Long lines can be scrolled four columns at a time with `h`/`l` or the
+left/right arrow keys;
 `0` and `$` jump to the horizontal start and end. Press `e` to open the current
 line in `$EDITOR`. The diff refreshes when the terminal gains focus and keeps
 the cursor on the same changed line when possible; press `R` to refresh it
