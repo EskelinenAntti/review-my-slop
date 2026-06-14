@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/anttieskelinen/review-my-slop/internal/review"
+	"github.com/eskelinenantti/review-my-slop/internal/review"
 )
 
 func TestLoaderIncludesUnstagedAndUntrackedButNotStagedOnly(t *testing.T) {

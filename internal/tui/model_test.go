@@ -13,7 +13,7 @@ import (
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 
-	"github.com/anttieskelinen/review-my-slop/internal/review"
+	"github.com/eskelinenantti/review-my-slop/internal/review"
 )
 
 func TestVisualSelectionCreatesMappedAnchorAndSubmits(t *testing.T) {

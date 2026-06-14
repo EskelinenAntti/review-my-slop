@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/anttieskelinen/review-my-slop/internal/review"
+	"github.com/eskelinenantti/review-my-slop/internal/review"
 )
 
 func TestStoreQueuesByRepositoryAndDeletesExactPeek(t *testing.T) {

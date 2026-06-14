@@ -14,7 +14,7 @@ requires `git`, a POSIX shell, and a terminal.
 ## Install from source
 
 ```sh
-go install github.com/anttieskelinen/review-my-slop/cmd/review-my-slop@latest
+go install github.com/eskelinenantti/review-my-slop/cmd/review-my-slop@latest
 ```
 
 ## Usage

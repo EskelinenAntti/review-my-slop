@@ -13,9 +13,9 @@ import (
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 
-	"github.com/anttieskelinen/review-my-slop/internal/highlight"
-	"github.com/anttieskelinen/review-my-slop/internal/review"
-	"github.com/anttieskelinen/review-my-slop/internal/xdg"
+	"github.com/eskelinenantti/review-my-slop/internal/highlight"
+	"github.com/eskelinenantti/review-my-slop/internal/review"
+	"github.com/eskelinenantti/review-my-slop/internal/xdg"
 )
 
 type SaveCommentFunc func(review.StoredComment, review.Diff) (review.StoredComment, error)

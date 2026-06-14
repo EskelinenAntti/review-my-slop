@@ -9,8 +9,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/anttieskelinen/review-my-slop/internal/inbox"
-	"github.com/anttieskelinen/review-my-slop/internal/review"
+	"github.com/eskelinenantti/review-my-slop/internal/inbox"
+	"github.com/eskelinenantti/review-my-slop/internal/review"
 )
 
 func TestRunCommentsPrintsAndConsumesCurrentRepositoryFeedback(t *testing.T) {

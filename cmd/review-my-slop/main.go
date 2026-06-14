@@ -9,10 +9,10 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
-	"github.com/anttieskelinen/review-my-slop/internal/gitdiff"
-	"github.com/anttieskelinen/review-my-slop/internal/inbox"
-	"github.com/anttieskelinen/review-my-slop/internal/review"
-	"github.com/anttieskelinen/review-my-slop/internal/tui"
+	"github.com/eskelinenantti/review-my-slop/internal/gitdiff"
+	"github.com/eskelinenantti/review-my-slop/internal/inbox"
+	"github.com/eskelinenantti/review-my-slop/internal/review"
+	"github.com/eskelinenantti/review-my-slop/internal/tui"
 )
 
 func main() {

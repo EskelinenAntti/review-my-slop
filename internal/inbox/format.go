@@ -5,7 +5,7 @@ import (
 	"io"
 	"strings"
 
-	"github.com/anttieskelinen/review-my-slop/internal/review"
+	"github.com/eskelinenantti/review-my-slop/internal/review"
 )
 
 func WritePrompt(w io.Writer, messages []Message) error {

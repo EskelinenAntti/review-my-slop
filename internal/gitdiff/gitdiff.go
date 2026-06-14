@@ -16,7 +16,7 @@ import (
 
 	"github.com/sourcegraph/go-diff/diff"
 
-	"github.com/anttieskelinen/review-my-slop/internal/review"
+	"github.com/eskelinenantti/review-my-slop/internal/review"
 )
 
 const maxFileBytes = 2 << 20
