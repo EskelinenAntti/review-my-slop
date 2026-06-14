@@ -98,6 +98,20 @@ func TestRunRejectsUnknownSubcommand(t *testing.T) {
 	}
 }
 
+func TestRunRejectsInvalidPullRequestNumber(t *testing.T) {
+	err := run(context.Background(), []string{"pr", "nope"}, &bytes.Buffer{})
+	if err == nil || !strings.Contains(err.Error(), `invalid pull request number "nope"`) {
+		t.Fatalf("error = %v", err)
+	}
+}
+
+func TestRunRequiresPullRequestNumber(t *testing.T) {
+	err := run(context.Background(), []string{"pr"}, &bytes.Buffer{})
+	if err == nil || !strings.Contains(err.Error(), "pr NUMBER") {
+		t.Fatalf("error = %v", err)
+	}
+}
+
 type failingWriter struct{}
 
 func (failingWriter) Write([]byte) (int, error) {

@@ -37,6 +37,12 @@ branches, ordered from the nearest stacked parent to the default branch. Each
 branch view compares that branch's merge-base commit with the worktree, so
 committed, staged, unstaged, and untracked changes are all included. Press `/`
 to search the diff, then use `n` and `N` to move between matches.
+Press `o` to open the current branch's pull request in a browser using `gh`.
+
+Run `review-my-slop pr 123` to check out pull request 123 with the GitHub CLI
+and review it against its base branch. Comments created in this mode are saved
+to your pending GitHub pull request review instead of the local inbox. The
+command requires an authenticated `gh` installation.
 
 The AI-facing `review-my-slop comments` command prints and consumes all pending
 feedback for its current repository. Re-run it to retrieve comments saved while

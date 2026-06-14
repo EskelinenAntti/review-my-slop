@@ -492,6 +492,7 @@ func TestStatusShowsBasicBindingsAndHelpShowsCompleteKeyMap(t *testing.T) {
 	for _, binding := range []keyBinding{
 		{keys: "v", description: "select a line range"},
 		{keys: "e", description: "open current line in $EDITOR"},
+		{keys: "o", description: "open pull request in browser"},
 		{keys: "C", description: "view comments"},
 		{keys: "R", description: "refresh diff"},
 		{keys: "/", description: "search diff text"},
@@ -503,6 +504,43 @@ func TestStatusShowsBasicBindingsAndHelpShowsCompleteKeyMap(t *testing.T) {
 		if !strings.Contains(help, binding.keys) || !strings.Contains(help, binding.description) {
 			t.Fatalf("help does not contain %#v:\n%s", binding, help)
 		}
+	}
+}
+
+func TestOpenPullRequestKeyWorksOutsideSearchMode(t *testing.T) {
+	for _, currentMode := range []mode{modeBrowse, modeComments, modeHelp} {
+		model := New(testDiff(), nil, nil)
+		model.mode = currentMode
+		called := false
+		model.SetOpenPullRequest(func() error {
+			called = true
+			return nil
+		})
+
+		next, cmd := model.Update(textKey("o"))
+		model = next.(Model)
+		if cmd == nil {
+			t.Fatalf("mode %d: open command is nil", currentMode)
+		}
+		model = update(t, model, cmd())
+		if !called || model.err != nil {
+			t.Fatalf("mode %d: called=%v err=%v", currentMode, called, model.err)
+		}
+	}
+}
+
+func TestOpenPullRequestKeyRemainsSearchInput(t *testing.T) {
+	model := New(testDiff(), nil, nil)
+	model.mode = modeSearch
+	called := false
+	model.SetOpenPullRequest(func() error {
+		called = true
+		return nil
+	})
+
+	model = update(t, model, textKey("o"))
+	if called || string(model.search) != "o" {
+		t.Fatalf("called=%v search=%q", called, model.search)
 	}
 }
 

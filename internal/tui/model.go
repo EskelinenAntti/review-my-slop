@@ -22,6 +22,7 @@ type SaveCommentFunc func(review.StoredComment, review.Diff) (review.StoredComme
 type DeleteCommentFunc func(review.StoredComment, review.Diff) error
 type RefreshDiffFunc func(parent string) (review.Diff, error)
 type SaveSideBySideFunc func(bool) error
+type OpenPullRequestFunc func() error
 
 type refreshDiffMsg struct {
 	diff   review.Diff
@@ -35,6 +36,10 @@ type commentEditorFinishedMsg struct {
 }
 
 type sourceEditorFinishedMsg struct {
+	err error
+}
+
+type pullRequestOpenedMsg struct {
 	err error
 }
 
@@ -86,6 +91,7 @@ type Model struct {
 	save        SaveCommentFunc
 	delete      DeleteCommentFunc
 	refresh     RefreshDiffFunc
+	openPR      OpenPullRequestFunc
 	err         error
 	quitting    bool
 	pendingKey  string
@@ -136,6 +142,10 @@ func (m *Model) SetSideBySide(enabled bool, save SaveSideBySideFunc) {
 	m.setSideBySide(enabled)
 }
 
+func (m *Model) SetOpenPullRequest(openPR OpenPullRequestFunc) {
+	m.openPR = openPR
+}
+
 func (m Model) Init() tea.Cmd {
 	return func() tea.Msg {
 		return tea.RequestBackgroundColor()
@@ -172,6 +182,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case sourceEditorFinishedMsg:
 		if msg.err != nil {
 			m.err = fmt.Errorf("editor: %w", msg.err)
+		}
+		return m, nil
+	case pullRequestOpenedMsg:
+		if msg.err != nil {
+			m.err = fmt.Errorf("open pull request: %w", msg.err)
+		} else {
+			m.err = nil
 		}
 		return m, nil
 	case tea.FocusMsg:
@@ -290,6 +307,11 @@ func (m Model) rowMatches(anchor rowAnchor, current row, exact bool) bool {
 
 func (m Model) updateKey(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	name := key.String()
+	if name == "o" && m.mode != modeSearch && m.openPR != nil {
+		return m, func() tea.Msg {
+			return pullRequestOpenedMsg{err: m.openPR()}
+		}
+	}
 	if m.mode == modeComments {
 		return m.updateComments(name)
 	}
@@ -1073,6 +1095,7 @@ func (m Model) renderHelp() string {
 		{"v", "select a line range"},
 		{"c", "comment on selection/current line"},
 		{"e", "open current line in $EDITOR"},
+		{"o", "open pull request in browser"},
 		{"C", "view comments"},
 		{"R", "refresh diff"},
 		{"Tab", "cycle local/parent branch changes"},
