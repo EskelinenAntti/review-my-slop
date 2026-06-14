@@ -41,6 +41,14 @@ The AI-facing `review-my-slop comments` command prints and consumes all pending
 feedback for its current repository. Re-run it to retrieve comments saved while
 the AI was working.
 
+## Example AI skill
+
+[`examples/skills/comments`](examples/skills/comments) contains an example
+`comments` skill that teaches an AI coding agent to retrieve, address, verify,
+and re-check review feedback. Copy that directory into your agent's skills
+directory, then invoke it as `/comments` (or `$comments` in agents that use
+dollar-prefixed skill names).
+
 Pending comments are stored in
 `$XDG_DATA_HOME/review-my-slop/inbox.db`, defaulting to
 `~/.local/share/review-my-slop/inbox.db`. Temporary editor drafts use
