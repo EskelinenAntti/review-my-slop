@@ -73,7 +73,7 @@ func TestStoreListsPendingReviewComments(t *testing.T) {
 func TestStoreCreatesPendingReviewForFirstComment(t *testing.T) {
 	runner := &fakeRunner{responses: [][]byte{
 		[]byte(`[]`),
-		[]byte(`{"data":{"addPullRequestReview":{"pullRequestReview":{"id":"review-node","databaseId":7,"comments":{"nodes":[{"id":"comment-node","body":"fix this","path":"main.go","diffHunk":"@@","line":4,"startLine":3,"side":"RIGHT"}]}}}}}`),
+		[]byte(`{"data":{"addPullRequestReview":{"pullRequestReview":{"id":"review-node","databaseId":7,"comments":{"nodes":[{"id":"comment-node","body":"fix this","path":"main.go","diffHunk":"@@","line":4,"startLine":3}]}}}}}`),
 	}}
 	store := testStore(runner)
 	saved, err := store.Save(context.Background(), newComment(), review.Diff{})
@@ -99,8 +99,8 @@ func TestStoreCreatesPendingReviewForFirstComment(t *testing.T) {
 func TestStoreAddsUpdatesAndDeletesDraftComment(t *testing.T) {
 	runner := &fakeRunner{responses: [][]byte{
 		[]byte(`[{"id":7,"node_id":"review-node","state":"PENDING"}]`),
-		[]byte(`{"data":{"addPullRequestReviewThread":{"thread":{"comments":{"nodes":[{"id":"comment-node","body":"fix this","path":"main.go","diffHunk":"@@","line":4,"startLine":3,"side":"RIGHT"}]}}}}}`),
-		[]byte(`{"data":{"updatePullRequestReviewComment":{"pullRequestReviewComment":{"id":"comment-node","body":"edited","path":"main.go","diffHunk":"@@","line":4,"startLine":3,"side":"RIGHT"}}}}`),
+		[]byte(`{"data":{"addPullRequestReviewThread":{"thread":{"comments":{"nodes":[{"id":"comment-node","body":"fix this","path":"main.go","diffHunk":"@@","line":4,"startLine":3}]}}}}}`),
+		[]byte(`{"data":{"updatePullRequestReviewComment":{"pullRequestReviewComment":{"id":"comment-node","body":"edited","path":"main.go","diffHunk":"@@","line":4,"startLine":3}}}}`),
 		[]byte(`{"data":{"deletePullRequestReviewComment":{"clientMutationId":null}}}`),
 	}}
 	store := testStore(runner)
@@ -123,6 +123,32 @@ func TestStoreAddsUpdatesAndDeletesDraftComment(t *testing.T) {
 		if !strings.Contains(string(runner.requests[index+1].input), mutation) {
 			t.Fatalf("request %d does not contain %s: %s", index+1, mutation, runner.requests[index+1].input)
 		}
+	}
+}
+
+func TestStorePreservesLeftSideForGraphQLComments(t *testing.T) {
+	runner := &fakeRunner{responses: [][]byte{
+		[]byte(`[]`),
+		[]byte(`{"data":{"addPullRequestReview":{"pullRequestReview":{"id":"review-node","databaseId":7,"comments":{"nodes":[{"id":"comment-node","body":"fix this","path":"main.go","diffHunk":"@@","line":4,"startLine":3}]}}}}}`),
+	}}
+	store := testStore(runner)
+	comment := newComment()
+	comment.Comment.Anchor = review.Anchor{
+		File:        "main.go",
+		OldStart:    3,
+		OldEnd:      4,
+		QuotedLines: []string{"-first", "-second"},
+	}
+
+	saved, err := store.Save(context.Background(), comment, review.Diff{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if saved.Comment.Anchor.OldStart != 3 || saved.Comment.Anchor.OldEnd != 4 || saved.Comment.Anchor.NewEnd != 0 {
+		t.Fatalf("saved anchor = %#v", saved.Comment.Anchor)
+	}
+	if strings.Contains(string(runner.requests[1].input), "\n\tside\n") {
+		t.Fatalf("GraphQL query still requests removed side field: %s", runner.requests[1].input)
 	}
 }
 

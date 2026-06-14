@@ -26,7 +26,6 @@ func TestVisualSelectionCreatesMappedAnchorAndSubmits(t *testing.T) {
 		return stored, nil
 	})
 
-	model = update(t, model, textKey("j"))
 	model = update(t, model, textKey("v"))
 	model = update(t, model, textKey("j"))
 	model = update(t, model, textKey("c"))
@@ -35,13 +34,13 @@ func TestVisualSelectionCreatesMappedAnchorAndSubmits(t *testing.T) {
 		t.Fatalf("saved comments = %d, want 1", len(saved))
 	}
 	anchor := saved[0].Anchor
-	if anchor.File != "main.go" || anchor.OldStart != 2 || anchor.OldEnd != 2 ||
-		anchor.NewStart != 2 || anchor.NewEnd != 2 {
+	if anchor.File != "main.go" || anchor.OldStart != 1 || anchor.OldEnd != 2 ||
+		anchor.NewStart != 1 || anchor.NewEnd != 1 {
 		t.Fatalf("unexpected anchor: %#v", anchor)
 	}
 	if len(anchor.QuotedLines) != 2 ||
-		anchor.QuotedLines[0] != "-old()" ||
-		anchor.QuotedLines[1] != "+new()" {
+		anchor.QuotedLines[0] != " package main" ||
+		anchor.QuotedLines[1] != "-old()" {
 		t.Fatalf("unexpected quoted lines: %#v", anchor.QuotedLines)
 	}
 
@@ -343,6 +342,44 @@ func TestSelectionCannotCrossHunk(t *testing.T) {
 	}
 	if model.rows[model.cursor].hunkIndex != 0 {
 		t.Fatalf("selection crossed into hunk %d", model.rows[model.cursor].hunkIndex)
+	}
+}
+
+func TestSelectionUsesOneDiffSideWithoutBlockingMovement(t *testing.T) {
+	model := New(testDiff(), nil, nil)
+
+	model = update(t, model, textKey("j"))
+	model = update(t, model, textKey("v"))
+	model = update(t, model, textKey("j"))
+	if model.rows[model.cursor].line.Kind != review.LineAdded {
+		t.Fatalf("cursor kind = %v, want added line", model.rows[model.cursor].line.Kind)
+	}
+	if model.selected(model.cursor) {
+		t.Fatal("opposite-side added line is selected")
+	}
+	anchor, err := model.currentAnchor()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(anchor.QuotedLines) != 1 || anchor.QuotedLines[0] != "-old()" {
+		t.Fatalf("quoted lines = %#v, want removed side only", anchor.QuotedLines)
+	}
+
+	model = update(t, model, textKey("esc"))
+	model = update(t, model, textKey("v"))
+	model = update(t, model, textKey("k"))
+	if model.rows[model.cursor].line.Kind != review.LineRemoved {
+		t.Fatalf("cursor kind = %v, want removed line", model.rows[model.cursor].line.Kind)
+	}
+	if model.selected(model.cursor) {
+		t.Fatal("opposite-side removed line is selected")
+	}
+	anchor, err = model.currentAnchor()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(anchor.QuotedLines) != 1 || anchor.QuotedLines[0] != "+new()" {
+		t.Fatalf("quoted lines = %#v, want added side only", anchor.QuotedLines)
 	}
 }
 

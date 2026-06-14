@@ -234,9 +234,7 @@ func (m *Model) applyDiff(diff review.Diff) {
 	m.cursor = m.findRow(cursor, cursorFallback)
 	if m.selecting {
 		m.selectFrom = m.findRow(selection, selectionFallback)
-		if !m.isCode(m.selectFrom) || !m.isCode(m.cursor) ||
-			m.rows[m.selectFrom].fileIndex != m.rows[m.cursor].fileIndex ||
-			m.rows[m.selectFrom].hunkIndex != m.rows[m.cursor].hunkIndex {
+		if !m.sameHunk(m.selectFrom, m.cursor) {
 			m.cancelSelection()
 		}
 	}
@@ -398,14 +396,20 @@ func (m Model) updateKey(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		m.pendingKey = name
 	case "g":
 		if pendingKey == "g" {
-			m.cursor = firstCodeRow(m.rows)
-			m.ensureVisible()
+			target := firstCodeRow(m.rows)
+			if !m.selecting || m.sameHunk(m.selectFrom, target) {
+				m.cursor = target
+				m.ensureVisible()
+			}
 		} else {
 			m.pendingKey = "g"
 		}
 	case "G":
-		m.cursor = lastCodeRow(m.rows)
-		m.ensureVisible()
+		target := lastCodeRow(m.rows)
+		if !m.selecting || m.sameHunk(m.selectFrom, target) {
+			m.cursor = target
+			m.ensureVisible()
+		}
 	case "z":
 		m.pendingKey = "z"
 	case "]", "[":
@@ -508,6 +512,9 @@ func (m *Model) repeatSearch(direction int) {
 }
 
 func (m *Model) setSearchCursor(index int) {
+	if m.selecting && !m.sameHunk(m.selectFrom, index) {
+		return
+	}
 	m.cursor = index
 	if m.sideBySideActive() && m.isCode(index) {
 		switch m.rows[index].line.Kind {
@@ -851,16 +858,24 @@ func (m Model) currentAnchor() (review.Anchor, error) {
 	file := m.diff.Files[first.fileIndex]
 	hunk := file.Hunks[first.hunkIndex]
 	anchor := review.Anchor{
-		File:     file.Display,
-		Hunk:     hunk.Header,
-		StartRow: first.lineIndex,
-		EndRow:   last.lineIndex,
+		File: file.Display,
+		Hunk: hunk.Header,
 	}
+	side := m.selectionSide()
+	found := false
 	for index := start; index <= end; index++ {
 		current := m.rows[index]
 		if current.kind != rowCode {
 			return review.Anchor{}, fmt.Errorf("a comment selection cannot include headers")
 		}
+		if !lineOnSide(current.line, side) {
+			continue
+		}
+		if !found {
+			anchor.StartRow = current.lineIndex
+			found = true
+		}
+		anchor.EndRow = current.lineIndex
 		prefix := " "
 		switch current.line.Kind {
 		case review.LineAdded:
@@ -871,6 +886,9 @@ func (m Model) currentAnchor() (review.Anchor, error) {
 		anchor.QuotedLines = append(anchor.QuotedLines, prefix+current.line.Text)
 		accumulateRange(&anchor.OldStart, &anchor.OldEnd, current.line.OldNumber)
 		accumulateRange(&anchor.NewStart, &anchor.NewEnd, current.line.NewNumber)
+	}
+	if !found {
+		return review.Anchor{}, fmt.Errorf("select code lines before commenting")
 	}
 	return anchor, nil
 }
@@ -1421,12 +1439,35 @@ func (m Model) selected(index int) bool {
 		return false
 	}
 	start, end := ordered(m.selectFrom, m.cursor)
-	return index >= start && index <= end && m.rows[index].kind == rowCode
+	if index < start || index > end || m.rows[index].kind != rowCode {
+		return false
+	}
+	return lineOnSide(m.rows[index].line, m.selectionSide())
 }
 
 func (m *Model) cancelSelection() {
 	m.selecting = false
 	m.selectFrom = -1
+}
+
+func (m Model) selectionSide() review.LineKind {
+	if !m.selecting || !m.isCode(m.selectFrom) {
+		return review.LineContext
+	}
+	if kind := m.rows[m.selectFrom].line.Kind; kind != review.LineContext {
+		return kind
+	}
+	start, end := ordered(m.selectFrom, m.cursor)
+	for index := start; index <= end; index++ {
+		if kind := m.rows[index].line.Kind; kind != review.LineContext {
+			return kind
+		}
+	}
+	return review.LineContext
+}
+
+func lineOnSide(line review.Line, side review.LineKind) bool {
+	return line.Kind == review.LineContext || side == review.LineContext || line.Kind == side
 }
 
 func firstCodeRow(rows []row) int {

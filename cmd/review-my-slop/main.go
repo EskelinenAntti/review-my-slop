@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -17,6 +18,8 @@ import (
 	"github.com/eskelinenantti/review-my-slop/internal/tui"
 )
 
+var errUsage = errors.New("usage: review-my-slop [code|comments|pr NUMBER]")
+
 func main() {
 	if err := run(context.Background(), os.Args[1:], os.Stdout); err != nil {
 		fmt.Fprintln(os.Stderr, "review-my-slop:", err)
@@ -31,17 +34,17 @@ func run(ctx context.Context, args []string, output io.Writer) error {
 	switch args[0] {
 	case "code":
 		if len(args) != 1 {
-			return usageError()
+			return errUsage
 		}
 		return runCode(ctx)
 	case "comments":
 		if len(args) != 1 {
-			return usageError()
+			return errUsage
 		}
 		return runComments(ctx, output)
 	case "pr":
 		if len(args) != 2 {
-			return usageError()
+			return errUsage
 		}
 		number, err := strconv.Atoi(args[1])
 		if err != nil || number <= 0 {
@@ -49,12 +52,8 @@ func run(ctx context.Context, args []string, output io.Writer) error {
 		}
 		return runPR(ctx, number)
 	default:
-		return fmt.Errorf("unknown subcommand %q; %w", args[0], usageError())
+		return fmt.Errorf("unknown subcommand %q; %w", args[0], errUsage)
 	}
-}
-
-func usageError() error {
-	return fmt.Errorf("usage: review-my-slop [code|comments|pr NUMBER]")
 }
 
 func runCode(ctx context.Context) error {

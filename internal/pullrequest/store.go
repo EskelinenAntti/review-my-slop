@@ -83,7 +83,6 @@ type graphQLComment struct {
 	DiffHunk          string `json:"diffHunk"`
 	Line              int    `json:"line"`
 	StartLine         int    `json:"startLine"`
-	Side              string `json:"side"`
 	OriginalLine      int    `json:"originalLine"`
 	OriginalStartLine int    `json:"originalStartLine"`
 }
@@ -170,7 +169,7 @@ func (s *Store) Save(ctx context.Context, stored review.StoredComment, _ review.
 		}, &response); err != nil {
 			return review.StoredComment{}, err
 		}
-		return storedGraphQLComment(response.Update.Comment), nil
+		return storedGraphQLComment(response.Update.Comment, commentSide(stored.Comment.Anchor)), nil
 	}
 
 	payload, err := newCommentPayload(stored.Comment)
@@ -203,7 +202,7 @@ func (s *Store) Save(ctx context.Context, stored review.StoredComment, _ review.
 		}
 		s.reviewNodeID = response.Add.Review.ID
 		s.reviewID = response.Add.Review.Database
-		return storedGraphQLComment(response.Add.Review.Comments.Nodes[0]), nil
+		return storedGraphQLComment(response.Add.Review.Comments.Nodes[0], commentSide(stored.Comment.Anchor)), nil
 	}
 
 	payload["pullRequestReviewId"] = s.reviewNodeID
@@ -222,7 +221,7 @@ func (s *Store) Save(ctx context.Context, stored review.StoredComment, _ review.
 	if len(response.Add.Thread.Comments.Nodes) != 1 {
 		return review.StoredComment{}, errors.New("GitHub did not return the created review comment")
 	}
-	return storedGraphQLComment(response.Add.Thread.Comments.Nodes[0]), nil
+	return storedGraphQLComment(response.Add.Thread.Comments.Nodes[0], commentSide(stored.Comment.Anchor)), nil
 }
 
 func (s *Store) Delete(ctx context.Context, stored review.StoredComment, _ review.Diff) error {
@@ -352,8 +351,15 @@ func storedComment(comment apiComment) review.StoredComment {
 	return makeStoredComment(comment.NodeID, comment.Body, comment.Path, comment.DiffHunk, comment.Line, comment.StartLine, comment.Side, comment.StartSide, comment.OriginalLine, comment.OriginalStartLine)
 }
 
-func storedGraphQLComment(comment graphQLComment) review.StoredComment {
-	return makeStoredComment(comment.ID, comment.Body, comment.Path, comment.DiffHunk, comment.Line, comment.StartLine, comment.Side, "", comment.OriginalLine, comment.OriginalStartLine)
+func storedGraphQLComment(comment graphQLComment, side string) review.StoredComment {
+	return makeStoredComment(comment.ID, comment.Body, comment.Path, comment.DiffHunk, comment.Line, comment.StartLine, side, side, comment.OriginalLine, comment.OriginalStartLine)
+}
+
+func commentSide(anchor review.Anchor) string {
+	if anchor.OldEnd > 0 {
+		return "LEFT"
+	}
+	return "RIGHT"
 }
 
 func makeStoredComment(id, body, path, diffHunk string, line, start int, side, startSide string, originalLine, originalStart int) review.StoredComment {
@@ -396,7 +402,6 @@ const commentFields = `
 	diffHunk
 	line
 	startLine
-	side
 	originalLine
 	originalStartLine
 `
