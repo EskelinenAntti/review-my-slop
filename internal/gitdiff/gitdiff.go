@@ -49,6 +49,16 @@ type Loader struct {
 	Runner Runner
 }
 
+func (l Loader) StageAll(ctx context.Context, root string) error {
+	if l.Runner == nil {
+		l.Runner = ExecRunner{}
+	}
+	if _, err := l.Runner.Run(ctx, root, "add", "--all", "--"); err != nil {
+		return fmt.Errorf("stage local changes: %w", err)
+	}
+	return nil
+}
+
 func (l Loader) Root(ctx context.Context, dir string) (string, error) {
 	if l.Runner == nil {
 		l.Runner = ExecRunner{}
