@@ -1,6 +1,7 @@
 package inbox
 
 import (
+	"bytes"
 	"encoding/binary"
 	"encoding/json"
 	"errors"
@@ -20,7 +21,13 @@ const (
 	maxPendingBytes = 16 << 20
 )
 
-var messagesBucket = []byte("messages")
+var (
+	messagesBucket  = []byte("messages")
+	settingsBucket  = []byte("settings")
+	sideBySideKey   = []byte("side-by-side")
+	enabledSetting  = []byte{1}
+	disabledSetting = []byte{0}
+)
 
 type Store struct {
 	Path string
@@ -193,14 +200,37 @@ func (s Store) Delete(taken Taken) error {
 	})
 }
 
+func (s Store) SideBySide() (bool, error) {
+	var enabled bool
+	err := s.viewBucket(settingsBucket, func(bucket *bolt.Bucket) error {
+		enabled = bytes.Equal(bucket.Get(sideBySideKey), enabledSetting)
+		return nil
+	})
+	return enabled, err
+}
+
+func (s Store) SetSideBySide(enabled bool) error {
+	value := disabledSetting
+	if enabled {
+		value = enabledSetting
+	}
+	return s.updateBucket(settingsBucket, func(bucket *bolt.Bucket) error {
+		return bucket.Put(sideBySideKey, value)
+	})
+}
+
 func (s Store) update(fn func(*bolt.Bucket) error) error {
+	return s.updateBucket(messagesBucket, fn)
+}
+
+func (s Store) updateBucket(name []byte, fn func(*bolt.Bucket) error) error {
 	db, err := s.open()
 	if err != nil {
 		return err
 	}
 	defer db.Close()
 	return db.Update(func(tx *bolt.Tx) error {
-		bucket, err := tx.CreateBucketIfNotExists(messagesBucket)
+		bucket, err := tx.CreateBucketIfNotExists(name)
 		if err != nil {
 			return err
 		}
@@ -209,6 +239,10 @@ func (s Store) update(fn func(*bolt.Bucket) error) error {
 }
 
 func (s Store) view(fn func(*bolt.Bucket) error) error {
+	return s.viewBucket(messagesBucket, fn)
+}
+
+func (s Store) viewBucket(name []byte, fn func(*bolt.Bucket) error) error {
 	db, err := s.open()
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
@@ -218,7 +252,7 @@ func (s Store) view(fn func(*bolt.Bucket) error) error {
 	}
 	defer db.Close()
 	return db.View(func(tx *bolt.Tx) error {
-		bucket := tx.Bucket(messagesBucket)
+		bucket := tx.Bucket(name)
 		if bucket == nil {
 			return nil
 		}

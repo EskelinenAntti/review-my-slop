@@ -21,6 +21,7 @@ import (
 type SaveCommentFunc func(review.StoredComment, review.Diff) (review.StoredComment, error)
 type DeleteCommentFunc func(review.StoredComment, review.Diff) error
 type RefreshDiffFunc func(parent string) (review.Diff, error)
+type SaveSideBySideFunc func(bool) error
 
 type refreshDiffMsg struct {
 	diff   review.Diff
@@ -70,7 +71,7 @@ type Model struct {
 	comments    []review.StoredComment
 	commentRow  int
 	cursor      int
-	offset      int
+	viewportTop int
 	xOffset     int
 	width       int
 	height      int
@@ -87,11 +88,14 @@ type Model struct {
 	quitting    bool
 	pendingKey  string
 	sideBySide  bool
+	saveLayout  SaveSideBySideFunc
+	activePane  pane
 	parents     []string
 	target      int
 	search      []rune
 	searchTerm  string
 	searchFrom  int
+	searchPane  pane
 	searchMiss  bool
 	dark        bool
 }
@@ -125,6 +129,11 @@ func (m *Model) SetParents(parents []string) {
 	m.target = min(m.target, len(m.parents))
 }
 
+func (m *Model) SetSideBySide(enabled bool, save SaveSideBySideFunc) {
+	m.saveLayout = save
+	m.setSideBySide(enabled)
+}
+
 func (m Model) Init() tea.Cmd {
 	return func() tea.Msg {
 		return tea.RequestBackgroundColor()
@@ -141,8 +150,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 	case tea.WindowSizeMsg:
+		layout := m.visualLayout()
+		cursorRow := layout.position(m.cursor) - m.viewportTop
 		m.width = msg.Width
 		m.height = msg.Height
+		m.viewportTop = m.visualLayout().position(m.cursor) - cursorRow
 		m.xOffset = min(m.xOffset, m.maxHorizontalOffset())
 		m.ensureVisible()
 		return m, nil
@@ -191,6 +203,8 @@ func (m Model) loadRefresh() tea.Cmd {
 }
 
 func (m *Model) applyDiff(diff review.Diff) {
+	layout := m.visualLayout()
+	cursorRow := layout.position(m.cursor) - m.viewportTop
 	cursor := m.rowAnchor(m.cursor)
 	selection := m.rowAnchor(m.selectFrom)
 	cursorFallback := m.cursor
@@ -207,6 +221,7 @@ func (m *Model) applyDiff(diff review.Diff) {
 			m.cancelSelection()
 		}
 	}
+	m.viewportTop = m.visualLayout().position(m.cursor) - cursorRow
 	m.xOffset = min(m.xOffset, m.maxHorizontalOffset())
 	m.ensureVisible()
 }
@@ -308,6 +323,17 @@ func (m Model) updateKey(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 	}
+	if pendingKey == "ctrl+w" {
+		switch name {
+		case "h":
+			m.switchSidePane(paneLeft)
+		case "l":
+			m.switchSidePane(paneRight)
+		case "ctrl+w":
+			m.switchSidePane(m.activePane.other())
+		}
+		return m, nil
+	}
 	switch name {
 	case "ctrl+c":
 		m.quitting = true
@@ -322,15 +348,16 @@ func (m Model) updateKey(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		m.mode = modeSearch
 		m.search = nil
 		m.searchFrom = m.cursor
+		m.searchPane = m.activePane
 		m.searchMiss = false
 	case "n":
 		m.repeatSearch(1)
 	case "N":
 		m.repeatSearch(-1)
 	case "j", "down":
-		m.move(1)
+		m.moveVertical(1)
 	case "k", "up":
-		m.move(-1)
+		m.moveVertical(-1)
 	case "h", "left":
 		m.scrollHorizontal(-1)
 	case "l", "right":
@@ -343,6 +370,8 @@ func (m Model) updateKey(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		m.moveHalfPage(1)
 	case "ctrl+u":
 		m.moveHalfPage(-1)
+	case "ctrl+w":
+		m.pendingKey = name
 	case "g":
 		if pendingKey == "g" {
 			m.cursor = firstCodeRow(m.rows)
@@ -392,12 +421,7 @@ func (m Model) updateKey(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		m.cancelSelection()
 		return m, m.loadRefresh()
 	case "t":
-		if m.width >= 100 {
-			m.sideBySide = !m.sideBySide
-			m.xOffset = min(m.xOffset, m.maxHorizontalOffset())
-		} else {
-			m.err = fmt.Errorf("side-by-side view requires a terminal at least 100 columns wide")
-		}
+		m.toggleSideBySide()
 	}
 	return m, nil
 }
@@ -406,6 +430,7 @@ func (m Model) updateSearch(name string, key tea.KeyPressMsg) (tea.Model, tea.Cm
 	switch name {
 	case "esc":
 		m.cursor = m.searchFrom
+		m.activePane = m.searchPane
 		m.ensureVisible()
 		m.mode = modeBrowse
 		m.search = nil
@@ -434,6 +459,7 @@ func (m Model) updateSearch(name string, key tea.KeyPressMsg) (tea.Model, tea.Cm
 func (m *Model) updateIncrementalSearch() {
 	if len(m.search) == 0 {
 		m.cursor = m.searchFrom
+		m.activePane = m.searchPane
 		m.searchMiss = false
 		m.ensureVisible()
 		return
@@ -441,8 +467,7 @@ func (m *Model) updateIncrementalSearch() {
 	match := m.findSearch(string(m.search), m.searchFrom, 1)
 	m.searchMiss = match < 0
 	if match >= 0 {
-		m.cursor = match
-		m.ensureVisible()
+		m.setSearchCursor(match)
 	}
 }
 
@@ -455,7 +480,19 @@ func (m *Model) repeatSearch(direction int) {
 		m.err = fmt.Errorf("no matches for %q", m.searchTerm)
 		return
 	}
-	m.cursor = match
+	m.setSearchCursor(match)
+}
+
+func (m *Model) setSearchCursor(index int) {
+	m.cursor = index
+	if m.sideBySideActive() && m.isCode(index) {
+		switch m.rows[index].line.Kind {
+		case review.LineRemoved:
+			m.activePane = paneLeft
+		case review.LineAdded:
+			m.activePane = paneRight
+		}
+	}
 	m.ensureVisible()
 }
 
@@ -845,13 +882,14 @@ func (m Model) render() string {
 		}
 		out.WriteString("\n" + mutedStyle.Render(empty) + "\n")
 	} else {
+		layout := m.visualLayout()
 		height := m.viewportHeight()
-		end := min(len(m.rows), m.offset+height)
-		for index := m.offset; index < end; index++ {
-			out.WriteString(m.renderRow(index))
+		end := min(layout.len(), m.viewportTop+height)
+		for position := m.viewportTop; position < end; position++ {
+			out.WriteString(m.renderVisualRow(layout.row(position)))
 			out.WriteByte('\n')
 		}
-		for index := end; index < m.offset+height; index++ {
+		for position := end; position < m.viewportTop+height; position++ {
 			out.WriteByte('\n')
 		}
 	}
@@ -881,6 +919,15 @@ func diffLineCounts(diff review.Diff) (added, removed int) {
 }
 
 func (m Model) renderRow(index int) string {
+	layout := m.visualLayout()
+	return m.renderVisualRow(layout.row(layout.position(index)))
+}
+
+func (m Model) renderVisualRow(visual visualRow) string {
+	index := visual.source
+	if index < 0 || index >= len(m.rows) {
+		return ""
+	}
 	current := m.rows[index]
 	width := max(20, m.width)
 	switch current.kind {
@@ -901,8 +948,8 @@ func (m Model) renderRow(index int) string {
 		}
 		return hunkStyle.Render(current.text)
 	case rowCode:
-		if m.sideBySide && m.width >= 100 {
-			return m.renderSideBySide(index)
+		if m.sideBySideActive() {
+			return m.renderSideBySide(visual)
 		}
 		oldNumber := number(current.line.OldNumber)
 		newNumber := number(current.line.NewNumber)
@@ -1013,6 +1060,7 @@ func (m Model) renderHelp() string {
 	bindings := []keyBinding{
 		{"j/k, arrows", "move"},
 		{"h/l, left/right", "scroll horizontally"},
+		{"Ctrl-w h/l/w", "switch side-by-side pane"},
 		{"0/$", "start/end of lines"},
 		{"gg/G", "first/last changed line"},
 		{"zz/zt/zb", "center/top/bottom current line"},
@@ -1053,34 +1101,124 @@ func renderKeyBindings(bindings []keyBinding) []string {
 	return lines
 }
 
-func (m Model) renderSideBySide(index int) string {
+func (m Model) renderSideBySide(visual visualRow) string {
+	leftWidth := max(20, (m.width-3)/2)
+	rightWidth := max(20, m.width-3-leftWidth)
+	left := m.renderSidePane(visual.left, paneLeft, leftWidth)
+	right := m.renderSidePane(visual.right, paneRight, rightWidth)
+	return left + " │ " + right
+}
+
+func (m Model) renderSidePane(index int, currentPane pane, width int) string {
+	if index < 0 {
+		return strings.Repeat(" ", width)
+	}
 	current := m.rows[index]
-	half := max(20, (m.width-3)/2)
-	leftNumber, rightNumber := number(current.line.OldNumber), number(current.line.NewNumber)
-	leftText, rightText := "", ""
+	lineNumber := current.line.NewNumber
+	text := "  " + current.text
+	if currentPane == paneLeft {
+		lineNumber = current.line.OldNumber
+	}
 	switch current.line.Kind {
 	case review.LineRemoved:
-		leftText = removedStyle.Render("-") + " " + current.text
+		text = removedStyle.Render("-") + " " + current.text
 	case review.LineAdded:
-		rightText = addedStyle.Render("+") + " " + current.text
-	default:
-		leftText = "  " + current.text
-		rightText = "  " + current.text
+		text = addedStyle.Render("+") + " " + current.text
 	}
-	leftGutter := fmt.Sprintf("%5s ", leftNumber)
-	rightGutter := fmt.Sprintf("%5s ", rightNumber)
-	left := leftGutter + fitANSIWindow(leftText, m.xOffset, half-lipgloss.Width(leftGutter))
-	right := rightGutter + fitANSIWindow(rightText, m.xOffset, half-lipgloss.Width(rightGutter))
+	gutter := fmt.Sprintf("%5s ", number(lineNumber))
+	line := gutter + fitANSIWindow(text, m.xOffset, width-lipgloss.Width(gutter))
 	style := lineStyle(current.line.Kind, m.dark)
+	stripForeground := false
 	if m.selected(index) {
 		style = selectionRowStyle(m.dark)
+		stripForeground = true
 	}
-	stripForeground := m.selected(index)
-	if index == m.cursor {
+	if index == m.cursor && currentPane == m.activePane {
 		style = cursorStyle
 		stripForeground = true
 	}
-	return renderStyledRow(style, left+" │ "+right, m.width, stripForeground)
+	return renderStyledRow(style, line, width, stripForeground)
+}
+
+func (m Model) visualLayout() visualLayout {
+	return newVisualLayout(m.rows, m.sideBySideActive())
+}
+
+func (m *Model) switchSidePane(targetPane pane) {
+	if !m.sideBySideActive() {
+		return
+	}
+	layout := m.visualLayout()
+	target := layout.paneIndexAtOrAbove(layout.position(m.cursor), targetPane)
+	if target < 0 {
+		return
+	}
+	if m.selecting {
+		selection := layout.paneIndexAtOrAbove(layout.position(m.selectFrom), targetPane)
+		if selection < 0 {
+			return
+		}
+		m.selectFrom = selection
+	}
+	m.activePane = targetPane
+	m.cursor = target
+	m.ensureVisible()
+}
+
+func (m *Model) moveVertical(direction int) {
+	if len(m.rows) == 0 {
+		return
+	}
+	layout := m.visualLayout()
+	_, cursor := layout.navigable(layout.position(m.cursor), direction, m.activePane)
+	if cursor < 0 {
+		return
+	}
+	if m.selecting && !m.sameHunk(m.selectFrom, cursor) {
+		return
+	}
+	m.cursor = cursor
+	m.ensureVisible()
+}
+
+func (m Model) sideBySideActive() bool {
+	return m.sideBySide && m.width >= minimumSideBySideWidth
+}
+
+func (m *Model) toggleSideBySide() {
+	enabled := !m.sideBySide
+	if enabled && m.width < minimumSideBySideWidth {
+		m.err = fmt.Errorf("side-by-side view requires a terminal at least %d columns wide", minimumSideBySideWidth)
+		return
+	}
+	m.setSideBySide(enabled)
+	m.saveSideBySide()
+}
+
+func (m *Model) setSideBySide(enabled bool) {
+	oldLayout := m.visualLayout()
+	cursorRow := oldLayout.position(m.cursor) - m.viewportTop
+	m.sideBySide = enabled
+	if enabled {
+		layout := m.visualLayout()
+		m.activePane = paneRight
+		m.cursor = layout.cursorIndex(layout.position(m.cursor), paneRight)
+		if m.selecting {
+			m.selectFrom = layout.cursorIndex(layout.position(m.selectFrom), paneRight)
+		}
+	}
+	m.viewportTop = m.visualLayout().position(m.cursor) - cursorRow
+	m.xOffset = min(m.xOffset, m.maxHorizontalOffset())
+	m.ensureVisible()
+}
+
+func (m *Model) saveSideBySide() {
+	if m.saveLayout == nil {
+		return
+	}
+	if err := m.saveLayout(m.sideBySide); err != nil {
+		m.err = fmt.Errorf("save side-by-side preference: %w", err)
+	}
 }
 
 func flatten(diff review.Diff, darkBackground bool) []row {
@@ -1148,55 +1286,29 @@ func highlightedLine(lines []string, number int, fallback string) string {
 	return lines[number-1]
 }
 
-func (m *Model) move(delta int) {
-	if len(m.rows) == 0 {
-		return
-	}
-	target := m.cursor
-	step := 1
-	if delta < 0 {
-		step = -1
-	}
-	for moved := 0; moved < abs(delta); {
-		next := target + step
-		for next >= 0 && next < len(m.rows) && m.rows[next].kind != rowCode {
-			next += step
-		}
-		if next < 0 || next >= len(m.rows) {
-			break
-		}
-		if m.selecting && !m.sameHunk(m.selectFrom, next) {
-			break
-		}
-		target = next
-		moved++
-	}
-	m.cursor = target
-	m.ensureVisible()
-}
-
 func (m *Model) moveHalfPage(direction int) {
 	if len(m.rows) == 0 {
 		return
 	}
 
+	layout := m.visualLayout()
 	height := m.viewportHeight()
 	delta := max(1, height/2) * direction
-	maxOffset := max(0, len(m.rows)-height)
-	offset := max(0, min(m.offset+delta, maxOffset))
-	cursorTarget := m.cursor + offset - m.offset
-	first, last := offset, min(len(m.rows)-1, offset+height-1)
+	maxOffset := max(0, layout.len()-height)
+	offset := max(0, min(m.viewportTop+delta, maxOffset))
+	cursorTarget := layout.position(m.cursor) + offset - m.viewportTop
+	first, last := offset, min(layout.len()-1, offset+height-1)
 	cursorTarget = max(first, min(cursorTarget, last))
-	cursor := codeNearBetween(m.rows, cursorTarget, direction, first, last)
+	_, cursor := layout.codeNearBetween(cursorTarget, direction, first, last, m.activePane)
 	if cursor < 0 {
-		cursor = codeNearBetween(m.rows, cursorTarget, -direction, first, last)
+		_, cursor = layout.codeNearBetween(cursorTarget, -direction, first, last, m.activePane)
 	}
 	if cursor < 0 || m.selecting && !m.sameHunk(m.selectFrom, cursor) {
 		return
 	}
 
 	m.cursor = cursor
-	m.offset = offset
+	m.viewportTop = offset
 }
 
 func (m *Model) jump(kind rowKind, direction int) {
@@ -1216,20 +1328,32 @@ func (m *Model) jump(kind rowKind, direction int) {
 }
 
 func (m *Model) ensureVisible() {
+	layout := m.visualLayout()
 	height := m.viewportHeight()
-	if m.cursor < m.offset {
-		m.offset = m.cursor
+	if layout.len() == 0 {
+		m.viewportTop = 0
+		return
 	}
-	if m.cursor >= m.offset+height {
-		m.offset = m.cursor - height + 1
+
+	cursor := layout.position(m.cursor)
+	if cursor < m.viewportTop {
+		m.viewportTop = cursor
 	}
-	m.offset = max(0, min(m.offset, max(0, len(m.rows)-height)))
+	if cursor >= m.viewportTop+height {
+		m.viewportTop = cursor - height + 1
+	}
+	m.viewportTop = max(0, min(m.viewportTop, max(0, layout.len()-height)))
 }
 
 func (m *Model) alignCursor(viewportRow int) {
+	layout := m.visualLayout()
 	height := m.viewportHeight()
-	m.offset = m.cursor - viewportRow
-	m.offset = max(0, min(m.offset, max(0, len(m.rows)-height)))
+	if layout.len() == 0 {
+		m.viewportTop = 0
+		return
+	}
+	m.viewportTop = layout.position(m.cursor) - viewportRow
+	m.viewportTop = max(0, min(m.viewportTop, max(0, layout.len()-height)))
 }
 
 func (m *Model) scrollHorizontal(delta int) {
@@ -1239,7 +1363,7 @@ func (m *Model) scrollHorizontal(delta int) {
 func (m Model) maxHorizontalOffset() int {
 	contentWidth := max(1, m.width-14)
 	extraWidth := 0
-	if m.sideBySide && m.width >= 100 {
+	if m.sideBySideActive() {
 		contentWidth = max(1, (m.width-3)/2-6)
 		extraWidth = 2
 	}
@@ -1300,15 +1424,6 @@ func lastCodeRow(rows []row) int {
 
 func codeNear(rows []row, start, direction int) int {
 	for index := start; index >= 0 && index < len(rows); index += direction {
-		if rows[index].kind == rowCode {
-			return index
-		}
-	}
-	return -1
-}
-
-func codeNearBetween(rows []row, start, direction, first, last int) int {
-	for index := start; index >= first && index <= last; index += direction {
 		if rows[index].kind == rowCode {
 			return index
 		}
@@ -1441,13 +1556,6 @@ func stylePrefix(style lipgloss.Style) string {
 		return ""
 	}
 	return rendered[:index]
-}
-
-func abs(value int) int {
-	if value < 0 {
-		return -value
-	}
-	return value
 }
 
 var (

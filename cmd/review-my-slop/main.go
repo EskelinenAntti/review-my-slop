@@ -57,6 +57,10 @@ func runCode(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	sideBySide, err := store.SideBySide()
+	if err != nil {
+		return err
+	}
 	loader := gitdiff.Loader{}
 	parents, err := loader.ParentBranches(ctx, current)
 	if err != nil {
@@ -80,6 +84,7 @@ func runCode(ctx context.Context) error {
 		return stored, nil
 	}
 	model := tui.New(loaded, comments, saveComment)
+	model.SetSideBySide(sideBySide, store.SetSideBySide)
 	model.SetDelete(func(stored review.StoredComment, diff review.Diff) error {
 		return store.DeleteComment(diff.Repository, stored)
 	})

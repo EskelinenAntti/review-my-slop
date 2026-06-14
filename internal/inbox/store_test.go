@@ -190,6 +190,40 @@ func TestDeleteCommentRemovesMessage(t *testing.T) {
 	}
 }
 
+func TestSideBySidePreference(t *testing.T) {
+	store := Store{Path: filepath.Join(t.TempDir(), "inbox.db")}
+
+	enabled, err := store.SideBySide()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if enabled {
+		t.Fatal("side-by-side defaults to enabled")
+	}
+
+	if err := store.SetSideBySide(true); err != nil {
+		t.Fatal(err)
+	}
+	enabled, err = store.SideBySide()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !enabled {
+		t.Fatal("side-by-side preference was not enabled")
+	}
+
+	if err := store.SetSideBySide(false); err != nil {
+		t.Fatal(err)
+	}
+	enabled, err = store.SideBySide()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if enabled {
+		t.Fatal("side-by-side preference was not disabled")
+	}
+}
+
 func testMessage(repository, body string) Message {
 	return Message{
 		ID:         body,
