@@ -13,11 +13,11 @@ import (
 
 func TestStoreQueuesByRepositoryAndDeletesExactPeek(t *testing.T) {
 	store := Store{Path: filepath.Join(t.TempDir(), "state", "inbox.db")}
-	first := testBatch("/repo/a", "first")
-	second := testBatch("/repo/b", "other")
-	third := testBatch("/repo/a", "third")
-	for _, batch := range []review.Batch{first, second, third} {
-		if err := store.Put(batch); err != nil {
+	first := testMessage("/repo/a", "first")
+	second := testMessage("/repo/b", "other")
+	third := testMessage("/repo/a", "third")
+	for _, message := range []Message{first, second, third} {
+		if err := store.Put(message); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -26,13 +26,13 @@ func TestStoreQueuesByRepositoryAndDeletesExactPeek(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(taken.Batches) != 2 ||
-		taken.Batches[0].Comments[0].Body != "first" ||
-		taken.Batches[1].Comments[0].Body != "third" {
-		t.Fatalf("unexpected batches: %#v", taken.Batches)
+	if len(taken.Messages) != 2 ||
+		taken.Messages[0].Comment.Body != "first" ||
+		taken.Messages[1].Comment.Body != "third" {
+		t.Fatalf("unexpected messages: %#v", taken.Messages)
 	}
 
-	if err := store.Put(testBatch("/repo/a", "newer")); err != nil {
+	if err := store.Put(testMessage("/repo/a", "newer")); err != nil {
 		t.Fatal(err)
 	}
 	if err := store.Delete(taken); err != nil {
@@ -43,15 +43,15 @@ func TestStoreQueuesByRepositoryAndDeletesExactPeek(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(remainingA.Batches) != 1 || remainingA.Batches[0].Comments[0].Body != "newer" {
-		t.Fatalf("newer batch was not preserved: %#v", remainingA.Batches)
+	if len(remainingA.Messages) != 1 || remainingA.Messages[0].Comment.Body != "newer" {
+		t.Fatalf("newer message was not preserved: %#v", remainingA.Messages)
 	}
 	remainingB, err := store.Peek("/repo/b")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(remainingB.Batches) != 1 {
-		t.Fatalf("other repository batches = %d, want 1", len(remainingB.Batches))
+	if len(remainingB.Messages) != 1 {
+		t.Fatalf("other repository messages = %d, want 1", len(remainingB.Messages))
 	}
 
 	dirInfo, err := os.Stat(filepath.Dir(store.Path))
@@ -72,12 +72,12 @@ func TestStoreQueuesByRepositoryAndDeletesExactPeek(t *testing.T) {
 
 func TestWritePrompt(t *testing.T) {
 	var out bytes.Buffer
-	batch := testBatch("/repo", "Handle the nil case.")
-	batch.Comments[0].Anchor = review.Anchor{
+	message := testMessage("/repo", "Handle the nil case.")
+	message.Comment.Anchor = review.Anchor{
 		File: "main.go", OldStart: 10, OldEnd: 11, NewStart: 12, NewEnd: 13,
 		QuotedLines: []string{"-old()", "+new()"},
 	}
-	if err := WritePrompt(&out, []review.Batch{batch}); err != nil {
+	if err := WritePrompt(&out, []Message{message}); err != nil {
 		t.Fatal(err)
 	}
 	for _, expected := range []string{
@@ -97,11 +97,11 @@ func TestWritePrompt(t *testing.T) {
 	}
 }
 
-func TestWritePromptNumbersCommentsAcrossBatches(t *testing.T) {
+func TestWritePromptNumbersMessages(t *testing.T) {
 	var out bytes.Buffer
-	if err := WritePrompt(&out, []review.Batch{
-		testBatch("/repo", "First."),
-		testBatch("/repo", "Second."),
+	if err := WritePrompt(&out, []Message{
+		testMessage("/repo", "First."),
+		testMessage("/repo", "Second."),
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -114,11 +114,11 @@ func TestWritePromptNumbersCommentsAcrossBatches(t *testing.T) {
 
 func TestStoreRejectsEmptyAndOversizedComments(t *testing.T) {
 	store := Store{Path: filepath.Join(t.TempDir(), "inbox.db")}
-	empty := testBatch("/repo", "")
+	empty := testMessage("/repo", "")
 	if err := store.Put(empty); err == nil {
 		t.Fatal("empty comment was accepted")
 	}
-	large := testBatch("/repo", strings.Repeat("x", maxCommentBytes+1))
+	large := testMessage("/repo", strings.Repeat("x", maxCommentBytes+1))
 	if err := store.Put(large); err == nil {
 		t.Fatal("oversized comment was accepted")
 	}
@@ -126,12 +126,12 @@ func TestStoreRejectsEmptyAndOversizedComments(t *testing.T) {
 
 func TestListAndUpdateComments(t *testing.T) {
 	store := Store{Path: filepath.Join(t.TempDir(), "inbox.db")}
-	batch := testBatch("/repo", "first")
-	batch.Comments = append(batch.Comments, review.Comment{
-		Anchor: review.Anchor{File: "other.go", NewStart: 2, NewEnd: 2},
-		Body:   "second",
-	})
-	if err := store.Put(batch); err != nil {
+	if err := store.Put(testMessage("/repo", "first")); err != nil {
+		t.Fatal(err)
+	}
+	second := testMessage("/repo", "second")
+	second.Comment.Anchor = review.Anchor{File: "other.go", NewStart: 2, NewEnd: 2}
+	if err := store.Put(second); err != nil {
 		t.Fatal(err)
 	}
 
@@ -156,11 +156,12 @@ func TestListAndUpdateComments(t *testing.T) {
 	}
 }
 
-func TestDeleteCommentRemovesCommentAndEmptyBatch(t *testing.T) {
+func TestDeleteCommentRemovesMessage(t *testing.T) {
 	store := Store{Path: filepath.Join(t.TempDir(), "inbox.db")}
-	batch := testBatch("/repo", "first")
-	batch.Comments = append(batch.Comments, review.Comment{Body: "second"})
-	if err := store.Put(batch); err != nil {
+	if err := store.Put(testMessage("/repo", "first")); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Put(testMessage("/repo", "second")); err != nil {
 		t.Fatal(err)
 	}
 	comments, err := store.ListComments("/repo")
@@ -174,7 +175,7 @@ func TestDeleteCommentRemovesCommentAndEmptyBatch(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(remaining) != 1 || remaining[0].Index != 0 || remaining[0].Comment.Body != "second" {
+	if len(remaining) != 1 || remaining[0].Comment.Body != "second" {
 		t.Fatalf("remaining = %#v", remaining)
 	}
 	if err := store.DeleteComment("/repo", remaining[0]); err != nil {
@@ -189,14 +190,14 @@ func TestDeleteCommentRemovesCommentAndEmptyBatch(t *testing.T) {
 	}
 }
 
-func testBatch(repository, body string) review.Batch {
-	return review.Batch{
+func testMessage(repository, body string) Message {
+	return Message{
 		ID:         body,
 		Repository: repository,
 		CreatedAt:  time.Unix(1, 0).UTC(),
-		Comments: []review.Comment{{
+		Comment: review.Comment{
 			Anchor: review.Anchor{File: "file.go", NewStart: 1, NewEnd: 1},
 			Body:   body,
-		}},
+		},
 	}
 }

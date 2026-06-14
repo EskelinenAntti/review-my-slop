@@ -21,7 +21,7 @@ func TestVisualSelectionCreatesMappedAnchorAndSubmits(t *testing.T) {
 	var saved []review.Comment
 	model := New(testDiff(), nil, func(stored review.StoredComment, _ review.Diff) (review.StoredComment, error) {
 		saved = append(saved, stored.Comment)
-		stored.BatchID = "new"
+		stored.ID = "new"
 		return stored, nil
 	})
 
@@ -234,7 +234,7 @@ func TestOpenCurrentLineRequiresEditor(t *testing.T) {
 func TestInboxCommentsCanBeViewedAndEdited(t *testing.T) {
 	t.Setenv("EDITOR", "true")
 	comments := []review.StoredComment{{
-		BatchID: "batch-1",
+		ID: "message-1",
 		Comment: review.Comment{
 			Anchor: review.Anchor{File: "main.go", NewStart: 2},
 			Body:   "old body",
@@ -253,7 +253,7 @@ func TestInboxCommentsCanBeViewedAndEdited(t *testing.T) {
 	model = update(t, model, specialKey(tea.KeyEnter))
 	model = update(t, model, commentEditorFinishedMsg{body: "edited body"})
 
-	if persisted.BatchID != "batch-1" || persisted.Comment.Body != "edited body" {
+	if persisted.ID != "message-1" || persisted.Comment.Body != "edited body" {
 		t.Fatalf("persisted = %#v, want edited existing comment", persisted)
 	}
 	if model.mode != modeComments || model.comments[0].Comment.Body != "edited body" {
@@ -274,7 +274,7 @@ func TestQReturnsFromCommentsToDiff(t *testing.T) {
 func TestEmptyEditedCommentIsDeleted(t *testing.T) {
 	t.Setenv("EDITOR", "true")
 	comments := []review.StoredComment{{
-		BatchID: "batch-1",
+		ID:      "message-1",
 		Comment: review.Comment{Body: "old body"},
 	}}
 	var deleted review.StoredComment
@@ -288,15 +288,15 @@ func TestEmptyEditedCommentIsDeleted(t *testing.T) {
 	model = update(t, model, specialKey(tea.KeyEnter))
 	model = update(t, model, commentEditorFinishedMsg{body: "\n"})
 
-	if deleted.BatchID != "batch-1" || len(model.comments) != 0 || model.mode != modeComments {
+	if deleted.ID != "message-1" || len(model.comments) != 0 || model.mode != modeComments {
 		t.Fatalf("deleted=%#v comments=%d mode=%v", deleted, len(model.comments), model.mode)
 	}
 }
 
 func TestCommentsCanBeDeletedWithD(t *testing.T) {
 	comments := []review.StoredComment{
-		{BatchID: "batch-1", Index: 0, Comment: review.Comment{Body: "first"}},
-		{BatchID: "batch-1", Index: 1, Comment: review.Comment{Body: "second"}},
+		{ID: "message-1", Comment: review.Comment{Body: "first"}},
+		{ID: "message-2", Comment: review.Comment{Body: "second"}},
 	}
 	var deleted review.StoredComment
 	model := New(testDiff(), comments, nil)
@@ -311,14 +311,14 @@ func TestCommentsCanBeDeletedWithD(t *testing.T) {
 	if deleted.Comment.Body != "first" || len(model.comments) != 1 {
 		t.Fatalf("deleted=%#v comments=%#v", deleted, model.comments)
 	}
-	if model.comments[0].Index != 0 || !strings.Contains(model.renderComments(), "D delete") {
+	if model.comments[0].ID != "message-2" || !strings.Contains(model.renderComments(), "D delete") {
 		t.Fatalf("remaining=%#v footer=%q", model.comments[0], model.renderComments())
 	}
 }
 
 func TestCommentDeleteFailureKeepsCommentAndShowsError(t *testing.T) {
 	comments := []review.StoredComment{{
-		BatchID: "batch-1",
+		ID:      "message-1",
 		Comment: review.Comment{Body: "keep me"},
 	}}
 	model := New(testDiff(), comments, nil)
@@ -649,7 +649,7 @@ func TestCommentAfterRefreshUsesCurrentDiff(t *testing.T) {
 	var savedWith review.Diff
 	model := New(testDiff(), nil, func(stored review.StoredComment, diff review.Diff) (review.StoredComment, error) {
 		savedWith = diff
-		stored.BatchID = "new"
+		stored.ID = "new"
 		return stored, nil
 	})
 	refreshed := testDiff()

@@ -1,7 +1,5 @@
 package review
 
-import "time"
-
 type LineKind uint8
 
 const (
@@ -59,15 +57,6 @@ type Comment struct {
 }
 
 type StoredComment struct {
-	BatchID string
-	Index   int
+	ID      string
 	Comment Comment
-}
-
-type Batch struct {
-	ID              string    `json:"id"`
-	Repository      string    `json:"repository"`
-	DiffFingerprint string    `json:"diff_fingerprint"`
-	CreatedAt       time.Time `json:"created_at"`
-	Comments        []Comment `json:"comments"`
 }

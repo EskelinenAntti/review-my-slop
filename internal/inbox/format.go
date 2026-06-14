@@ -8,38 +8,35 @@ import (
 	"github.com/anttieskelinen/review-my-slop/internal/review"
 )
 
-func WritePrompt(w io.Writer, batches []review.Batch) error {
-	if len(batches) == 0 {
+func WritePrompt(w io.Writer, messages []Message) error {
+	if len(messages) == 0 {
 		_, err := fmt.Fprintln(w, "No pending review comments.")
 		return err
 	}
 	if _, err := fmt.Fprintln(w, "New comments since last run:"); err != nil {
 		return err
 	}
-	commentIndex := 0
-	for _, batch := range batches {
-		for _, comment := range batch.Comments {
-			commentIndex++
-			a := comment.Anchor
-			if _, err := fmt.Fprintf(w, "\n### %d. `%s` (%s)\n\n", commentIndex, a.File, describeRange(a)); err != nil {
+	for index, message := range messages {
+		comment := message.Comment
+		a := comment.Anchor
+		if _, err := fmt.Fprintf(w, "\n### %d. `%s` (%s)\n\n", index+1, a.File, describeRange(a)); err != nil {
+			return err
+		}
+		if len(a.QuotedLines) > 0 {
+			if _, err := fmt.Fprintln(w, "```diff"); err != nil {
 				return err
 			}
-			if len(a.QuotedLines) > 0 {
-				if _, err := fmt.Fprintln(w, "```diff"); err != nil {
-					return err
-				}
-				for _, line := range a.QuotedLines {
-					if _, err := fmt.Fprintln(w, line); err != nil {
-						return err
-					}
-				}
-				if _, err := fmt.Fprintln(w, "```"); err != nil {
+			for _, line := range a.QuotedLines {
+				if _, err := fmt.Fprintln(w, line); err != nil {
 					return err
 				}
 			}
-			if _, err := fmt.Fprintln(w, strings.TrimSpace(comment.Body)); err != nil {
+			if _, err := fmt.Fprintln(w, "```"); err != nil {
 				return err
 			}
+		}
+		if _, err := fmt.Fprintln(w, strings.TrimSpace(comment.Body)); err != nil {
+			return err
 		}
 	}
 	return nil

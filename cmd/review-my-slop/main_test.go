@@ -21,12 +21,12 @@ func TestRunCommentsPrintsAndConsumesCurrentRepositoryFeedback(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := store.Put(review.Batch{
+	if err := store.Put(inbox.Message{
 		Repository: repo,
-		Comments: []review.Comment{{
+		Comment: review.Comment{
 			Anchor: review.Anchor{File: "main.go", NewStart: 3, NewEnd: 3},
 			Body:   "Check this error.",
-		}},
+		},
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -38,7 +38,7 @@ func TestRunCommentsPrintsAndConsumesCurrentRepositoryFeedback(t *testing.T) {
 	if !strings.Contains(output.String(), "Check this error.") {
 		t.Fatalf("unexpected output:\n%s", output.String())
 	}
-	if !strings.HasPrefix(output.String(), "Comments added since last run:\n") {
+	if !strings.HasPrefix(output.String(), "New comments since last run:\n") {
 		t.Fatalf("unexpected output heading:\n%s", output.String())
 	}
 	if strings.Contains(output.String(), "batch") {
@@ -69,12 +69,12 @@ func TestRunCommentsPreservesFeedbackWhenOutputFails(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := store.Put(review.Batch{
+	if err := store.Put(inbox.Message{
 		Repository: repo,
-		Comments: []review.Comment{{
+		Comment: review.Comment{
 			Anchor: review.Anchor{File: "main.go", NewStart: 1},
 			Body:   "Preserve me.",
-		}},
+		},
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -86,8 +86,8 @@ func TestRunCommentsPreservesFeedbackWhenOutputFails(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(taken.Batches) != 1 {
-		t.Fatalf("pending batches = %d, want 1", len(taken.Batches))
+	if len(taken.Messages) != 1 {
+		t.Fatalf("pending messages = %d, want 1", len(taken.Messages))
 	}
 }
 

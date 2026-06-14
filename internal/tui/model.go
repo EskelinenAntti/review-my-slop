@@ -566,11 +566,6 @@ func (m *Model) deleteComment(index int) {
 		return
 	}
 	m.comments = append(m.comments[:index], m.comments[index+1:]...)
-	for index := range m.comments {
-		if m.comments[index].BatchID == deleted.BatchID && m.comments[index].Index > deleted.Index {
-			m.comments[index].Index--
-		}
-	}
 	m.commentRow = min(m.commentRow, max(0, len(m.comments)-1))
 	m.err = nil
 }

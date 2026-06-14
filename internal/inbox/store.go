@@ -17,14 +17,21 @@ import (
 
 const (
 	maxCommentBytes = 64 << 10
-	maxBatchBytes   = 1 << 20
 	maxPendingBytes = 16 << 20
 )
 
-var batchesBucket = []byte("batches")
+var messagesBucket = []byte("messages")
 
 type Store struct {
 	Path string
+}
+
+type Message struct {
+	ID              string         `json:"id"`
+	Repository      string         `json:"repository"`
+	DiffFingerprint string         `json:"diff_fingerprint"`
+	CreatedAt       time.Time      `json:"created_at"`
+	Comment         review.Comment `json:"comment"`
 }
 
 func DefaultPath() (string, error) {
@@ -43,30 +50,25 @@ func OpenDefault() (Store, error) {
 	return Store{Path: path}, nil
 }
 
-func (s Store) Put(batch review.Batch) error {
-	if batch.Repository == "" || len(batch.Comments) == 0 {
-		return errors.New("batch requires a repository and at least one comment")
+func (s Store) Put(message Message) error {
+	if message.Repository == "" {
+		return errors.New("message requires a repository")
 	}
-	for _, comment := range batch.Comments {
-		if len(comment.Body) == 0 {
-			return errors.New("comment body is empty")
-		}
-		if len(comment.Body) > maxCommentBytes {
-			return fmt.Errorf("comment exceeds %d bytes", maxCommentBytes)
-		}
+	if len(message.Comment.Body) == 0 {
+		return errors.New("comment body is empty")
 	}
-	if batch.ID == "" {
-		batch.ID = fmt.Sprintf("%d", time.Now().UnixNano())
+	if len(message.Comment.Body) > maxCommentBytes {
+		return fmt.Errorf("comment exceeds %d bytes", maxCommentBytes)
 	}
-	if batch.CreatedAt.IsZero() {
-		batch.CreatedAt = time.Now().UTC()
+	if message.ID == "" {
+		message.ID = fmt.Sprintf("%d", time.Now().UnixNano())
 	}
-	data, err := json.Marshal(batch)
+	if message.CreatedAt.IsZero() {
+		message.CreatedAt = time.Now().UTC()
+	}
+	data, err := json.Marshal(message)
 	if err != nil {
-		return fmt.Errorf("encode feedback batch: %w", err)
-	}
-	if len(data) > maxBatchBytes {
-		return fmt.Errorf("feedback batch exceeds %d bytes", maxBatchBytes)
+		return fmt.Errorf("encode inbox message: %w", err)
 	}
 	return s.update(func(bucket *bolt.Bucket) error {
 		var pending int
@@ -92,22 +94,19 @@ func (s Store) ListComments(repository string) ([]review.StoredComment, error) {
 	if err != nil {
 		return nil, err
 	}
-	var comments []review.StoredComment
-	for _, batch := range taken.Batches {
-		for index, comment := range batch.Comments {
-			comments = append(comments, review.StoredComment{
-				BatchID: batch.ID,
-				Index:   index,
-				Comment: comment,
-			})
-		}
+	comments := make([]review.StoredComment, 0, len(taken.Messages))
+	for _, message := range taken.Messages {
+		comments = append(comments, review.StoredComment{
+			ID:      message.ID,
+			Comment: message.Comment,
+		})
 	}
 	return comments, nil
 }
 
 func (s Store) UpdateComment(repository string, stored review.StoredComment) error {
-	if repository == "" || stored.BatchID == "" {
-		return errors.New("repository and batch ID are required")
+	if repository == "" || stored.ID == "" {
+		return errors.New("repository and message ID are required")
 	}
 	if len(stored.Comment.Body) == 0 {
 		return errors.New("comment body is empty")
@@ -118,23 +117,17 @@ func (s Store) UpdateComment(repository string, stored review.StoredComment) err
 	return s.update(func(bucket *bolt.Bucket) error {
 		cursor := bucket.Cursor()
 		for key, value := cursor.First(); key != nil; key, value = cursor.Next() {
-			var batch review.Batch
-			if err := json.Unmarshal(value, &batch); err != nil {
-				return fmt.Errorf("decode feedback batch: %w", err)
+			var message Message
+			if err := json.Unmarshal(value, &message); err != nil {
+				return fmt.Errorf("decode inbox message: %w", err)
 			}
-			if batch.Repository != repository || batch.ID != stored.BatchID {
+			if message.Repository != repository || message.ID != stored.ID {
 				continue
 			}
-			if stored.Index < 0 || stored.Index >= len(batch.Comments) {
-				return fmt.Errorf("comment index %d is out of range", stored.Index)
-			}
-			batch.Comments[stored.Index] = stored.Comment
-			data, err := json.Marshal(batch)
+			message.Comment = stored.Comment
+			data, err := json.Marshal(message)
 			if err != nil {
-				return fmt.Errorf("encode feedback batch: %w", err)
-			}
-			if len(data) > maxBatchBytes {
-				return fmt.Errorf("feedback batch exceeds %d bytes", maxBatchBytes)
+				return fmt.Errorf("encode inbox message: %w", err)
 			}
 			return bucket.Put(key, data)
 		}
@@ -143,53 +136,42 @@ func (s Store) UpdateComment(repository string, stored review.StoredComment) err
 }
 
 func (s Store) DeleteComment(repository string, stored review.StoredComment) error {
-	if repository == "" || stored.BatchID == "" {
-		return errors.New("repository and batch ID are required")
+	if repository == "" || stored.ID == "" {
+		return errors.New("repository and message ID are required")
 	}
 	return s.update(func(bucket *bolt.Bucket) error {
 		cursor := bucket.Cursor()
 		for key, value := cursor.First(); key != nil; key, value = cursor.Next() {
-			var batch review.Batch
-			if err := json.Unmarshal(value, &batch); err != nil {
-				return fmt.Errorf("decode feedback batch: %w", err)
+			var message Message
+			if err := json.Unmarshal(value, &message); err != nil {
+				return fmt.Errorf("decode inbox message: %w", err)
 			}
-			if batch.Repository != repository || batch.ID != stored.BatchID {
+			if message.Repository != repository || message.ID != stored.ID {
 				continue
 			}
-			if stored.Index < 0 || stored.Index >= len(batch.Comments) {
-				return fmt.Errorf("comment index %d is out of range", stored.Index)
-			}
-			batch.Comments = append(batch.Comments[:stored.Index], batch.Comments[stored.Index+1:]...)
-			if len(batch.Comments) == 0 {
-				return bucket.Delete(key)
-			}
-			data, err := json.Marshal(batch)
-			if err != nil {
-				return fmt.Errorf("encode feedback batch: %w", err)
-			}
-			return bucket.Put(key, data)
+			return bucket.Delete(key)
 		}
 		return errors.New("comment is no longer in the inbox")
 	})
 }
 
 type Taken struct {
-	Batches []review.Batch
-	keys    [][]byte
+	Messages []Message
+	keys     [][]byte
 }
 
 func (s Store) Peek(repository string) (Taken, error) {
 	var result Taken
 	err := s.view(func(bucket *bolt.Bucket) error {
 		return bucket.ForEach(func(key, value []byte) error {
-			var batch review.Batch
-			if err := json.Unmarshal(value, &batch); err != nil {
-				return fmt.Errorf("decode feedback batch: %w", err)
+			var message Message
+			if err := json.Unmarshal(value, &message); err != nil {
+				return fmt.Errorf("decode inbox message: %w", err)
 			}
-			if batch.Repository != repository {
+			if message.Repository != repository {
 				return nil
 			}
-			result.Batches = append(result.Batches, batch)
+			result.Messages = append(result.Messages, message)
 			result.keys = append(result.keys, append([]byte(nil), key...))
 			return nil
 		})
@@ -218,7 +200,7 @@ func (s Store) update(fn func(*bolt.Bucket) error) error {
 	}
 	defer db.Close()
 	return db.Update(func(tx *bolt.Tx) error {
-		bucket, err := tx.CreateBucketIfNotExists(batchesBucket)
+		bucket, err := tx.CreateBucketIfNotExists(messagesBucket)
 		if err != nil {
 			return err
 		}
@@ -236,7 +218,7 @@ func (s Store) view(fn func(*bolt.Bucket) error) error {
 	}
 	defer db.Close()
 	return db.View(func(tx *bolt.Tx) error {
-		bucket := tx.Bucket(batchesBucket)
+		bucket := tx.Bucket(messagesBucket)
 		if bucket == nil {
 			return nil
 		}

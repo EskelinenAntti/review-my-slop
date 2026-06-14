@@ -63,21 +63,20 @@ func runCode(ctx context.Context) error {
 		return err
 	}
 	saveComment := func(stored review.StoredComment, diff review.Diff) (review.StoredComment, error) {
-		if stored.BatchID != "" {
+		if stored.ID != "" {
 			return stored, store.UpdateComment(diff.Repository, stored)
 		}
-		batch := review.Batch{
+		message := inbox.Message{
 			ID:              fmt.Sprintf("%d", time.Now().UnixNano()),
 			Repository:      diff.Repository,
 			DiffFingerprint: diff.Fingerprint,
 			CreatedAt:       time.Now().UTC(),
-			Comments:        []review.Comment{stored.Comment},
+			Comment:         stored.Comment,
 		}
-		if err := store.Put(batch); err != nil {
+		if err := store.Put(message); err != nil {
 			return review.StoredComment{}, err
 		}
-		stored.BatchID = batch.ID
-		stored.Index = 0
+		stored.ID = message.ID
 		return stored, nil
 	}
 	model := tui.New(loaded, comments, saveComment)
@@ -117,7 +116,7 @@ func runCommentsAt(ctx context.Context, current string, output io.Writer) error 
 	if err != nil {
 		return err
 	}
-	if err := inbox.WritePrompt(output, taken.Batches); err != nil {
+	if err := inbox.WritePrompt(output, taken.Messages); err != nil {
 		return err
 	}
 	return store.Delete(taken)
