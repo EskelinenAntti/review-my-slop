@@ -157,14 +157,33 @@ func (layout visualLayout) cursorIndex(position int, preferred pane) int {
 	return -1
 }
 
-func (layout visualLayout) paneIndexAtOrAbove(position int, target pane) int {
+func (layout visualLayout) paneIndexAtOrAbove(position int, target pane) (int, bool) {
 	position = min(position, layout.len()-1)
 	for current := position; current >= 0; current-- {
 		if index := layout.paneIndex(current, target); index >= 0 {
-			return index
+			return index, true
 		}
 	}
-	return -1
+	return 0, false
+}
+
+func (layout visualLayout) paneChangeIndexAtOrBelow(position int, target pane) (int, bool) {
+	position = max(0, position)
+	for current := position; current < layout.len(); current++ {
+		if index := layout.paneIndex(current, target); index >= 0 {
+			switch target {
+			case paneLeft:
+				if layout.rows[index].line.Kind == review.LineRemoved {
+					return index, true
+				}
+			case paneRight:
+				if layout.rows[index].line.Kind == review.LineAdded {
+					return index, true
+				}
+			}
+		}
+	}
+	return 0, false
 }
 
 func (layout visualLayout) navigable(position, direction int, target pane) (int, int) {

@@ -857,6 +857,46 @@ func TestSideBySidePaneSwitchingMovesUpFromEmptyTarget(t *testing.T) {
 	}
 }
 
+func TestSideBySidePaneSwitchingMovesDownWhenTargetPaneStartsLater(t *testing.T) {
+	model := New(testDiff(), nil, nil)
+	model.width = 120
+	model.sideBySide = true
+	model.activePane = paneRight
+	model.rows = []row{
+		{kind: rowCode, fileIndex: 0, hunkIndex: 0, line: review.Line{Kind: review.LineAdded}},
+		{kind: rowCode, fileIndex: 0, hunkIndex: 0, line: review.Line{Kind: review.LineContext}},
+		{kind: rowCode, fileIndex: 0, hunkIndex: 0, line: review.Line{Kind: review.LineRemoved}},
+		{kind: rowCode, fileIndex: 0, hunkIndex: 0, line: review.Line{Kind: review.LineRemoved}},
+	}
+	model.cursor = 0
+
+	model = update(t, model, controlKey('w'))
+	model = update(t, model, textKey("h"))
+
+	if model.cursor != 2 || model.activePane != paneLeft {
+		t.Fatalf("Ctrl-w h cursor = %d pane=%v, want first later left row 2", model.cursor, model.activePane)
+	}
+}
+
+func TestSideBySidePaneSwitchingDoesNothingWhenTargetPaneIsEmpty(t *testing.T) {
+	model := New(testDiff(), nil, nil)
+	model.width = 120
+	model.sideBySide = true
+	model.activePane = paneRight
+	model.rows = []row{
+		{kind: rowCode, fileIndex: 0, hunkIndex: 0, line: review.Line{Kind: review.LineAdded}},
+		{kind: rowCode, fileIndex: 0, hunkIndex: 0, line: review.Line{Kind: review.LineAdded}},
+	}
+	model.cursor = 1
+
+	model = update(t, model, controlKey('w'))
+	model = update(t, model, textKey("h"))
+
+	if model.cursor != 1 || model.activePane != paneRight {
+		t.Fatalf("Ctrl-w h cursor = %d pane=%v, want unchanged right-pane cursor", model.cursor, model.activePane)
+	}
+}
+
 func TestSideBySideVerticalMovementSkipsEmptyActivePane(t *testing.T) {
 	model := New(testDiff(), nil, nil)
 	model.width = 120

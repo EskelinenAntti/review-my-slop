@@ -1151,13 +1151,21 @@ func (m *Model) switchSidePane(targetPane pane) {
 		return
 	}
 	layout := m.visualLayout()
-	target := layout.paneIndexAtOrAbove(layout.position(m.cursor), targetPane)
-	if target < 0 {
+	position := layout.position(m.cursor)
+	target, ok := layout.paneIndexAtOrAbove(position, targetPane)
+	if !ok {
+		target, ok = layout.paneChangeIndexAtOrBelow(position, targetPane)
+	}
+	if !ok {
 		return
 	}
 	if m.selecting {
-		selection := layout.paneIndexAtOrAbove(layout.position(m.selectFrom), targetPane)
-		if selection < 0 {
+		selectionPosition := layout.position(m.selectFrom)
+		selection, selectionOK := layout.paneIndexAtOrAbove(selectionPosition, targetPane)
+		if !selectionOK {
+			selection, selectionOK = layout.paneChangeIndexAtOrBelow(selectionPosition, targetPane)
+		}
+		if !selectionOK {
 			return
 		}
 		m.selectFrom = selection
