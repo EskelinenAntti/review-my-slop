@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/eskelinenantti/review-my-slop/internal/review"
+	"github.com/eskelinenantti/review-my-slop/internal/patch"
 )
 
 func TestLoaderIncludesUnstagedAndUntrackedButNotStagedOnly(t *testing.T) {
@@ -34,12 +34,12 @@ func TestLoaderIncludesUnstagedAndUntrackedButNotStagedOnly(t *testing.T) {
 	if len(got.Files) != 2 {
 		t.Fatalf("files = %d, want 2: %#v", len(got.Files), got.Files)
 	}
-	if got.Files[0].Display != "modified.go" || got.Files[1].Display != "new.py" {
-		t.Fatalf("unexpected files: %q, %q", got.Files[0].Display, got.Files[1].Display)
+	if got.Files[0].Name != "modified.go" || got.Files[1].Name != "new.py" {
+		t.Fatalf("unexpected files: %q, %q", got.Files[0].Name, got.Files[1].Name)
 	}
 	modified := got.Files[0]
-	if !containsKind(modified, review.LineRemoved, "return 1") ||
-		!containsKind(modified, review.LineAdded, "return 2") {
+	if !containsKind(modified, patch.Deletion, "return 1") ||
+		!containsKind(modified, patch.Addition, "return 2") {
 		t.Fatalf("modified file lacks expected lines: %#v", modified.Hunks)
 	}
 	untracked := got.Files[1]
@@ -48,7 +48,7 @@ func TestLoaderIncludesUnstagedAndUntrackedButNotStagedOnly(t *testing.T) {
 	}
 	for _, hunk := range untracked.Hunks {
 		for _, line := range hunk.Lines {
-			if line.Kind != review.LineAdded || line.OldNumber != 0 || line.NewNumber == 0 {
+			if line.Kind != patch.Addition || line.OldNumber != 0 || line.NewNumber == 0 {
 				t.Fatalf("unexpected untracked line: %#v", line)
 			}
 		}
@@ -89,14 +89,14 @@ func TestLoadBranchIncludesCommittedStagedUnstagedAndUntrackedChanges(t *testing
 		t.Fatalf("files = %d, want %d: %#v", len(got.Files), len(want), got.Files)
 	}
 	for i, name := range want {
-		if got.Files[i].Display != name {
-			t.Fatalf("file %d = %q, want %q", i, got.Files[i].Display, name)
+		if got.Files[i].Name != name {
+			t.Fatalf("file %d = %q, want %q", i, got.Files[i].Name, name)
 		}
 	}
-	if !containsKind(got.Files[0], review.LineAdded, "committed on feature") ||
-		!containsKind(got.Files[1], review.LineAdded, "unstaged on feature") ||
-		!containsKind(got.Files[2], review.LineAdded, "staged on feature") ||
-		!containsKind(got.Files[3], review.LineAdded, "untracked on feature") {
+	if !containsKind(got.Files[0], patch.Addition, "committed on feature") ||
+		!containsKind(got.Files[1], patch.Addition, "unstaged on feature") ||
+		!containsKind(got.Files[2], patch.Addition, "staged on feature") ||
+		!containsKind(got.Files[3], patch.Addition, "untracked on feature") {
 		t.Fatalf("branch diff lacks expected changes: %#v", got.Files)
 	}
 	if got.Files[0].OldSource != "base\n" || got.Files[0].NewSource != "committed on feature\n" {
@@ -168,11 +168,11 @@ func TestParseHunkBodyLineNumbers(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := []review.Line{
-		{Kind: review.LineContext, Text: "context", OldNumber: 10, NewNumber: 20},
-		{Kind: review.LineRemoved, Text: "old", OldNumber: 11},
-		{Kind: review.LineAdded, Text: "new", NewNumber: 21},
-		{Kind: review.LineContext, Text: "same", OldNumber: 12, NewNumber: 22},
+	want := []patch.Line{
+		{Kind: patch.Context, Text: "context", OldNumber: 10, NewNumber: 20},
+		{Kind: patch.Deletion, Text: "old", OldNumber: 11},
+		{Kind: patch.Addition, Text: "new", NewNumber: 21},
+		{Kind: patch.Context, Text: "same", OldNumber: 12, NewNumber: 22},
 	}
 	if len(lines) != len(want) {
 		t.Fatalf("lines = %#v", lines)
@@ -202,7 +202,7 @@ func FuzzParseHunkBody(f *testing.F) {
 	})
 }
 
-func containsKind(file review.File, kind review.LineKind, text string) bool {
+func containsKind(file patch.File, kind patch.LineKind, text string) bool {
 	for _, hunk := range file.Hunks {
 		for _, line := range hunk.Lines {
 			if line.Kind == kind && strings.Contains(line.Text, text) {

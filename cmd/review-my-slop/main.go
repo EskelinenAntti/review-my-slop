@@ -11,6 +11,7 @@ import (
 
 	"github.com/eskelinenantti/review-my-slop/internal/gitdiff"
 	"github.com/eskelinenantti/review-my-slop/internal/inbox"
+	"github.com/eskelinenantti/review-my-slop/internal/patch"
 	"github.com/eskelinenantti/review-my-slop/internal/review"
 	"github.com/eskelinenantti/review-my-slop/internal/tui"
 )
@@ -66,7 +67,7 @@ func runCode(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	saveComment := func(stored review.StoredComment, diff review.Diff) (review.StoredComment, error) {
+	saveComment := func(stored review.StoredComment, diff patch.Patch) (review.StoredComment, error) {
 		if stored.ID != "" {
 			return stored, store.UpdateComment(diff.Repository, stored)
 		}
@@ -85,11 +86,11 @@ func runCode(ctx context.Context) error {
 	}
 	model := tui.New(loaded, comments, saveComment)
 	model.SetSideBySide(sideBySide, store.SetSideBySide)
-	model.SetDelete(func(stored review.StoredComment, diff review.Diff) error {
+	model.SetDelete(func(stored review.StoredComment, diff patch.Patch) error {
 		return store.DeleteComment(diff.Repository, stored)
 	})
 	model.SetParents(parents)
-	model.SetRefresh(func(parent string) (review.Diff, error) {
+	model.SetRefresh(func(parent string) (patch.Patch, error) {
 		if parent != "" {
 			return loader.LoadBranch(ctx, current, parent)
 		}

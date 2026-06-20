@@ -79,7 +79,7 @@ func testCommandStartsAndQuitsInPTY(t *testing.T, binary string, args []string) 
 		t.Fatalf("TUI did not render untracked file:\n%s", output.String())
 	}
 	if _, err := terminal.Write([]byte("q")); err != nil {
-		t.Fatal(err)
+		t.Fatalf("write quit: %v\n%s", err, output.String())
 	}
 	if err := command.Wait(); err != nil {
 		t.Fatalf("command exit: %v\n%s", err, output.String())
