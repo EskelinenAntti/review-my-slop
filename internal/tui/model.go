@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"iter"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -50,12 +51,40 @@ const (
 const horizontalScrollStep = 4
 
 type row struct {
-	kind      rowKind
-	fileIndex int
-	hunkIndex int
-	lineIndex int
-	text      string
-	line      review.Line
+	kind     rowKind
+	file     *review.File
+	hunk     *review.Hunk
+	line     *review.Line
+	text     string
+	previous *row
+	next     *row
+}
+
+type rowList struct {
+	first *row
+	last  *row
+	count int
+}
+
+func (rows *rowList) append(current *row) {
+	if rows.last == nil {
+		rows.first = current
+	} else {
+		rows.last.next = current
+		current.previous = rows.last
+	}
+	rows.last = current
+	rows.count++
+}
+
+func (rows rowList) all() iter.Seq[*row] {
+	return func(yield func(*row) bool) {
+		for current := rows.first; current != nil; current = current.next {
+			if !yield(current) {
+				return
+			}
+		}
+	}
 }
 
 type mode uint8
@@ -69,16 +98,16 @@ const (
 
 type Model struct {
 	diff        review.Diff
-	rows        []row
+	rows        rowList
 	comments    []review.StoredComment
 	commentRow  int
-	cursor      int
-	viewportTop int
+	cursor      *row
+	viewportTop *row
 	xOffset     int
 	width       int
 	height      int
 	selecting   bool
-	selectFrom  int
+	selectFrom  *row
 	mode        mode
 	commentBody string
 	editIndex   int
@@ -96,7 +125,7 @@ type Model struct {
 	target      int
 	search      []rune
 	searchTerm  string
-	searchFrom  int
+	searchFrom  *row
 	searchPane  pane
 	searchMiss  bool
 	dark        bool
@@ -104,17 +133,17 @@ type Model struct {
 
 func New(diff review.Diff, comments []review.StoredComment, save SaveCommentFunc) Model {
 	model := Model{
-		diff:       diff,
-		comments:   comments,
-		width:      100,
-		height:     30,
-		selectFrom: -1,
-		editIndex:  -1,
-		save:       save,
-		dark:       true,
+		diff:      diff,
+		comments:  comments,
+		width:     100,
+		height:    30,
+		editIndex: -1,
+		save:      save,
+		dark:      true,
 	}
 	model.rows = flatten(diff, model.dark)
 	model.cursor = firstCodeRow(model.rows)
+	model.viewportTop = model.rows.first
 	return model
 }
 
@@ -152,11 +181,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 	case tea.WindowSizeMsg:
-		layout := m.visualLayout()
-		cursorRow := layout.position(m.cursor) - m.viewportTop
+		layout := m.layout()
+		rowsAboveCursor := countDisplayedRowsBetween(layout, m.viewportTop, m.cursor)
 		m.width = msg.Width
 		m.height = msg.Height
-		m.viewportTop = m.visualLayout().position(m.cursor) - cursorRow
+		m.viewportTop = sourceRowBefore(m.layout(), m.cursor, rowsAboveCursor)
 		m.xOffset = min(m.xOffset, m.maxHorizontalOffset())
 		m.ensureVisible()
 		return m, nil
@@ -205,25 +234,23 @@ func (m Model) loadRefresh() tea.Cmd {
 }
 
 func (m *Model) applyDiff(diff review.Diff) {
-	layout := m.visualLayout()
-	cursorRow := layout.position(m.cursor) - m.viewportTop
+	layout := m.layout()
+	rowsAboveCursor := countDisplayedRowsBetween(layout, m.viewportTop, m.cursor)
 	cursor := m.rowAnchor(m.cursor)
 	selection := m.rowAnchor(m.selectFrom)
-	cursorFallback := m.cursor
-	selectionFallback := m.selectFrom
+	cursorFallback := countSourceRowsBefore(m.rows, m.cursor)
+	selectionFallback := countSourceRowsBefore(m.rows, m.selectFrom)
 
 	m.diff = diff
 	m.rows = flatten(diff, m.dark)
 	m.cursor = m.findRow(cursor, cursorFallback)
 	if m.selecting {
 		m.selectFrom = m.findRow(selection, selectionFallback)
-		if !m.isCode(m.selectFrom) || !m.isCode(m.cursor) ||
-			m.rows[m.selectFrom].fileIndex != m.rows[m.cursor].fileIndex ||
-			m.rows[m.selectFrom].hunkIndex != m.rows[m.cursor].hunkIndex {
+		if !m.isCode(m.selectFrom) || !m.isCode(m.cursor) || m.selectFrom.hunk != m.cursor.hunk {
 			m.cancelSelection()
 		}
 	}
-	m.viewportTop = m.visualLayout().position(m.cursor) - cursorRow
+	m.viewportTop = sourceRowBefore(m.layout(), m.cursor, rowsAboveCursor)
 	m.xOffset = min(m.xOffset, m.maxHorizontalOffset())
 	m.ensureVisible()
 }
@@ -238,14 +265,13 @@ type rowAnchor struct {
 	text      string
 }
 
-func (m Model) rowAnchor(index int) rowAnchor {
-	if index < 0 || index >= len(m.rows) {
+func (m Model) rowAnchor(current *row) rowAnchor {
+	if current == nil {
 		return rowAnchor{}
 	}
-	current := m.rows[index]
 	anchor := rowAnchor{
 		valid: true,
-		file:  m.diff.Files[current.fileIndex].Display,
+		file:  current.file.Display,
 		kind:  current.kind,
 		text:  current.text,
 	}
@@ -257,26 +283,51 @@ func (m Model) rowAnchor(index int) rowAnchor {
 	return anchor
 }
 
-func (m Model) findRow(anchor rowAnchor, fallback int) int {
-	if !anchor.valid || len(m.rows) == 0 {
-		return min(max(0, fallback), max(0, len(m.rows)-1))
+func (m Model) findRow(anchor rowAnchor, fallbackCount int) *row {
+	if m.rows.count == 0 {
+		return nil
 	}
-	for index, current := range m.rows {
+	if !anchor.valid {
+		return firstCodeRow(m.rows)
+	}
+	for current := range m.rows.all() {
 		if m.rowMatches(anchor, current, true) {
-			return index
+			return current
 		}
 	}
-	for index, current := range m.rows {
+	for current := range m.rows.all() {
 		if m.rowMatches(anchor, current, false) {
-			return index
+			return current
 		}
 	}
-	return min(max(0, fallback), len(m.rows)-1)
+	fallback := sourceRowAfter(m.rows.first, fallbackCount)
+	if sameKind := nearestRowOfKind(fallback, anchor.kind); sameKind != nil {
+		return sameKind
+	}
+	return fallback
 }
 
-func (m Model) rowMatches(anchor rowAnchor, current row, exact bool) bool {
-	if current.fileIndex < 0 || current.fileIndex >= len(m.diff.Files) ||
-		m.diff.Files[current.fileIndex].Display != anchor.file ||
+func nearestRowOfKind(start *row, kind rowKind) *row {
+	forward, backward := start, start
+	for forward != nil || backward != nil {
+		if forward != nil {
+			if forward.kind == kind {
+				return forward
+			}
+			forward = forward.next
+		}
+		if backward != nil {
+			backward = backward.previous
+			if backward != nil && backward.kind == kind {
+				return backward
+			}
+		}
+	}
+	return nil
+}
+
+func (m Model) rowMatches(anchor rowAnchor, current *row, exact bool) bool {
+	if current == nil || current.file == nil || current.file.Display != anchor.file ||
 		current.kind != anchor.kind {
 		return false
 	}
@@ -308,9 +359,9 @@ func (m Model) updateKey(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	if pendingKey == "[" || pendingKey == "]" {
 		switch pendingKey + name {
 		case "]f":
-			m.jump(rowFile, 1)
+			m.jumpNext(rowFile)
 		case "[f":
-			m.jump(rowFile, -1)
+			m.jumpPrevious(rowFile)
 		}
 		return m, nil
 	}
@@ -353,13 +404,13 @@ func (m Model) updateKey(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		m.searchPane = m.activePane
 		m.searchMiss = false
 	case "n":
-		m.repeatSearch(1)
+		m.repeatSearch(nextSourceRow)
 	case "N":
-		m.repeatSearch(-1)
+		m.repeatSearch(previousSourceRow)
 	case "j", "down":
-		m.moveVertical(1)
+		m.moveDown()
 	case "k", "up":
-		m.moveVertical(-1)
+		m.moveUp()
 	case "h", "left":
 		m.scrollHorizontal(-horizontalScrollStep)
 	case "l", "right":
@@ -369,9 +420,9 @@ func (m Model) updateKey(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	case "$":
 		m.xOffset = m.maxHorizontalOffset()
 	case "ctrl+d":
-		m.moveHalfPage(1)
+		m.moveHalfPageDown()
 	case "ctrl+u":
-		m.moveHalfPage(-1)
+		m.moveHalfPageUp()
 	case "ctrl+w":
 		m.pendingKey = name
 	case "g":
@@ -466,29 +517,31 @@ func (m *Model) updateIncrementalSearch() {
 		m.ensureVisible()
 		return
 	}
-	match := m.findSearch(string(m.search), m.searchFrom, 1)
-	m.searchMiss = match < 0
-	if match >= 0 {
+	match := m.findSearch(string(m.search), m.searchFrom, nextSourceRow)
+	m.searchMiss = match == nil
+	if match != nil {
 		m.setSearchCursor(match)
 	}
 }
 
-func (m *Model) repeatSearch(direction int) {
+type sourceRowStep func(rowList, *row) *row
+
+func (m *Model) repeatSearch(step sourceRowStep) {
 	if m.searchTerm == "" {
 		return
 	}
-	match := m.findSearch(m.searchTerm, m.cursor, direction)
-	if match < 0 {
+	match := m.findSearch(m.searchTerm, m.cursor, step)
+	if match == nil {
 		m.err = fmt.Errorf("no matches for %q", m.searchTerm)
 		return
 	}
 	m.setSearchCursor(match)
 }
 
-func (m *Model) setSearchCursor(index int) {
-	m.cursor = index
-	if m.sideBySideActive() && m.isCode(index) {
-		switch m.rows[index].line.Kind {
+func (m *Model) setSearchCursor(current *row) {
+	m.cursor = current
+	if m.sideBySideActive() && m.isCode(current) {
+		switch current.line.Kind {
 		case review.LineRemoved:
 			m.activePane = paneLeft
 		case review.LineAdded:
@@ -498,21 +551,36 @@ func (m *Model) setSearchCursor(index int) {
 	m.ensureVisible()
 }
 
-func (m Model) findSearch(query string, start, direction int) int {
-	if query == "" || len(m.rows) == 0 {
-		return -1
+func (m Model) findSearch(query string, start *row, step sourceRowStep) *row {
+	if query == "" || m.rows.count == 0 || start == nil {
+		return nil
 	}
 	query = strings.ToLower(query)
-	for step := 1; step <= len(m.rows); step++ {
-		index := (start + direction*step) % len(m.rows)
-		if index < 0 {
-			index += len(m.rows)
+	current := step(m.rows, start)
+	for {
+		if strings.Contains(strings.ToLower(ansi.Strip(current.text)), query) {
+			return current
 		}
-		if strings.Contains(strings.ToLower(ansi.Strip(m.rows[index].text)), query) {
-			return index
+		if current == start {
+			break
 		}
+		current = step(m.rows, current)
 	}
-	return -1
+	return nil
+}
+
+func nextSourceRow(rows rowList, current *row) *row {
+	if current != nil && current.next != nil {
+		return current.next
+	}
+	return rows.first
+}
+
+func previousSourceRow(rows rowList, current *row) *row {
+	if current != nil && current.previous != nil {
+		return current.previous
+	}
+	return rows.last
 }
 
 func (m Model) updateComments(name string) (tea.Model, tea.Cmd) {
@@ -773,12 +841,11 @@ func (m Model) openCurrentLine() (tea.Cmd, error) {
 		return nil, fmt.Errorf("select a code line to open in $EDITOR")
 	}
 
-	current := m.rows[m.cursor]
-	file := m.diff.Files[current.fileIndex]
-	path := file.NewPath
+	current := m.cursor
+	path := current.file.NewPath
 	line := current.line.NewNumber
 	if path == "" || path == "/dev/null" {
-		path = file.OldPath
+		path = current.file.OldPath
 	}
 	if line == 0 {
 		line = current.line.OldNumber
@@ -815,27 +882,24 @@ func (m *Model) beginComment() (tea.Cmd, error) {
 }
 
 func (m Model) currentAnchor() (review.Anchor, error) {
-	start, end := m.cursor, m.cursor
-	if m.selecting {
-		start, end = ordered(m.selectFrom, m.cursor)
-	}
-	if start < 0 || end >= len(m.rows) || !m.isCode(start) || !m.isCode(end) {
+	selectedRows := m.selectedRows()
+	if len(selectedRows) == 0 {
 		return review.Anchor{}, fmt.Errorf("select code lines before commenting")
 	}
-	first, last := m.rows[start], m.rows[end]
-	if first.fileIndex != last.fileIndex || first.hunkIndex != last.hunkIndex {
+	start, end := selectedRows[0], selectedRows[len(selectedRows)-1]
+	if !m.isCode(start) || !m.isCode(end) {
+		return review.Anchor{}, fmt.Errorf("select code lines before commenting")
+	}
+	if start.file != end.file || start.hunk != end.hunk {
 		return review.Anchor{}, fmt.Errorf("a comment selection cannot cross a hunk")
 	}
-	file := m.diff.Files[first.fileIndex]
-	hunk := file.Hunks[first.hunkIndex]
 	anchor := review.Anchor{
-		File:     file.Display,
-		Hunk:     hunk.Header,
-		StartRow: first.lineIndex,
-		EndRow:   last.lineIndex,
+		File:     start.file.Display,
+		Hunk:     start.hunk.Header,
+		StartRow: hunkRowNumber(m.rows, start),
+		EndRow:   hunkRowNumber(m.rows, end),
 	}
-	for index := start; index <= end; index++ {
-		current := m.rows[index]
+	for _, current := range selectedRows {
 		if current.kind != rowCode {
 			return review.Anchor{}, fmt.Errorf("a comment selection cannot include headers")
 		}
@@ -877,21 +941,21 @@ func (m Model) render() string {
 	summary := mutedStyle.Render(fmt.Sprintf("+%d-%d", added, removed))
 	out.WriteString(title + "  " + summary + "\n")
 
-	if len(m.rows) == 0 {
+	if m.rows.count == 0 {
 		empty := "No unstaged or untracked changes."
 		if m.currentParent() != "" {
 			empty = "No branch or worktree changes."
 		}
 		out.WriteString("\n" + mutedStyle.Render(empty) + "\n")
 	} else {
-		layout := m.visualLayout()
+		layout := m.layout()
 		height := m.viewportHeight()
-		end := min(layout.len(), m.viewportTop+height)
-		for position := m.viewportTop; position < end; position++ {
-			out.WriteString(m.renderVisualRow(layout.row(position)))
+		visibleRows := displayedRowsStartingAt(layout, m.viewportTop, height)
+		for _, current := range visibleRows {
+			out.WriteString(current.render(m))
 			out.WriteByte('\n')
 		}
-		for position := end; position < m.viewportTop+height; position++ {
+		for count := len(visibleRows); count < height; count++ {
 			out.WriteByte('\n')
 		}
 	}
@@ -920,39 +984,46 @@ func diffLineCounts(diff review.Diff) (added, removed int) {
 	return added, removed
 }
 
-func (m Model) renderRow(index int) string {
-	layout := m.visualLayout()
-	return m.renderVisualRow(layout.row(layout.position(index)))
-}
-
-func (m Model) renderVisualRow(visual visualRow) string {
-	index := visual.source
-	if index < 0 || index >= len(m.rows) {
+func (m Model) renderRow(source *row) string {
+	layout := m.layout()
+	current, ok := layout.displayedRowForSource(source)
+	if !ok {
 		return ""
 	}
-	current := m.rows[index]
+	return current.render(m)
+}
+
+func (m Model) renderSideBySideRow(sideBySideRow *sideBySideRow) string {
+	current := sideBySideRow.primaryRow
+	if current != nil && current.kind == rowCode {
+		return m.renderSideBySide(sideBySideRow)
+	}
+	return m.renderStackedRow(current)
+}
+
+func (m Model) renderStackedRow(current *row) string {
+	if current == nil {
+		return ""
+	}
 	width := max(20, m.width)
 	switch current.kind {
 	case rowFile:
 		style := fileStyle
-		if index == m.cursor {
+		if current == m.cursor {
 			style = cursorStyle
 		}
 		return style.Width(width).Render(current.text)
 	case rowMetadata:
-		if index == m.cursor {
+		if current == m.cursor {
 			return renderStyledRow(cursorStyle, "  "+current.text, width, true)
 		}
 		return metadataStyle.Render("  " + current.text)
 	case rowHunk:
-		if index == m.cursor {
+		if current == m.cursor {
 			return renderStyledRow(cursorStyle, current.text, width, true)
 		}
 		return hunkStyle.Render(current.text)
 	case rowCode:
-		if m.sideBySideActive() {
-			return m.renderSideBySide(visual)
-		}
 		oldNumber := number(current.line.OldNumber)
 		newNumber := number(current.line.NewNumber)
 		prefix := " "
@@ -966,11 +1037,11 @@ func (m Model) renderVisualRow(visual visualRow) string {
 		gutter := fmt.Sprintf("%5s %5s %s ", oldNumber, newNumber, prefix)
 		line := gutter + fitANSIWindow(text, m.xOffset, width-lipgloss.Width(gutter))
 		style := lineStyle(current.line.Kind, m.dark)
-		if m.selected(index) {
+		if m.selected(current) {
 			style = selectionRowStyle(m.dark)
 		}
-		stripForeground := m.selected(index)
-		if index == m.cursor {
+		stripForeground := m.selected(current)
+		if current == m.cursor {
 			style = cursorStyle
 			stripForeground = true
 		}
@@ -1103,19 +1174,18 @@ func renderKeyBindings(bindings []keyBinding) []string {
 	return lines
 }
 
-func (m Model) renderSideBySide(visual visualRow) string {
+func (m Model) renderSideBySide(sideBySideRow *sideBySideRow) string {
 	leftWidth := max(20, (m.width-3)/2)
 	rightWidth := max(20, m.width-3-leftWidth)
-	left := m.renderSidePane(visual.left, paneLeft, leftWidth)
-	right := m.renderSidePane(visual.right, paneRight, rightWidth)
+	left := m.renderSidePane(sideBySideRow.leftRow, paneLeft, leftWidth)
+	right := m.renderSidePane(sideBySideRow.rightRow, paneRight, rightWidth)
 	return left + " │ " + right
 }
 
-func (m Model) renderSidePane(index int, currentPane pane, width int) string {
-	if index < 0 {
+func (m Model) renderSidePane(current *row, currentPane pane, width int) string {
+	if current == nil {
 		return strings.Repeat(" ", width)
 	}
-	current := m.rows[index]
 	lineNumber := current.line.NewNumber
 	text := "  " + current.text
 	if currentPane == paneLeft {
@@ -1131,39 +1201,44 @@ func (m Model) renderSidePane(index int, currentPane pane, width int) string {
 	line := gutter + fitANSIWindow(text, m.xOffset, width-lipgloss.Width(gutter))
 	style := lineStyle(current.line.Kind, m.dark)
 	stripForeground := false
-	if m.selected(index) {
+	if m.selectedInPane(current, currentPane) {
 		style = selectionRowStyle(m.dark)
 		stripForeground = true
 	}
-	if index == m.cursor && currentPane == m.activePane {
+	if current == m.cursor && currentPane == m.activePane {
 		style = cursorStyle
 		stripForeground = true
 	}
 	return renderStyledRow(style, line, width, stripForeground)
 }
 
-func (m Model) visualLayout() visualLayout {
-	return newVisualLayout(m.rows, m.sideBySideActive())
+func (m Model) layout() diffLayout {
+	if m.sideBySideActive() {
+		return newSideBySideProjection(m.rows)
+	}
+	return newStackedLayout()
+}
+
+func (m Model) sideBySideProjection() sideBySideProjection {
+	return newSideBySideProjection(m.rows)
 }
 
 func (m *Model) switchSidePane(targetPane pane) {
 	if !m.sideBySideActive() {
 		return
 	}
-	layout := m.visualLayout()
-	position := layout.position(m.cursor)
-	target, ok := layout.paneIndexAtOrAbove(position, targetPane)
+	projection := m.sideBySideProjection()
+	target, ok := projection.paneRowAtOrAbove(m.cursor, targetPane)
 	if !ok {
-		target, ok = layout.paneChangeIndexAtOrBelow(position, targetPane)
+		target, ok = projection.paneChangeAtOrBelow(m.cursor, targetPane)
 	}
 	if !ok {
 		return
 	}
 	if m.selecting {
-		selectionPosition := layout.position(m.selectFrom)
-		selection, selectionOK := layout.paneIndexAtOrAbove(selectionPosition, targetPane)
+		selection, selectionOK := projection.paneRowAtOrAbove(m.selectFrom, targetPane)
 		if !selectionOK {
-			selection, selectionOK = layout.paneChangeIndexAtOrBelow(selectionPosition, targetPane)
+			selection, selectionOK = projection.paneChangeAtOrBelow(m.selectFrom, targetPane)
 		}
 		if !selectionOK {
 			return
@@ -1175,13 +1250,22 @@ func (m *Model) switchSidePane(targetPane pane) {
 	m.ensureVisible()
 }
 
-func (m *Model) moveVertical(direction int) {
-	if len(m.rows) == 0 {
+type cursorStep func(diffLayout, *row, pane) (*row, bool)
+
+func (m *Model) moveDown() {
+	m.moveCursor(nextCursorRow)
+}
+
+func (m *Model) moveUp() {
+	m.moveCursor(previousCursorRow)
+}
+
+func (m *Model) moveCursor(step cursorStep) {
+	if m.rows.count == 0 {
 		return
 	}
-	layout := m.visualLayout()
-	_, cursor := layout.navigable(layout.position(m.cursor), direction, m.activePane)
-	if cursor < 0 {
+	cursor, ok := step(m.layout(), m.cursor, m.activePane)
+	if !ok {
 		return
 	}
 	if m.selecting && !m.sameHunk(m.selectFrom, cursor) {
@@ -1206,18 +1290,22 @@ func (m *Model) toggleSideBySide() {
 }
 
 func (m *Model) setSideBySide(enabled bool) {
-	oldLayout := m.visualLayout()
-	cursorRow := oldLayout.position(m.cursor) - m.viewportTop
+	oldLayout := m.layout()
+	rowsAboveCursor := countDisplayedRowsBetween(oldLayout, m.viewportTop, m.cursor)
 	m.sideBySide = enabled
-	if enabled {
-		layout := m.visualLayout()
+	if m.sideBySideActive() {
+		projection := m.sideBySideProjection()
 		m.activePane = paneRight
-		m.cursor = layout.cursorIndex(layout.position(m.cursor), paneRight)
+		if cursor, ok := projection.preferredCursor(m.cursor, paneRight); ok {
+			m.cursor = cursor
+		}
 		if m.selecting {
-			m.selectFrom = layout.cursorIndex(layout.position(m.selectFrom), paneRight)
+			if selection, ok := projection.preferredCursor(m.selectFrom, paneRight); ok {
+				m.selectFrom = selection
+			}
 		}
 	}
-	m.viewportTop = m.visualLayout().position(m.cursor) - cursorRow
+	m.viewportTop = sourceRowBefore(m.layout(), m.cursor, rowsAboveCursor)
 	m.xOffset = min(m.xOffset, m.maxHorizontalOffset())
 	m.ensureVisible()
 }
@@ -1231,21 +1319,24 @@ func (m *Model) saveSideBySide() {
 	}
 }
 
-func flatten(diff review.Diff, darkBackground bool) []row {
-	var rows []row
-	for fileIndex, file := range diff.Files {
-		rows = append(rows, row{kind: rowFile, fileIndex: fileIndex, hunkIndex: -1, lineIndex: -1, text: file.Display})
+func flatten(diff review.Diff, darkBackground bool) rowList {
+	var rows rowList
+	for _, file := range diff.Files {
+		file := file
+		rows.append(&row{kind: rowFile, file: &file, text: file.Display})
 		for _, metadata := range file.Metadata {
-			rows = append(rows, row{kind: rowMetadata, fileIndex: fileIndex, hunkIndex: -1, lineIndex: -1, text: metadata})
+			rows.append(&row{kind: rowMetadata, file: &file, text: metadata})
 		}
 		highlighted := highlight.Sources(file.Language, file.OldSource, file.NewSource, darkBackground)
-		for hunkIndex, hunk := range file.Hunks {
+		for _, hunk := range file.Hunks {
+			hunk := hunk
 			header := hunk.Header
 			if !strings.HasPrefix(header, "@@") {
 				header = "@@ " + header
 			}
-			rows = append(rows, row{kind: rowHunk, fileIndex: fileIndex, hunkIndex: hunkIndex, lineIndex: -1, text: header})
-			for lineIndex, line := range hunk.Lines {
+			rows.append(&row{kind: rowHunk, file: &file, hunk: &hunk, text: header})
+			for _, line := range hunk.Lines {
+				line := line
 				text := line.Text
 				switch line.Kind {
 				case review.LineRemoved:
@@ -1253,10 +1344,7 @@ func flatten(diff review.Diff, darkBackground bool) []row {
 				default:
 					text = highlightedLine(highlighted.New, line.NewNumber, text)
 				}
-				rows = append(rows, row{
-					kind: rowCode, fileIndex: fileIndex, hunkIndex: hunkIndex,
-					lineIndex: lineIndex, line: line, text: text,
-				})
+				rows.append(&row{kind: rowCode, file: &file, hunk: &hunk, line: &line, text: text})
 			}
 		}
 	}
@@ -1296,39 +1384,55 @@ func highlightedLine(lines []string, number int, fallback string) string {
 	return lines[number-1]
 }
 
-func (m *Model) moveHalfPage(direction int) {
-	if len(m.rows) == 0 {
+func (m *Model) moveHalfPageDown() {
+	m.moveHalfPage(displayedRow.nextRow, displayedRow.previousRow)
+}
+
+func (m *Model) moveHalfPageUp() {
+	m.moveHalfPage(displayedRow.previousRow, displayedRow.nextRow)
+}
+
+func (m *Model) moveHalfPage(primaryStep, fallbackStep displayedRowStep) {
+	if m.rows.count == 0 {
 		return
 	}
 
-	layout := m.visualLayout()
+	layout := m.layout()
 	height := m.viewportHeight()
-	delta := max(1, height/2) * direction
-	maxOffset := max(0, layout.len()-height)
-	offset := max(0, min(m.viewportTop+delta, maxOffset))
-	cursorTarget := layout.position(m.cursor) + offset - m.viewportTop
-	first, last := offset, min(layout.len()-1, offset+height-1)
-	cursorTarget = max(first, min(cursorTarget, last))
-	_, cursor := layout.codeNearBetween(cursorTarget, direction, first, last, m.activePane)
-	if cursor < 0 {
-		_, cursor = layout.codeNearBetween(cursorTarget, -direction, first, last, m.activePane)
+	pageRows := max(1, height/2)
+	rowsAboveCursor := countDisplayedRowsBetween(layout, m.viewportTop, m.cursor)
+	newTop := walkDisplayedRows(layout, m.viewportTop, pageRows, primaryStep)
+	newTop = viewportTopFillingHeight(layout, newTop, height)
+	target, ok := displayedRowAfter(layout, newTop, rowsAboveCursor)
+	if !ok {
+		return
 	}
-	if cursor < 0 || m.selecting && !m.sameHunk(m.selectFrom, cursor) {
+	visible := displayedRowsStartingAt(layout, newTop, height)
+	cursor, ok := cursorRowNear(target, visible, m.activePane, primaryStep, fallbackStep)
+	if !ok || m.selecting && !m.sameHunk(m.selectFrom, cursor) {
 		return
 	}
 
 	m.cursor = cursor
-	m.viewportTop = offset
+	m.viewportTop = newTop
 }
 
-func (m *Model) jump(kind rowKind, direction int) {
-	if len(m.rows) == 0 {
+func (m *Model) jumpNext(kind rowKind) {
+	m.jump(kind, nextSourceRow)
+}
+
+func (m *Model) jumpPrevious(kind rowKind) {
+	m.jump(kind, previousSourceRow)
+}
+
+func (m *Model) jump(kind rowKind, step sourceRowStep) {
+	if m.rows.count == 0 {
 		return
 	}
 	m.cancelSelection()
-	for index := m.cursor + direction; index >= 0 && index < len(m.rows); index += direction {
-		if m.rows[index].kind == kind {
-			if code := codeNear(m.rows, index, direction); code >= 0 {
+	for current := stepWithoutWrap(m.cursor, step); current != nil; current = stepWithoutWrap(current, step) {
+		if current.kind == kind {
+			if code := codeNear(current, step); code != nil {
 				m.cursor = code
 				m.ensureVisible()
 			}
@@ -1338,32 +1442,24 @@ func (m *Model) jump(kind rowKind, direction int) {
 }
 
 func (m *Model) ensureVisible() {
-	layout := m.visualLayout()
+	layout := m.layout()
 	height := m.viewportHeight()
-	if layout.len() == 0 {
-		m.viewportTop = 0
+	if m.rows.count == 0 {
+		m.viewportTop = nil
 		return
 	}
-
-	cursor := layout.position(m.cursor)
-	if cursor < m.viewportTop {
-		m.viewportTop = cursor
-	}
-	if cursor >= m.viewportTop+height {
-		m.viewportTop = cursor - height + 1
-	}
-	m.viewportTop = max(0, min(m.viewportTop, max(0, layout.len()-height)))
+	m.viewportTop = viewportTopKeepingCursorVisible(layout, m.viewportTop, m.cursor, height)
 }
 
-func (m *Model) alignCursor(viewportRow int) {
-	layout := m.visualLayout()
+func (m *Model) alignCursor(rowsAbove int) {
+	layout := m.layout()
 	height := m.viewportHeight()
-	if layout.len() == 0 {
-		m.viewportTop = 0
+	if m.rows.count == 0 {
+		m.viewportTop = nil
 		return
 	}
-	m.viewportTop = layout.position(m.cursor) - viewportRow
-	m.viewportTop = max(0, min(m.viewportTop, max(0, layout.len()-height)))
+	m.viewportTop = sourceRowBefore(layout, m.cursor, rowsAbove)
+	m.viewportTop = viewportTopFillingHeight(layout, m.viewportTop, height)
 }
 
 func (m *Model) scrollHorizontal(delta int) {
@@ -1378,7 +1474,7 @@ func (m Model) maxHorizontalOffset() int {
 		extraWidth = 2
 	}
 	longest := 0
-	for _, current := range m.rows {
+	for current := range m.rows.all() {
 		if current.kind != rowCode {
 			continue
 		}
@@ -1391,54 +1487,150 @@ func (m Model) viewportHeight() int {
 	return max(1, m.height-3)
 }
 
-func (m Model) isCode(index int) bool {
-	return index >= 0 && index < len(m.rows) && m.rows[index].kind == rowCode
+func (m Model) isCode(current *row) bool {
+	return current != nil && current.kind == rowCode
 }
 
-func (m Model) sameHunk(a, b int) bool {
-	return m.isCode(a) && m.isCode(b) &&
-		m.rows[a].fileIndex == m.rows[b].fileIndex &&
-		m.rows[a].hunkIndex == m.rows[b].hunkIndex
+func (m Model) sameHunk(a, b *row) bool {
+	return m.isCode(a) && m.isCode(b) && a.file == b.file && a.hunk == b.hunk
 }
 
-func (m Model) selected(index int) bool {
-	if !m.selecting {
+func (m Model) selected(current *row) bool {
+	if !m.selecting || current == nil {
 		return false
 	}
-	start, end := ordered(m.selectFrom, m.cursor)
-	return index >= start && index <= end && m.rows[index].kind == rowCode
+	return rowBetween(current, m.selectFrom, m.cursor) && current.kind == rowCode
+}
+
+func (m Model) selectedInPane(current *row, currentPane pane) bool {
+	if !m.selecting || current == nil || currentPane != m.activePane {
+		return false
+	}
+	projection := m.sideBySideProjection()
+	selectedRow, ok := projection.sideBySideRowBySourceRow[current]
+	if !ok {
+		return false
+	}
+	paneRow, ok := selectedRow.cursorRow(currentPane)
+	if !ok || paneRow != current {
+		return false
+	}
+	start := projection.sideBySideRowBySourceRow[m.selectFrom]
+	end := projection.sideBySideRowBySourceRow[m.cursor]
+	return sideBySideRowBetween(selectedRow, start, end)
+}
+
+func (m Model) selectedRows() []*row {
+	if !m.selecting {
+		if m.isCode(m.cursor) {
+			return []*row{m.cursor}
+		}
+		return nil
+	}
+	if m.sideBySideActive() {
+		projection := m.sideBySideProjection()
+		start := projection.sideBySideRowBySourceRow[m.selectFrom]
+		end := projection.sideBySideRowBySourceRow[m.cursor]
+		start, end = orderedSideBySideRows(start, end)
+		var selected []*row
+		for current := start; current != nil; current = current.next {
+			if paneRow, ok := current.cursorRow(m.activePane); ok {
+				selected = append(selected, paneRow)
+			}
+			if current == end {
+				break
+			}
+		}
+		return selected
+	}
+
+	start, end := orderedRows(m.selectFrom, m.cursor)
+	var selected []*row
+	for current := start; current != nil; current = current.next {
+		selected = append(selected, current)
+		if current == end {
+			break
+		}
+	}
+	return selected
 }
 
 func (m *Model) cancelSelection() {
 	m.selecting = false
-	m.selectFrom = -1
+	m.selectFrom = nil
 }
 
-func firstCodeRow(rows []row) int {
-	for index, row := range rows {
-		if row.kind == rowCode {
-			return index
+func firstCodeRow(rows rowList) *row {
+	for current := rows.first; current != nil; current = current.next {
+		if current.kind == rowCode {
+			return current
 		}
 	}
-	return 0
+	return rows.first
 }
 
-func lastCodeRow(rows []row) int {
-	for index := len(rows) - 1; index >= 0; index-- {
-		if rows[index].kind == rowCode {
-			return index
+func lastCodeRow(rows rowList) *row {
+	for current := rows.last; current != nil; current = current.previous {
+		if current.kind == rowCode {
+			return current
 		}
 	}
-	return 0
+	return rows.first
 }
 
-func codeNear(rows []row, start, direction int) int {
-	for index := start; index >= 0 && index < len(rows); index += direction {
-		if rows[index].kind == rowCode {
-			return index
+func rowBetween(candidate, first, last *row) bool {
+	for current := first; current != nil; current = current.next {
+		if current == candidate {
+			return true
+		}
+		if current == last {
+			return false
 		}
 	}
-	return -1
+	for current := last; current != nil; current = current.next {
+		if current == candidate {
+			return true
+		}
+		if current == first {
+			return false
+		}
+	}
+	return false
+}
+
+func orderedRows(a, b *row) (*row, *row) {
+	for current := a; current != nil; current = current.next {
+		if current == b {
+			return a, b
+		}
+	}
+	return b, a
+}
+
+func hunkRowNumber(rows rowList, target *row) int {
+	count := 0
+	for current := rows.first; current != nil; current = current.next {
+		if current == target {
+			return count
+		}
+		if current.kind == rowCode && current.hunk == target.hunk {
+			count++
+		}
+	}
+	return count
+}
+
+func stepWithoutWrap(current *row, step sourceRowStep) *row {
+	return step(rowList{}, current)
+}
+
+func codeNear(start *row, step sourceRowStep) *row {
+	for current := start; current != nil; current = stepWithoutWrap(current, step) {
+		if current.kind == rowCode {
+			return current
+		}
+	}
+	return nil
 }
 
 func accumulateRange(start, end *int, value int) {
@@ -1458,13 +1650,6 @@ func number(value int) string {
 		return ""
 	}
 	return fmt.Sprintf("%d", value)
-}
-
-func ordered(a, b int) (int, int) {
-	if a > b {
-		return b, a
-	}
-	return a, b
 }
 
 func renderStyledRow(style lipgloss.Style, value string, width int, stripForeground bool) string {

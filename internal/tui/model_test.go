@@ -341,36 +341,37 @@ func TestSelectionCannotCrossHunk(t *testing.T) {
 	for range 10 {
 		model = update(t, model, textKey("j"))
 	}
-	if model.rows[model.cursor].hunkIndex != 0 {
-		t.Fatalf("selection crossed into hunk %d", model.rows[model.cursor].hunkIndex)
+	if model.cursor.hunk != firstCodeRow(model.rows).hunk {
+		t.Fatalf("selection crossed into hunk %q", model.cursor.hunk.Header)
 	}
 }
 
 func TestHalfPageMovementUsesRenderedRows(t *testing.T) {
 	model := New(testDiff(), nil, nil)
-	model.rows = make([]row, 30)
-	for index := range model.rows {
-		model.rows[index].kind = rowCode
+	model.rows = rowList{}
+	for range 30 {
+		model.rows.append(codeRow(review.LineContext))
 	}
-	model.rows[4].kind = rowFile
-	model.rows[5].kind = rowHunk
+	rowAfter(model.rows.first, 4).kind = rowFile
+	rowAfter(model.rows.first, 5).kind = rowHunk
 	model.height = 11
-	model.viewportTop = 0
-	model.cursor = 1
+	model.viewportTop = model.rows.first
+	model.cursor = rowAfter(model.rows.first, 1)
 	delta := max(1, model.viewportHeight()/2)
 
 	model = update(t, model, controlKey('d'))
-	if model.viewportTop != delta {
-		t.Fatalf("Ctrl-d viewport top = %d, want %d rendered rows", model.viewportTop, delta)
+	if model.viewportTop != rowAfter(model.rows.first, delta) {
+		t.Fatalf("Ctrl-d viewport top = %#v, want %d rendered rows down", model.viewportTop, delta)
 	}
-	cursorRow := model.visualLayout().position(model.cursor)
-	if cursorRow < model.viewportTop || cursorRow >= model.viewportTop+model.viewportHeight() {
-		t.Fatalf("Ctrl-d cursor row %d is outside viewport starting at %d", cursorRow, model.viewportTop)
+	visible := displayedRowsStartingAt(model.layout(), model.viewportTop, model.viewportHeight())
+	cursorDisplay, _ := model.layout().displayedRowForSource(model.cursor)
+	if !slices.Contains(visible, cursorDisplay) {
+		t.Fatalf("Ctrl-d cursor row %#v is outside viewport", model.cursor)
 	}
 
 	model = update(t, model, controlKey('u'))
-	if model.viewportTop != 0 {
-		t.Fatalf("Ctrl-u viewport top = %d, want original viewport", model.viewportTop)
+	if model.viewportTop != model.rows.first {
+		t.Fatalf("Ctrl-u viewport top = %#v, want original viewport", model.viewportTop)
 	}
 }
 
@@ -384,18 +385,18 @@ func TestVimSequencesAndLayoutToggle(t *testing.T) {
 	model = update(t, model, tea.WindowSizeMsg{Width: 120, Height: 20})
 	model = update(t, model, textKey("G"))
 	if model.cursor != lastCodeRow(model.rows) {
-		t.Fatalf("G cursor = %d, want %d", model.cursor, lastCodeRow(model.rows))
+		t.Fatalf("G cursor = %#v, want %#v", model.cursor, lastCodeRow(model.rows))
 	}
 	model = update(t, model, textKey("g"))
 	model = update(t, model, textKey("g"))
 	if model.cursor != firstCodeRow(model.rows) {
-		t.Fatalf("gg cursor = %d, want %d", model.cursor, firstCodeRow(model.rows))
+		t.Fatalf("gg cursor = %#v, want %#v", model.cursor, firstCodeRow(model.rows))
 	}
 	cursor := model.cursor
 	model = update(t, model, textKey("]"))
 	model = update(t, model, textKey("h"))
 	if model.cursor != cursor {
-		t.Fatalf("]h cursor = %d, want unchanged at %d", model.cursor, cursor)
+		t.Fatalf("]h cursor = %#v, want unchanged at %#v", model.cursor, cursor)
 	}
 	model = update(t, model, textKey("t"))
 	if !model.sideBySide {
@@ -434,8 +435,11 @@ func TestSavedSideBySideCanBeDisabledInNarrowTerminal(t *testing.T) {
 
 func TestZSequencesPositionCurrentLineInViewport(t *testing.T) {
 	model := New(testDiff(), nil, nil)
-	model.rows = make([]row, 20)
-	model.cursor = 10
+	model.rows = rowList{}
+	for range 20 {
+		model.rows.append(codeRow(review.LineContext))
+	}
+	model.cursor = rowAfter(model.rows.first, 10)
 	model.height = 9
 
 	for _, test := range []struct {
@@ -446,11 +450,11 @@ func TestZSequencesPositionCurrentLineInViewport(t *testing.T) {
 		{key: "t", wantOffset: 10},
 		{key: "b", wantOffset: 5},
 	} {
-		model.viewportTop = 0
+		model.viewportTop = model.rows.first
 		model = update(t, model, textKey("z"))
 		model = update(t, model, textKey(test.key))
-		if model.viewportTop != test.wantOffset {
-			t.Errorf("z%s viewport top = %d, want %d", test.key, model.viewportTop, test.wantOffset)
+		if model.viewportTop != rowAfter(model.rows.first, test.wantOffset) {
+			t.Errorf("z%s viewport top = %#v, want source row %d", test.key, model.viewportTop, test.wantOffset)
 		}
 	}
 }
@@ -465,7 +469,7 @@ func TestPendingKeyIsConsumedByNextKey(t *testing.T) {
 	model = update(t, model, textKey("g"))
 
 	if model.cursor != last {
-		t.Fatalf("cursor = %d, want pending g consumed without jumping from %d", model.cursor, last)
+		t.Fatalf("cursor = %#v, want pending g consumed without jumping from %#v", model.cursor, last)
 	}
 	if model.pendingKey != "g" {
 		t.Fatalf("pending key = %q, want g", model.pendingKey)
@@ -557,18 +561,18 @@ func TestSearchMovesIncrementallyAndRepeats(t *testing.T) {
 	model = update(t, model, textKey("/"))
 	model = update(t, model, textKey("keep"))
 
-	if model.mode != modeSearch || model.rows[model.cursor].line.Text != "keep()" {
-		t.Fatalf("search mode=%v cursor row=%#v", model.mode, model.rows[model.cursor])
+	if model.mode != modeSearch || model.cursor.line.Text != "keep()" {
+		t.Fatalf("search mode=%v cursor row=%#v", model.mode, model.cursor)
 	}
 	first := model.cursor
 	model = update(t, model, specialKey(tea.KeyEnter))
 	model = update(t, model, textKey("n"))
-	if model.cursor == first || model.rows[model.cursor].line.Text != "keep()" {
-		t.Fatalf("next match cursor row=%#v", model.rows[model.cursor])
+	if model.cursor == first || model.cursor.line.Text != "keep()" {
+		t.Fatalf("next match cursor row=%#v", model.cursor)
 	}
 	model = update(t, model, textKey("N"))
 	if model.cursor != first {
-		t.Fatalf("previous match cursor=%d, want %d", model.cursor, first)
+		t.Fatalf("previous match cursor=%#v, want %#v", model.cursor, first)
 	}
 
 	model = update(t, model, textKey("/"))
@@ -578,7 +582,7 @@ func TestSearchMovesIncrementallyAndRepeats(t *testing.T) {
 	}
 	model = update(t, model, specialKey(tea.KeyEsc))
 	if model.cursor != first || model.mode != modeBrowse {
-		t.Fatalf("cancel cursor=%d mode=%v, want cursor=%d browse", model.cursor, model.mode, first)
+		t.Fatalf("cancel cursor=%#v mode=%v, want cursor=%#v browse", model.cursor, model.mode, first)
 	}
 	if start == first {
 		t.Fatal("search did not move from its initial row")
@@ -590,15 +594,15 @@ func TestSearchMatchesFileNamesAndBackspaceRestoresOrigin(t *testing.T) {
 	origin := model.cursor
 	model = update(t, model, textKey("/"))
 	model = update(t, model, textKey("main.go"))
-	if model.cursor != 0 {
-		t.Fatalf("file search cursor=%d, want file header", model.cursor)
+	if model.cursor != model.rows.first {
+		t.Fatalf("file search cursor=%#v, want file header", model.cursor)
 	}
 	model = update(t, model, specialKey(tea.KeyBackspace))
 	for range len("main.g") {
 		model = update(t, model, specialKey(tea.KeyBackspace))
 	}
 	if model.cursor != origin || len(model.search) != 0 {
-		t.Fatalf("cleared search cursor=%d query=%q, want origin=%d", model.cursor, model.search, origin)
+		t.Fatalf("cleared search cursor=%#v query=%q, want origin=%#v", model.cursor, model.search, origin)
 	}
 }
 
@@ -607,24 +611,24 @@ func TestSideBySideSearchActivatesPaneContainingMatch(t *testing.T) {
 	model.width = 120
 	model.sideBySide = true
 	model.activePane = paneRight
-	model.rows = []row{
-		{kind: rowCode, fileIndex: 0, hunkIndex: 0, text: "start", line: review.Line{Kind: review.LineContext}},
-		{kind: rowCode, fileIndex: 0, hunkIndex: 0, text: "needle old", line: review.Line{Kind: review.LineRemoved}},
-		{kind: rowCode, fileIndex: 0, hunkIndex: 0, text: "replacement", line: review.Line{Kind: review.LineAdded}},
-		{kind: rowCode, fileIndex: 0, hunkIndex: 0, text: "needle new", line: review.Line{Kind: review.LineAdded}},
-	}
-	model.cursor = 0
+	model.rows = codeRows(review.LineContext, review.LineRemoved, review.LineAdded, review.LineAdded)
+	rowAfter(model.rows.first, 0).text = "start"
+	rowAfter(model.rows.first, 1).text = "needle old"
+	rowAfter(model.rows.first, 2).text = "replacement"
+	rowAfter(model.rows.first, 3).text = "needle new"
+	model.cursor = model.rows.first
+	model.viewportTop = model.rows.first
 
 	model = update(t, model, textKey("/"))
 	model = update(t, model, textKey("needle"))
-	if model.cursor != 1 || model.activePane != paneLeft {
-		t.Fatalf("first match cursor=%d pane=%v, want removed row in left pane", model.cursor, model.activePane)
+	if model.cursor != rowAfter(model.rows.first, 1) || model.activePane != paneLeft {
+		t.Fatalf("first match cursor=%#v pane=%v, want removed row in left pane", model.cursor, model.activePane)
 	}
 
 	model = update(t, model, specialKey(tea.KeyEnter))
 	model = update(t, model, textKey("n"))
-	if model.cursor != 3 || model.activePane != paneRight {
-		t.Fatalf("next match cursor=%d pane=%v, want added row in right pane", model.cursor, model.activePane)
+	if model.cursor != rowAfter(model.rows.first, 3) || model.activePane != paneRight {
+		t.Fatalf("next match cursor=%#v pane=%v, want added row in right pane", model.cursor, model.activePane)
 	}
 }
 
@@ -633,18 +637,18 @@ func TestSideBySideCancelledSearchRestoresPane(t *testing.T) {
 	model.width = 120
 	model.sideBySide = true
 	model.activePane = paneRight
-	model.rows = []row{
-		{kind: rowCode, fileIndex: 0, hunkIndex: 0, text: "start", line: review.Line{Kind: review.LineContext}},
-		{kind: rowCode, fileIndex: 0, hunkIndex: 0, text: "needle", line: review.Line{Kind: review.LineRemoved}},
-	}
-	model.cursor = 0
+	model.rows = codeRows(review.LineContext, review.LineRemoved)
+	model.rows.first.text = "start"
+	model.rows.last.text = "needle"
+	model.cursor = model.rows.first
+	model.viewportTop = model.rows.first
 
 	model = update(t, model, textKey("/"))
 	model = update(t, model, textKey("needle"))
 	model = update(t, model, specialKey(tea.KeyEsc))
 
-	if model.cursor != 0 || model.activePane != paneRight {
-		t.Fatalf("cancelled search cursor=%d pane=%v, want original right-pane cursor", model.cursor, model.activePane)
+	if model.cursor != model.rows.first || model.activePane != paneRight {
+		t.Fatalf("cancelled search cursor=%#v pane=%v, want original right-pane cursor", model.cursor, model.activePane)
 	}
 }
 
@@ -708,7 +712,7 @@ func TestRenderKeyBindingsAlignsDescriptions(t *testing.T) {
 func TestDiffRefreshPreservesCursorWhenRowsShift(t *testing.T) {
 	model := New(testDiff(), nil, nil)
 	model.cursor = findCodeRow(t, model, review.LineAdded)
-	current := model.rows[model.cursor].line
+	current := *model.cursor.line
 
 	refreshed := testDiff()
 	refreshed.Fingerprint = "refreshed"
@@ -718,8 +722,47 @@ func TestDiffRefreshPreservesCursorWhenRowsShift(t *testing.T) {
 	if model.diff.Fingerprint != "refreshed" {
 		t.Fatalf("fingerprint = %q, want refreshed", model.diff.Fingerprint)
 	}
-	if got := model.rows[model.cursor].line; got != current {
+	if got := *model.cursor.line; got != current {
 		t.Fatalf("cursor moved to %#v, want %#v", got, current)
+	}
+}
+
+func TestDiffRefreshFallbackPreservesCursorRowKind(t *testing.T) {
+	model := New(testDiff(), nil, nil)
+	model.cursor = findCodeRow(t, model, review.LineAdded)
+
+	refreshed := testDiff()
+	refreshed.Fingerprint = "different-branch"
+	refreshed.Files[0].Display = "other.go"
+	refreshed.Files[0].Metadata = []string{"one", "two", "three", "four", "five"}
+	for hunkIndex := range refreshed.Files[0].Hunks {
+		for lineIndex := range refreshed.Files[0].Hunks[hunkIndex].Lines {
+			refreshed.Files[0].Hunks[hunkIndex].Lines[lineIndex].Text = "different branch content"
+		}
+	}
+
+	model = update(t, model, refreshDiffMsg{diff: refreshed})
+
+	if model.cursor == nil || model.cursor.kind != rowCode {
+		t.Fatalf("cursor row = %#v, want a code row", model.cursor)
+	}
+}
+
+func TestDiffRefreshFromEmptyDiffSelectsFirstCodeRow(t *testing.T) {
+	model := New(review.Diff{}, nil, nil)
+	if model.cursor != nil {
+		t.Fatalf("empty diff cursor = %#v, want nil", model.cursor)
+	}
+
+	refreshed := testDiff()
+	refreshed.Fingerprint = "branch-changes"
+	model = update(t, model, refreshDiffMsg{diff: refreshed})
+
+	if model.cursor == nil || model.cursor.kind != rowCode {
+		t.Fatalf("cursor row = %#v, want first code row", model.cursor)
+	}
+	if model.cursor != firstCodeRow(model.rows) {
+		t.Fatalf("cursor row = %#v, want %#v", model.cursor, firstCodeRow(model.rows))
 	}
 }
 
@@ -746,10 +789,10 @@ func TestSideBySideTabsDoNotShiftLineNumbers(t *testing.T) {
 	model := New(testDiff(), nil, nil)
 	model.width = 120
 	model.sideBySide = true
-	index := findCodeRow(t, model, review.LineContext)
-	model.rows[index].text = "\t\tif err != nil { return fmt.Errorf(\"a deliberately long line\") }"
+	current := findCodeRow(t, model, review.LineContext)
+	current.text = "\t\tif err != nil { return fmt.Errorf(\"a deliberately long line\") }"
 
-	rendered := ansi.Strip(model.renderRow(index))
+	rendered := ansi.Strip(model.renderRow(current))
 	if strings.ContainsRune(rendered, '\t') {
 		t.Fatalf("rendered row contains a tab: %q", rendered)
 	}
@@ -772,9 +815,11 @@ func TestSideBySidePairsReplacementLines(t *testing.T) {
 	if !strings.Contains(rendered[:59], "old()") || !strings.Contains(rendered[63:], "new()") {
 		t.Fatalf("replacement was not paired: %q", rendered)
 	}
-	layout := model.visualLayout()
-	if layout.position(removed) != layout.position(added) {
-		t.Fatalf("replacement rows are at visual positions %d and %d", layout.position(removed), layout.position(added))
+	projection := model.sideBySideProjection()
+	removedRow, _ := projection.displayedRowForSource(removed)
+	addedRow, _ := projection.displayedRowForSource(added)
+	if removedRow != addedRow {
+		t.Fatalf("replacement rows map to different side-by-side rows: %#v and %#v", removedRow, addedRow)
 	}
 
 	model.cursor = removed
@@ -795,16 +840,16 @@ func TestSideBySideCursorDefaultsRightAndMovesByRenderedRow(t *testing.T) {
 
 	model = update(t, model, textKey("t"))
 	if model.cursor != added || model.activePane != paneRight {
-		t.Fatalf("cursor = %d pane=%v, want right-side row %d", model.cursor, model.activePane, added)
+		t.Fatalf("cursor = %#v pane=%v, want right-side row %#v", model.cursor, model.activePane, added)
 	}
 
 	model = update(t, model, textKey("j"))
-	if model.rows[model.cursor].line.Kind != review.LineContext {
-		t.Fatalf("j moved to %v, want next rendered row", model.rows[model.cursor].line.Kind)
+	if model.cursor.line.Kind != review.LineContext {
+		t.Fatalf("j moved to %v, want next rendered row", model.cursor.line.Kind)
 	}
 	model = update(t, model, textKey("k"))
 	if model.cursor != added {
-		t.Fatalf("k cursor = %d, want replacement right side %d", model.cursor, added)
+		t.Fatalf("k cursor = %#v, want replacement right side %#v", model.cursor, added)
 	}
 }
 
@@ -819,13 +864,13 @@ func TestSideBySidePaneSwitchingUsesCtrlWSequences(t *testing.T) {
 	model = update(t, model, controlKey('w'))
 	model = update(t, model, textKey("h"))
 	if model.cursor != removed || model.activePane != paneLeft {
-		t.Fatalf("Ctrl-w h cursor = %d pane=%v, want left row %d", model.cursor, model.activePane, removed)
+		t.Fatalf("Ctrl-w h cursor = %#v pane=%v, want left row %#v", model.cursor, model.activePane, removed)
 	}
 
 	model = update(t, model, controlKey('w'))
 	model = update(t, model, controlKey('w'))
 	if model.cursor != added || model.activePane != paneRight {
-		t.Fatalf("Ctrl-w Ctrl-w cursor = %d pane=%v, want right row %d", model.cursor, model.activePane, added)
+		t.Fatalf("Ctrl-w Ctrl-w cursor = %#v pane=%v, want right row %#v", model.cursor, model.activePane, added)
 	}
 
 	model = update(t, model, controlKey('w'))
@@ -833,7 +878,7 @@ func TestSideBySidePaneSwitchingUsesCtrlWSequences(t *testing.T) {
 	model = update(t, model, controlKey('w'))
 	model = update(t, model, textKey("l"))
 	if model.cursor != added || model.activePane != paneRight {
-		t.Fatalf("Ctrl-w l cursor = %d pane=%v, want right row %d", model.cursor, model.activePane, added)
+		t.Fatalf("Ctrl-w l cursor = %#v pane=%v, want right row %#v", model.cursor, model.activePane, added)
 	}
 }
 
@@ -842,18 +887,15 @@ func TestSideBySidePaneSwitchingMovesUpFromEmptyTarget(t *testing.T) {
 	model.width = 120
 	model.sideBySide = true
 	model.activePane = paneRight
-	model.rows = []row{
-		{kind: rowCode, fileIndex: 0, hunkIndex: 0, line: review.Line{Kind: review.LineRemoved}},
-		{kind: rowCode, fileIndex: 0, hunkIndex: 0, line: review.Line{Kind: review.LineAdded}},
-		{kind: rowCode, fileIndex: 0, hunkIndex: 0, line: review.Line{Kind: review.LineAdded}},
-	}
-	model.cursor = 2
+	model.rows = codeRows(review.LineRemoved, review.LineAdded, review.LineAdded)
+	model.cursor = rowAfter(model.rows.first, 2)
+	model.viewportTop = model.rows.first
 
 	model = update(t, model, controlKey('w'))
 	model = update(t, model, textKey("h"))
 
-	if model.cursor != 0 || model.activePane != paneLeft {
-		t.Fatalf("Ctrl-w h cursor = %d pane=%v, want left row 0", model.cursor, model.activePane)
+	if model.cursor != model.rows.first || model.activePane != paneLeft {
+		t.Fatalf("Ctrl-w h cursor = %#v pane=%v, want first left row", model.cursor, model.activePane)
 	}
 }
 
@@ -862,19 +904,15 @@ func TestSideBySidePaneSwitchingMovesDownWhenTargetPaneStartsLater(t *testing.T)
 	model.width = 120
 	model.sideBySide = true
 	model.activePane = paneRight
-	model.rows = []row{
-		{kind: rowCode, fileIndex: 0, hunkIndex: 0, line: review.Line{Kind: review.LineAdded}},
-		{kind: rowCode, fileIndex: 0, hunkIndex: 0, line: review.Line{Kind: review.LineContext}},
-		{kind: rowCode, fileIndex: 0, hunkIndex: 0, line: review.Line{Kind: review.LineRemoved}},
-		{kind: rowCode, fileIndex: 0, hunkIndex: 0, line: review.Line{Kind: review.LineRemoved}},
-	}
-	model.cursor = 0
+	model.rows = codeRows(review.LineAdded, review.LineContext, review.LineRemoved, review.LineRemoved)
+	model.cursor = model.rows.first
+	model.viewportTop = model.rows.first
 
 	model = update(t, model, controlKey('w'))
 	model = update(t, model, textKey("h"))
 
-	if model.cursor != 2 || model.activePane != paneLeft {
-		t.Fatalf("Ctrl-w h cursor = %d pane=%v, want first later left row 2", model.cursor, model.activePane)
+	if model.cursor != rowAfter(model.rows.first, 2) || model.activePane != paneLeft {
+		t.Fatalf("Ctrl-w h cursor = %#v pane=%v, want first later left row", model.cursor, model.activePane)
 	}
 }
 
@@ -883,17 +921,15 @@ func TestSideBySidePaneSwitchingDoesNothingWhenTargetPaneIsEmpty(t *testing.T) {
 	model.width = 120
 	model.sideBySide = true
 	model.activePane = paneRight
-	model.rows = []row{
-		{kind: rowCode, fileIndex: 0, hunkIndex: 0, line: review.Line{Kind: review.LineAdded}},
-		{kind: rowCode, fileIndex: 0, hunkIndex: 0, line: review.Line{Kind: review.LineAdded}},
-	}
-	model.cursor = 1
+	model.rows = codeRows(review.LineAdded, review.LineAdded)
+	model.cursor = model.rows.last
+	model.viewportTop = model.rows.first
 
 	model = update(t, model, controlKey('w'))
 	model = update(t, model, textKey("h"))
 
-	if model.cursor != 1 || model.activePane != paneRight {
-		t.Fatalf("Ctrl-w h cursor = %d pane=%v, want unchanged right-pane cursor", model.cursor, model.activePane)
+	if model.cursor != model.rows.last || model.activePane != paneRight {
+		t.Fatalf("Ctrl-w h cursor = %#v pane=%v, want unchanged right-pane cursor", model.cursor, model.activePane)
 	}
 }
 
@@ -901,26 +937,21 @@ func TestSideBySideVerticalMovementSkipsEmptyActivePane(t *testing.T) {
 	model := New(testDiff(), nil, nil)
 	model.width = 120
 	model.sideBySide = true
-	model.rows = []row{
-		{kind: rowCode, fileIndex: 0, hunkIndex: 0, line: review.Line{Kind: review.LineContext}},
-		{kind: rowCode, fileIndex: 0, hunkIndex: 0, line: review.Line{Kind: review.LineAdded}},
-		{kind: rowCode, fileIndex: 0, hunkIndex: 0, line: review.Line{Kind: review.LineContext}},
-		{kind: rowCode, fileIndex: 0, hunkIndex: 0, line: review.Line{Kind: review.LineRemoved}},
-		{kind: rowCode, fileIndex: 0, hunkIndex: 0, line: review.Line{Kind: review.LineContext}},
-	}
+	model.rows = codeRows(review.LineContext, review.LineAdded, review.LineContext, review.LineRemoved, review.LineContext)
+	model.viewportTop = model.rows.first
 
-	model.cursor = 0
+	model.cursor = model.rows.first
 	model.activePane = paneLeft
 	model = update(t, model, textKey("j"))
-	if model.cursor != 2 {
-		t.Fatalf("left-pane j cursor = %d, want 2 after skipping right-only row", model.cursor)
+	if model.cursor != rowAfter(model.rows.first, 2) {
+		t.Fatalf("left-pane j cursor = %#v, want row after skipping right-only row", model.cursor)
 	}
 
-	model.cursor = 2
+	model.cursor = rowAfter(model.rows.first, 2)
 	model.activePane = paneRight
 	model = update(t, model, textKey("j"))
-	if model.cursor != 4 {
-		t.Fatalf("right-pane j cursor = %d, want 4 after skipping left-only row", model.cursor)
+	if model.cursor != rowAfter(model.rows.first, 4) {
+		t.Fatalf("right-pane j cursor = %#v, want row after skipping left-only row", model.cursor)
 	}
 }
 
@@ -930,30 +961,24 @@ func TestSideBySideVerticalMovementScrollsByRenderedRows(t *testing.T) {
 	model.height = 6
 	model.sideBySide = true
 	model.activePane = paneRight
-	model.rows = []row{
-		{kind: rowCode, fileIndex: 0, hunkIndex: 0, line: review.Line{Kind: review.LineRemoved}},
-		{kind: rowCode, fileIndex: 0, hunkIndex: 0, line: review.Line{Kind: review.LineAdded}},
-		{kind: rowCode, fileIndex: 0, hunkIndex: 0, line: review.Line{Kind: review.LineContext}},
-		{kind: rowCode, fileIndex: 0, hunkIndex: 0, line: review.Line{Kind: review.LineRemoved}},
-		{kind: rowCode, fileIndex: 0, hunkIndex: 0, line: review.Line{Kind: review.LineAdded}},
-		{kind: rowCode, fileIndex: 0, hunkIndex: 0, line: review.Line{Kind: review.LineContext}},
-	}
-	model.cursor = 1
+	model.rows = codeRows(review.LineRemoved, review.LineAdded, review.LineContext, review.LineRemoved, review.LineAdded, review.LineContext)
+	model.cursor = rowAfter(model.rows.first, 1)
+	model.viewportTop = model.rows.first
 
 	model = update(t, model, textKey("j"))
 	model = update(t, model, textKey("j"))
-	if model.viewportTop != 0 {
-		t.Fatalf("viewport top = %d, want 0 while third rendered row is visible", model.viewportTop)
+	if model.viewportTop != model.rows.first {
+		t.Fatalf("viewport top = %#v, want first row while third rendered row is visible", model.viewportTop)
 	}
 
 	model = update(t, model, textKey("j"))
-	if model.viewportTop != 1 {
-		t.Fatalf("viewport top = %d, want next visual row at position 1", model.viewportTop)
+	if model.viewportTop != rowAfter(model.rows.first, 2) {
+		t.Fatalf("viewport top = %#v, want next side-by-side row", model.viewportTop)
 	}
 
 	model = update(t, model, textKey("k"))
-	if model.viewportTop != 1 {
-		t.Fatalf("viewport top = %d, want viewport unchanged while moving up within it", model.viewportTop)
+	if model.viewportTop != rowAfter(model.rows.first, 2) {
+		t.Fatalf("viewport top = %#v, want viewport unchanged while moving up within it", model.viewportTop)
 	}
 }
 
@@ -963,43 +988,34 @@ func TestSideBySideHalfPageMovementUsesVisualRows(t *testing.T) {
 	model.height = 7
 	model.sideBySide = true
 	model.activePane = paneRight
-	model.rows = []row{
-		codeRow(review.LineRemoved),
-		codeRow(review.LineAdded),
-		codeRow(review.LineContext),
-		codeRow(review.LineRemoved),
-		codeRow(review.LineAdded),
-		codeRow(review.LineContext),
-		codeRow(review.LineRemoved),
-		codeRow(review.LineAdded),
-		codeRow(review.LineContext),
-	}
-	model.cursor = 2
+	model.rows = codeRows(review.LineRemoved, review.LineAdded, review.LineContext, review.LineRemoved, review.LineAdded, review.LineContext, review.LineRemoved, review.LineAdded, review.LineContext)
+	model.cursor = rowAfter(model.rows.first, 2)
+	model.viewportTop = model.rows.first
 
 	model = update(t, model, controlKey('d'))
-	if model.viewportTop != 2 {
-		t.Fatalf("viewport top = %d, want 2 visual rows down", model.viewportTop)
+	if model.viewportTop != rowAfter(model.rows.first, 3) {
+		t.Fatalf("viewport top = %#v, want 2 side-by-side rows down", model.viewportTop)
 	}
-	if position := model.visualLayout().position(model.cursor); position != 3 {
-		t.Fatalf("cursor visual row = %d, want original screen row at position 3", position)
+	if rowsAbove := countDisplayedRowsBetween(model.layout(), model.viewportTop, model.cursor); rowsAbove != 1 {
+		t.Fatalf("cursor has %d side-by-side rows above, want 1", rowsAbove)
 	}
 
 	model = update(t, model, controlKey('u'))
-	if model.viewportTop != 0 || model.cursor != 2 {
-		t.Fatalf("viewport top=%d cursor=%d, want original state 0/2", model.viewportTop, model.cursor)
+	if model.viewportTop != model.rows.first || model.cursor != rowAfter(model.rows.first, 2) {
+		t.Fatalf("viewport top=%#v cursor=%#v, want original state", model.viewportTop, model.cursor)
 	}
 }
 
 func TestHorizontalScrollKeepsUnifiedGutterFixed(t *testing.T) {
 	model := New(testDiff(), nil, nil)
 	model.width = 37
-	index := findCodeRow(t, model, review.LineContext)
-	model.cursor = index
-	model.rows[index].text = "abcdefghijklmnopqrstuvwxyz0123456789"
+	current := findCodeRow(t, model, review.LineContext)
+	model.cursor = current
+	current.text = "abcdefghijklmnopqrstuvwxyz0123456789"
 
-	before := ansi.Strip(model.renderRow(index))
+	before := ansi.Strip(model.renderRow(current))
 	model = update(t, model, textKey("l"))
-	after := ansi.Strip(model.renderRow(index))
+	after := ansi.Strip(model.renderRow(current))
 
 	if before[:14] != after[:14] {
 		t.Fatalf("gutter moved: before=%q after=%q", before[:14], after[:14])
@@ -1016,7 +1032,7 @@ func TestHorizontalScrollKeysMoveByStep(t *testing.T) {
 	model := New(testDiff(), nil, nil)
 	model.width = 37
 	index := findCodeRow(t, model, review.LineContext)
-	model.rows[index].text = strings.Repeat("x", 80)
+	index.text = strings.Repeat("x", 80)
 
 	for _, key := range []tea.KeyPressMsg{
 		textKey("l"),
@@ -1044,7 +1060,7 @@ func TestHorizontalScrollKeepsSideBySideGuttersAndDividerFixed(t *testing.T) {
 	model.width = 120
 	model.sideBySide = true
 	index := findCodeRow(t, model, review.LineContext)
-	model.rows[index].text = "abcdefghijklmnopqrstuvwxyz0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+	index.text = "abcdefghijklmnopqrstuvwxyz0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ"
 	model.xOffset = 8
 
 	rendered := ansi.Strip(model.renderRow(index))
@@ -1064,7 +1080,7 @@ func TestHorizontalScrollStartAndEnd(t *testing.T) {
 	model := New(testDiff(), nil, nil)
 	model.width = 37
 	index := findCodeRow(t, model, review.LineContext)
-	model.rows[index].text = strings.Repeat("x", 60)
+	index.text = strings.Repeat("x", 60)
 
 	model = update(t, model, textKey("$"))
 	if model.xOffset != 37 {
@@ -1130,13 +1146,15 @@ func TestSelectionBackgroundKeepsDefaultCursorAndTextWeight(t *testing.T) {
 func TestRenderedCodeRowsHaveExactTerminalWidth(t *testing.T) {
 	model := New(testDiff(), nil, nil)
 	model = update(t, model, tea.WindowSizeMsg{Width: 37, Height: 20})
-	for index, row := range model.rows {
-		if row.kind != rowCode {
+	count := 0
+	for current := range model.rows.all() {
+		if current.kind != rowCode {
 			continue
 		}
-		if width := lipgloss.Width(model.renderRow(index)); width != 37 {
-			t.Fatalf("row %d width = %d, want 37", index, width)
+		if width := lipgloss.Width(model.renderRow(current)); width != 37 {
+			t.Fatalf("code row %d width = %d, want 37", count, width)
 		}
+		count++
 	}
 }
 
@@ -1194,15 +1212,15 @@ func controlKey(code rune) tea.KeyPressMsg {
 	return tea.KeyPressMsg(tea.Key{Code: code, Mod: tea.ModCtrl})
 }
 
-func findCodeRow(t *testing.T, model Model, kind review.LineKind) int {
+func findCodeRow(t *testing.T, model Model, kind review.LineKind) *row {
 	t.Helper()
-	for index, row := range model.rows {
-		if row.kind == rowCode && row.line.Kind == kind {
-			return index
+	for current := range model.rows.all() {
+		if current.kind == rowCode && current.line.Kind == kind {
+			return current
 		}
 	}
 	t.Fatalf("no code row with kind %v", kind)
-	return -1
+	return nil
 }
 
 type sgrExpectation struct {

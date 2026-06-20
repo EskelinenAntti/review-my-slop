@@ -11,205 +11,215 @@ const (
 
 const minimumSideBySideWidth = 100
 
-type visualRow struct {
-	source int
-	left   int
-	right  int
+type sideBySideRow struct {
+	primaryRow *row
+	leftRow    *row
+	rightRow   *row
+	previous   *sideBySideRow
+	next       *sideBySideRow
 }
 
-type visualLayout struct {
-	rows           []row
-	visual         []visualRow
-	sourceToVisual []int
-	sideBySide     bool
+type sideBySideProjection struct {
+	sourceRows               rowList
+	sideBySideRows           []*sideBySideRow
+	sideBySideRowBySourceRow map[*row]*sideBySideRow
+	lastRow                  *sideBySideRow
 }
 
-func newVisualLayout(rows []row, sideBySide bool) visualLayout {
-	layout := visualLayout{
-		rows:           rows,
-		sourceToVisual: make([]int, len(rows)),
-		sideBySide:     sideBySide,
-	}
-	if !sideBySide {
-		layout.visual = make([]visualRow, len(rows))
-		for index := range rows {
-			layout.visual[index] = visualRow{source: index, left: index, right: index}
-			layout.sourceToVisual[index] = index
-		}
-		return layout
+func newSideBySideProjection(rows rowList) sideBySideProjection {
+	projection := sideBySideProjection{
+		sourceRows:               rows,
+		sideBySideRowBySourceRow: make(map[*row]*sideBySideRow, rows.count),
 	}
 
-	for index := 0; index < len(rows); {
-		current := rows[index]
+	for current := rows.first; current != nil; {
 		if current.kind != rowCode {
-			layout.appendRow(visualRow{source: index, left: index, right: index})
-			index++
+			projection.appendRow(&sideBySideRow{primaryRow: current, leftRow: current, rightRow: current})
+			current = current.next
 			continue
 		}
+
 		switch current.line.Kind {
 		case review.LineContext:
-			layout.appendRow(visualRow{source: index, left: index, right: index})
-			index++
+			projection.appendRow(&sideBySideRow{primaryRow: current, leftRow: current, rightRow: current})
+			current = current.next
 		case review.LineAdded:
-			layout.appendRow(visualRow{source: index, left: -1, right: index})
-			index++
+			projection.appendRow(&sideBySideRow{primaryRow: current, rightRow: current})
+			current = current.next
 		case review.LineRemoved:
-			removedEnd := layout.changeBlockEnd(index, review.LineRemoved)
+			removedEnd := projection.changeBlockEnd(current, review.LineRemoved)
 			addedStart := removedEnd
 			addedEnd := addedStart
-			if addedStart < len(rows) && layout.sameHunkKind(addedStart, current, review.LineAdded) {
-				addedEnd = layout.changeBlockEnd(addedStart, review.LineAdded)
+			if projection.sameHunkKind(addedStart, current, review.LineAdded) {
+				addedEnd = projection.changeBlockEnd(addedStart, review.LineAdded)
 			}
-			removedCount := removedEnd - index
-			addedCount := addedEnd - addedStart
-			for offset := 0; offset < max(removedCount, addedCount); offset++ {
-				left, right := -1, -1
-				if offset < removedCount {
-					left = index + offset
+
+			left, right := current, addedStart
+			for left != removedEnd || right != addedEnd {
+				var leftRow, rightRow *row
+				if left != removedEnd {
+					leftRow = left
+					left = left.next
 				}
-				if offset < addedCount {
-					right = addedStart + offset
+				if right != addedEnd {
+					rightRow = right
+					right = right.next
 				}
-				source := left
-				if source < 0 {
-					source = right
+				primaryRow := leftRow
+				if primaryRow == nil {
+					primaryRow = rightRow
 				}
-				layout.appendRow(visualRow{source: source, left: left, right: right})
+				projection.appendRow(&sideBySideRow{primaryRow: primaryRow, leftRow: leftRow, rightRow: rightRow})
 			}
-			index = addedEnd
+			current = addedEnd
 		}
 	}
-	return layout
+	return projection
 }
 
-func (layout *visualLayout) appendRow(current visualRow) {
-	position := len(layout.visual)
-	layout.visual = append(layout.visual, current)
-	if current.left >= 0 {
-		layout.sourceToVisual[current.left] = position
+func (projection *sideBySideProjection) appendRow(current *sideBySideRow) {
+	if projection.lastRow != nil {
+		projection.lastRow.next = current
+		current.previous = projection.lastRow
 	}
-	if current.right >= 0 {
-		layout.sourceToVisual[current.right] = position
+	projection.sideBySideRows = append(projection.sideBySideRows, current)
+	projection.lastRow = current
+	if current.leftRow != nil {
+		projection.sideBySideRowBySourceRow[current.leftRow] = current
+	}
+	if current.rightRow != nil {
+		projection.sideBySideRowBySourceRow[current.rightRow] = current
 	}
 }
 
-func (layout visualLayout) changeBlockEnd(start int, kind review.LineKind) int {
-	current := layout.rows[start]
-	end := start
-	for end < len(layout.rows) && layout.sameHunkKind(end, current, kind) {
-		end++
+func (projection sideBySideProjection) changeBlockEnd(start *row, kind review.LineKind) *row {
+	current := start
+	for projection.sameHunkKind(current, start, kind) {
+		current = current.next
 	}
-	return end
+	return current
 }
 
-func (layout visualLayout) sameHunkKind(index int, current row, kind review.LineKind) bool {
-	return index >= 0 &&
-		index < len(layout.rows) &&
-		layout.rows[index].kind == rowCode &&
-		layout.rows[index].fileIndex == current.fileIndex &&
-		layout.rows[index].hunkIndex == current.hunkIndex &&
-		layout.rows[index].line.Kind == kind
+func (sideBySideProjection) sameHunkKind(candidate, current *row, kind review.LineKind) bool {
+	return candidate != nil && current != nil &&
+		candidate.kind == rowCode &&
+		candidate.file == current.file &&
+		candidate.hunk == current.hunk &&
+		candidate.line.Kind == kind
 }
 
-func (layout visualLayout) len() int {
-	return len(layout.visual)
+func (projection sideBySideProjection) displayedRowForSource(source *row) (displayedRow, bool) {
+	current, ok := projection.sideBySideRowBySourceRow[source]
+	return current, ok
 }
 
-func (layout visualLayout) row(position int) visualRow {
-	if len(layout.visual) == 0 {
-		return visualRow{source: -1, left: -1, right: -1}
+func (current *sideBySideRow) render(model Model) string {
+	return model.renderSideBySideRow(current)
+}
+
+func (current *sideBySideRow) sourceRow() *row {
+	if current == nil {
+		return nil
 	}
-	position = max(0, min(position, len(layout.visual)-1))
-	return layout.visual[position]
+	return current.primaryRow
 }
 
-func (layout visualLayout) position(source int) int {
-	if len(layout.sourceToVisual) == 0 {
-		return 0
+func (current *sideBySideRow) cursorRow(target pane) (*row, bool) {
+	if current == nil {
+		return nil, false
 	}
-	source = max(0, min(source, len(layout.sourceToVisual)-1))
-	return layout.sourceToVisual[source]
-}
-
-func (layout visualLayout) paneIndex(position int, target pane) int {
-	current := layout.row(position)
-	index := current.right
+	targetRow := current.rightRow
 	if target == paneLeft {
-		index = current.left
+		targetRow = current.leftRow
 	}
-	if index >= 0 && index < len(layout.rows) && layout.rows[index].kind == rowCode {
-		return index
-	}
-	return -1
+	return targetRow, targetRow != nil && targetRow.kind == rowCode
 }
 
-func (layout visualLayout) cursorIndex(position int, preferred pane) int {
-	if exact := layout.paneIndex(position, preferred); exact >= 0 {
-		return exact
+func (current *sideBySideRow) nextRow() (displayedRow, bool) {
+	if current == nil || current.next == nil {
+		return nil, false
 	}
-	current := layout.row(position)
-	if current.right >= 0 && layout.rows[current.right].kind == rowCode {
-		return current.right
-	}
-	if current.left >= 0 && layout.rows[current.left].kind == rowCode {
-		return current.left
-	}
-	return -1
+	return current.next, true
 }
 
-func (layout visualLayout) paneIndexAtOrAbove(position int, target pane) (int, bool) {
-	position = min(position, layout.len()-1)
-	for current := position; current >= 0; current-- {
-		if index := layout.paneIndex(current, target); index >= 0 {
-			return index, true
+func (current *sideBySideRow) previousRow() (displayedRow, bool) {
+	if current == nil || current.previous == nil {
+		return nil, false
+	}
+	return current.previous, true
+}
+
+func sideBySideRowBetween(candidate, first, last *sideBySideRow) bool {
+	if candidate == nil || first == nil || last == nil {
+		return false
+	}
+	first, last = orderedSideBySideRows(first, last)
+	for current := first; current != nil; current = current.next {
+		if current == candidate {
+			return true
+		}
+		if current == last {
+			return false
 		}
 	}
-	return 0, false
+	return false
 }
 
-func (layout visualLayout) paneChangeIndexAtOrBelow(position int, target pane) (int, bool) {
-	position = max(0, position)
-	for current := position; current < layout.len(); current++ {
-		if index := layout.paneIndex(current, target); index >= 0 {
+func orderedSideBySideRows(first, last *sideBySideRow) (*sideBySideRow, *sideBySideRow) {
+	for current := first; current != nil; current = current.next {
+		if current == last {
+			return first, last
+		}
+	}
+	return last, first
+}
+
+func (projection sideBySideProjection) preferredCursor(source *row, preferred pane) (*row, bool) {
+	current, ok := projection.sideBySideRowBySourceRow[source]
+	if !ok {
+		return nil, false
+	}
+	if exact, ok := current.cursorRow(preferred); ok {
+		return exact, true
+	}
+	if current.rightRow != nil && current.rightRow.kind == rowCode {
+		return current.rightRow, true
+	}
+	if current.leftRow != nil && current.leftRow.kind == rowCode {
+		return current.leftRow, true
+	}
+	return nil, false
+}
+
+func (projection sideBySideProjection) paneRowAtOrAbove(source *row, target pane) (*row, bool) {
+	current := projection.sideBySideRowBySourceRow[source]
+	for current != nil {
+		if candidate, ok := current.cursorRow(target); ok {
+			return candidate, true
+		}
+		current = current.previous
+	}
+	return nil, false
+}
+
+func (projection sideBySideProjection) paneChangeAtOrBelow(source *row, target pane) (*row, bool) {
+	current := projection.sideBySideRowBySourceRow[source]
+	for current != nil {
+		if candidate, ok := current.cursorRow(target); ok {
 			switch target {
 			case paneLeft:
-				if layout.rows[index].line.Kind == review.LineRemoved {
-					return index, true
+				if candidate.line.Kind == review.LineRemoved {
+					return candidate, true
 				}
 			case paneRight:
-				if layout.rows[index].line.Kind == review.LineAdded {
-					return index, true
+				if candidate.line.Kind == review.LineAdded {
+					return candidate, true
 				}
 			}
 		}
+		current = current.next
 	}
-	return 0, false
-}
-
-func (layout visualLayout) navigable(position, direction int, target pane) (int, int) {
-	for current := position + direction; current >= 0 && current < layout.len(); current += direction {
-		index := layout.cursorIndex(current, target)
-		if layout.sideBySide {
-			index = layout.paneIndex(current, target)
-		}
-		if index >= 0 {
-			return current, index
-		}
-	}
-	return -1, -1
-}
-
-func (layout visualLayout) codeNearBetween(position, direction, first, last int, target pane) (int, int) {
-	for current := position; current >= first && current <= last; current += direction {
-		index := layout.cursorIndex(current, target)
-		if layout.sideBySide {
-			index = layout.paneIndex(current, target)
-		}
-		if index >= 0 {
-			return current, index
-		}
-	}
-	return -1, -1
+	return nil, false
 }
 
 func (p pane) other() pane {
