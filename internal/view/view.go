@@ -210,13 +210,43 @@ func (v *diffView) Search(query string, cursor Cursor, direction Direction) (Cur
 		if y >= len(v.rows) {
 			y = 0
 		}
-		candidate, ok := v.cursorAt(y, cursor.Pane)
-		if !ok {
-			continue
+		current := v.rows[y]
+		for _, pane := range []Pane{cursor.Pane, cursor.Pane.Other()} {
+			candidate, ok := v.cursorAt(y, pane)
+			if !ok || !v.split && pane != cursor.Pane {
+				continue
+			}
+			line, _ := v.Line(candidate)
+			if strings.Contains(strings.ToLower(line.Text), query) {
+				return candidate, true
+			}
 		}
-		line, _ := v.Line(candidate)
-		if strings.Contains(strings.ToLower(line.Text), query) {
-			return candidate, true
+		if current.kind != lineRow && strings.Contains(strings.ToLower(ansi.Strip(current.text)), query) {
+			if candidate, ok := v.cursorNearRow(y, cursor.Pane, direction); ok {
+				return candidate, true
+			}
+		}
+	}
+	return Cursor{}, false
+}
+
+func (v *diffView) cursorNearRow(y int, pane Pane, direction Direction) (Cursor, bool) {
+	for distance := 1; distance <= len(v.rows); distance++ {
+		for _, candidateY := range []int{y + int(direction)*distance, y - int(direction)*distance} {
+			if candidateY < 0 || candidateY >= len(v.rows) {
+				continue
+			}
+			if v.rows[candidateY].file != v.rows[y].file {
+				continue
+			}
+			if candidate, ok := v.cursorAt(candidateY, pane); ok {
+				return candidate, true
+			}
+			if v.split {
+				if candidate, ok := v.cursorAt(candidateY, pane.Other()); ok {
+					return candidate, true
+				}
+			}
 		}
 	}
 	return Cursor{}, false
