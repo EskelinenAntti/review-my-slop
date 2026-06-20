@@ -15,7 +15,11 @@ import (
 func (v *diffView) Render(viewport Viewport, cursor Cursor, selection *Selection) string {
 	viewport = v.clampViewport(viewport)
 	lines := make([]string, 0, viewport.Height)
-	end := min(len(v.rows), viewport.Top.Y+viewport.Height)
+	if v.hasStickyHeader(viewport.Top, viewport.Height) {
+		current := v.rows[viewport.Top.Y]
+		lines = append(lines, v.renderFileRow(v.patch.Files[current.file].DisplayPath, viewport.Width))
+	}
+	end := min(len(v.rows), viewport.Top.Y+v.contentHeight(viewport))
 	for y := viewport.Top.Y; y < end; y++ {
 		current := v.rows[y]
 		if v.split && current.kind == lineRow {
@@ -34,7 +38,7 @@ func (v *diffView) renderUnifiedRow(current entry, y int, viewport Viewport, cur
 	width := max(20, viewport.Width)
 	switch current.kind {
 	case fileRow:
-		return fileStyle.Width(width).Render(current.text)
+		return v.renderFileRow(current.text, width)
 	case metadataRow:
 		return metadataStyle.Render("  " + current.text)
 	case hunkRow:
@@ -62,6 +66,10 @@ func (v *diffView) renderUnifiedRow(current entry, y int, viewport Viewport, cur
 		return renderStyledRow(style, value, width, strip)
 	}
 	return ""
+}
+
+func (v *diffView) renderFileRow(path string, width int) string {
+	return fileStyle.Width(max(20, width)).Render(path)
 }
 
 func (v *diffView) renderSplitRow(current entry, y int, viewport Viewport, cursor Cursor, selection *Selection) string {

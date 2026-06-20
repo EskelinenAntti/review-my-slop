@@ -304,34 +304,66 @@ func (v *diffView) Resize(viewport Viewport, width, height int) Viewport {
 }
 
 func (v *diffView) clampViewport(viewport Viewport) Viewport {
-	viewport.Top.Y = max(0, min(viewport.Top.Y, max(0, len(v.rows)-viewport.Height)))
+	maxTop := max(0, len(v.rows)-viewport.Height)
+	if v.hasStickyHeader(Coordinate{Y: maxTop}, viewport.Height) {
+		maxTop++
+	}
+	viewport.Top.Y = max(0, min(viewport.Top.Y, maxTop))
 	viewport.LeftColumn = max(0, min(viewport.LeftColumn, v.maxHorizontalOffset(viewport.Width)))
 	return viewport
+}
+
+func (v *diffView) hasStickyHeader(top Coordinate, viewportHeight int) bool {
+	return viewportHeight > 1 && top.Y >= 0 && top.Y < len(v.rows) && v.rows[top.Y].kind != fileRow
+}
+
+func (v *diffView) contentHeight(viewport Viewport) int {
+	height := viewport.Height
+	if v.hasStickyHeader(viewport.Top, viewport.Height) {
+		height--
+	}
+	return max(1, height)
 }
 
 func (v *diffView) KeepVisible(viewport Viewport, cursor Cursor) Viewport {
 	if !v.valid(cursor) {
 		return v.clampViewport(viewport)
 	}
-	if cursor.Coordinate.Y < viewport.Top.Y {
-		viewport.Top.Y = cursor.Coordinate.Y
+	viewport = v.clampViewport(viewport)
+	for range 2 {
+		height := v.contentHeight(viewport)
+		if cursor.Coordinate.Y < viewport.Top.Y {
+			viewport.Top.Y = cursor.Coordinate.Y
+		}
+		if cursor.Coordinate.Y >= viewport.Top.Y+height {
+			viewport.Top.Y = cursor.Coordinate.Y - height + 1
+		}
+		viewport = v.clampViewport(viewport)
 	}
-	if cursor.Coordinate.Y >= viewport.Top.Y+viewport.Height {
-		viewport.Top.Y = cursor.Coordinate.Y - viewport.Height + 1
+	return viewport
+}
+
+func (v *diffView) Align(viewport Viewport, cursor Cursor, alignment VerticalAlignment) Viewport {
+	headerHeight := 0
+	if viewport.Height > 1 {
+		headerHeight = 1
+	}
+	offset := max(0, alignmentOffset(viewport.Height, alignment)-headerHeight)
+	viewport.Top.Y = cursor.Coordinate.Y - offset
+	if !v.hasStickyHeader(viewport.Top, viewport.Height) {
+		viewport.Top.Y = cursor.Coordinate.Y - alignmentOffset(viewport.Height, alignment)
 	}
 	return v.clampViewport(viewport)
 }
 
-func (v *diffView) Align(viewport Viewport, cursor Cursor, alignment VerticalAlignment) Viewport {
-	offset := 0
+func alignmentOffset(height int, alignment VerticalAlignment) int {
 	if alignment == Middle {
-		offset = viewport.Height / 2
+		return height / 2
 	}
 	if alignment == Bottom {
-		offset = viewport.Height - 1
+		return height - 1
 	}
-	viewport.Top.Y = cursor.Coordinate.Y - offset
-	return v.clampViewport(viewport)
+	return 0
 }
 
 func (v *diffView) ScrollHorizontal(viewport Viewport, columns int) Viewport {
@@ -354,9 +386,10 @@ func (v *diffView) ScrollHalfPage(viewport Viewport, cursor Cursor, direction Di
 }
 
 func (v *diffView) nearest(target int, pane Pane, direction Direction, viewport Viewport) (Cursor, bool) {
-	for distance := 0; distance < viewport.Height; distance++ {
+	height := v.contentHeight(viewport)
+	for distance := 0; distance < height; distance++ {
 		for _, y := range []int{target + int(direction)*distance, target - int(direction)*distance} {
-			if y < viewport.Top.Y || y >= viewport.Top.Y+viewport.Height || y >= len(v.rows) {
+			if y < viewport.Top.Y || y >= viewport.Top.Y+height || y >= len(v.rows) {
 				continue
 			}
 			if cursor, ok := v.cursorAt(y, pane); ok {

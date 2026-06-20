@@ -140,7 +140,11 @@ func TestViewportAlignmentResizeAndScrolling(t *testing.T) {
 		t.Fatalf("cursor not visible: %#v %#v", cursor, viewport)
 	}
 	viewport = v.Align(viewport, cursor, Middle)
-	if cursor.Coordinate.Y-viewport.Top.Y != 2 {
+	headerHeight := 0
+	if v.(*diffView).hasStickyHeader(viewport.Top, viewport.Height) {
+		headerHeight = 1
+	}
+	if headerHeight+cursor.Coordinate.Y-viewport.Top.Y != viewport.Height/2 {
 		t.Fatalf("middle alignment = %#v", viewport)
 	}
 	viewport = v.ScrollHorizontal(viewport, 4)
