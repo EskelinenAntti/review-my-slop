@@ -2,6 +2,8 @@
 
 **Review the code, not the chat transcript.**
 
+![review-my-slop terminal diff review](docs/assets/review-my-slop.png)
+
 Coding has moved from the editor to the chat window. Agents can produce code at
 a pace that makes reading the code feel like an unnecessary bottleneck. It is
 not. Without supervision, agents tend to slowly accumulate technical debt. That
