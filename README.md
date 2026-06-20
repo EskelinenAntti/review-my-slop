@@ -12,7 +12,9 @@ hidden bugs. By the time an agent burns through tokens on simple changes, it is
 usually too late to correct course.
 
 This is not simply an agent problem. Successful collaboration between the
-developer and the agent requires a shared understanding of the codebase.
+developer and the agent requires a shared understanding of the codebase. The
+mission of `review-my-slop` is to keep developers in the loop throughout their
+coding projects, from start to finish.
 
 `review-my-slop` is a keyboard-driven terminal diff viewer for reviewing local
 changes, attaching comments to exact lines or ranges, and handing that feedback
