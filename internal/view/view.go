@@ -375,10 +375,10 @@ func (v *diffView) ScrollHalfPage(viewport Viewport, cursor Cursor, direction Di
 	if !v.valid(cursor) {
 		return viewport, cursor
 	}
-	offset := cursor.Coordinate.Y - viewport.Top.Y
-	viewport.Top.Y += int(direction) * max(1, viewport.Height/2)
+	distance := int(direction) * max(1, viewport.Height/2)
+	viewport.Top.Y += distance
 	viewport = v.clampViewport(viewport)
-	target := min(len(v.rows)-1, max(0, viewport.Top.Y+offset))
+	target := min(len(v.rows)-1, max(0, cursor.Coordinate.Y+distance))
 	if candidate, ok := v.nearest(target, cursor.Pane, direction, viewport); ok {
 		cursor = candidate
 	}

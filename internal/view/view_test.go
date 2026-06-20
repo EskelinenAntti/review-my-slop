@@ -162,6 +162,28 @@ func TestViewportAlignmentResizeAndScrolling(t *testing.T) {
 	}
 }
 
+func TestHalfPageScrollingMovesCursorToFileBoundaries(t *testing.T) {
+	v := NewUnifiedView(longPatch(), true)
+	first, _ := v.First()
+	last, _ := v.Last()
+	viewport := v.NewViewport(30, 5)
+	cursor := first
+
+	for range len(longPatch().Files[0].Hunks[0].Lines) {
+		viewport, cursor = v.ScrollHalfPage(viewport, cursor, Forward)
+	}
+	if cursor != last {
+		t.Fatalf("cursor after scrolling down = %#v, want %#v", cursor, last)
+	}
+
+	for range len(longPatch().Files[0].Hunks[0].Lines) {
+		viewport, cursor = v.ScrollHalfPage(viewport, cursor, Backward)
+	}
+	if cursor != first {
+		t.Fatalf("cursor after scrolling up = %#v, want %#v", cursor, first)
+	}
+}
+
 func TestFindCursorUsesSemanticIdentityAcrossChangedCoordinates(t *testing.T) {
 	original := testPatch()
 	oldView := NewUnifiedView(original, true)
