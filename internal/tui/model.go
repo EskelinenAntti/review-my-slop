@@ -41,42 +41,61 @@ const (
 	minimumSideBySideWidth = 100
 )
 
+type reviewState struct {
+	patch      patch.Patch
+	view       view.View
+	cursor     view.Cursor
+	viewport   view.Viewport
+	selection  *view.Selection
+	sideBySide bool
+}
+
+type commentState struct {
+	items      []review.Comment
+	row        int
+	body       string
+	editIndex  int
+	editAnchor review.Anchor
+}
+
+type searchState struct {
+	query []rune
+	term  string
+	from  view.Cursor
+	miss  bool
+}
+
 type Model struct {
-	patch       patch.Patch
-	view        view.View
-	cursor      view.Cursor
-	viewport    view.Viewport
-	selection   *view.Selection
-	comments    []review.Comment
-	commentRow  int
-	width       int
-	height      int
-	mode        mode
-	commentBody string
-	editIndex   int
-	editAnchor  review.Anchor
-	save        SaveCommentFunc
-	delete      DeleteCommentFunc
-	refresh     RefreshDiffFunc
-	err         error
-	quitting    bool
-	pendingKey  string
-	sideBySide  bool
-	saveLayout  SaveSideBySideFunc
-	parents     []string
-	target      int
-	search      []rune
-	searchTerm  string
-	searchFrom  view.Cursor
-	searchMiss  bool
-	dark        bool
+	review     reviewState
+	comments   commentState
+	search     searchState
+	width      int
+	height     int
+	mode       mode
+	save       SaveCommentFunc
+	delete     DeleteCommentFunc
+	refresh    RefreshDiffFunc
+	err        error
+	quitting   bool
+	pendingKey string
+	saveLayout SaveSideBySideFunc
+	parents    []string
+	target     int
+	dark       bool
 }
 
 func New(p patch.Patch, comments []review.Comment, save SaveCommentFunc) Model {
-	m := Model{patch: p, comments: comments, width: 100, height: 30, editIndex: -1, save: save, dark: true}
-	m.view = view.NewUnifiedView(p, m.dark)
-	m.viewport = m.view.NewViewport(m.width, m.viewportHeight())
-	m.cursor, _ = m.view.First()
+	m := Model{
+		review:   reviewState{patch: p},
+		comments: commentState{items: comments, editIndex: -1},
+		width:    100,
+		height:   30,
+		save:     save,
+		dark:     true,
+	}
+	m.review.view = view.NewUnifiedView(p, m.dark)
+	m.review.viewport = m.review.view.NewViewport(m.width, m.viewportHeight())
+	m.review.cursor, _ = m.review.view.First()
 	return m
 }
 
@@ -98,23 +117,23 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.BackgroundColorMsg:
 		if dark := msg.IsDark(); dark != m.dark {
 			m.dark = dark
-			m.rebuildView(m.patch)
+			m.rebuildView(m.review.patch)
 		}
 	case tea.WindowSizeMsg:
 		activeBefore := m.sideBySideActive()
 		m.width, m.height = msg.Width, msg.Height
-		m.viewport = m.view.Resize(m.viewport, m.width, m.viewportHeight())
+		m.review.viewport = m.review.view.Resize(m.review.viewport, m.width, m.viewportHeight())
 		if activeBefore != m.sideBySideActive() {
-			m.rebuildView(m.patch)
+			m.rebuildView(m.review.patch)
 		} else {
-			m.viewport = m.view.KeepVisible(m.viewport, m.cursor)
+			m.review.viewport = m.review.view.KeepVisible(m.review.viewport, m.review.cursor)
 		}
 	case commentEditorFinishedMsg:
 		if msg.err != nil {
 			m.err = msg.err
 			m.clearCommentEdit()
 		} else {
-			m.commentBody = msg.body
+			m.comments.body = msg.body
 			m.finishCommentEdit()
 		}
 	case sourceEditorFinishedMsg:
@@ -129,7 +148,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		if msg.err != nil {
 			m.err = fmt.Errorf("refresh diff: %w", msg.err)
-		} else if msg.patch.Fingerprint != m.patch.Fingerprint {
+		} else if msg.patch.Fingerprint != m.review.patch.Fingerprint {
 			m.rebuildView(msg.patch)
 			m.err = nil
 		}
@@ -156,51 +175,51 @@ type cursorIdentity struct {
 }
 
 func (m Model) identify(cursor view.Cursor) cursorIdentity {
-	file, fileOK := m.view.File(cursor)
-	hunk, hunkOK := m.view.Hunk(cursor)
-	line, lineOK := m.view.Line(cursor)
+	file, fileOK := m.review.view.File(cursor)
+	hunk, hunkOK := m.review.view.Hunk(cursor)
+	line, lineOK := m.review.view.Line(cursor)
 	return cursorIdentity{file: file, hunk: hunk, line: line, cursor: cursor, valid: fileOK && hunkOK && lineOK}
 }
 
 func (m *Model) rebuildView(p patch.Patch) {
-	cursor := m.identify(m.cursor)
+	cursor := m.identify(m.review.cursor)
 	var first, last cursorIdentity
-	if m.selection != nil {
-		first, last = m.identify(m.selection.First), m.identify(m.selection.Last)
+	if m.review.selection != nil {
+		first, last = m.identify(m.review.selection.First), m.identify(m.review.selection.Last)
 	}
-	rowsAbove := m.cursor.Coordinate.Y - m.viewport.Top.Y
-	m.patch = p
+	rowsAbove := m.review.cursor.Coordinate.Y - m.review.viewport.Top.Y
+	m.review.patch = p
 	if m.sideBySideActive() {
-		m.view = view.NewSplitView(p, m.dark)
+		m.review.view = view.NewSplitView(p, m.dark)
 	} else {
-		m.view = view.NewUnifiedView(p, m.dark)
+		m.review.view = view.NewUnifiedView(p, m.dark)
 	}
-	m.viewport = m.view.NewViewport(m.width, m.viewportHeight())
+	m.review.viewport = m.review.view.NewViewport(m.width, m.viewportHeight())
 	if cursor.valid {
-		m.cursor, cursor.valid = m.view.FindCursor(cursor.file, cursor.hunk, cursor.line, cursor.cursor.Coordinate, cursor.cursor.Pane)
+		m.review.cursor, cursor.valid = m.review.view.FindCursor(cursor.file, cursor.hunk, cursor.line, cursor.cursor.Coordinate, cursor.cursor.Pane)
 	}
 	if !cursor.valid {
-		m.cursor, _ = m.view.First()
+		m.review.cursor, _ = m.review.view.First()
 	}
-	m.selection = nil
+	m.review.selection = nil
 	if first.valid && last.valid {
-		translatedFirst, firstOK := m.view.FindCursor(first.file, first.hunk, first.line, first.cursor.Coordinate, first.cursor.Pane)
-		translatedLast, lastOK := m.view.FindCursor(last.file, last.hunk, last.line, last.cursor.Coordinate, last.cursor.Pane)
+		translatedFirst, firstOK := m.review.view.FindCursor(first.file, first.hunk, first.line, first.cursor.Coordinate, first.cursor.Pane)
+		translatedLast, lastOK := m.review.view.FindCursor(last.file, last.hunk, last.line, last.cursor.Coordinate, last.cursor.Pane)
 		if firstOK && lastOK {
 			selection := view.Selection{First: translatedFirst, Last: translatedLast}
-			if firstHunk, ok := m.view.Hunk(translatedFirst); ok {
-				if firstFile, fileOK := m.view.File(translatedFirst); fileOK {
-					if lastFile, lastFileOK := m.view.File(translatedLast); lastFileOK && samePatchFile(firstFile, lastFile) {
-						if lastHunk, lastOK := m.view.Hunk(translatedLast); lastOK && firstHunk.Header == lastHunk.Header {
-							m.selection = &selection
+			if firstHunk, ok := m.review.view.Hunk(translatedFirst); ok {
+				if firstFile, fileOK := m.review.view.File(translatedFirst); fileOK {
+					if lastFile, lastFileOK := m.review.view.File(translatedLast); lastFileOK && samePatchFile(firstFile, lastFile) {
+						if lastHunk, lastOK := m.review.view.Hunk(translatedLast); lastOK && firstHunk.Header == lastHunk.Header {
+							m.review.selection = &selection
 						}
 					}
 				}
 			}
 		}
 	}
-	m.viewport.Top.Y = max(0, m.cursor.Coordinate.Y-rowsAbove)
-	m.viewport = m.view.KeepVisible(m.viewport, m.cursor)
+	m.review.viewport.Top.Y = max(0, m.review.cursor.Coordinate.Y-rowsAbove)
+	m.review.viewport = m.review.view.KeepVisible(m.review.viewport, m.review.cursor)
 }
 
 func samePatchFile(first, last patch.File) bool {
@@ -236,11 +255,11 @@ func (m Model) updateKey(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	if pending == "z" {
 		switch name {
 		case "z":
-			m.viewport = m.view.Align(m.viewport, m.cursor, view.Middle)
+			m.review.viewport = m.review.view.Align(m.review.viewport, m.review.cursor, view.Middle)
 		case "t":
-			m.viewport = m.view.Align(m.viewport, m.cursor, view.Top)
+			m.review.viewport = m.review.view.Align(m.review.viewport, m.review.cursor, view.Top)
 		case "b":
-			m.viewport = m.view.Align(m.viewport, m.cursor, view.Bottom)
+			m.review.viewport = m.review.view.Align(m.review.viewport, m.review.cursor, view.Bottom)
 		}
 		return m, nil
 	}
@@ -251,7 +270,7 @@ func (m Model) updateKey(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		case "l":
 			m.switchPane(view.Right)
 		case "ctrl+w":
-			m.switchPane(m.cursor.Pane.Other())
+			m.switchPane(m.review.cursor.Pane.Other())
 		}
 		return m, nil
 	}
@@ -264,9 +283,9 @@ func (m Model) updateKey(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	case "/":
 		m.cancelSelection()
 		m.mode = modeSearch
-		m.search = nil
-		m.searchFrom = m.cursor
-		m.searchMiss = false
+		m.search.query = nil
+		m.search.from = m.review.cursor
+		m.search.miss = false
 	case "n":
 		m.repeatSearch(view.Forward)
 	case "N":
@@ -276,13 +295,13 @@ func (m Model) updateKey(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	case "k", "up":
 		m.move(view.Backward)
 	case "h", "left":
-		m.viewport = m.view.ScrollHorizontal(m.viewport, -horizontalScrollStep)
+		m.review.viewport = m.review.view.ScrollHorizontal(m.review.viewport, -horizontalScrollStep)
 	case "l", "right":
-		m.viewport = m.view.ScrollHorizontal(m.viewport, horizontalScrollStep)
+		m.review.viewport = m.review.view.ScrollHorizontal(m.review.viewport, horizontalScrollStep)
 	case "0":
-		m.viewport.LeftColumn = 0
+		m.review.viewport.LeftColumn = 0
 	case "$":
-		m.viewport = m.view.ScrollHorizontal(m.viewport, int(^uint(0)>>1))
+		m.review.viewport = m.review.view.ScrollHorizontal(m.review.viewport, int(^uint(0)>>1))
 	case "ctrl+d":
 		m.halfPage(view.Forward)
 	case "ctrl+u":
@@ -291,14 +310,14 @@ func (m Model) updateKey(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		m.pendingKey = name
 	case "g":
 		if pending == "g" {
-			if cursor, ok := m.view.First(); ok {
+			if cursor, ok := m.review.view.First(); ok {
 				m.setCursor(cursor)
 			}
 		} else {
 			m.pendingKey = "g"
 		}
 	case "G":
-		if cursor, ok := m.view.Last(); ok {
+		if cursor, ok := m.review.view.Last(); ok {
 			m.setCursor(cursor)
 		}
 	case "z":
@@ -306,9 +325,9 @@ func (m Model) updateKey(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	case "]", "[":
 		m.pendingKey = name
 	case "v":
-		if m.selection == nil {
-			selection := m.view.BeginSelection(m.cursor)
-			m.selection = &selection
+		if m.review.selection == nil {
+			selection := m.review.view.BeginSelection(m.review.cursor)
+			m.review.selection = &selection
 		} else {
 			m.cancelSelection()
 		}
@@ -330,7 +349,7 @@ func (m Model) updateKey(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return m, cmd
 	case "C":
 		m.mode = modeComments
-		m.commentRow = min(m.commentRow, max(0, len(m.comments)-1))
+		m.comments.row = min(m.comments.row, max(0, len(m.comments.items)-1))
 	case "R":
 		return m, m.loadRefresh()
 	case "tab":

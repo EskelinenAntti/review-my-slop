@@ -29,9 +29,9 @@ func (m Model) render() string {
 		return m.renderComments()
 	}
 	var out strings.Builder
-	added, removed := patchLineCounts(m.patch)
+	added, removed := patchLineCounts(m.review.patch)
 	out.WriteString(titleStyle.Render("review-my-slop") + "  " + mutedStyle.Render(fmt.Sprintf("+%d-%d", added, removed)) + "\n")
-	if len(m.patch.Files) == 0 {
+	if len(m.review.patch.Files) == 0 {
 		empty := "No unstaged or untracked changes."
 		if m.currentParent() != "" {
 			empty = "No branch or worktree changes."
@@ -41,7 +41,7 @@ func (m Model) render() string {
 		out.WriteString(strings.Join(lines, "\n"))
 		out.WriteByte('\n')
 	} else {
-		out.WriteString(m.view.Render(m.viewport, m.cursor, m.selection))
+		out.WriteString(m.review.view.Render(m.review.viewport, m.review.cursor, m.review.selection))
 		out.WriteByte('\n')
 	}
 	if m.err != nil {
@@ -72,11 +72,11 @@ func patchLineCounts(p patch.Patch) (added, removed int) {
 func (m Model) renderStatus() string {
 	status := "j/k/h/l move  c comment  ? help  q quit"
 	if m.mode == modeSearch {
-		status = "/" + string(m.search) + editorCursorStyle.Render(" ")
-		if m.searchMiss {
+		status = "/" + string(m.search.query) + editorCursorStyle.Render(" ")
+		if m.search.miss {
 			status += errorStyle.Render("  no matches")
 		}
-	} else if m.selection != nil {
+	} else if m.review.selection != nil {
 		status = "visual selection  j/k extend  c comment  Esc cancel"
 	}
 	return m.renderFooter(mutedStyle.Render(status))
@@ -92,8 +92,8 @@ func (m Model) renderFooter(left string) string {
 
 func (m Model) viewLabel() string {
 	progress := ""
-	if m.viewport.Top.Y > 0 {
-		progress = fmt.Sprintf(" (%d%%)", m.view.ViewportProgress(m.viewport))
+	if m.review.viewport.Top.Y > 0 {
+		progress = fmt.Sprintf(" (%d%%)", m.review.view.ViewportProgress(m.review.viewport))
 	}
 	if parent := m.currentParent(); parent != "" {
 		return "branch changes from " + parent + progress
@@ -103,13 +103,13 @@ func (m Model) viewLabel() string {
 
 func (m Model) renderComments() string {
 	var out strings.Builder
-	out.WriteString(titleStyle.Render("comments") + "  " + mutedStyle.Render(fmt.Sprintf("%d pending", len(m.comments))) + "\n")
-	if len(m.comments) == 0 {
+	out.WriteString(titleStyle.Render("comments") + "  " + mutedStyle.Render(fmt.Sprintf("%d pending", len(m.comments.items))) + "\n")
+	if len(m.comments.items) == 0 {
 		out.WriteString("\n" + mutedStyle.Render("No pending comments.") + "\n")
 	} else {
-		for index, comment := range m.comments {
+		for index, comment := range m.comments.items {
 			prefix, style := "  ", contextStyle
-			if index == m.commentRow {
+			if index == m.comments.row {
 				prefix, style = "> ", cursorStyle
 			}
 			location := comment.Anchor.FilePath

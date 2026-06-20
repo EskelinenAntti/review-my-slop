@@ -21,18 +21,18 @@ func (m Model) updateComments(name string) (tea.Model, tea.Cmd) {
 		m.quitting = true
 		return m, tea.Quit
 	case "j", "down":
-		if m.commentRow < len(m.comments)-1 {
-			m.commentRow++
+		if m.comments.row < len(m.comments.items)-1 {
+			m.comments.row++
 		}
 	case "k", "up":
-		if m.commentRow > 0 {
-			m.commentRow--
+		if m.comments.row > 0 {
+			m.comments.row--
 		}
 	case "enter", "e":
-		if len(m.comments) > 0 {
-			m.editIndex = m.commentRow
-			m.commentBody = m.comments[m.editIndex].Body
-			m.editAnchor = m.comments[m.editIndex].Anchor
+		if len(m.comments.items) > 0 {
+			m.comments.editIndex = m.comments.row
+			m.comments.body = m.comments.items[m.comments.editIndex].Body
+			m.comments.editAnchor = m.comments.items[m.comments.editIndex].Anchor
 			cmd, err := m.openCommentEditor()
 			if err != nil {
 				m.err = err
@@ -42,24 +42,24 @@ func (m Model) updateComments(name string) (tea.Model, tea.Cmd) {
 			return m, cmd
 		}
 	case "D":
-		if len(m.comments) > 0 {
-			m.deleteComment(m.commentRow)
+		if len(m.comments.items) > 0 {
+			m.deleteComment(m.comments.row)
 		}
 	}
 	return m, nil
 }
 
 func (m *Model) beginComment() (tea.Cmd, error) {
-	selection := m.selection
+	selection := m.review.selection
 	if selection == nil {
-		current := m.view.BeginSelection(m.cursor)
+		current := m.review.view.BeginSelection(m.review.cursor)
 		selection = &current
 	}
-	anchor, err := m.view.Anchor(*selection)
+	anchor, err := m.review.view.Anchor(*selection)
 	if err != nil {
 		return nil, err
 	}
-	m.commentBody, m.editIndex, m.editAnchor = "", -1, anchor
+	m.comments.body, m.comments.editIndex, m.comments.editAnchor = "", -1, anchor
 	cmd, err := m.openCommentEditor()
 	if err != nil {
 		m.clearCommentEdit()
@@ -69,10 +69,10 @@ func (m *Model) beginComment() (tea.Cmd, error) {
 }
 
 func (m *Model) finishCommentEdit() {
-	body := strings.TrimSpace(m.commentBody)
+	body := strings.TrimSpace(m.comments.body)
 	if body == "" {
-		if m.editIndex >= 0 {
-			m.deleteComment(m.editIndex)
+		if m.comments.editIndex >= 0 {
+			m.deleteComment(m.comments.editIndex)
 		}
 		m.clearCommentEdit()
 		m.cancelSelection()
@@ -84,23 +84,23 @@ func (m *Model) finishCommentEdit() {
 		return
 	}
 	var comment review.Comment
-	if m.editIndex >= 0 {
-		comment = m.comments[m.editIndex]
+	if m.comments.editIndex >= 0 {
+		comment = m.comments.items[m.comments.editIndex]
 		comment.Body = body
 	} else {
-		comment = review.Comment{Anchor: m.editAnchor, Body: body}
+		comment = review.Comment{Anchor: m.comments.editAnchor, Body: body}
 	}
-	saved, err := m.save(comment, m.patch)
+	saved, err := m.save(comment, m.review.patch)
 	if err != nil {
 		m.err = err
 		m.clearCommentEdit()
 		return
 	}
-	if m.editIndex >= 0 {
-		m.comments[m.editIndex] = saved
+	if m.comments.editIndex >= 0 {
+		m.comments.items[m.comments.editIndex] = saved
 	} else {
-		m.comments = append(m.comments, saved)
-		m.commentRow = len(m.comments) - 1
+		m.comments.items = append(m.comments.items, saved)
+		m.comments.row = len(m.comments.items) - 1
 	}
 	m.clearCommentEdit()
 	m.err = nil
@@ -108,37 +108,37 @@ func (m *Model) finishCommentEdit() {
 }
 
 func (m *Model) deleteComment(index int) {
-	if index < 0 || index >= len(m.comments) {
+	if index < 0 || index >= len(m.comments.items) {
 		return
 	}
 	if m.delete == nil {
 		m.err = fmt.Errorf("comment storage is unavailable")
 		return
 	}
-	if err := m.delete(m.comments[index], m.patch); err != nil {
+	if err := m.delete(m.comments.items[index], m.review.patch); err != nil {
 		m.err = err
 		return
 	}
-	m.comments = append(m.comments[:index], m.comments[index+1:]...)
-	m.commentRow = min(m.commentRow, max(0, len(m.comments)-1))
+	m.comments.items = append(m.comments.items[:index], m.comments.items[index+1:]...)
+	m.comments.row = min(m.comments.row, max(0, len(m.comments.items)-1))
 	m.err = nil
 }
 
 func (m *Model) clearCommentEdit() {
-	m.commentBody = ""
-	m.editIndex = -1
-	m.editAnchor = review.Anchor{}
+	m.comments.body = ""
+	m.comments.editIndex = -1
+	m.comments.editAnchor = review.Anchor{}
 }
 
-func (m *Model) cancelSelection() { m.selection = nil }
+func (m *Model) cancelSelection() { m.review.selection = nil }
 
 func (m Model) openCurrentLine() (tea.Cmd, error) {
 	editorCommand := strings.TrimSpace(os.Getenv("EDITOR"))
 	if editorCommand == "" {
 		return nil, fmt.Errorf("$EDITOR is not set")
 	}
-	file, fileOK := m.view.File(m.cursor)
-	line, lineOK := m.view.Line(m.cursor)
+	file, fileOK := m.review.view.File(m.review.cursor)
+	line, lineOK := m.review.view.Line(m.review.cursor)
 	if !fileOK || !lineOK {
 		return nil, fmt.Errorf("select a code line to open in $EDITOR")
 	}
@@ -153,7 +153,7 @@ func (m Model) openCurrentLine() (tea.Cmd, error) {
 		return nil, fmt.Errorf("current line has no editable working-tree location")
 	}
 	if !filepath.IsAbs(path) {
-		path = filepath.Join(m.patch.Repository, filepath.FromSlash(path))
+		path = filepath.Join(m.review.patch.Repository, filepath.FromSlash(path))
 	}
 	return tea.ExecProcess(editor.SourceCommand(editorCommand, path, int(number)), func(err error) tea.Msg {
 		return sourceEditorFinishedMsg{err: err}
@@ -165,12 +165,12 @@ func (m Model) openCommentEditor() (tea.Cmd, error) {
 	if editorCommand == "" {
 		return nil, fmt.Errorf("$EDITOR is not set")
 	}
-	path, err := editor.CreateCommentFile(m.commentBody, m.editAnchor)
+	path, err := editor.CreateCommentFile(m.comments.body, m.comments.editAnchor)
 	if err != nil {
 		return nil, err
 	}
 	return tea.ExecProcess(editor.CommentCommand(editorCommand, path), func(editorErr error) tea.Msg {
-		body, err := editor.ReadCommentFile(path, m.editAnchor, editorErr)
+		body, err := editor.ReadCommentFile(path, m.comments.editAnchor, editorErr)
 		return commentEditorFinishedMsg{body: body, err: err}
 	}), nil
 }
