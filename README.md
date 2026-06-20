@@ -1,59 +1,39 @@
 # review-my-slop
 
-`review-my-slop` is a terminal UI for reviewing unstaged and untracked Git
-changes and attaching feedback to changed lines. Feedback is stored outside the
-repository and can be pulled into an AI coding session with:
+**Review the code, not the chat transcript.**
 
-```text
-!review-my-slop comments
-```
+Coding has moved from the editor to the chat window. Agents can produce code at
+a pace that makes reading the code feel like an unnecessary bottleneck. It is
+not. Without supervision, agents tend to slowly accumulate technical debt. That
+debt increases the likelihood of mistakes, which in turn create more debt and
+hidden bugs. By the time an agent burns through tokens on simple changes, it is
+usually too late to correct course.
 
-Supported platforms are macOS and Linux on amd64 and arm64. The program
-requires `git`, a POSIX shell, and a terminal.
+This is not simply an agent problem. Successful collaboration between the
+developer and the agent requires a shared understanding of the codebase.
 
-## Install from source
+`review-my-slop` is a keyboard-driven terminal diff viewer for reviewing local
+changes, attaching comments to exact lines or ranges, and handing that feedback
+back to the agent with one command.
+
+## The workflow
+
+1. Prompt the agent to make the initial change.
+2. Review that slop by running `review-my-slop code` in the repository.
+3. Read the diff and attach comments to individual lines or ranges.
+4. Let the agent review your slop comments by asking it to run
+   `review-my-slop comments` and act on them.
+5. Repeat from step 2 until the code is no longer slop.
+
+The review UI uses Vim-like key bindings for navigation, selection, search, and
+comments. Press `?` at any time to see the complete key map.
+
+All data stays truly local, and no telemetry is sent.
+
+## Install
 
 ```sh
-go install github.com/eskelinenantti/review-my-slop/cmd/review-my-slop@latest
+brew install EskelinenAntti/cli/review-my-slop
 ```
 
-## Usage
-
-Run `review-my-slop` or `review-my-slop code` in a Git repository. Use `j` and
-`k` to move, `v` to select a range, and `c` to comment in `$EDITOR` using a
-temporary Markdown file. The file includes the selected lines in a fenced
-`suggestion` block for reference; the unchanged block is removed before the
-comment is saved.
-Saving an empty file discards the comment, including when editing an existing
-comment. Press `C` to browse pending comments, edit one with `Enter`, or delete
-one with `D`.
-Long lines can be scrolled four columns at a time with `h`/`l` or the
-left/right arrow keys;
-`0` and `$` jump to the horizontal start and end. Press `e` to open the current
-line in `$EDITOR`. The diff refreshes when the terminal gains focus and keeps
-the cursor on the same changed line when possible; press `R` to refresh it
-manually. Press `Tab` to cycle through local changes and available parent
-branches, ordered from the nearest stacked parent to the default branch. Each
-branch view compares that branch's merge-base commit with the worktree, so
-committed, staged, unstaged, and untracked changes are all included. Press `/`
-to search the diff, then use `n` and `N` to move between matches.
-
-The AI-facing `review-my-slop comments` command prints and consumes all pending
-feedback for its current repository. Re-run it to retrieve comments saved while
-the AI was working.
-
-## Example AI skill
-
-[`examples/skills/comments`](examples/skills/comments) contains an example
-`comments` skill that teaches an AI coding agent to retrieve, address, verify,
-and re-check review feedback. Copy that directory into your agent's skills
-directory, then invoke it as `/comments` (or `$comments` in agents that use
-dollar-prefixed skill names).
-
-Pending comments are stored in
-`$XDG_DATA_HOME/review-my-slop/inbox.db`, defaulting to
-`~/.local/share/review-my-slop/inbox.db`. Temporary editor drafts use
-`$XDG_STATE_HOME/review-my-slop`, defaulting to
-`~/.local/state/review-my-slop`.
-
-Run `?` in the TUI for the complete key map.
+The project is licensed under the [MIT License](LICENSE).
