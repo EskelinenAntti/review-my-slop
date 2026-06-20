@@ -797,7 +797,10 @@ func (m Model) render() string {
 		if m.currentParent() != "" {
 			empty = "No branch or worktree changes."
 		}
-		out.WriteString("\n" + mutedStyle.Render(empty) + "\n")
+		lines := make([]string, m.viewportHeight())
+		lines[min(1, len(lines)-1)] = mutedStyle.Render(empty)
+		out.WriteString(strings.Join(lines, "\n"))
+		out.WriteByte('\n')
 	} else {
 		out.WriteString(m.view.Render(m.viewport, m.cursor, m.selection))
 		out.WriteByte('\n')

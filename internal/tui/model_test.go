@@ -76,6 +76,19 @@ func TestRenderingAndKeyBindingsRemainAvailable(t *testing.T) {
 	}
 }
 
+func TestEmptyViewKeepsKeyboardHintAtBottom(t *testing.T) {
+	m := New(patch.Patch{}, nil, nil)
+	m.width, m.height = 80, 10
+
+	lines := strings.Split(m.render(), "\n")
+	if got, want := lines[m.height-2], "j/k/h/l move"; !strings.Contains(got, want) {
+		t.Fatalf("line %d = %q, want it to contain %q", m.height-1, got, want)
+	}
+	if got := lines[2]; !strings.Contains(got, "No unstaged or untracked changes.") {
+		t.Fatalf("empty-state line = %q", got)
+	}
+}
+
 func TestCommentDraftRoundTrip(t *testing.T) {
 	anchor := review.Anchor{QuotedLines: []string{" old", "-gone", "+new"}}
 	draft := commentEditorDraft("body", anchor)
