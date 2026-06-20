@@ -187,6 +187,33 @@ func TestInboxCommentsCanBeViewedEditedAndDeleted(t *testing.T) {
 	}
 }
 
+func TestOpeningCommentsReloadsAcknowledgedInbox(t *testing.T) {
+	m := New(coveragePatch(), []review.Comment{{ID: "read", Body: "already read"}}, nil)
+	m.SetLoadComments(func() ([]review.Comment, error) { return nil, nil })
+
+	next, cmd := m.Update(textKey("C"))
+	m = next.(Model)
+	if cmd == nil {
+		t.Fatal("opening comments did not request an inbox refresh")
+	}
+	m = updateModel(t, m, cmd())
+	if m.mode != modeComments || len(m.comments.items) != 0 {
+		t.Fatalf("mode=%v comments=%#v", m.mode, m.comments.items)
+	}
+}
+
+func TestCommentReloadFailurePreservesCurrentInbox(t *testing.T) {
+	m := New(coveragePatch(), []review.Comment{{ID: "keep", Body: "keep"}}, nil)
+	m.SetLoadComments(func() ([]review.Comment, error) { return nil, fmt.Errorf("storage unavailable") })
+
+	next, cmd := m.Update(textKey("C"))
+	m = next.(Model)
+	m = updateModel(t, m, cmd())
+	if len(m.comments.items) != 1 || m.err == nil || m.err.Error() != "refresh comments: storage unavailable" {
+		t.Fatalf("comments=%#v error=%v", m.comments.items, m.err)
+	}
+}
+
 func TestEmptyEditedCommentIsDeleted(t *testing.T) {
 	t.Setenv("EDITOR", "true")
 	m := New(coveragePatch(), []review.Comment{{ID: "one", Body: "old"}}, nil)

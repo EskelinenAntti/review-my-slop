@@ -102,6 +102,7 @@ func (m *Model) finishCommentEdit() {
 		m.comments.items = append(m.comments.items, saved)
 		m.comments.row = len(m.comments.items) - 1
 	}
+	m.comments.revision++
 	m.clearCommentEdit()
 	m.err = nil
 	m.cancelSelection()
@@ -121,6 +122,7 @@ func (m *Model) deleteComment(index int) {
 	}
 	m.comments.items = append(m.comments.items[:index], m.comments.items[index+1:]...)
 	m.comments.row = min(m.comments.row, max(0, len(m.comments.items)-1))
+	m.comments.revision++
 	m.err = nil
 }
 

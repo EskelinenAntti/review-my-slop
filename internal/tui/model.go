@@ -12,6 +12,7 @@ import (
 
 type SaveCommentFunc func(review.Comment, patch.Patch) (review.Comment, error)
 type DeleteCommentFunc func(review.Comment, patch.Patch) error
+type LoadCommentsFunc func() ([]review.Comment, error)
 type RefreshDiffFunc func(parent string) (patch.Patch, error)
 type SaveSideBySideFunc func(bool) error
 
@@ -24,6 +25,11 @@ type refreshDiffMsg struct {
 type commentEditorFinishedMsg struct {
 	body string
 	err  error
+}
+type commentsLoadedMsg struct {
+	comments []review.Comment
+	revision uint64
+	err      error
 }
 type sourceEditorFinishedMsg struct{ err error }
 
@@ -56,6 +62,7 @@ type commentState struct {
 	body       string
 	editIndex  int
 	editAnchor review.Anchor
+	revision   uint64
 }
 
 type searchState struct {
@@ -74,6 +81,7 @@ type Model struct {
 	mode       mode
 	save       SaveCommentFunc
 	delete     DeleteCommentFunc
+	load       LoadCommentsFunc
 	refresh    RefreshDiffFunc
 	err        error
 	quitting   bool
@@ -99,8 +107,9 @@ func New(p patch.Patch, comments []review.Comment, save SaveCommentFunc) Model {
 	return m
 }
 
-func (m *Model) SetRefresh(refresh RefreshDiffFunc) { m.refresh = refresh }
-func (m *Model) SetDelete(delete DeleteCommentFunc) { m.delete = delete }
+func (m *Model) SetRefresh(refresh RefreshDiffFunc)    { m.refresh = refresh }
+func (m *Model) SetDelete(delete DeleteCommentFunc)    { m.delete = delete }
+func (m *Model) SetLoadComments(load LoadCommentsFunc) { m.load = load }
 func (m *Model) SetParents(parents []string) {
 	m.parents = append([]string(nil), parents...)
 	m.target = min(m.target, len(m.parents))
@@ -136,6 +145,17 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.comments.body = msg.body
 			m.finishCommentEdit()
 		}
+	case commentsLoadedMsg:
+		if msg.revision != m.comments.revision {
+			break
+		}
+		if msg.err != nil {
+			m.err = fmt.Errorf("refresh comments: %w", msg.err)
+		} else {
+			m.comments.items = msg.comments
+			m.comments.row = min(m.comments.row, max(0, len(m.comments.items)-1))
+			m.err = nil
+		}
 	case sourceEditorFinishedMsg:
 		if msg.err != nil {
 			m.err = fmt.Errorf("editor: %w", msg.err)
@@ -164,6 +184,17 @@ func (m Model) loadRefresh() tea.Cmd {
 	}
 	parent := m.currentParent()
 	return func() tea.Msg { p, err := m.refresh(parent); return refreshDiffMsg{patch: p, parent: parent, err: err} }
+}
+
+func (m Model) loadComments() tea.Cmd {
+	if m.load == nil {
+		return nil
+	}
+	revision := m.comments.revision
+	return func() tea.Msg {
+		comments, err := m.load()
+		return commentsLoadedMsg{comments: comments, revision: revision, err: err}
+	}
 }
 
 type cursorIdentity struct {
@@ -350,6 +381,7 @@ func (m Model) updateKey(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	case "C":
 		m.mode = modeComments
 		m.comments.row = min(m.comments.row, max(0, len(m.comments.items)-1))
+		return m, m.loadComments()
 	case "R":
 		return m, m.loadRefresh()
 	case "tab":

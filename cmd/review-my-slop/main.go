@@ -74,6 +74,9 @@ func runCode(ctx context.Context) error {
 		return store.Add(comment)
 	}
 	model := tui.New(loaded, comments, saveComment)
+	model.SetLoadComments(func() ([]review.Comment, error) {
+		return store.List(loaded.Repository)
+	})
 	model.SetSideBySide(sideBySide, store.SetSideBySide)
 	model.SetDelete(func(comment review.Comment, current patch.Patch) error {
 		return store.Delete(current.Repository, comment.ID)
