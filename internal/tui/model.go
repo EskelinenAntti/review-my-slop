@@ -102,7 +102,7 @@ func New(p patch.Patch, comments []review.Comment, save SaveCommentFunc) Model {
 		dark:     true,
 	}
 	m.review.view = view.NewUnifiedView(p, m.dark)
-	m.review.viewport = m.review.view.NewViewport(m.width, m.viewportHeight())
+	m.review.viewport = m.review.view.NewViewport(m.width, m.screenBodyHeight())
 	m.review.cursor, _ = m.review.view.First()
 	return m
 }
@@ -131,7 +131,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		activeBefore := m.sideBySideActive()
 		m.width, m.height = msg.Width, msg.Height
-		m.review.viewport = m.review.view.Resize(m.review.viewport, m.width, m.viewportHeight())
+		m.review.viewport = m.review.view.Resize(m.review.viewport, m.width, m.screenBodyHeight())
 		if activeBefore != m.sideBySideActive() {
 			m.rebuildView(m.review.patch)
 		} else {
@@ -225,7 +225,7 @@ func (m *Model) rebuildView(p patch.Patch) {
 	} else {
 		m.review.view = view.NewUnifiedView(p, m.dark)
 	}
-	m.review.viewport = m.review.view.NewViewport(m.width, m.viewportHeight())
+	m.review.viewport = m.review.view.NewViewport(m.width, m.screenBodyHeight())
 	if cursor.valid {
 		m.review.cursor, cursor.valid = m.review.view.FindCursor(cursor.file, cursor.hunk, cursor.line, cursor.cursor.Coordinate, cursor.cursor.Pane)
 	}
@@ -400,4 +400,4 @@ func (m Model) currentParent() string {
 	}
 	return m.parents[m.target-1]
 }
-func (m Model) viewportHeight() int { return max(1, m.height-3) }
+func (m Model) screenBodyHeight() int { return max(1, m.height-3) }

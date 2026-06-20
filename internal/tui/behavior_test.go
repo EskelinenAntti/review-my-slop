@@ -305,7 +305,7 @@ func TestZSequencesPositionCurrentLineInViewport(t *testing.T) {
 		m.move(view.Forward)
 	}
 	m.height = 9
-	m.review.viewport = m.review.view.Resize(m.review.viewport, m.width, m.viewportHeight())
+	m.review.viewport = m.review.view.Resize(m.review.viewport, m.width, m.screenBodyHeight())
 	for _, test := range []struct {
 		key       string
 		alignment view.VerticalAlignment
@@ -402,7 +402,7 @@ func TestSideBySidePaneSwitchingUsesCtrlWSequences(t *testing.T) {
 func TestHorizontalScrollKeysMoveByStepAndReset(t *testing.T) {
 	m := New(longModelPatch(), nil, nil)
 	m.width = 37
-	m.review.viewport = m.review.view.Resize(m.review.viewport, m.width, m.viewportHeight())
+	m.review.viewport = m.review.view.Resize(m.review.viewport, m.width, m.screenBodyHeight())
 	m = updateModel(t, m, textKey("l"))
 	m = updateModel(t, m, tea.KeyPressMsg(tea.Key{Code: tea.KeyRight}))
 	if m.review.viewport.LeftColumn != 2*horizontalScrollStep {

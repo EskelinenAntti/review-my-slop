@@ -1,8 +1,11 @@
 package tui
 
 import (
+	"fmt"
 	"strings"
 	"testing"
+
+	"github.com/charmbracelet/x/ansi"
 
 	"github.com/eskelinenantti/review-my-slop/internal/editor"
 	"github.com/eskelinenantti/review-my-slop/internal/patch"
@@ -64,7 +67,7 @@ func TestCommentSaveUsesPatchAndPreservesAnchor(t *testing.T) {
 func TestRenderingAndKeyBindingsRemainAvailable(t *testing.T) {
 	m := New(modelPatch(), nil, nil)
 	m.width, m.height = 80, 10
-	m.review.viewport = m.review.view.Resize(m.review.viewport, m.width, m.viewportHeight())
+	m.review.viewport = m.review.view.Resize(m.review.viewport, m.width, m.screenBodyHeight())
 	rendered := m.render()
 	for _, value := range []string{"review-my-slop", "+1-1", "old()", "new()", "local changes"} {
 		if !strings.Contains(rendered, value) {
@@ -87,6 +90,48 @@ func TestEmptyViewKeepsKeyboardHintAtBottom(t *testing.T) {
 	}
 	if got := lines[2]; !strings.Contains(got, "No unstaged or untracked changes.") {
 		t.Fatalf("empty-state line = %q", got)
+	}
+}
+
+func TestMenuKeyboardHintsStayAtBottom(t *testing.T) {
+	m := New(modelPatch(), []review.Comment{{Body: "first", Anchor: review.Anchor{FilePath: "main.go", NewStart: 2}}}, nil)
+	m.width, m.height = 80, 10
+
+	tests := []struct {
+		name string
+		mode mode
+		hint string
+	}{
+		{name: "comments", mode: modeComments, hint: "j/k move"},
+		{name: "help", mode: modeHelp, hint: "? or Esc closes help"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			m.mode = test.mode
+			lines := strings.Split(m.render(), "\n")
+			if got := lines[m.height-2]; !strings.Contains(got, test.hint) {
+				t.Fatalf("line %d = %q, want it to contain %q", m.height-1, got, test.hint)
+			}
+		})
+	}
+}
+
+func TestCommentsMenuScrollsWithinScreenBody(t *testing.T) {
+	comments := make([]review.Comment, 10)
+	for index := range comments {
+		comments[index] = review.Comment{Body: fmt.Sprintf("comment %d", index), Anchor: review.Anchor{FilePath: "main.go"}}
+	}
+	m := New(modelPatch(), comments, nil)
+	m.width, m.height = 80, 7
+	m.mode = modeComments
+	m.comments.row = len(comments) - 1
+
+	rendered := strings.Split(ansi.Strip(m.render()), "\n")
+	if !strings.Contains(strings.Join(rendered[1:m.height-2], "\n"), "comment 9") {
+		t.Fatalf("selected comment is outside the screen body: %q", rendered)
+	}
+	if !strings.Contains(rendered[m.height-2], "j/k move") {
+		t.Fatalf("footer line = %q", rendered[m.height-2])
 	}
 }
 
