@@ -1,6 +1,6 @@
 # review-my-slop
 
-**Review the code, not the chat transcript.**
+*Tool that makes reviewing code feel like playing tennis with your agent 🎾*
 
 ![review-my-slop terminal diff review](docs/assets/review-my-slop.png)
 
