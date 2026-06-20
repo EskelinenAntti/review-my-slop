@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/eskelinenantti/review-my-slop/internal/editor"
 	"github.com/eskelinenantti/review-my-slop/internal/patch"
 	"github.com/eskelinenantti/review-my-slop/internal/review"
 )
@@ -91,8 +92,8 @@ func TestEmptyViewKeepsKeyboardHintAtBottom(t *testing.T) {
 
 func TestCommentDraftRoundTrip(t *testing.T) {
 	anchor := review.Anchor{QuotedLines: []string{" old", "-gone", "+new"}}
-	draft := commentEditorDraft("body", anchor)
-	if got := stripUnchangedSuggestion(draft, anchor.QuotedLines); got != "body" {
+	draft := editor.CommentDraft("body", anchor)
+	if got := editor.StripUnchangedSuggestion(draft, anchor.QuotedLines); got != "body" {
 		t.Fatalf("unchanged suggestion result = %q", got)
 	}
 }

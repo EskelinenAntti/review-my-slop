@@ -11,6 +11,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 
+	"github.com/eskelinenantti/review-my-slop/internal/editor"
 	"github.com/eskelinenantti/review-my-slop/internal/patch"
 	"github.com/eskelinenantti/review-my-slop/internal/review"
 	"github.com/eskelinenantti/review-my-slop/internal/view"
@@ -62,7 +63,7 @@ func TestCommentOpensMarkdownFileInEditor(t *testing.T) {
 	state := t.TempDir()
 	t.Setenv("XDG_STATE_HOME", state)
 	anchor := review.Anchor{QuotedLines: []string{"-old()```x", "+new()"}}
-	path, err := createCommentFile("existing comment", anchor)
+	path, err := editor.CreateCommentFile("existing comment", anchor)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -83,20 +84,20 @@ func TestCommentOpensMarkdownFileInEditor(t *testing.T) {
 func TestCommentEditorSuggestionBehaviors(t *testing.T) {
 	t.Run("escapes fence", func(t *testing.T) {
 		anchor := review.Anchor{QuotedLines: []string{"+````go", `+fmt.Println("hello")`, "+````"}}
-		draft := commentEditorDraft("explain this", anchor)
-		if !strings.Contains(draft, "`````suggestion") || stripUnchangedSuggestion(draft, anchor.QuotedLines) != "explain this" {
+		draft := editor.CommentDraft("explain this", anchor)
+		if !strings.Contains(draft, "`````suggestion") || editor.StripUnchangedSuggestion(draft, anchor.QuotedLines) != "explain this" {
 			t.Fatalf("draft = %q", draft)
 		}
 	})
 	t.Run("only new version", func(t *testing.T) {
 		anchor := review.Anchor{QuotedLines: []string{" unchanged()", "-old()", "+new()"}}
-		if got := commentEditorDraft("comment", anchor); got != "comment\n\n```suggestion\nunchanged()\nnew()\n```\n" {
+		if got := editor.CommentDraft("comment", anchor); got != "comment\n\n```suggestion\nunchanged()\nnew()\n```\n" {
 			t.Fatalf("draft = %q", got)
 		}
 	})
 	t.Run("edited suggestion remains", func(t *testing.T) {
 		body := "comment\n\n```suggestion\nbetter()\n```\n"
-		if got := stripUnchangedSuggestion(body, []string{"-old()", "+new()"}); got != body {
+		if got := editor.StripUnchangedSuggestion(body, []string{"-old()", "+new()"}); got != body {
 			t.Fatalf("body = %q", got)
 		}
 	})
@@ -112,12 +113,12 @@ func TestExternalEditorCommandReadsEditedDraft(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = os.Remove(path) })
-	if err := commentEditorCommand("printf 'edited externally' >", path).Run(); err != nil {
+	if err := editor.CommentCommand("printf 'edited externally' >", path).Run(); err != nil {
 		t.Fatal(err)
 	}
-	msg := readCommentEditorResult(path, review.Anchor{}, nil)
-	if msg.err != nil || msg.body != "edited externally" {
-		t.Fatalf("message = %#v", msg)
+	body, err := editor.ReadCommentFile(path, review.Anchor{}, nil)
+	if err != nil || body != "edited externally" {
+		t.Fatalf("body = %q, err = %v", body, err)
 	}
 }
 
@@ -145,7 +146,7 @@ func TestOpenCurrentLineUsesEditorWithWorkingTreeLocation(t *testing.T) {
 		t.Fatalf("command=%v err=%v", cmd, err)
 	}
 	want := "sh\x00-c\x00printf +2 '/tmp/repo with spaces/main.go'"
-	if got := strings.Join(sourceEditorCommand("printf", "/tmp/repo with spaces/main.go", 2).Args, "\x00"); got != want {
+	if got := strings.Join(editor.SourceCommand("printf", "/tmp/repo with spaces/main.go", 2).Args, "\x00"); got != want {
 		t.Fatalf("command = %q", got)
 	}
 }
