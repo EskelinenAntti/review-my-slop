@@ -162,6 +162,19 @@ func TestViewportAlignmentResizeAndScrolling(t *testing.T) {
 	}
 }
 
+func TestViewportProgressUsesVisibleBottom(t *testing.T) {
+	v := NewUnifiedView(longPatch(), true)
+	viewport := v.NewViewport(30, 5)
+	if progress := v.ViewportProgress(viewport); progress <= 0 || progress >= 100 {
+		t.Fatalf("initial progress=%d", progress)
+	}
+	last, _ := v.Last()
+	viewport = v.KeepVisible(viewport, last)
+	if progress := v.ViewportProgress(viewport); progress != 100 {
+		t.Fatalf("final progress=%d", progress)
+	}
+}
+
 func TestHalfPageScrollingMovesCursorToFileBoundaries(t *testing.T) {
 	v := NewUnifiedView(longPatch(), true)
 	first, _ := v.First()

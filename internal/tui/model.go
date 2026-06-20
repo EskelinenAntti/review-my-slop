@@ -852,10 +852,14 @@ func (m Model) renderFooter(left string) string {
 }
 
 func (m Model) viewLabel() string {
-	if parent := m.currentParent(); parent != "" {
-		return "branch changes from " + parent
+	progress := ""
+	if m.viewport.Top.Y > 0 {
+		progress = fmt.Sprintf(" (%d%%)", m.view.ViewportProgress(m.viewport))
 	}
-	return "local changes"
+	if parent := m.currentParent(); parent != "" {
+		return "branch changes from " + parent + progress
+	}
+	return "local changes" + progress
 }
 func (m Model) currentParent() string {
 	if m.target <= 0 || m.target > len(m.parents) {

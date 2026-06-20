@@ -69,6 +69,7 @@ type View interface {
 	Align(Viewport, Cursor, VerticalAlignment) Viewport
 	ScrollHorizontal(Viewport, int) Viewport
 	ScrollHalfPage(Viewport, Cursor, Direction) (Viewport, Cursor)
+	ViewportProgress(Viewport) int
 
 	BeginSelection(Cursor) Selection
 	ExtendSelection(Selection, Cursor) (Selection, bool)

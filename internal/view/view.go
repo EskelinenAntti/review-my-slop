@@ -385,6 +385,14 @@ func (v *diffView) ScrollHalfPage(viewport Viewport, cursor Cursor, direction Di
 	return viewport, cursor
 }
 
+func (v *diffView) ViewportProgress(viewport Viewport) int {
+	if len(v.rows) == 0 {
+		return 0
+	}
+	bottom := min(len(v.rows), viewport.Top.Y+v.contentHeight(viewport))
+	return bottom * 100 / len(v.rows)
+}
+
 func (v *diffView) nearest(target int, pane Pane, direction Direction, viewport Viewport) (Cursor, bool) {
 	height := v.contentHeight(viewport)
 	for distance := 0; distance < height; distance++ {

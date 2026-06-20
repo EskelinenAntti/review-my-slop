@@ -317,6 +317,36 @@ func TestStatusShowsBasicBindingsAndHelpShowsCompleteKeyMap(t *testing.T) {
 	}
 }
 
+func TestStatusShowsProgressOnlyAfterViewportMoves(t *testing.T) {
+	m := New(longModelPatch(), nil, nil)
+	m = updateModel(t, m, tea.WindowSizeMsg{Width: 80, Height: 9})
+	if label := m.viewLabel(); label != "local changes" {
+		t.Fatalf("initial label=%q", label)
+	}
+	m = updateModel(t, m, textKey("l"))
+	if label := m.viewLabel(); label != "local changes" {
+		t.Fatalf("horizontal-scroll label=%q", label)
+	}
+	for m.viewport.Top.Y == 0 {
+		m = updateModel(t, m, textKey("j"))
+	}
+	if label := m.viewLabel(); !strings.HasPrefix(label, "local changes (") || !strings.HasSuffix(label, "%)") {
+		t.Fatalf("scrolled label=%q", label)
+	}
+	m = updateModel(t, m, textKey("G"))
+	if label := m.viewLabel(); label != "local changes (100%)" {
+		t.Fatalf("final label=%q", label)
+	}
+}
+
+func TestStatusHidesProgressWhenDiffFitsViewport(t *testing.T) {
+	m := New(coveragePatch(), nil, nil)
+	m = updateModel(t, m, tea.WindowSizeMsg{Width: 100, Height: 100})
+	if label := m.viewLabel(); label != "local changes" {
+		t.Fatalf("label=%q", label)
+	}
+}
+
 func TestRenderKeyBindingsAlignsDescriptions(t *testing.T) {
 	lines := renderKeyBindings([]keyBinding{{keys: "x", description: "short"}, {keys: "long", description: "wide"}})
 	if strings.Index(lines[0], "short") != strings.Index(lines[1], "wide") {
