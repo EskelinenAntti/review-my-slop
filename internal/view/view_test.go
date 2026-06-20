@@ -48,8 +48,8 @@ func TestUnifiedNavigationSearchAndFileJumps(t *testing.T) {
 		t.Fatal("JumpFile returned no cursor")
 	}
 	file, _ := v.File(jumped)
-	if file.Name != "second.go" {
-		t.Fatalf("jumped file = %q", file.Name)
+	if file.DisplayPath != "second.go" {
+		t.Fatalf("jumped file = %q", file.DisplayPath)
 	}
 	if _, ok := v.JumpFile(jumped, Forward); ok {
 		t.Fatal("JumpFile wrapped unexpectedly")
@@ -114,7 +114,7 @@ func TestSelectionLinesAndAnchor(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if anchor.File != "first.go" || anchor.Hunk != "@@ -1,3 +1,3 @@" || anchor.StartRow != 0 || anchor.EndRow != 2 {
+	if anchor.FilePath != "first.go" {
 		t.Fatalf("anchor = %#v", anchor)
 	}
 	if got := strings.Join(anchor.QuotedLines, "|"); got != " before|-removed one|-removed two" {
@@ -182,7 +182,7 @@ func TestFindCursorUsesSemanticIdentityAcrossChangedCoordinates(t *testing.T) {
 }
 
 func TestSplitViewWithOnlyDeletionsStartsInLeftPane(t *testing.T) {
-	p := patch.Patch{Files: []patch.File{{Name: "deleted.go", Hunks: []patch.Hunk{{Header: "@@", Lines: []patch.Line{{Kind: patch.Deletion, Text: "gone", OldNumber: 1}}}}}}}
+	p := patch.Patch{Files: []patch.File{{DisplayPath: "deleted.go", Hunks: []patch.Hunk{{Header: "@@", Lines: []patch.Line{{Kind: patch.Deletion, Text: "gone", OldNumber: 1}}}}}}}
 	v := NewSplitView(p, true)
 	cursor, ok := v.First()
 	if !ok || cursor.Pane != Left {
@@ -225,14 +225,14 @@ func mustFirst(t *testing.T, v View) Cursor {
 
 func testPatch() patch.Patch {
 	return patch.Patch{Repository: "/repo", Files: []patch.File{
-		{Name: "first.go", OldName: "first.go", NewName: "first.go", Language: "go", Hunks: []patch.Hunk{{Header: "@@ -1,3 +1,3 @@", Lines: []patch.Line{
+		{DisplayPath: "first.go", OldPath: "first.go", NewPath: "first.go", Hunks: []patch.Hunk{{Header: "@@ -1,3 +1,3 @@", Lines: []patch.Line{
 			{Kind: patch.Context, Text: "before", OldNumber: 1, NewNumber: 1},
 			{Kind: patch.Deletion, Text: "removed one", OldNumber: 2},
 			{Kind: patch.Deletion, Text: "removed two", OldNumber: 3},
 			{Kind: patch.Addition, Text: "added one", NewNumber: 2},
 			{Kind: patch.Context, Text: "after", OldNumber: 4, NewNumber: 3},
 		}}}},
-		{Name: "second.go", OldName: "second.go", NewName: "second.go", Hunks: []patch.Hunk{{Header: "@@ -1 +1 @@", Lines: []patch.Line{{Kind: patch.Addition, Text: "other", NewNumber: 1}}}}},
+		{DisplayPath: "second.go", OldPath: "second.go", NewPath: "second.go", Hunks: []patch.Hunk{{Header: "@@ -1 +1 @@", Lines: []patch.Line{{Kind: patch.Addition, Text: "other", NewNumber: 1}}}}},
 	}}
 }
 
@@ -241,5 +241,5 @@ func longPatch() patch.Patch {
 	for index := range lines {
 		lines[index] = patch.Line{Kind: patch.Context, Text: strings.Repeat("long", 20), OldNumber: patch.LineNumber(index + 1), NewNumber: patch.LineNumber(index + 1)}
 	}
-	return patch.Patch{Files: []patch.File{{Name: "long.go", Hunks: []patch.Hunk{{Header: "@@", Lines: lines}}}}}
+	return patch.Patch{Files: []patch.File{{DisplayPath: "long.go", Hunks: []patch.Hunk{{Header: "@@", Lines: lines}}}}}
 }

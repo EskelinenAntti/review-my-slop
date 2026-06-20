@@ -8,18 +8,17 @@ import (
 	"github.com/eskelinenantti/review-my-slop/internal/review"
 )
 
-func WritePrompt(w io.Writer, messages []Message) error {
-	if len(messages) == 0 {
+func WritePrompt(w io.Writer, comments []review.Comment) error {
+	if len(comments) == 0 {
 		_, err := fmt.Fprintln(w, "No pending review comments.")
 		return err
 	}
 	if _, err := fmt.Fprintln(w, "New comments since last run:"); err != nil {
 		return err
 	}
-	for index, message := range messages {
-		comment := message.Comment
+	for index, comment := range comments {
 		a := comment.Anchor
-		if _, err := fmt.Fprintf(w, "\n### %d. `%s` (%s)\n\n", index+1, a.File, describeRange(a)); err != nil {
+		if _, err := fmt.Fprintf(w, "\n### %d. `%s` (%s)\n\n", index+1, a.FilePath, describeRange(a)); err != nil {
 			return err
 		}
 		if len(a.QuotedLines) > 0 {

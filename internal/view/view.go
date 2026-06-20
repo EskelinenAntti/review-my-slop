@@ -51,11 +51,11 @@ func NewSplitView(p patch.Patch, dark bool) View {
 func (v *diffView) buildUnified() {
 	for fileIndex := range v.patch.Files {
 		file := &v.patch.Files[fileIndex]
-		v.rows = append(v.rows, entry{kind: fileRow, file: fileIndex, hunk: -1, leftLine: -1, rightLine: -1, text: file.Name})
+		v.rows = append(v.rows, entry{kind: fileRow, file: fileIndex, hunk: -1, leftLine: -1, rightLine: -1, text: file.DisplayPath})
 		for _, metadata := range file.Metadata {
 			v.rows = append(v.rows, entry{kind: metadataRow, file: fileIndex, hunk: -1, leftLine: -1, rightLine: -1, text: metadata})
 		}
-		highlighted := highlight.Sources(file.Language, file.OldSource, file.NewSource, v.dark)
+		highlighted := highlight.Sources(file.Path(), file.OldSource, file.NewSource, v.dark)
 		for hunkIndex := range file.Hunks {
 			hunk := &file.Hunks[hunkIndex]
 			v.rows = append(v.rows, entry{kind: hunkRow, file: fileIndex, hunk: hunkIndex, leftLine: -1, rightLine: -1, text: hunkHeader(hunk.Header)})
@@ -75,11 +75,11 @@ func (v *diffView) buildUnified() {
 func (v *diffView) buildSplit() {
 	for fileIndex := range v.patch.Files {
 		file := &v.patch.Files[fileIndex]
-		v.rows = append(v.rows, entry{kind: fileRow, file: fileIndex, hunk: -1, leftLine: -1, rightLine: -1, text: file.Name})
+		v.rows = append(v.rows, entry{kind: fileRow, file: fileIndex, hunk: -1, leftLine: -1, rightLine: -1, text: file.DisplayPath})
 		for _, metadata := range file.Metadata {
 			v.rows = append(v.rows, entry{kind: metadataRow, file: fileIndex, hunk: -1, leftLine: -1, rightLine: -1, text: metadata})
 		}
-		highlighted := highlight.Sources(file.Language, file.OldSource, file.NewSource, v.dark)
+		highlighted := highlight.Sources(file.Path(), file.OldSource, file.NewSource, v.dark)
 		for hunkIndex := range file.Hunks {
 			hunk := &file.Hunks[hunkIndex]
 			v.rows = append(v.rows, entry{kind: hunkRow, file: fileIndex, hunk: hunkIndex, leftLine: -1, rightLine: -1, text: hunkHeader(hunk.Header)})
@@ -264,7 +264,7 @@ func (v *diffView) JumpFile(cursor Cursor, direction Direction) (Cursor, bool) {
 			return Cursor{}, false
 		}
 		nextFile, _ := v.File(next)
-		if nextFile.Name != file.Name {
+		if nextFile.OldPath != file.OldPath || nextFile.NewPath != file.NewPath {
 			return next, true
 		}
 		y = next.Coordinate.Y
@@ -423,8 +423,7 @@ func (v *diffView) Anchor(selection Selection) (review.Anchor, error) {
 	first := v.rows[selection.First.Coordinate.Y]
 	file := v.patch.Files[first.file]
 	hunk := file.Hunks[first.hunk]
-	anchor := review.Anchor{File: file.Name, Hunk: hunk.Header}
-	indices := make([]int, 0, len(lines))
+	anchor := review.Anchor{FilePath: file.Path()}
 	start, end := selection.First.Coordinate.Y, selection.Last.Coordinate.Y
 	if start > end {
 		start, end = end, start
@@ -441,7 +440,6 @@ func (v *diffView) Anchor(selection Selection) (review.Anchor, error) {
 			if index < 0 {
 				continue
 			}
-			indices = append(indices, index)
 			line := hunk.Lines[index]
 			prefix := " "
 			if line.Kind == patch.Addition {
@@ -454,10 +452,6 @@ func (v *diffView) Anchor(selection Selection) (review.Anchor, error) {
 			accumulateRange(&anchor.OldStart, &anchor.OldEnd, int(line.OldNumber))
 			accumulateRange(&anchor.NewStart, &anchor.NewEnd, int(line.NewNumber))
 		}
-	}
-	anchor.StartRow, anchor.EndRow = indices[0], indices[len(indices)-1]
-	if anchor.StartRow > anchor.EndRow {
-		anchor.StartRow, anchor.EndRow = anchor.EndRow, anchor.StartRow
 	}
 	return anchor, nil
 }
@@ -524,9 +518,8 @@ func (v *diffView) FindCursor(file patch.File, hunk patch.Hunk, line patch.Line,
 }
 
 func sameFile(candidate, target patch.File) bool {
-	return candidate.Name == target.Name ||
-		candidate.OldName != "" && candidate.OldName == target.OldName ||
-		candidate.NewName != "" && candidate.NewName == target.NewName
+	return candidate.OldPath != "" && candidate.OldPath == target.OldPath ||
+		candidate.NewPath != "" && candidate.NewPath == target.NewPath
 }
 
 func closest(candidates []Cursor, nearby Coordinate) Cursor {

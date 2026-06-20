@@ -34,8 +34,8 @@ func TestLoaderIncludesUnstagedAndUntrackedButNotStagedOnly(t *testing.T) {
 	if len(got.Files) != 2 {
 		t.Fatalf("files = %d, want 2: %#v", len(got.Files), got.Files)
 	}
-	if got.Files[0].Name != "modified.go" || got.Files[1].Name != "new.py" {
-		t.Fatalf("unexpected files: %q, %q", got.Files[0].Name, got.Files[1].Name)
+	if got.Files[0].DisplayPath != "modified.go" || got.Files[1].DisplayPath != "new.py" {
+		t.Fatalf("unexpected files: %q, %q", got.Files[0].DisplayPath, got.Files[1].DisplayPath)
 	}
 	modified := got.Files[0]
 	if !containsKind(modified, patch.Deletion, "return 1") ||
@@ -55,6 +55,41 @@ func TestLoaderIncludesUnstagedAndUntrackedButNotStagedOnly(t *testing.T) {
 	}
 	if got.Fingerprint == "" {
 		t.Fatal("fingerprint is empty")
+	}
+}
+
+func TestAddedFileKeepsRawAndDisplayPathsSeparate(t *testing.T) {
+	file := addedFile("odd\nname.go", "package main\n")
+	if file.NewPath != "odd\nname.go" {
+		t.Fatalf("raw path = %q", file.NewPath)
+	}
+	if file.DisplayPath != `odd\nname.go` {
+		t.Fatalf("display path = %q", file.DisplayPath)
+	}
+}
+
+func TestLoaderShowsBinaryMetadataWithoutBinaryDiffLines(t *testing.T) {
+	repo := newRepository(t)
+	writeFile(t, repo, "tracked.bin", "\x00old")
+	git(t, repo, "add", "tracked.bin")
+	git(t, repo, "commit", "-m", "base")
+	writeFile(t, repo, "tracked.bin", "\x00new")
+	writeFile(t, repo, "untracked.bin", "\x00content")
+
+	got, err := (Loader{}).Load(context.Background(), repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Files) != 2 {
+		t.Fatalf("files = %d, want 2: %#v", len(got.Files), got.Files)
+	}
+	for _, file := range got.Files {
+		if len(file.Hunks) != 0 {
+			t.Fatalf("binary file %q has diff lines: %#v", file.DisplayPath, file.Hunks)
+		}
+		if !strings.Contains(strings.ToLower(strings.Join(file.Metadata, "\n")), "binary") {
+			t.Fatalf("binary file %q lacks metadata: %#v", file.DisplayPath, file.Metadata)
+		}
 	}
 }
 
@@ -81,16 +116,13 @@ func TestLoadBranchIncludesCommittedStagedUnstagedAndUntrackedChanges(t *testing
 		t.Fatal(err)
 	}
 
-	if got.Base != "main" {
-		t.Fatalf("base = %q, want main", got.Base)
-	}
 	want := []string{"committed.txt", "mixed.txt", "staged.txt", "untracked.txt"}
 	if len(got.Files) != len(want) {
 		t.Fatalf("files = %d, want %d: %#v", len(got.Files), len(want), got.Files)
 	}
 	for i, name := range want {
-		if got.Files[i].Name != name {
-			t.Fatalf("file %d = %q, want %q", i, got.Files[i].Name, name)
+		if got.Files[i].DisplayPath != name {
+			t.Fatalf("file %d = %q, want %q", i, got.Files[i].DisplayPath, name)
 		}
 	}
 	if !containsKind(got.Files[0], patch.Addition, "committed on feature") ||

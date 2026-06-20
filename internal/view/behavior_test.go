@@ -13,7 +13,7 @@ import (
 )
 
 func TestSplitPairsUnequalChangeBlocksAndKeepsHunksSeparate(t *testing.T) {
-	p := patch.Patch{Files: []patch.File{{Name: "file", Hunks: []patch.Hunk{
+	p := patch.Patch{Files: []patch.File{{DisplayPath: "file", Hunks: []patch.Hunk{
 		{Header: "one", Lines: []patch.Line{{Kind: patch.Deletion, Text: "d1", OldNumber: 1}, {Kind: patch.Deletion, Text: "d2", OldNumber: 2}, {Kind: patch.Addition, Text: "a1", NewNumber: 1}, {Kind: patch.Addition, Text: "a2", NewNumber: 2}, {Kind: patch.Addition, Text: "a3", NewNumber: 3}, {Kind: patch.Context, Text: "c", OldNumber: 3, NewNumber: 4}}},
 		{Header: "two", Lines: []patch.Line{{Kind: patch.Addition, Text: "separate", NewNumber: 5}}},
 	}}}}
@@ -52,7 +52,7 @@ func TestSplitSelectionOnlyIncludesActivePane(t *testing.T) {
 }
 
 func TestSplitPaneSwitchingFindsRowsAboveAndBelowEmptyTargets(t *testing.T) {
-	p := patch.Patch{Files: []patch.File{{Name: "file", Hunks: []patch.Hunk{{Header: "@@", Lines: []patch.Line{
+	p := patch.Patch{Files: []patch.File{{DisplayPath: "file", Hunks: []patch.Hunk{{Header: "@@", Lines: []patch.Line{
 		{Kind: patch.Addition, Text: "right", NewNumber: 1},
 		{Kind: patch.Context, Text: "both", OldNumber: 1, NewNumber: 2},
 		{Kind: patch.Deletion, Text: "left", OldNumber: 2},
@@ -79,7 +79,7 @@ func TestSplitPaneSwitchingFindsRowsAboveAndBelowEmptyTargets(t *testing.T) {
 }
 
 func TestSplitPaneSwitchDoesNothingWhenTargetPaneIsEmpty(t *testing.T) {
-	p := patch.Patch{Files: []patch.File{{Name: "file", Hunks: []patch.Hunk{{Header: "@@", Lines: []patch.Line{{Kind: patch.Addition, Text: "one", NewNumber: 1}, {Kind: patch.Addition, Text: "two", NewNumber: 2}}}}}}}
+	p := patch.Patch{Files: []patch.File{{DisplayPath: "file", Hunks: []patch.Hunk{{Header: "@@", Lines: []patch.Line{{Kind: patch.Addition, Text: "one", NewNumber: 1}, {Kind: patch.Addition, Text: "two", NewNumber: 2}}}}}}}
 	v := NewSplitView(p, true)
 	cursor := mustFirst(t, v)
 	if _, ok := v.SwitchPane(cursor, Left); ok {
@@ -88,7 +88,7 @@ func TestSplitPaneSwitchDoesNothingWhenTargetPaneIsEmpty(t *testing.T) {
 }
 
 func TestSplitVerticalMovementSkipsEmptyActivePane(t *testing.T) {
-	p := patch.Patch{Files: []patch.File{{Name: "file", Hunks: []patch.Hunk{{Header: "@@", Lines: []patch.Line{{Kind: patch.Context, Text: "one", OldNumber: 1, NewNumber: 1}, {Kind: patch.Addition, Text: "right", NewNumber: 2}, {Kind: patch.Context, Text: "two", OldNumber: 2, NewNumber: 3}, {Kind: patch.Deletion, Text: "left", OldNumber: 3}, {Kind: patch.Context, Text: "three", OldNumber: 4, NewNumber: 4}}}}}}}
+	p := patch.Patch{Files: []patch.File{{DisplayPath: "file", Hunks: []patch.Hunk{{Header: "@@", Lines: []patch.Line{{Kind: patch.Context, Text: "one", OldNumber: 1, NewNumber: 1}, {Kind: patch.Addition, Text: "right", NewNumber: 2}, {Kind: patch.Context, Text: "two", OldNumber: 2, NewNumber: 3}, {Kind: patch.Deletion, Text: "left", OldNumber: 3}, {Kind: patch.Context, Text: "three", OldNumber: 4, NewNumber: 4}}}}}}}
 	v := NewSplitView(p, true)
 	first := mustFirst(t, v)
 	left, _ := v.SwitchPane(first, Left)
@@ -111,7 +111,7 @@ func TestSplitVerticalMovementAndHalfPageUseVisualRows(t *testing.T) {
 		{Kind: patch.Deletion, Text: "d2", OldNumber: 3}, {Kind: patch.Addition, Text: "a2", NewNumber: 3}, {Kind: patch.Context, Text: "c2", OldNumber: 4, NewNumber: 4},
 		{Kind: patch.Deletion, Text: "d3", OldNumber: 5}, {Kind: patch.Addition, Text: "a3", NewNumber: 5}, {Kind: patch.Context, Text: "c3", OldNumber: 6, NewNumber: 6},
 	}
-	v := NewSplitView(patch.Patch{Files: []patch.File{{Name: "file", Hunks: []patch.Hunk{{Header: "@@", Lines: lines}}}}}, true)
+	v := NewSplitView(patch.Patch{Files: []patch.File{{DisplayPath: "file", Hunks: []patch.Hunk{{Header: "@@", Lines: lines}}}}}, true)
 	cursor := mustFirst(t, v)
 	viewport := v.NewViewport(120, 4)
 	viewport = v.KeepVisible(viewport, cursor)
@@ -127,7 +127,7 @@ func TestSplitVerticalMovementAndHalfPageUseVisualRows(t *testing.T) {
 }
 
 func TestSplitTabsDoNotShiftLineNumbersOrDivider(t *testing.T) {
-	p := patch.Patch{Files: []patch.File{{Name: "file", Hunks: []patch.Hunk{{Header: "@@", Lines: []patch.Line{{Kind: patch.Context, Text: "\t\tlong line", OldNumber: 1, NewNumber: 1}}}}}}}
+	p := patch.Patch{Files: []patch.File{{DisplayPath: "file", Hunks: []patch.Hunk{{Header: "@@", Lines: []patch.Line{{Kind: patch.Context, Text: "\t\tlong line", OldNumber: 1, NewNumber: 1}}}}}}}
 	v := NewSplitView(p, true)
 	cursor := mustFirst(t, v)
 	rendered := ansi.Strip(renderOne(v, cursor, 120, nil))
@@ -204,7 +204,7 @@ func TestSelectionBackgroundKeepsDefaultWeight(t *testing.T) {
 }
 
 func TestSyntaxHighlightingSurvivesDiffStyling(t *testing.T) {
-	p := patch.Patch{Files: []patch.File{{Name: "main.go", Language: "go", OldSource: "package main\nold()\n", NewSource: "package main\nnew()\n", Hunks: []patch.Hunk{{Header: "@@", Lines: []patch.Line{{Kind: patch.Deletion, Text: "old()", OldNumber: 2}, {Kind: patch.Addition, Text: "new()", NewNumber: 2}}}}}}}
+	p := patch.Patch{Files: []patch.File{{DisplayPath: "main.go", NewPath: "main.go", OldSource: "package main\nold()\n", NewSource: "package main\nnew()\n", Hunks: []patch.Hunk{{Header: "@@", Lines: []patch.Line{{Kind: patch.Deletion, Text: "old()", OldNumber: 2}, {Kind: patch.Addition, Text: "new()", NewNumber: 2}}}}}}}
 	v := NewUnifiedView(p, true)
 	first := mustFirst(t, v)
 	added, _ := v.Search("new()", first, Forward)
@@ -257,7 +257,7 @@ func renderTarget(v View, target, active Cursor, width int, selection *Selection
 }
 
 func longLinePatch() patch.Patch {
-	return patch.Patch{Files: []patch.File{{Name: "long", Hunks: []patch.Hunk{{Header: "@@", Lines: []patch.Line{{Kind: patch.Context, Text: "abcdefghijklmnopqrstuvwxyz0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ", OldNumber: 1, NewNumber: 1}}}}}}}
+	return patch.Patch{Files: []patch.File{{DisplayPath: "long", Hunks: []patch.Hunk{{Header: "@@", Lines: []patch.Line{{Kind: patch.Context, Text: "abcdefghijklmnopqrstuvwxyz0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ", OldNumber: 1, NewNumber: 1}}}}}}}
 }
 
 type sgrExpectation struct {

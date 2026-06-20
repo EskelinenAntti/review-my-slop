@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"time"
 
 	tea "charm.land/bubbletea/v2"
 
@@ -54,7 +53,7 @@ func runCode(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	comments, err := store.ListComments(loaded.Repository)
+	comments, err := store.List(loaded.Repository)
 	if err != nil {
 		return err
 	}
@@ -67,27 +66,17 @@ func runCode(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	saveComment := func(stored review.StoredComment, diff patch.Patch) (review.StoredComment, error) {
-		if stored.ID != "" {
-			return stored, store.UpdateComment(diff.Repository, stored)
+	saveComment := func(comment review.Comment, current patch.Patch) (review.Comment, error) {
+		comment.Repository = current.Repository
+		if comment.ID != "" {
+			return comment, store.Update(comment)
 		}
-		message := inbox.Message{
-			ID:              fmt.Sprintf("%d", time.Now().UnixNano()),
-			Repository:      diff.Repository,
-			DiffFingerprint: diff.Fingerprint,
-			CreatedAt:       time.Now().UTC(),
-			Comment:         stored.Comment,
-		}
-		if err := store.Put(message); err != nil {
-			return review.StoredComment{}, err
-		}
-		stored.ID = message.ID
-		return stored, nil
+		return store.Add(comment)
 	}
 	model := tui.New(loaded, comments, saveComment)
 	model.SetSideBySide(sideBySide, store.SetSideBySide)
-	model.SetDelete(func(stored review.StoredComment, diff patch.Patch) error {
-		return store.DeleteComment(diff.Repository, stored)
+	model.SetDelete(func(comment review.Comment, current patch.Patch) error {
+		return store.Delete(current.Repository, comment.ID)
 	})
 	model.SetParents(parents)
 	model.SetRefresh(func(parent string) (patch.Patch, error) {
@@ -118,12 +107,16 @@ func runCommentsAt(ctx context.Context, current string, output io.Writer) error 
 	if err != nil {
 		return err
 	}
-	taken, err := store.Peek(root)
+	comments, err := store.List(root)
 	if err != nil {
 		return err
 	}
-	if err := inbox.WritePrompt(output, taken.Messages); err != nil {
+	if err := inbox.WritePrompt(output, comments); err != nil {
 		return err
 	}
-	return store.Delete(taken)
+	ids := make([]string, len(comments))
+	for index, comment := range comments {
+		ids[index] = comment.ID
+	}
+	return store.Acknowledge(root, ids)
 }

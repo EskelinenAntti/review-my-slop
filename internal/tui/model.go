@@ -18,8 +18,8 @@ import (
 	"github.com/eskelinenantti/review-my-slop/internal/xdg"
 )
 
-type SaveCommentFunc func(review.StoredComment, patch.Patch) (review.StoredComment, error)
-type DeleteCommentFunc func(review.StoredComment, patch.Patch) error
+type SaveCommentFunc func(review.Comment, patch.Patch) (review.Comment, error)
+type DeleteCommentFunc func(review.Comment, patch.Patch) error
 type RefreshDiffFunc func(parent string) (patch.Patch, error)
 type SaveSideBySideFunc func(bool) error
 
@@ -55,7 +55,7 @@ type Model struct {
 	cursor      view.Cursor
 	viewport    view.Viewport
 	selection   *view.Selection
-	comments    []review.StoredComment
+	comments    []review.Comment
 	commentRow  int
 	width       int
 	height      int
@@ -80,7 +80,7 @@ type Model struct {
 	dark        bool
 }
 
-func New(p patch.Patch, comments []review.StoredComment, save SaveCommentFunc) Model {
+func New(p patch.Patch, comments []review.Comment, save SaveCommentFunc) Model {
 	m := Model{patch: p, comments: comments, width: 100, height: 30, editIndex: -1, save: save, dark: true}
 	m.view = view.NewUnifiedView(p, m.dark)
 	m.viewport = m.view.NewViewport(m.width, m.viewportHeight())
@@ -212,7 +212,7 @@ func (m *Model) rebuildView(p patch.Patch) {
 }
 
 func samePatchFile(first, last patch.File) bool {
-	return first.Name == last.Name && first.OldName == last.OldName && first.NewName == last.NewName
+	return first.OldPath == last.OldPath && first.NewPath == last.NewPath
 }
 
 func (m Model) updateKey(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
@@ -510,8 +510,8 @@ func (m Model) updateComments(name string) (tea.Model, tea.Cmd) {
 	case "enter", "e":
 		if len(m.comments) > 0 {
 			m.editIndex = m.commentRow
-			m.commentBody = m.comments[m.editIndex].Comment.Body
-			m.editAnchor = m.comments[m.editIndex].Comment.Anchor
+			m.commentBody = m.comments[m.editIndex].Body
+			m.editAnchor = m.comments[m.editIndex].Anchor
 			cmd, err := m.openCommentEditor()
 			if err != nil {
 				m.err = err
@@ -562,14 +562,14 @@ func (m *Model) finishCommentEdit() {
 		m.clearCommentEdit()
 		return
 	}
-	var stored review.StoredComment
+	var comment review.Comment
 	if m.editIndex >= 0 {
-		stored = m.comments[m.editIndex]
-		stored.Comment.Body = body
+		comment = m.comments[m.editIndex]
+		comment.Body = body
 	} else {
-		stored.Comment = review.Comment{Anchor: m.editAnchor, Body: body}
+		comment = review.Comment{Anchor: m.editAnchor, Body: body}
 	}
-	saved, err := m.save(stored, m.patch)
+	saved, err := m.save(comment, m.patch)
 	if err != nil {
 		m.err = err
 		m.clearCommentEdit()
@@ -620,9 +620,9 @@ func (m Model) openCurrentLine() (tea.Cmd, error) {
 	if !fileOK || !lineOK {
 		return nil, fmt.Errorf("select a code line to open in $EDITOR")
 	}
-	path, number := file.NewName, line.NewNumber
+	path, number := file.NewPath, line.NewNumber
 	if path == "" || path == "/dev/null" {
-		path = file.OldName
+		path = file.OldPath
 	}
 	if number == 0 {
 		number = line.OldNumber
@@ -868,13 +868,12 @@ func (m Model) renderComments() string {
 	if len(m.comments) == 0 {
 		out.WriteString("\n" + mutedStyle.Render("No pending comments.") + "\n")
 	} else {
-		for index, stored := range m.comments {
+		for index, comment := range m.comments {
 			prefix, style := "  ", contextStyle
 			if index == m.commentRow {
 				prefix, style = "> ", cursorStyle
 			}
-			comment := stored.Comment
-			location := comment.Anchor.File
+			location := comment.Anchor.FilePath
 			if comment.Anchor.NewStart > 0 {
 				location += fmt.Sprintf(":%d", comment.Anchor.NewStart)
 			} else if comment.Anchor.OldStart > 0 {

@@ -3,20 +3,24 @@ package patch
 type Patch struct {
 	Repository  string
 	Fingerprint string
-	Base        string
 	Files       []File
 }
 
 type File struct {
-	OldName   string
-	NewName   string
-	Name      string
-	Language  string
-	OldSource string
-	NewSource string
-	Metadata  []string
-	Binary    bool
-	Hunks     []Hunk
+	OldPath     string
+	NewPath     string
+	DisplayPath string
+	OldSource   string
+	NewSource   string
+	Metadata    []string
+	Hunks       []Hunk
+}
+
+func (f File) Path() string {
+	if f.NewPath != "" {
+		return f.NewPath
+	}
+	return f.OldPath
 }
 
 type Hunk struct {

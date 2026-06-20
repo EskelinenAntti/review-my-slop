@@ -206,20 +206,19 @@ func (l Loader) build(ctx context.Context, root, base string, raw []byte, readOl
 		return patch.Patch{}, err
 	}
 	files = append(files, untracked...)
-	sort.SliceStable(files, func(i, j int) bool { return files[i].Name < files[j].Name })
+	sort.SliceStable(files, func(i, j int) bool { return files[i].DisplayPath < files[j].DisplayPath })
 
 	hash := sha256.New()
 	_, _ = hash.Write([]byte(base))
 	_, _ = hash.Write(raw)
 	for _, file := range untracked {
-		_, _ = hash.Write([]byte(file.Name))
+		_, _ = hash.Write([]byte(file.NewPath))
 		_, _ = hash.Write([]byte(file.NewSource))
 	}
 
 	return patch.Patch{
 		Repository:  root,
 		Fingerprint: hex.EncodeToString(hash.Sum(nil)),
-		Base:        base,
 		Files:       files,
 	}, nil
 }
@@ -263,11 +262,10 @@ func parseTracked(ctx context.Context, runner Runner, root string, raw []byte, r
 			display = oldPath
 		}
 		file := patch.File{
-			OldName:  oldPath,
-			NewName:  newPath,
-			Name:     visibleText(display),
-			Language: display,
-			Metadata: visibleStrings(fd.Extended),
+			OldPath:     oldPath,
+			NewPath:     newPath,
+			DisplayPath: visibleText(display),
+			Metadata:    visibleStrings(fd.Extended),
 		}
 		file.OldSource = readOld(ctx, runner, root, oldPath)
 		file.NewSource = readWorkingTree(root, newPath)
@@ -281,7 +279,6 @@ func parseTracked(ctx context.Context, runner Runner, root string, raw []byte, r
 				Lines:  lines,
 			})
 		}
-		file.Binary = len(fd.Hunks) == 0 && hasBinaryMetadata(fd.Extended)
 		files = append(files, file)
 	}
 	return files, nil
@@ -309,7 +306,7 @@ func (l Loader) loadUntracked(ctx context.Context, root string) ([]patch.File, e
 			if readErr != nil {
 				return nil, fmt.Errorf("read symlink %q: %w", path, readErr)
 			}
-			files = append(files, addedFile(display, visibleText(target)))
+			files = append(files, addedFile(path, visibleText(target)))
 			continue
 		}
 		if !info.Mode().IsRegular() {
@@ -317,11 +314,9 @@ func (l Loader) loadUntracked(ctx context.Context, root string) ([]patch.File, e
 		}
 		if info.Size() > maxFileBytes {
 			files = append(files, patch.File{
-				NewName:  path,
-				Name:     display,
-				Language: path,
-				Metadata: []string{"untracked file", "content omitted: file exceeds 2 MiB"},
-				Binary:   true,
+				NewPath:     path,
+				DisplayPath: display,
+				Metadata:    []string{"untracked file", "content omitted: file exceeds 2 MiB"},
 			})
 			continue
 		}
@@ -331,11 +326,9 @@ func (l Loader) loadUntracked(ctx context.Context, root string) ([]patch.File, e
 		}
 		if bytes.IndexByte(content, 0) >= 0 {
 			files = append(files, patch.File{
-				NewName:  path,
-				Name:     display,
-				Language: path,
-				Metadata: []string{"untracked binary file"},
-				Binary:   true,
+				NewPath:     path,
+				DisplayPath: display,
+				Metadata:    []string{"untracked binary file"},
 			})
 			continue
 		}
@@ -351,11 +344,10 @@ func addedFile(path, content string) patch.File {
 		lines = append(lines, patch.Line{Kind: patch.Addition, Text: line, NewNumber: patch.LineNumber(i + 1)})
 	}
 	return patch.File{
-		NewName:   path,
-		Name:      path,
-		Language:  path,
-		NewSource: content,
-		Metadata:  []string{"untracked file"},
+		NewPath:     path,
+		DisplayPath: visibleText(path),
+		NewSource:   content,
+		Metadata:    []string{"untracked file"},
 		Hunks: []patch.Hunk{{
 			Header: fmt.Sprintf("@@ -0,0 +1,%d @@", len(lines)),
 			Lines:  lines,
@@ -440,15 +432,6 @@ func cleanDiffPath(path string) string {
 		return ""
 	}
 	return path
-}
-
-func hasBinaryMetadata(lines []string) bool {
-	for _, line := range lines {
-		if strings.Contains(strings.ToLower(line), "binary") {
-			return true
-		}
-	}
-	return false
 }
 
 func splitSourceLines(content string) []string {

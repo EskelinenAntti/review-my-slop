@@ -47,15 +47,15 @@ func TestViewSwitchPreservesSemanticCursor(t *testing.T) {
 
 func TestCommentSaveUsesPatchAndPreservesAnchor(t *testing.T) {
 	var savedPatch patch.Patch
-	m := New(modelPatch(), nil, func(stored review.StoredComment, p patch.Patch) (review.StoredComment, error) {
+	m := New(modelPatch(), nil, func(stored review.Comment, p patch.Patch) (review.Comment, error) {
 		savedPatch = p
 		stored.ID = "1"
 		return stored, nil
 	})
 	m.commentBody = "comment"
-	m.editAnchor = review.Anchor{File: "main.go"}
+	m.editAnchor = review.Anchor{FilePath: "main.go"}
 	m.finishCommentEdit()
-	if savedPatch.Repository != "/repo" || len(m.comments) != 1 || m.comments[0].Comment.Anchor.File != "main.go" {
+	if savedPatch.Repository != "/repo" || len(m.comments) != 1 || m.comments[0].Anchor.FilePath != "main.go" {
 		t.Fatalf("saved patch/comments = %#v %#v", savedPatch, m.comments)
 	}
 }
@@ -85,5 +85,5 @@ func TestCommentDraftRoundTrip(t *testing.T) {
 }
 
 func modelPatch() patch.Patch {
-	return patch.Patch{Repository: "/repo", Fingerprint: "old", Files: []patch.File{{Name: "main.go", OldName: "main.go", NewName: "main.go", Hunks: []patch.Hunk{{Header: "@@ -1,2 +1,2 @@", Lines: []patch.Line{{Kind: patch.Context, Text: "keep()", OldNumber: 1, NewNumber: 1}, {Kind: patch.Deletion, Text: "old()", OldNumber: 2}, {Kind: patch.Addition, Text: "new()", NewNumber: 2}}}}}}}
+	return patch.Patch{Repository: "/repo", Fingerprint: "old", Files: []patch.File{{DisplayPath: "main.go", OldPath: "main.go", NewPath: "main.go", Hunks: []patch.Hunk{{Header: "@@ -1,2 +1,2 @@", Lines: []patch.Line{{Kind: patch.Context, Text: "keep()", OldNumber: 1, NewNumber: 1}, {Kind: patch.Deletion, Text: "old()", OldNumber: 2}, {Kind: patch.Addition, Text: "new()", NewNumber: 2}}}}}}}
 }

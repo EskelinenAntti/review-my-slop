@@ -2,7 +2,6 @@ package inbox
 
 import (
 	"bytes"
-	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -33,14 +32,6 @@ type Store struct {
 	Path string
 }
 
-type Message struct {
-	ID              string         `json:"id"`
-	Repository      string         `json:"repository"`
-	DiffFingerprint string         `json:"diff_fingerprint"`
-	CreatedAt       time.Time      `json:"created_at"`
-	Comment         review.Comment `json:"comment"`
-}
-
 func DefaultPath() (string, error) {
 	data, err := xdg.DataDir()
 	if err != nil {
@@ -57,27 +48,24 @@ func OpenDefault() (Store, error) {
 	return Store{Path: path}, nil
 }
 
-func (s Store) Put(message Message) error {
-	if message.Repository == "" {
-		return errors.New("message requires a repository")
+func (s Store) Add(comment review.Comment) (review.Comment, error) {
+	if comment.Repository == "" {
+		return review.Comment{}, errors.New("comment requires a repository")
 	}
-	if len(message.Comment.Body) == 0 {
-		return errors.New("comment body is empty")
+	if err := validateComment(comment); err != nil {
+		return review.Comment{}, err
 	}
-	if len(message.Comment.Body) > maxCommentBytes {
-		return fmt.Errorf("comment exceeds %d bytes", maxCommentBytes)
+	if comment.ID == "" {
+		comment.ID = fmt.Sprintf("%d", time.Now().UnixNano())
 	}
-	if message.ID == "" {
-		message.ID = fmt.Sprintf("%d", time.Now().UnixNano())
+	if comment.CreatedAt.IsZero() {
+		comment.CreatedAt = time.Now().UTC()
 	}
-	if message.CreatedAt.IsZero() {
-		message.CreatedAt = time.Now().UTC()
-	}
-	data, err := json.Marshal(message)
+	data, err := json.Marshal(comment)
 	if err != nil {
-		return fmt.Errorf("encode inbox message: %w", err)
+		return review.Comment{}, fmt.Errorf("encode comment: %w", err)
 	}
-	return s.update(func(bucket *bolt.Bucket) error {
+	err = s.update(func(bucket *bolt.Bucket) error {
 		var pending int
 		cursor := bucket.Cursor()
 		for _, value := cursor.First(); value != nil; _, value = cursor.Next() {
@@ -86,74 +74,76 @@ func (s Store) Put(message Message) error {
 		if pending+len(data) > maxPendingBytes {
 			return fmt.Errorf("pending feedback exceeds %d bytes", maxPendingBytes)
 		}
-		key, err := bucket.NextSequence()
-		if err != nil {
-			return err
+		if bucket.Get([]byte(comment.ID)) != nil {
+			return errors.New("comment ID already exists")
 		}
-		var encoded [8]byte
-		binary.BigEndian.PutUint64(encoded[:], key)
-		return bucket.Put(encoded[:], data)
+		return bucket.Put([]byte(comment.ID), data)
 	})
+	return comment, err
 }
 
-func (s Store) ListComments(repository string) ([]review.StoredComment, error) {
-	taken, err := s.Peek(repository)
-	if err != nil {
-		return nil, err
-	}
-	comments := make([]review.StoredComment, 0, len(taken.Messages))
-	for _, message := range taken.Messages {
-		comments = append(comments, review.StoredComment{
-			ID:      message.ID,
-			Comment: message.Comment,
+func (s Store) List(repository string) ([]review.Comment, error) {
+	var comments []review.Comment
+	err := s.view(func(bucket *bolt.Bucket) error {
+		return bucket.ForEach(func(_, value []byte) error {
+			comment, err := decodeComment(value)
+			if err != nil {
+				return err
+			}
+			if comment.Repository == repository {
+				comments = append(comments, comment)
+			}
+			return nil
 		})
-	}
-	return comments, nil
+	})
+	return comments, err
 }
 
-func (s Store) UpdateComment(repository string, stored review.StoredComment) error {
-	if repository == "" || stored.ID == "" {
-		return errors.New("repository and message ID are required")
+func (s Store) Update(comment review.Comment) error {
+	if comment.Repository == "" || comment.ID == "" {
+		return errors.New("repository and comment ID are required")
 	}
-	if len(stored.Comment.Body) == 0 {
-		return errors.New("comment body is empty")
+	if err := validateComment(comment); err != nil {
+		return err
 	}
-	if len(stored.Comment.Body) > maxCommentBytes {
-		return fmt.Errorf("comment exceeds %d bytes", maxCommentBytes)
+	data, err := json.Marshal(comment)
+	if err != nil {
+		return fmt.Errorf("encode comment: %w", err)
 	}
 	return s.update(func(bucket *bolt.Bucket) error {
 		cursor := bucket.Cursor()
 		for key, value := cursor.First(); key != nil; key, value = cursor.Next() {
-			var message Message
-			if err := json.Unmarshal(value, &message); err != nil {
-				return fmt.Errorf("decode inbox message: %w", err)
+			stored, err := decodeComment(value)
+			if err != nil {
+				return err
 			}
-			if message.Repository != repository || message.ID != stored.ID {
+			if stored.Repository != comment.Repository || stored.ID != comment.ID {
 				continue
 			}
-			message.Comment = stored.Comment
-			data, err := json.Marshal(message)
-			if err != nil {
-				return fmt.Errorf("encode inbox message: %w", err)
+			oldKey := append([]byte(nil), key...)
+			if !bytes.Equal(oldKey, []byte(comment.ID)) {
+				if err := bucket.Delete(oldKey); err != nil {
+					return err
+				}
 			}
-			return bucket.Put(key, data)
+			return bucket.Put([]byte(comment.ID), data)
 		}
 		return errors.New("comment is no longer in the inbox")
 	})
 }
 
-func (s Store) DeleteComment(repository string, stored review.StoredComment) error {
-	if repository == "" || stored.ID == "" {
-		return errors.New("repository and message ID are required")
+func (s Store) Delete(repository, id string) error {
+	if repository == "" || id == "" {
+		return errors.New("repository and comment ID are required")
 	}
 	return s.update(func(bucket *bolt.Bucket) error {
 		cursor := bucket.Cursor()
 		for key, value := cursor.First(); key != nil; key, value = cursor.Next() {
-			var message Message
-			if err := json.Unmarshal(value, &message); err != nil {
-				return fmt.Errorf("decode inbox message: %w", err)
+			comment, err := decodeComment(value)
+			if err != nil {
+				return err
 			}
-			if message.Repository != repository || message.ID != stored.ID {
+			if comment.Repository != repository || comment.ID != id {
 				continue
 			}
 			return bucket.Delete(key)
@@ -162,42 +152,70 @@ func (s Store) DeleteComment(repository string, stored review.StoredComment) err
 	})
 }
 
-type Taken struct {
-	Messages []Message
-	keys     [][]byte
-}
-
-func (s Store) Peek(repository string) (Taken, error) {
-	var result Taken
-	err := s.view(func(bucket *bolt.Bucket) error {
-		return bucket.ForEach(func(key, value []byte) error {
-			var message Message
-			if err := json.Unmarshal(value, &message); err != nil {
-				return fmt.Errorf("decode inbox message: %w", err)
-			}
-			if message.Repository != repository {
-				return nil
-			}
-			result.Messages = append(result.Messages, message)
-			result.keys = append(result.keys, append([]byte(nil), key...))
-			return nil
-		})
-	})
-	return result, err
-}
-
-func (s Store) Delete(taken Taken) error {
-	if len(taken.keys) == 0 {
+func (s Store) Acknowledge(repository string, ids []string) error {
+	if len(ids) == 0 {
 		return nil
 	}
+	wanted := make(map[string]struct{}, len(ids))
+	for _, id := range ids {
+		wanted[id] = struct{}{}
+	}
 	return s.update(func(bucket *bolt.Bucket) error {
-		for _, key := range taken.keys {
+		var keys [][]byte
+		if err := bucket.ForEach(func(key, value []byte) error {
+			comment, err := decodeComment(value)
+			if err != nil {
+				return err
+			}
+			if comment.Repository == repository {
+				if _, ok := wanted[comment.ID]; ok {
+					keys = append(keys, append([]byte(nil), key...))
+				}
+			}
+			return nil
+		}); err != nil {
+			return err
+		}
+		for _, key := range keys {
 			if err := bucket.Delete(key); err != nil {
 				return err
 			}
 		}
 		return nil
 	})
+}
+
+func validateComment(comment review.Comment) error {
+	if len(comment.Body) == 0 {
+		return errors.New("comment body is empty")
+	}
+	if len(comment.Body) > maxCommentBytes {
+		return fmt.Errorf("comment exceeds %d bytes", maxCommentBytes)
+	}
+	return nil
+}
+
+func decodeComment(data []byte) (review.Comment, error) {
+	var legacy struct {
+		ID         string    `json:"id"`
+		Repository string    `json:"repository"`
+		CreatedAt  time.Time `json:"created_at"`
+		Comment    *struct {
+			Anchor review.Anchor `json:"anchor"`
+			Body   string        `json:"body"`
+		} `json:"comment"`
+	}
+	if err := json.Unmarshal(data, &legacy); err != nil {
+		return review.Comment{}, fmt.Errorf("decode comment: %w", err)
+	}
+	if legacy.Comment != nil {
+		return review.Comment{ID: legacy.ID, Repository: legacy.Repository, CreatedAt: legacy.CreatedAt, Anchor: legacy.Comment.Anchor, Body: legacy.Comment.Body}, nil
+	}
+	var comment review.Comment
+	if err := json.Unmarshal(data, &comment); err != nil {
+		return review.Comment{}, fmt.Errorf("decode comment: %w", err)
+	}
+	return comment, nil
 }
 
 func (s Store) SideBySide() (bool, error) {

@@ -21,12 +21,10 @@ func TestRunCommentsPrintsAndConsumesCurrentRepositoryFeedback(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := store.Put(inbox.Message{
+	if _, err := store.Add(review.Comment{
 		Repository: repo,
-		Comment: review.Comment{
-			Anchor: review.Anchor{File: "main.go", NewStart: 3, NewEnd: 3},
-			Body:   "Check this error.",
-		},
+		Anchor:     review.Anchor{FilePath: "main.go", NewStart: 3, NewEnd: 3},
+		Body:       "Check this error.",
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -69,12 +67,10 @@ func TestRunCommentsPreservesFeedbackWhenOutputFails(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := store.Put(inbox.Message{
+	if _, err := store.Add(review.Comment{
 		Repository: repo,
-		Comment: review.Comment{
-			Anchor: review.Anchor{File: "main.go", NewStart: 1},
-			Body:   "Preserve me.",
-		},
+		Anchor:     review.Anchor{FilePath: "main.go", NewStart: 1},
+		Body:       "Preserve me.",
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -82,12 +78,12 @@ func TestRunCommentsPreservesFeedbackWhenOutputFails(t *testing.T) {
 	if err := runCommentsAt(context.Background(), repo, failingWriter{}); err == nil {
 		t.Fatal("output failure was ignored")
 	}
-	taken, err := store.Peek(repo)
+	comments, err := store.List(repo)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(taken.Messages) != 1 {
-		t.Fatalf("pending messages = %d, want 1", len(taken.Messages))
+	if len(comments) != 1 {
+		t.Fatalf("pending comments = %d, want 1", len(comments))
 	}
 }
 

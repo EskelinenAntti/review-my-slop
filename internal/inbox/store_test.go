@@ -8,50 +8,50 @@ import (
 	"testing"
 	"time"
 
+	bolt "go.etcd.io/bbolt"
+
 	"github.com/eskelinenantti/review-my-slop/internal/review"
 )
 
 func TestStoreQueuesByRepositoryAndDeletesExactPeek(t *testing.T) {
 	store := Store{Path: filepath.Join(t.TempDir(), "state", "inbox.db")}
-	first := testMessage("/repo/a", "first")
-	second := testMessage("/repo/b", "other")
-	third := testMessage("/repo/a", "third")
-	for _, message := range []Message{first, second, third} {
-		if err := store.Put(message); err != nil {
+	first := testComment("/repo/a", "first")
+	second := testComment("/repo/b", "other")
+	third := testComment("/repo/a", "third")
+	for _, comment := range []review.Comment{first, second, third} {
+		if _, err := store.Add(comment); err != nil {
 			t.Fatal(err)
 		}
 	}
 
-	taken, err := store.Peek("/repo/a")
+	comments, err := store.List("/repo/a")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(taken.Messages) != 2 ||
-		taken.Messages[0].Comment.Body != "first" ||
-		taken.Messages[1].Comment.Body != "third" {
-		t.Fatalf("unexpected messages: %#v", taken.Messages)
+	if len(comments) != 2 || comments[0].Body != "first" || comments[1].Body != "third" {
+		t.Fatalf("unexpected comments: %#v", comments)
 	}
 
-	if err := store.Put(testMessage("/repo/a", "newer")); err != nil {
+	if _, err := store.Add(testComment("/repo/a", "newer")); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.Delete(taken); err != nil {
+	if err := store.Acknowledge("/repo/a", []string{comments[0].ID, comments[1].ID}); err != nil {
 		t.Fatal(err)
 	}
 
-	remainingA, err := store.Peek("/repo/a")
+	remainingA, err := store.List("/repo/a")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(remainingA.Messages) != 1 || remainingA.Messages[0].Comment.Body != "newer" {
-		t.Fatalf("newer message was not preserved: %#v", remainingA.Messages)
+	if len(remainingA) != 1 || remainingA[0].Body != "newer" {
+		t.Fatalf("newer comment was not preserved: %#v", remainingA)
 	}
-	remainingB, err := store.Peek("/repo/b")
+	remainingB, err := store.List("/repo/b")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(remainingB.Messages) != 1 {
-		t.Fatalf("other repository messages = %d, want 1", len(remainingB.Messages))
+	if len(remainingB) != 1 {
+		t.Fatalf("other repository comments = %d, want 1", len(remainingB))
 	}
 
 	dirInfo, err := os.Stat(filepath.Dir(store.Path))
@@ -72,12 +72,12 @@ func TestStoreQueuesByRepositoryAndDeletesExactPeek(t *testing.T) {
 
 func TestWritePrompt(t *testing.T) {
 	var out bytes.Buffer
-	message := testMessage("/repo", "Handle the nil case.")
-	message.Comment.Anchor = review.Anchor{
-		File: "main.go", OldStart: 10, OldEnd: 11, NewStart: 12, NewEnd: 13,
+	comment := testComment("/repo", "Handle the nil case.")
+	comment.Anchor = review.Anchor{
+		FilePath: "main.go", OldStart: 10, OldEnd: 11, NewStart: 12, NewEnd: 13,
 		QuotedLines: []string{"-old()", "+new()"},
 	}
-	if err := WritePrompt(&out, []Message{message}); err != nil {
+	if err := WritePrompt(&out, []review.Comment{comment}); err != nil {
 		t.Fatal(err)
 	}
 	for _, expected := range []string{
@@ -99,9 +99,9 @@ func TestWritePrompt(t *testing.T) {
 
 func TestWritePromptNumbersMessages(t *testing.T) {
 	var out bytes.Buffer
-	if err := WritePrompt(&out, []Message{
-		testMessage("/repo", "First."),
-		testMessage("/repo", "Second."),
+	if err := WritePrompt(&out, []review.Comment{
+		testComment("/repo", "First."),
+		testComment("/repo", "Second."),
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -114,79 +114,108 @@ func TestWritePromptNumbersMessages(t *testing.T) {
 
 func TestStoreRejectsEmptyAndOversizedComments(t *testing.T) {
 	store := Store{Path: filepath.Join(t.TempDir(), "inbox.db")}
-	empty := testMessage("/repo", "")
-	if err := store.Put(empty); err == nil {
+	empty := testComment("/repo", "")
+	if _, err := store.Add(empty); err == nil {
 		t.Fatal("empty comment was accepted")
 	}
-	large := testMessage("/repo", strings.Repeat("x", maxCommentBytes+1))
-	if err := store.Put(large); err == nil {
+	large := testComment("/repo", strings.Repeat("x", maxCommentBytes+1))
+	if _, err := store.Add(large); err == nil {
 		t.Fatal("oversized comment was accepted")
 	}
 }
 
 func TestListAndUpdateComments(t *testing.T) {
 	store := Store{Path: filepath.Join(t.TempDir(), "inbox.db")}
-	if err := store.Put(testMessage("/repo", "first")); err != nil {
+	if _, err := store.Add(testComment("/repo", "first")); err != nil {
 		t.Fatal(err)
 	}
-	second := testMessage("/repo", "second")
-	second.Comment.Anchor = review.Anchor{File: "other.go", NewStart: 2, NewEnd: 2}
-	if err := store.Put(second); err != nil {
+	second := testComment("/repo", "second")
+	second.Anchor = review.Anchor{FilePath: "other.go", NewStart: 2, NewEnd: 2}
+	if _, err := store.Add(second); err != nil {
 		t.Fatal(err)
 	}
 
-	comments, err := store.ListComments("/repo")
+	comments, err := store.List("/repo")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(comments) != 2 || comments[1].Comment.Body != "second" {
+	if len(comments) != 2 || comments[1].Body != "second" {
 		t.Fatalf("comments = %#v", comments)
 	}
-	comments[1].Comment.Body = "edited"
-	if err := store.UpdateComment("/repo", comments[1]); err != nil {
+	comments[1].Body = "edited"
+	if err := store.Update(comments[1]); err != nil {
 		t.Fatal(err)
 	}
 
-	updated, err := store.ListComments("/repo")
+	updated, err := store.List("/repo")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := updated[1].Comment.Body; got != "edited" {
+	if got := updated[1].Body; got != "edited" {
 		t.Fatalf("body = %q, want edited", got)
 	}
 }
 
 func TestDeleteCommentRemovesMessage(t *testing.T) {
 	store := Store{Path: filepath.Join(t.TempDir(), "inbox.db")}
-	if err := store.Put(testMessage("/repo", "first")); err != nil {
+	if _, err := store.Add(testComment("/repo", "first")); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.Put(testMessage("/repo", "second")); err != nil {
+	if _, err := store.Add(testComment("/repo", "second")); err != nil {
 		t.Fatal(err)
 	}
-	comments, err := store.ListComments("/repo")
+	comments, err := store.List("/repo")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := store.DeleteComment("/repo", comments[0]); err != nil {
+	if err := store.Delete("/repo", comments[0].ID); err != nil {
 		t.Fatal(err)
 	}
-	remaining, err := store.ListComments("/repo")
+	remaining, err := store.List("/repo")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(remaining) != 1 || remaining[0].Comment.Body != "second" {
+	if len(remaining) != 1 || remaining[0].Body != "second" {
 		t.Fatalf("remaining = %#v", remaining)
 	}
-	if err := store.DeleteComment("/repo", remaining[0]); err != nil {
+	if err := store.Delete("/repo", remaining[0].ID); err != nil {
 		t.Fatal(err)
 	}
-	remaining, err = store.ListComments("/repo")
+	remaining, err = store.List("/repo")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(remaining) != 0 {
 		t.Fatalf("remaining = %#v, want empty", remaining)
+	}
+}
+
+func TestLegacyMessageCanBeReadAndUpdated(t *testing.T) {
+	store := Store{Path: filepath.Join(t.TempDir(), "inbox.db")}
+	legacy := []byte(`{"id":"legacy","repository":"/repo","created_at":"1970-01-01T00:00:01Z","diff_fingerprint":"unused","comment":{"anchor":{"file":"main.go","hunk":"@@","start_row":1,"end_row":2,"new_start":3,"quoted_lines":["+line"]},"body":"old"}}`)
+	if err := store.update(func(bucket *bolt.Bucket) error {
+		return bucket.Put([]byte{0, 0, 0, 1}, legacy)
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	comments, err := store.List("/repo")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(comments) != 1 || comments[0].ID != "legacy" || comments[0].Body != "old" || comments[0].Anchor.NewStart != 3 {
+		t.Fatalf("legacy comment = %#v", comments)
+	}
+	comments[0].Body = "updated"
+	if err := store.Update(comments[0]); err != nil {
+		t.Fatal(err)
+	}
+	updated, err := store.List("/repo")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(updated) != 1 || updated[0].Body != "updated" {
+		t.Fatalf("updated comments = %#v", updated)
 	}
 }
 
@@ -224,14 +253,12 @@ func TestSideBySidePreference(t *testing.T) {
 	}
 }
 
-func testMessage(repository, body string) Message {
-	return Message{
+func testComment(repository, body string) review.Comment {
+	return review.Comment{
 		ID:         body,
 		Repository: repository,
 		CreatedAt:  time.Unix(1, 0).UTC(),
-		Comment: review.Comment{
-			Anchor: review.Anchor{File: "file.go", NewStart: 1, NewEnd: 1},
-			Body:   body,
-		},
+		Anchor:     review.Anchor{FilePath: "file.go", NewStart: 1, NewEnd: 1},
+		Body:       body,
 	}
 }

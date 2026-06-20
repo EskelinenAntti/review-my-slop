@@ -19,8 +19,8 @@ import (
 func TestVisualSelectionCreatesMappedAnchorAndSubmits(t *testing.T) {
 	t.Setenv("EDITOR", "true")
 	var saved []review.Comment
-	m := New(coveragePatch(), nil, func(stored review.StoredComment, _ patch.Patch) (review.StoredComment, error) {
-		saved = append(saved, stored.Comment)
+	m := New(coveragePatch(), nil, func(stored review.Comment, _ patch.Patch) (review.Comment, error) {
+		saved = append(saved, stored)
 		stored.ID = "new"
 		return stored, nil
 	})
@@ -33,15 +33,15 @@ func TestVisualSelectionCreatesMappedAnchorAndSubmits(t *testing.T) {
 		t.Fatalf("saved comments = %d", len(saved))
 	}
 	anchor := saved[0].Anchor
-	if anchor.File != "main.go" || anchor.OldStart != 2 || anchor.NewStart != 2 || !slices.Equal(anchor.QuotedLines, []string{"-old()", "+new()"}) {
+	if anchor.FilePath != "main.go" || anchor.OldStart != 2 || anchor.NewStart != 2 || !slices.Equal(anchor.QuotedLines, []string{"-old()", "+new()"}) {
 		t.Fatalf("anchor = %#v", anchor)
 	}
 }
 
 func TestCommentSaveFailureClearsPendingEdit(t *testing.T) {
 	t.Setenv("EDITOR", "true")
-	m := New(coveragePatch(), nil, func(review.StoredComment, patch.Patch) (review.StoredComment, error) {
-		return review.StoredComment{}, fmt.Errorf("storage unavailable")
+	m := New(coveragePatch(), nil, func(review.Comment, patch.Patch) (review.Comment, error) {
+		return review.Comment{}, fmt.Errorf("storage unavailable")
 	})
 	m = updateModel(t, m, textKey("c"))
 	m = updateModel(t, m, commentEditorFinishedMsg{body: "keep this"})
@@ -124,7 +124,7 @@ func TestExternalEditorCommandReadsEditedDraft(t *testing.T) {
 func TestEmptyNewCommentIsDiscarded(t *testing.T) {
 	t.Setenv("EDITOR", "true")
 	called := false
-	m := New(coveragePatch(), nil, func(stored review.StoredComment, p patch.Patch) (review.StoredComment, error) {
+	m := New(coveragePatch(), nil, func(stored review.Comment, p patch.Patch) (review.Comment, error) {
 		called = true
 		return stored, nil
 	})
@@ -160,20 +160,20 @@ func TestOpenCurrentLineRequiresEditor(t *testing.T) {
 
 func TestInboxCommentsCanBeViewedEditedAndDeleted(t *testing.T) {
 	t.Setenv("EDITOR", "true")
-	comments := []review.StoredComment{{ID: "one", Comment: review.Comment{Body: "old body"}}, {ID: "two", Comment: review.Comment{Body: "second"}}}
-	var persisted, deleted review.StoredComment
-	m := New(coveragePatch(), comments, func(stored review.StoredComment, _ patch.Patch) (review.StoredComment, error) {
+	comments := []review.Comment{{ID: "one", Body: "old body"}, {ID: "two", Body: "second"}}
+	var persisted, deleted review.Comment
+	m := New(coveragePatch(), comments, func(stored review.Comment, _ patch.Patch) (review.Comment, error) {
 		persisted = stored
 		return stored, nil
 	})
-	m.SetDelete(func(stored review.StoredComment, _ patch.Patch) error { deleted = stored; return nil })
+	m.SetDelete(func(stored review.Comment, _ patch.Patch) error { deleted = stored; return nil })
 	m = updateModel(t, m, textKey("C"))
 	if m.mode != modeComments || !strings.Contains(m.render(), "old body") {
 		t.Fatal("comments did not open")
 	}
 	m = updateModel(t, m, specialKey(tea.KeyEnter))
 	m = updateModel(t, m, commentEditorFinishedMsg{body: "edited body"})
-	if persisted.ID != "one" || persisted.Comment.Body != "edited body" {
+	if persisted.ID != "one" || persisted.Body != "edited body" {
 		t.Fatalf("persisted = %#v", persisted)
 	}
 	m = updateModel(t, m, textKey("D"))
@@ -188,9 +188,9 @@ func TestInboxCommentsCanBeViewedEditedAndDeleted(t *testing.T) {
 
 func TestEmptyEditedCommentIsDeleted(t *testing.T) {
 	t.Setenv("EDITOR", "true")
-	m := New(coveragePatch(), []review.StoredComment{{ID: "one", Comment: review.Comment{Body: "old"}}}, nil)
+	m := New(coveragePatch(), []review.Comment{{ID: "one", Body: "old"}}, nil)
 	deleted := false
-	m.SetDelete(func(review.StoredComment, patch.Patch) error { deleted = true; return nil })
+	m.SetDelete(func(review.Comment, patch.Patch) error { deleted = true; return nil })
 	m = updateModel(t, m, textKey("C"))
 	m = updateModel(t, m, specialKey(tea.KeyEnter))
 	m = updateModel(t, m, commentEditorFinishedMsg{body: "\n"})
@@ -200,8 +200,8 @@ func TestEmptyEditedCommentIsDeleted(t *testing.T) {
 }
 
 func TestCommentDeleteFailureKeepsCommentAndShowsError(t *testing.T) {
-	m := New(coveragePatch(), []review.StoredComment{{ID: "one", Comment: review.Comment{Body: "keep"}}}, nil)
-	m.SetDelete(func(review.StoredComment, patch.Patch) error { return fmt.Errorf("delete failed") })
+	m := New(coveragePatch(), []review.Comment{{ID: "one", Body: "keep"}}, nil)
+	m.SetDelete(func(review.Comment, patch.Patch) error { return fmt.Errorf("delete failed") })
 	m = updateModel(t, m, textKey("C"))
 	m = updateModel(t, m, textKey("D"))
 	if len(m.comments) != 1 || !strings.Contains(ansi.Strip(m.renderComments()), "delete failed") {
@@ -435,8 +435,8 @@ func TestSearchMatchesFileNamesAndBackspaceRestoresOrigin(t *testing.T) {
 	m = updateModel(t, m, textKey("/"))
 	m = updateModel(t, m, textKey("main.go"))
 	file, _ := m.view.File(m.cursor)
-	if file.Name != "main.go" {
-		t.Fatalf("file=%q", file.Name)
+	if file.DisplayPath != "main.go" {
+		t.Fatalf("file=%q", file.DisplayPath)
 	}
 	for range len("main.go") {
 		m = updateModel(t, m, specialKey(tea.KeyBackspace))
@@ -501,7 +501,7 @@ func TestDiffRefreshFallbackAndEmptyDiff(t *testing.T) {
 func TestCommentAfterRefreshUsesCurrentPatch(t *testing.T) {
 	t.Setenv("EDITOR", "true")
 	var saved patch.Patch
-	m := New(coveragePatch(), nil, func(stored review.StoredComment, p patch.Patch) (review.StoredComment, error) {
+	m := New(coveragePatch(), nil, func(stored review.Comment, p patch.Patch) (review.Comment, error) {
 		saved = p
 		return stored, nil
 	})
@@ -562,7 +562,7 @@ func findLine(t *testing.T, m Model, text string) view.Cursor {
 func lineText(m Model) string { line, _ := m.view.Line(m.cursor); return line.Text }
 
 func coveragePatch() patch.Patch {
-	return patch.Patch{Repository: "/repo", Fingerprint: "fingerprint", Files: []patch.File{{Name: "main.go", OldName: "main.go", NewName: "main.go", Language: "main.go", OldSource: "package main\nold()\nkeep()\n", NewSource: "package main\nnew()\nkeep()\nmore()\n", Hunks: []patch.Hunk{
+	return patch.Patch{Repository: "/repo", Fingerprint: "fingerprint", Files: []patch.File{{DisplayPath: "main.go", OldPath: "main.go", NewPath: "main.go", OldSource: "package main\nold()\nkeep()\n", NewSource: "package main\nnew()\nkeep()\nmore()\n", Hunks: []patch.Hunk{
 		{Header: "@@ -1,3 +1,3 @@", Lines: []patch.Line{{Kind: patch.Context, Text: "package main", OldNumber: 1, NewNumber: 1}, {Kind: patch.Deletion, Text: "old()", OldNumber: 2}, {Kind: patch.Addition, Text: "new()", NewNumber: 2}, {Kind: patch.Context, Text: "keep()", OldNumber: 3, NewNumber: 3}}},
 		{Header: "@@ -3,1 +3,2 @@", Lines: []patch.Line{{Kind: patch.Context, Text: "keep()", OldNumber: 3, NewNumber: 3}, {Kind: patch.Addition, Text: "more()", NewNumber: 4}}},
 	}}}}
@@ -573,5 +573,5 @@ func longModelPatch() patch.Patch {
 	for index := range lines {
 		lines[index] = patch.Line{Kind: patch.Context, Text: fmt.Sprintf("line %d %s", index, strings.Repeat("x", 80)), OldNumber: patch.LineNumber(index + 1), NewNumber: patch.LineNumber(index + 1)}
 	}
-	return patch.Patch{Files: []patch.File{{Name: "long.go", Hunks: []patch.Hunk{{Header: "@@", Lines: lines}}}}}
+	return patch.Patch{Files: []patch.File{{DisplayPath: "long.go", Hunks: []patch.Hunk{{Header: "@@", Lines: lines}}}}}
 }

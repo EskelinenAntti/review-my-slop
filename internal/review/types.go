@@ -1,10 +1,9 @@
 package review
 
+import "time"
+
 type Anchor struct {
-	File        string   `json:"file"`
-	Hunk        string   `json:"hunk"`
-	StartRow    int      `json:"start_row"`
-	EndRow      int      `json:"end_row"`
+	FilePath    string   `json:"file"`
 	OldStart    int      `json:"old_start,omitempty"`
 	OldEnd      int      `json:"old_end,omitempty"`
 	NewStart    int      `json:"new_start,omitempty"`
@@ -13,11 +12,9 @@ type Anchor struct {
 }
 
 type Comment struct {
-	Anchor Anchor `json:"anchor"`
-	Body   string `json:"body"`
-}
-
-type StoredComment struct {
-	ID      string
-	Comment Comment
+	ID         string    `json:"id"`
+	Repository string    `json:"repository"`
+	CreatedAt  time.Time `json:"created_at"`
+	Anchor     Anchor    `json:"anchor"`
+	Body       string    `json:"body"`
 }
