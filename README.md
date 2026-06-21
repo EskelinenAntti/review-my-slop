@@ -1,15 +1,14 @@
 # review-my-slop
 
-*Tool that makes reviewing code feel like playing tennis with your agent 🎾*
-
 ![review-my-slop terminal diff review](docs/assets/review-my-slop.png)
 
 Coding has moved from the editor to the chat window. Agents can produce code at
-a pace that makes reading the code feel like an unnecessary bottleneck. It is
-not. Without supervision, agents tend to slowly accumulate technical debt. That
-debt increases the likelihood of mistakes, which in turn create more debt and
-hidden bugs. By the time an agent burns through tokens on simple changes, it is
-usually too late to correct course.
+a pace that makes reading the code a bottleneck.
+
+However, without supervision, agents tend to slowly accumulate technical debt.
+That debt increases the likelihood of mistakes, which in turn create more debt
+and hidden bugs. By the time an agent burns through tokens on simple changes, it
+is usually too late to correct course.
 
 This is not simply an agent problem. Successful collaboration between the
 developer and the agent requires a shared understanding of the codebase. The
