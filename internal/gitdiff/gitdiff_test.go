@@ -136,37 +136,59 @@ func TestLoadBranchIncludesCommittedStagedUnstagedAndUntrackedChanges(t *testing
 	}
 }
 
-func TestParentBranchesOrdersDistinctStackedParentsNearestFirst(t *testing.T) {
-	repo := newRepository(t)
-	git(t, repo, "branch", "-M", "main")
-	writeFile(t, repo, "stack.txt", "main\n")
-	git(t, repo, "add", ".")
-	git(t, repo, "commit", "-m", "main")
-
-	git(t, repo, "switch", "-c", "stack-one")
-	writeFile(t, repo, "stack.txt", "stack one\n")
-	git(t, repo, "commit", "-am", "stack one")
-	git(t, repo, "branch", "duplicate-stack-one")
-
-	git(t, repo, "switch", "-c", "stack-two")
-	writeFile(t, repo, "stack.txt", "stack two\n")
-	git(t, repo, "commit", "-am", "stack two")
-	git(t, repo, "switch", "-c", "child")
-	writeFile(t, repo, "stack.txt", "child\n")
-	git(t, repo, "commit", "-am", "child")
-	git(t, repo, "switch", "stack-two")
-	remote := filepath.Join(t.TempDir(), "remote.git")
-	git(t, filepath.Dir(remote), "init", "--bare", "-q", remote)
-	git(t, repo, "remote", "add", "origin", remote)
-	git(t, repo, "push", "-u", "origin", "stack-two")
-
-	got, err := (Loader{}).ParentBranches(context.Background(), repo)
-	if err != nil {
-		t.Fatal(err)
+func TestDefaultBranchFallbacks(t *testing.T) {
+	tests := []struct {
+		name       string
+		originHEAD string
+		available  string
+		want       string
+	}{
+		{name: "origin HEAD", originHEAD: "origin/trunk", want: "origin/trunk"},
+		{name: "origin main", available: "origin/main", want: "origin/main"},
+		{name: "local main", available: "main", want: "main"},
+		{name: "origin master", available: "origin/master", want: "origin/master"},
+		{name: "local master", available: "master", want: "master"},
+		{name: "none"},
 	}
-	want := []string{"duplicate-stack-one", "main"}
-	if strings.Join(got, ",") != strings.Join(want, ",") {
-		t.Fatalf("parents = %#v, want %#v", got, want)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			root := t.TempDir()
+			runner := &defaultBranchRunner{root: root, originHEAD: tt.originHEAD, available: tt.available}
+			got, err := (Loader{Runner: runner}).DefaultBranch(context.Background(), root)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got != tt.want {
+				t.Fatalf("default branch = %q, want %q", got, tt.want)
+			}
+			for _, call := range runner.calls {
+				if strings.Contains(call, "for-each-ref") || strings.Contains(call, "merge-base") || strings.Contains(call, "rev-list") {
+					t.Fatalf("default branch discovery inspected refs: git %s", call)
+				}
+			}
+		})
+	}
+}
+
+type defaultBranchRunner struct {
+	root       string
+	originHEAD string
+	available  string
+	calls      []string
+}
+
+func (r *defaultBranchRunner) Run(_ context.Context, _ string, args ...string) ([]byte, error) {
+	call := strings.Join(args, " ")
+	r.calls = append(r.calls, call)
+	switch {
+	case call == "rev-parse --show-toplevel":
+		return []byte(r.root + "\n"), nil
+	case call == "symbolic-ref --quiet --short refs/remotes/origin/HEAD" && r.originHEAD != "":
+		return []byte(r.originHEAD + "\n"), nil
+	case len(args) == 4 && args[0] == "rev-parse" && args[1] == "--verify" && args[2] == "--quiet" && args[3] == r.available+"^{commit}" && r.available != "":
+		return []byte("commit\n"), nil
+	default:
+		return nil, exec.ErrNotFound
 	}
 }
 

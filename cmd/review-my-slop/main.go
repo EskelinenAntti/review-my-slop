@@ -62,7 +62,7 @@ func runCode(ctx context.Context) error {
 		return err
 	}
 	loader := gitdiff.Loader{}
-	parents, err := loader.ParentBranches(ctx, current)
+	defaultBranch, err := loader.DefaultBranch(ctx, current)
 	if err != nil {
 		return err
 	}
@@ -81,10 +81,10 @@ func runCode(ctx context.Context) error {
 	model.SetDelete(func(comment review.Comment, current patch.Patch) error {
 		return store.Delete(current.Repository, comment.ID)
 	})
-	model.SetParents(parents)
-	model.SetRefresh(func(parent string) (patch.Patch, error) {
-		if parent != "" {
-			return loader.LoadBranch(ctx, current, parent)
+	model.SetDefaultBranch(defaultBranch)
+	model.SetRefresh(func(branch string) (patch.Patch, error) {
+		if branch != "" {
+			return loader.LoadBranch(ctx, current, branch)
 		}
 		return loader.Load(ctx, current)
 	})

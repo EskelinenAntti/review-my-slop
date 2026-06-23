@@ -18,7 +18,7 @@ type SaveSideBySideFunc func(bool) error
 
 type refreshDiffMsg struct {
 	patch  patch.Patch
-	parent string
+	branch string
 	err    error
 }
 
@@ -73,23 +73,23 @@ type searchState struct {
 }
 
 type Model struct {
-	review     reviewState
-	comments   commentState
-	search     searchState
-	width      int
-	height     int
-	mode       mode
-	save       SaveCommentFunc
-	delete     DeleteCommentFunc
-	load       LoadCommentsFunc
-	refresh    RefreshDiffFunc
-	err        error
-	quitting   bool
-	pendingKey string
-	saveLayout SaveSideBySideFunc
-	parents    []string
-	target     int
-	dark       bool
+	review        reviewState
+	comments      commentState
+	search        searchState
+	width         int
+	height        int
+	mode          mode
+	save          SaveCommentFunc
+	delete        DeleteCommentFunc
+	load          LoadCommentsFunc
+	refresh       RefreshDiffFunc
+	err           error
+	quitting      bool
+	pendingKey    string
+	saveLayout    SaveSideBySideFunc
+	defaultBranch string
+	showDefault   bool
+	dark          bool
 }
 
 func New(p patch.Patch, comments []review.Comment, save SaveCommentFunc) Model {
@@ -110,9 +110,11 @@ func New(p patch.Patch, comments []review.Comment, save SaveCommentFunc) Model {
 func (m *Model) SetRefresh(refresh RefreshDiffFunc)    { m.refresh = refresh }
 func (m *Model) SetDelete(delete DeleteCommentFunc)    { m.delete = delete }
 func (m *Model) SetLoadComments(load LoadCommentsFunc) { m.load = load }
-func (m *Model) SetParents(parents []string) {
-	m.parents = append([]string(nil), parents...)
-	m.target = min(m.target, len(m.parents))
+func (m *Model) SetDefaultBranch(branch string) {
+	m.defaultBranch = branch
+	if branch == "" {
+		m.showDefault = false
+	}
 }
 func (m *Model) SetSideBySide(enabled bool, save SaveSideBySideFunc) {
 	m.saveLayout = save
@@ -163,7 +165,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.FocusMsg:
 		return m, m.loadRefresh()
 	case refreshDiffMsg:
-		if msg.parent != m.currentParent() {
+		if msg.branch != m.currentBranch() {
 			return m, nil
 		}
 		if msg.err != nil {
@@ -182,8 +184,8 @@ func (m Model) loadRefresh() tea.Cmd {
 	if m.refresh == nil {
 		return nil
 	}
-	parent := m.currentParent()
-	return func() tea.Msg { p, err := m.refresh(parent); return refreshDiffMsg{patch: p, parent: parent, err: err} }
+	branch := m.currentBranch()
+	return func() tea.Msg { p, err := m.refresh(branch); return refreshDiffMsg{patch: p, branch: branch, err: err} }
 }
 
 func (m Model) loadComments() tea.Cmd {
@@ -385,7 +387,10 @@ func (m Model) updateKey(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	case "R":
 		return m, m.loadRefresh()
 	case "tab":
-		m.target = (m.target + 1) % (len(m.parents) + 1)
+		if m.defaultBranch == "" {
+			return m, nil
+		}
+		m.showDefault = !m.showDefault
 		m.cancelSelection()
 		return m, m.loadRefresh()
 	case "t":
@@ -394,10 +399,10 @@ func (m Model) updateKey(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m Model) currentParent() string {
-	if m.target <= 0 || m.target > len(m.parents) {
+func (m Model) currentBranch() string {
+	if !m.showDefault {
 		return ""
 	}
-	return m.parents[m.target-1]
+	return m.defaultBranch
 }
 func (m Model) screenBodyHeight() int { return max(1, m.height-3) }

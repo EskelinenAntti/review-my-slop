@@ -11,7 +11,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"sort"
-	"strconv"
 	"strings"
 
 	"github.com/sourcegraph/go-diff/diff"
@@ -80,7 +79,7 @@ func (l Loader) Load(ctx context.Context, dir string) (patch.Patch, error) {
 	return l.build(ctx, root, "", raw, readIndex)
 }
 
-func (l Loader) LoadBranch(ctx context.Context, dir, parent string) (patch.Patch, error) {
+func (l Loader) LoadBranch(ctx context.Context, dir, branch string) (patch.Patch, error) {
 	if l.Runner == nil {
 		l.Runner = ExecRunner{}
 	}
@@ -88,9 +87,9 @@ func (l Loader) LoadBranch(ctx context.Context, dir, parent string) (patch.Patch
 	if err != nil {
 		return patch.Patch{}, err
 	}
-	baseBytes, err := l.Runner.Run(ctx, root, "merge-base", parent, "HEAD")
+	baseBytes, err := l.Runner.Run(ctx, root, "merge-base", branch, "HEAD")
 	if err != nil {
-		return patch.Patch{}, fmt.Errorf("find branch point with %s: %w", parent, err)
+		return patch.Patch{}, fmt.Errorf("find branch point with %s: %w", branch, err)
 	}
 	base := strings.TrimSpace(string(baseBytes))
 	raw, err := l.diff(ctx, root, base)
@@ -100,86 +99,18 @@ func (l Loader) LoadBranch(ctx context.Context, dir, parent string) (patch.Patch
 	readBase := func(ctx context.Context, runner Runner, root, path string) string {
 		return readRevision(ctx, runner, root, base, path)
 	}
-	return l.build(ctx, root, parent, raw, readBase)
+	return l.build(ctx, root, branch, raw, readBase)
 }
 
-func (l Loader) ParentBranches(ctx context.Context, dir string) ([]string, error) {
+func (l Loader) DefaultBranch(ctx context.Context, dir string) (string, error) {
 	if l.Runner == nil {
 		l.Runner = ExecRunner{}
 	}
 	root, err := l.Root(ctx, dir)
 	if err != nil {
-		return nil, err
+		return "", err
 	}
-	currentBytes, err := l.Runner.Run(ctx, root, "symbolic-ref", "--quiet", "--short", "HEAD")
-	if err != nil {
-		return nil, nil
-	}
-	current := strings.TrimSpace(string(currentBytes))
-	upstream := ""
-	if upstreamBytes, upstreamErr := l.Runner.Run(ctx, root, "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}"); upstreamErr == nil {
-		upstream = strings.TrimSpace(string(upstreamBytes))
-	}
-	defaultBranch := l.defaultBranch(ctx, root)
-	refsBytes, err := l.Runner.Run(ctx, root, "for-each-ref", "--format=%(refname:short)", "refs/heads", "refs/remotes")
-	if err != nil {
-		return nil, fmt.Errorf("list branches: %w", err)
-	}
-
-	type candidate struct {
-		name     string
-		base     string
-		distance int
-		priority int
-	}
-	byBase := make(map[string]candidate)
-	for name := range strings.FieldsSeq(string(refsBytes)) {
-		if name == current || name == upstream || name == "origin/HEAD" || strings.HasSuffix(name, "/HEAD") {
-			continue
-		}
-		if name != defaultBranch {
-			if _, ancestorErr := l.Runner.Run(ctx, root, "merge-base", "--is-ancestor", name, "HEAD"); ancestorErr != nil {
-				continue
-			}
-		}
-		baseBytes, mergeErr := l.Runner.Run(ctx, root, "merge-base", name, "HEAD")
-		if mergeErr != nil {
-			continue
-		}
-		base := strings.TrimSpace(string(baseBytes))
-		distanceBytes, countErr := l.Runner.Run(ctx, root, "rev-list", "--count", base+"..HEAD")
-		if countErr != nil {
-			continue
-		}
-		distance, parseErr := strconv.Atoi(strings.TrimSpace(string(distanceBytes)))
-		if parseErr != nil {
-			continue
-		}
-		next := candidate{name: name, base: base, distance: distance, priority: branchPriority(name, defaultBranch)}
-		if previous, ok := byBase[base]; !ok ||
-			next.priority < previous.priority ||
-			next.priority == previous.priority && next.name < previous.name {
-			byBase[base] = next
-		}
-	}
-	candidates := make([]candidate, 0, len(byBase))
-	for _, item := range byBase {
-		candidates = append(candidates, item)
-	}
-	sort.Slice(candidates, func(i, j int) bool {
-		if candidates[i].distance != candidates[j].distance {
-			return candidates[i].distance < candidates[j].distance
-		}
-		if candidates[i].priority != candidates[j].priority {
-			return candidates[i].priority < candidates[j].priority
-		}
-		return candidates[i].name < candidates[j].name
-	})
-	parents := make([]string, len(candidates))
-	for i, item := range candidates {
-		parents[i] = item.name
-	}
-	return parents, nil
+	return l.defaultBranch(ctx, root), nil
 }
 
 func (l Loader) diff(ctx context.Context, root string, revisions ...string) ([]byte, error) {
@@ -233,16 +164,6 @@ func (l Loader) defaultBranch(ctx context.Context, root string) string {
 		}
 	}
 	return ""
-}
-
-func branchPriority(name, defaultBranch string) int {
-	if name == defaultBranch {
-		return 0
-	}
-	if !strings.Contains(name, "/") {
-		return 1
-	}
-	return 2
 }
 
 func parseTracked(ctx context.Context, runner Runner, root string, raw []byte, readOld sourceReader) ([]patch.File, error) {

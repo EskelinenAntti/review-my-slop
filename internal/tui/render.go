@@ -33,7 +33,7 @@ func (m Model) render() string {
 	var body []string
 	if len(m.review.patch.Files) == 0 {
 		empty := "No unstaged or untracked changes."
-		if m.currentParent() != "" {
+		if m.currentBranch() != "" {
 			empty = "No branch or worktree changes."
 		}
 		body = make([]string, m.screenBodyHeight())
@@ -105,8 +105,8 @@ func (m Model) viewLabel() string {
 	if m.review.viewport.Top.Y > 0 {
 		progress = fmt.Sprintf(" (%d%%)", m.review.view.ViewportProgress(m.review.viewport))
 	}
-	if parent := m.currentParent(); parent != "" {
-		return "branch changes from " + parent + progress
+	if branch := m.currentBranch(); branch != "" {
+		return "branch changes from " + branch + progress
 	}
 	return "local changes" + progress
 }
@@ -146,7 +146,7 @@ func (m Model) renderComments() string {
 }
 
 func (m Model) renderHelp() string {
-	bindings := []keyBinding{{"j/k, arrows", "move"}, {"h/l, left/right", "scroll horizontally"}, {"Ctrl-w h/l/w", "switch side-by-side pane"}, {"0/$", "start/end of lines"}, {"gg/G", "first/last changed line"}, {"zz/zt/zb", "center/top/bottom current line"}, {"Ctrl-d/Ctrl-u", "half-page down/up"}, {"/", "search diff text"}, {"n/N", "next/previous search match"}, {"]f/[f", "next/previous file"}, {"v", "select a line range"}, {"c", "comment on selection/current line"}, {"e", "open current line in $EDITOR"}, {"C", "view comments"}, {"R", "refresh diff"}, {"Tab", "cycle local/parent branch changes"}, {"t", "toggle unified/side-by-side"}, {"q", "quit"}}
+	bindings := []keyBinding{{"j/k, arrows", "move"}, {"h/l, left/right", "scroll horizontally"}, {"Ctrl-w h/l/w", "switch side-by-side pane"}, {"0/$", "start/end of lines"}, {"gg/G", "first/last changed line"}, {"zz/zt/zb", "center/top/bottom current line"}, {"Ctrl-d/Ctrl-u", "half-page down/up"}, {"/", "search diff text"}, {"n/N", "next/previous search match"}, {"]f/[f", "next/previous file"}, {"v", "select a line range"}, {"c", "comment on selection/current line"}, {"e", "open current line in $EDITOR"}, {"C", "view comments"}, {"R", "refresh diff"}, {"Tab", "toggle local/branch changes"}, {"t", "toggle unified/side-by-side"}, {"q", "quit"}}
 	body := append([]string{""}, renderKeyBindings(bindings)...)
 	return m.renderScreen(titleStyle.Render("review-my-slop help"), body, mutedStyle.Render("? or Esc closes help"))
 }

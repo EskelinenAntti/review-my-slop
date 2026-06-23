@@ -425,8 +425,8 @@ func TestHorizontalScrollKeysMoveByStepAndReset(t *testing.T) {
 
 func TestFocusAndManualRefreshLoadCurrentView(t *testing.T) {
 	m := New(coveragePatch(), nil, nil)
-	m.SetParents([]string{"main"})
-	m.target = 1
+	m.SetDefaultBranch("main")
+	m.showDefault = true
 	var requested []string
 	m.SetRefresh(func(parent string) (patch.Patch, error) {
 		requested = append(requested, parent)
@@ -520,20 +520,38 @@ func TestSideBySideSearchActivatesPaneAndCancelRestoresIt(t *testing.T) {
 	}
 }
 
-func TestTabCyclesParentBranchesAndIgnoresStaleRefresh(t *testing.T) {
+func TestTabTogglesDefaultBranchAndIgnoresStaleRefresh(t *testing.T) {
 	m := New(coveragePatch(), nil, nil)
-	m.SetParents([]string{"main", "release"})
+	m.SetDefaultBranch("main")
 	m.SetRefresh(func(string) (patch.Patch, error) { return coveragePatch(), nil })
 	next, _ := m.Update(textKey("tab"))
 	m = next.(Model)
-	if m.currentParent() != "main" {
-		t.Fatalf("parent=%q", m.currentParent())
+	if m.currentBranch() != "main" {
+		t.Fatalf("branch=%q", m.currentBranch())
 	}
 	stale := coveragePatch()
 	stale.Fingerprint = "stale"
-	m = updateModel(t, m, refreshDiffMsg{patch: stale, parent: "release"})
+	m = updateModel(t, m, refreshDiffMsg{patch: stale})
 	if m.review.patch.Fingerprint == "stale" {
 		t.Fatal("stale refresh applied")
+	}
+	m = updateModel(t, m, textKey("tab"))
+	if m.currentBranch() != "" {
+		t.Fatalf("branch=%q after toggling back to local", m.currentBranch())
+	}
+}
+
+func TestTabDoesNothingWithoutDefaultBranch(t *testing.T) {
+	m := New(coveragePatch(), nil, nil)
+	refreshed := false
+	m.SetRefresh(func(string) (patch.Patch, error) {
+		refreshed = true
+		return coveragePatch(), nil
+	})
+	next, cmd := m.Update(textKey("tab"))
+	m = next.(Model)
+	if cmd != nil || refreshed || m.showDefault {
+		t.Fatalf("tab changed model without default branch: cmd=%v refreshed=%v showDefault=%v", cmd != nil, refreshed, m.showDefault)
 	}
 }
 
