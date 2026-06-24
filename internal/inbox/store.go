@@ -48,6 +48,15 @@ func OpenDefault() (Store, error) {
 	return Store{Path: path}, nil
 }
 
+// Save adds a new comment or updates an existing comment in a repository.
+func (s Store) Save(comment review.Comment, repository string) (review.Comment, error) {
+	comment.Repository = repository
+	if comment.ID == "" {
+		return s.Add(comment)
+	}
+	return comment, s.Update(comment)
+}
+
 func (s Store) Add(comment review.Comment) (review.Comment, error) {
 	if comment.Repository == "" {
 		return review.Comment{}, errors.New("comment requires a repository")

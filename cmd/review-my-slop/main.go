@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -10,6 +11,7 @@ import (
 
 	"github.com/eskelinenantti/review-my-slop/internal/gitdiff"
 	"github.com/eskelinenantti/review-my-slop/internal/inbox"
+	neovimintegration "github.com/eskelinenantti/review-my-slop/internal/neovim"
 	"github.com/eskelinenantti/review-my-slop/internal/patch"
 	"github.com/eskelinenantti/review-my-slop/internal/review"
 	"github.com/eskelinenantti/review-my-slop/internal/tui"
@@ -26,17 +28,31 @@ func run(ctx context.Context, args []string, output io.Writer) error {
 	if len(args) == 0 {
 		return runCode(ctx)
 	}
-	if len(args) > 1 {
-		return fmt.Errorf("usage: review-my-slop [code|comments]")
-	}
 	switch args[0] {
 	case "code":
-		return runCode(ctx)
+		if len(args) == 1 {
+			return runCode(ctx)
+		}
+		if len(args) == 2 && args[1] == "--nvim" {
+			return runNeovim(ctx, os.Stdin, os.Stdout)
+		}
+		return usageError()
 	case "comments":
+		if len(args) != 1 {
+			return usageError()
+		}
 		return runComments(ctx, output)
 	default:
-		return fmt.Errorf("unknown subcommand %q; usage: review-my-slop [code|comments]", args[0])
+		return fmt.Errorf("unknown subcommand %q; %w", args[0], usageError())
 	}
+}
+
+func usageError() error {
+	return errors.New("usage: review-my-slop [code [--nvim]|comments]")
+}
+
+func runNeovim(ctx context.Context, input io.Reader, output io.WriteCloser) error {
+	return neovimintegration.Serve(ctx, input, output, output)
 }
 
 func runCode(ctx context.Context) error {
@@ -67,11 +83,7 @@ func runCode(ctx context.Context) error {
 		return err
 	}
 	saveComment := func(comment review.Comment, current patch.Patch) (review.Comment, error) {
-		comment.Repository = current.Repository
-		if comment.ID != "" {
-			return comment, store.Update(comment)
-		}
-		return store.Add(comment)
+		return store.Save(comment, current.Repository)
 	}
 	model := tui.New(loaded, comments, saveComment)
 	model.SetLoadComments(func() ([]review.Comment, error) {

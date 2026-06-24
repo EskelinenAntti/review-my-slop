@@ -7,6 +7,7 @@ require (
 	charm.land/lipgloss/v2 v2.0.4
 	github.com/alecthomas/chroma/v2 v2.26.1
 	github.com/creack/pty v1.1.24
+	github.com/neovim/go-client v1.2.1
 	github.com/sourcegraph/go-diff v0.8.0
 	go.etcd.io/bbolt v1.4.3
 )

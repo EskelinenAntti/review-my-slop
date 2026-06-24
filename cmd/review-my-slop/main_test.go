@@ -94,6 +94,13 @@ func TestRunRejectsUnknownSubcommand(t *testing.T) {
 	}
 }
 
+func TestRunCodeRejectsUnknownFlags(t *testing.T) {
+	err := run(context.Background(), []string{"code", "--unexpected"}, &bytes.Buffer{})
+	if err == nil || !strings.Contains(err.Error(), "usage:") {
+		t.Fatalf("error = %v", err)
+	}
+}
+
 type failingWriter struct{}
 
 func (failingWriter) Write([]byte) (int, error) {

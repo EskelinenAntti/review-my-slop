@@ -143,7 +143,7 @@ func TestListAndUpdateComments(t *testing.T) {
 		t.Fatalf("comments = %#v", comments)
 	}
 	comments[1].Body = "edited"
-	if err := store.Update(comments[1]); err != nil {
+	if _, err := store.Save(comments[1], "/repo"); err != nil {
 		t.Fatal(err)
 	}
 
@@ -153,6 +153,17 @@ func TestListAndUpdateComments(t *testing.T) {
 	}
 	if got := updated[1].Body; got != "edited" {
 		t.Fatalf("body = %q, want edited", got)
+	}
+}
+
+func TestSaveAssignsRepositoryToNewComment(t *testing.T) {
+	store := Store{Path: filepath.Join(t.TempDir(), "inbox.db")}
+	comment, err := store.Save(review.Comment{Body: "new"}, "/repo")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if comment.ID == "" || comment.Repository != "/repo" {
+		t.Fatalf("saved comment = %#v", comment)
 	}
 }
 
