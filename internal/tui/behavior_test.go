@@ -451,6 +451,23 @@ func TestFocusAndManualRefreshLoadCurrentView(t *testing.T) {
 	}
 }
 
+func TestSourceEditorCompletionRefreshesDiff(t *testing.T) {
+	m := New(coveragePatch(), nil, nil)
+	refreshed := coveragePatch()
+	refreshed.Fingerprint = "after-editor"
+	m.SetRefresh(func(string) (patch.Patch, error) { return refreshed, nil })
+
+	next, cmd := m.Update(sourceEditorFinishedMsg{})
+	m = next.(Model)
+	if cmd == nil {
+		t.Fatal("editor completion did not refresh")
+	}
+	m = updateModel(t, m, cmd())
+	if m.review.patch.Fingerprint != "after-editor" {
+		t.Fatalf("fingerprint=%q", m.review.patch.Fingerprint)
+	}
+}
+
 func TestHeaderShowsAddedAndRemovedLineCounts(t *testing.T) {
 	header := strings.SplitN(ansi.Strip(New(coveragePatch(), nil, nil).render()), "\n", 2)[0]
 	if header != "review-my-slop  +2-1" {

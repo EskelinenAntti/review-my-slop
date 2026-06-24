@@ -161,7 +161,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case sourceEditorFinishedMsg:
 		if msg.err != nil {
 			m.err = fmt.Errorf("editor: %w", msg.err)
+			break
 		}
+		return m, m.loadRefresh()
 	case tea.FocusMsg:
 		return m, m.loadRefresh()
 	case refreshDiffMsg:
