@@ -7,6 +7,7 @@ import (
 	"os"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/x/term"
 
 	"github.com/eskelinenantti/review-my-slop/internal/gitdiff"
 	"github.com/eskelinenantti/review-my-slop/internal/inbox"
@@ -73,11 +74,15 @@ func runCode(ctx context.Context) error {
 		}
 		return store.Add(comment)
 	}
-	model := tui.New(loaded, comments, saveComment)
+	size := initialTerminalSize()
+	model := tui.New(loaded, comments, saveComment, tui.InitialLayout{
+		SideBySide:     sideBySide,
+		SaveSideBySide: store.SetSideBySide,
+		Size:           size,
+	})
 	model.SetLoadComments(func() ([]review.Comment, error) {
 		return store.List(loaded.Repository)
 	})
-	model.SetSideBySide(sideBySide, store.SetSideBySide)
 	model.SetDelete(func(comment review.Comment, current patch.Patch) error {
 		return store.Delete(current.Repository, comment.ID)
 	})
@@ -88,9 +93,19 @@ func runCode(ctx context.Context) error {
 		}
 		return loader.Load(ctx, current)
 	})
-	program := tea.NewProgram(model)
+	program := tea.NewProgram(model, tea.WithWindowSize(size.Width, size.Height))
 	_, err = program.Run()
 	return err
+}
+
+func initialTerminalSize() tui.Size {
+	if width, height, err := term.GetSize(os.Stdin.Fd()); err == nil {
+		return tui.Size{Width: width, Height: height}
+	}
+	if width, height, err := term.GetSize(os.Stdout.Fd()); err == nil {
+		return tui.Size{Width: width, Height: height}
+	}
+	return tui.DefaultSize
 }
 
 func runComments(ctx context.Context, output io.Writer) error {

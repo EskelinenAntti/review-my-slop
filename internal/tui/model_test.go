@@ -2,9 +2,11 @@ package tui
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 	"testing"
 
+	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/eskelinenantti/review-my-slop/internal/editor"
@@ -12,8 +14,54 @@ import (
 	"github.com/eskelinenantti/review-my-slop/internal/review"
 )
 
+func testModel(p patch.Patch, comments []review.Comment, save SaveCommentFunc) Model {
+	return New(p, comments, save, InitialLayout{Size: Size{Width: 100, Height: 30}})
+}
+
+func TestNewUsesSavedSideBySideForWideInitialSize(t *testing.T) {
+	m := New(modelPatch(), nil, nil, InitialLayout{
+		SideBySide: true,
+		Size:       Size{Width: 120, Height: 30},
+	})
+	if !m.review.sideBySide || !m.sideBySideActive() || !strings.Contains(m.render(), "│") {
+		t.Fatalf("sideBySide=%v active=%v render=%q", m.review.sideBySide, m.sideBySideActive(), m.render())
+	}
+}
+
+func TestNewKeepsSavedSideBySideInactiveForNarrowInitialSize(t *testing.T) {
+	m := New(modelPatch(), nil, nil, InitialLayout{
+		SideBySide: true,
+		Size:       Size{Width: 80, Height: 30},
+	})
+	if !m.review.sideBySide || m.sideBySideActive() || strings.Contains(m.render(), "│") {
+		t.Fatalf("sideBySide=%v active=%v render=%q", m.review.sideBySide, m.sideBySideActive(), m.render())
+	}
+
+	m = updateModel(t, m, tea.WindowSizeMsg{Width: 120, Height: 30})
+	if !m.review.sideBySide || !m.sideBySideActive() || !strings.Contains(m.render(), "│") {
+		t.Fatalf("sideBySide=%v active=%v render=%q", m.review.sideBySide, m.sideBySideActive(), m.render())
+	}
+}
+
+func TestSideBySideToggleStillSavesPreference(t *testing.T) {
+	var saved []bool
+	m := New(modelPatch(), nil, nil, InitialLayout{
+		SaveSideBySide: func(enabled bool) error {
+			saved = append(saved, enabled)
+			return nil
+		},
+		Size: Size{Width: 120, Height: 30},
+	})
+
+	m = updateModel(t, m, textKey("t"))
+	m = updateModel(t, m, textKey("t"))
+	if !slices.Equal(saved, []bool{true, false}) {
+		t.Fatalf("saved=%v", saved)
+	}
+}
+
 func TestRefreshTranslatesCursorAndSelection(t *testing.T) {
-	m := New(modelPatch(), nil, nil)
+	m := testModel(modelPatch(), nil, nil)
 	m.move(1)
 	selection := m.review.view.BeginSelection(m.review.cursor)
 	m.review.selection = &selection
@@ -33,7 +81,7 @@ func TestRefreshTranslatesCursorAndSelection(t *testing.T) {
 }
 
 func TestViewSwitchPreservesSemanticCursor(t *testing.T) {
-	m := New(modelPatch(), nil, nil)
+	m := testModel(modelPatch(), nil, nil)
 	m.width = 120
 	m.move(1)
 	m.move(1)
@@ -51,7 +99,7 @@ func TestViewSwitchPreservesSemanticCursor(t *testing.T) {
 
 func TestCommentSaveUsesPatchAndPreservesAnchor(t *testing.T) {
 	var savedPatch patch.Patch
-	m := New(modelPatch(), nil, func(stored review.Comment, p patch.Patch) (review.Comment, error) {
+	m := testModel(modelPatch(), nil, func(stored review.Comment, p patch.Patch) (review.Comment, error) {
 		savedPatch = p
 		stored.ID = "1"
 		return stored, nil
@@ -65,7 +113,7 @@ func TestCommentSaveUsesPatchAndPreservesAnchor(t *testing.T) {
 }
 
 func TestRenderingAndKeyBindingsRemainAvailable(t *testing.T) {
-	m := New(modelPatch(), nil, nil)
+	m := testModel(modelPatch(), nil, nil)
 	m.width, m.height = 80, 10
 	m.review.viewport = m.review.view.Resize(m.review.viewport, m.width, m.screenBodyHeight())
 	rendered := m.render()
@@ -81,7 +129,7 @@ func TestRenderingAndKeyBindingsRemainAvailable(t *testing.T) {
 }
 
 func TestEmptyViewKeepsKeyboardHintAtBottom(t *testing.T) {
-	m := New(patch.Patch{}, nil, nil)
+	m := testModel(patch.Patch{}, nil, nil)
 	m.width, m.height = 80, 10
 
 	lines := strings.Split(m.render(), "\n")
@@ -94,7 +142,7 @@ func TestEmptyViewKeepsKeyboardHintAtBottom(t *testing.T) {
 }
 
 func TestMenuKeyboardHintsStayAtBottom(t *testing.T) {
-	m := New(modelPatch(), []review.Comment{{Body: "first", Anchor: review.Anchor{FilePath: "main.go", NewStart: 2}}}, nil)
+	m := testModel(modelPatch(), []review.Comment{{Body: "first", Anchor: review.Anchor{FilePath: "main.go", NewStart: 2}}}, nil)
 	m.width, m.height = 80, 10
 
 	tests := []struct {
@@ -121,7 +169,7 @@ func TestCommentsMenuScrollsWithinScreenBody(t *testing.T) {
 	for index := range comments {
 		comments[index] = review.Comment{Body: fmt.Sprintf("comment %d", index), Anchor: review.Anchor{FilePath: "main.go"}}
 	}
-	m := New(modelPatch(), comments, nil)
+	m := testModel(modelPatch(), comments, nil)
 	m.width, m.height = 80, 7
 	m.mode = modeComments
 	m.comments.row = len(comments) - 1

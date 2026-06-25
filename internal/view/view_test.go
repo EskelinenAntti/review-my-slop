@@ -57,7 +57,7 @@ func TestUnifiedNavigationSearchAndFileJumps(t *testing.T) {
 }
 
 func TestSplitPairsChangeBlocksAndSupportsEmptyPanes(t *testing.T) {
-	v := NewSplitView(testPatch(), true)
+	v := NewSideBySideView(testPatch(), true)
 	first, _ := v.First()
 	removed, _ := v.Move(first, Forward)
 	if removed.Pane != Right {
@@ -222,7 +222,7 @@ func TestFindCursorUsesSemanticIdentityAcrossChangedCoordinates(t *testing.T) {
 
 func TestSplitViewWithOnlyDeletionsStartsInLeftPane(t *testing.T) {
 	p := patch.Patch{Files: []patch.File{{DisplayPath: "deleted.go", Hunks: []patch.Hunk{{Header: "@@", Lines: []patch.Line{{Kind: patch.Deletion, Text: "gone", OldNumber: 1}}}}}}}
-	v := NewSplitView(p, true)
+	v := NewSideBySideView(p, true)
 	cursor, ok := v.First()
 	if !ok || cursor.Pane != Left {
 		t.Fatalf("first cursor = %#v, %v", cursor, ok)

@@ -16,6 +16,17 @@ type LoadCommentsFunc func() ([]review.Comment, error)
 type RefreshDiffFunc func(parent string) (patch.Patch, error)
 type SaveSideBySideFunc func(bool) error
 
+type Size struct {
+	Width  int
+	Height int
+}
+
+type InitialLayout struct {
+	SideBySide     bool
+	SaveSideBySide SaveSideBySideFunc
+	Size           Size
+}
+
 type refreshDiffMsg struct {
 	patch  patch.Patch
 	branch string
@@ -46,6 +57,8 @@ const (
 	horizontalScrollStep   = 4
 	minimumSideBySideWidth = 100
 )
+
+var DefaultSize = Size{Width: 80, Height: 30}
 
 type reviewState struct {
 	patch      patch.Patch
@@ -92,16 +105,22 @@ type Model struct {
 	dark          bool
 }
 
-func New(p patch.Patch, comments []review.Comment, save SaveCommentFunc) Model {
-	m := Model{
-		review:   reviewState{patch: p},
-		comments: commentState{items: comments, editIndex: -1},
-		width:    100,
-		height:   30,
-		save:     save,
-		dark:     true,
+func New(p patch.Patch, comments []review.Comment, save SaveCommentFunc, layout InitialLayout) Model {
+	size := layout.Size
+	if size.Width <= 0 || size.Height <= 0 {
+		size = DefaultSize
 	}
-	m.review.view = view.NewUnifiedView(p, m.dark)
+	m := Model{
+		review:     reviewState{patch: p},
+		comments:   commentState{items: comments, editIndex: -1},
+		width:      size.Width,
+		height:     size.Height,
+		save:       save,
+		saveLayout: layout.SaveSideBySide,
+		dark:       true,
+	}
+	m.review.sideBySide = layout.SideBySide
+	m.review.view = m.newReviewView(p)
 	m.review.viewport = m.review.view.NewViewport(m.width, m.screenBodyHeight())
 	m.review.cursor, _ = m.review.view.First()
 	return m
@@ -224,11 +243,7 @@ func (m *Model) rebuildView(p patch.Patch) {
 	}
 	rowsAbove := m.review.cursor.Coordinate.Y - m.review.viewport.Top.Y
 	m.review.patch = p
-	if m.sideBySideActive() {
-		m.review.view = view.NewSplitView(p, m.dark)
-	} else {
-		m.review.view = view.NewUnifiedView(p, m.dark)
-	}
+	m.review.view = m.newReviewView(p)
 	m.review.viewport = m.review.view.NewViewport(m.width, m.screenBodyHeight())
 	if cursor.valid {
 		m.review.cursor, cursor.valid = m.review.view.FindCursor(cursor.file, cursor.hunk, cursor.line, cursor.cursor.Coordinate, cursor.cursor.Pane)
@@ -255,6 +270,13 @@ func (m *Model) rebuildView(p patch.Patch) {
 	}
 	m.review.viewport.Top.Y = max(0, m.review.cursor.Coordinate.Y-rowsAbove)
 	m.review.viewport = m.review.view.KeepVisible(m.review.viewport, m.review.cursor)
+}
+
+func (m Model) newReviewView(p patch.Patch) view.View {
+	if m.sideBySideActive() {
+		return view.NewSideBySideView(p, m.dark)
+	}
+	return view.NewUnifiedView(p, m.dark)
 }
 
 func samePatchFile(first, last patch.File) bool {

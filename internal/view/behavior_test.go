@@ -17,7 +17,7 @@ func TestSplitPairsUnequalChangeBlocksAndKeepsHunksSeparate(t *testing.T) {
 		{Header: "one", Lines: []patch.Line{{Kind: patch.Deletion, Text: "d1", OldNumber: 1}, {Kind: patch.Deletion, Text: "d2", OldNumber: 2}, {Kind: patch.Addition, Text: "a1", NewNumber: 1}, {Kind: patch.Addition, Text: "a2", NewNumber: 2}, {Kind: patch.Addition, Text: "a3", NewNumber: 3}, {Kind: patch.Context, Text: "c", OldNumber: 3, NewNumber: 4}}},
 		{Header: "two", Lines: []patch.Line{{Kind: patch.Addition, Text: "separate", NewNumber: 5}}},
 	}}}}
-	v := NewSplitView(p, true).(*diffView)
+	v := NewSideBySideView(p, true).(*diffView)
 	var code []entry
 	for _, current := range v.rows {
 		if current.kind == lineRow {
@@ -36,7 +36,7 @@ func TestSplitPairsUnequalChangeBlocksAndKeepsHunksSeparate(t *testing.T) {
 }
 
 func TestSplitSelectionOnlyIncludesActivePane(t *testing.T) {
-	v := NewSplitView(testPatch(), true)
+	v := NewSideBySideView(testPatch(), true)
 	first := mustFirst(t, v)
 	removed, _ := v.Search("removed one", first, Forward)
 	added, _ := v.Search("added one", first, Forward)
@@ -57,7 +57,7 @@ func TestSplitPaneSwitchingFindsRowsAboveAndBelowEmptyTargets(t *testing.T) {
 		{Kind: patch.Context, Text: "both", OldNumber: 1, NewNumber: 2},
 		{Kind: patch.Deletion, Text: "left", OldNumber: 2},
 	}}}}}}
-	v := NewSplitView(p, true)
+	v := NewSideBySideView(p, true)
 	first := mustFirst(t, v)
 	left, ok := v.SwitchPane(first, Left)
 	if !ok {
@@ -80,7 +80,7 @@ func TestSplitPaneSwitchingFindsRowsAboveAndBelowEmptyTargets(t *testing.T) {
 
 func TestSplitPaneSwitchDoesNothingWhenTargetPaneIsEmpty(t *testing.T) {
 	p := patch.Patch{Files: []patch.File{{DisplayPath: "file", Hunks: []patch.Hunk{{Header: "@@", Lines: []patch.Line{{Kind: patch.Addition, Text: "one", NewNumber: 1}, {Kind: patch.Addition, Text: "two", NewNumber: 2}}}}}}}
-	v := NewSplitView(p, true)
+	v := NewSideBySideView(p, true)
 	cursor := mustFirst(t, v)
 	if _, ok := v.SwitchPane(cursor, Left); ok {
 		t.Fatal("switched to empty pane")
@@ -89,7 +89,7 @@ func TestSplitPaneSwitchDoesNothingWhenTargetPaneIsEmpty(t *testing.T) {
 
 func TestSplitVerticalMovementSkipsEmptyActivePane(t *testing.T) {
 	p := patch.Patch{Files: []patch.File{{DisplayPath: "file", Hunks: []patch.Hunk{{Header: "@@", Lines: []patch.Line{{Kind: patch.Context, Text: "one", OldNumber: 1, NewNumber: 1}, {Kind: patch.Addition, Text: "right", NewNumber: 2}, {Kind: patch.Context, Text: "two", OldNumber: 2, NewNumber: 3}, {Kind: patch.Deletion, Text: "left", OldNumber: 3}, {Kind: patch.Context, Text: "three", OldNumber: 4, NewNumber: 4}}}}}}}
-	v := NewSplitView(p, true)
+	v := NewSideBySideView(p, true)
 	first := mustFirst(t, v)
 	left, _ := v.SwitchPane(first, Left)
 	nextLeft, _ := v.Move(left, Forward)
@@ -111,7 +111,7 @@ func TestSplitVerticalMovementAndHalfPageUseVisualRows(t *testing.T) {
 		{Kind: patch.Deletion, Text: "d2", OldNumber: 3}, {Kind: patch.Addition, Text: "a2", NewNumber: 3}, {Kind: patch.Context, Text: "c2", OldNumber: 4, NewNumber: 4},
 		{Kind: patch.Deletion, Text: "d3", OldNumber: 5}, {Kind: patch.Addition, Text: "a3", NewNumber: 5}, {Kind: patch.Context, Text: "c3", OldNumber: 6, NewNumber: 6},
 	}
-	v := NewSplitView(patch.Patch{Files: []patch.File{{DisplayPath: "file", Hunks: []patch.Hunk{{Header: "@@", Lines: lines}}}}}, true)
+	v := NewSideBySideView(patch.Patch{Files: []patch.File{{DisplayPath: "file", Hunks: []patch.Hunk{{Header: "@@", Lines: lines}}}}}, true)
 	cursor := mustFirst(t, v)
 	viewport := v.NewViewport(120, 4)
 	viewport = v.KeepVisible(viewport, cursor)
@@ -176,7 +176,7 @@ func TestKeepVisibleAccountsForStickyFileHeader(t *testing.T) {
 
 func TestSplitTabsDoNotShiftLineNumbersOrDivider(t *testing.T) {
 	p := patch.Patch{Files: []patch.File{{DisplayPath: "file", Hunks: []patch.Hunk{{Header: "@@", Lines: []patch.Line{{Kind: patch.Context, Text: "\t\tlong line", OldNumber: 1, NewNumber: 1}}}}}}}
-	v := NewSplitView(p, true)
+	v := NewSideBySideView(p, true)
 	cursor := mustFirst(t, v)
 	rendered := ansi.Strip(renderOne(v, cursor, 120, nil))
 	if strings.ContainsRune(rendered, '\t') || strings.Index(rendered, "│") != 59 || lipgloss.Width(rendered) != 120 {
@@ -199,7 +199,7 @@ func TestHorizontalScrollKeepsUnifiedGutterFixed(t *testing.T) {
 }
 
 func TestHorizontalScrollKeepsSplitGuttersAndDividerFixed(t *testing.T) {
-	v := NewSplitView(longLinePatch(), true)
+	v := NewSideBySideView(longLinePatch(), true)
 	cursor := mustFirst(t, v)
 	viewport := v.NewViewport(120, 1)
 	viewport = v.KeepVisible(viewport, cursor)
@@ -268,7 +268,7 @@ func TestRenderedCodeRowsHaveExactTerminalWidth(t *testing.T) {
 	for _, test := range []struct {
 		constructor func(patch.Patch, bool) View
 		width       int
-	}{{NewUnifiedView, 37}, {NewSplitView, 120}} {
+	}{{NewUnifiedView, 37}, {NewSideBySideView, 120}} {
 		v := test.constructor(testPatch(), true)
 		cursor := mustFirst(t, v)
 		for {

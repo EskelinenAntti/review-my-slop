@@ -20,7 +20,7 @@ import (
 func TestVisualSelectionCreatesMappedAnchorAndSubmits(t *testing.T) {
 	t.Setenv("EDITOR", "true")
 	var saved []review.Comment
-	m := New(coveragePatch(), nil, func(stored review.Comment, _ patch.Patch) (review.Comment, error) {
+	m := testModel(coveragePatch(), nil, func(stored review.Comment, _ patch.Patch) (review.Comment, error) {
 		saved = append(saved, stored)
 		stored.ID = "new"
 		return stored, nil
@@ -41,7 +41,7 @@ func TestVisualSelectionCreatesMappedAnchorAndSubmits(t *testing.T) {
 
 func TestCommentSaveFailureClearsPendingEdit(t *testing.T) {
 	t.Setenv("EDITOR", "true")
-	m := New(coveragePatch(), nil, func(review.Comment, patch.Patch) (review.Comment, error) {
+	m := testModel(coveragePatch(), nil, func(review.Comment, patch.Patch) (review.Comment, error) {
 		return review.Comment{}, fmt.Errorf("storage unavailable")
 	})
 	m = updateModel(t, m, textKey("c"))
@@ -53,7 +53,7 @@ func TestCommentSaveFailureClearsPendingEdit(t *testing.T) {
 
 func TestCommentRequiresEditor(t *testing.T) {
 	t.Setenv("EDITOR", "")
-	m := updateModel(t, New(coveragePatch(), nil, nil), textKey("c"))
+	m := updateModel(t, testModel(coveragePatch(), nil, nil), textKey("c"))
 	if m.err == nil || m.err.Error() != "$EDITOR is not set" {
 		t.Fatalf("error = %v", m.err)
 	}
@@ -125,7 +125,7 @@ func TestExternalEditorCommandReadsEditedDraft(t *testing.T) {
 func TestEmptyNewCommentIsDiscarded(t *testing.T) {
 	t.Setenv("EDITOR", "true")
 	called := false
-	m := New(coveragePatch(), nil, func(stored review.Comment, p patch.Patch) (review.Comment, error) {
+	m := testModel(coveragePatch(), nil, func(stored review.Comment, p patch.Patch) (review.Comment, error) {
 		called = true
 		return stored, nil
 	})
@@ -138,7 +138,7 @@ func TestEmptyNewCommentIsDiscarded(t *testing.T) {
 
 func TestOpenCurrentLineUsesEditorWithWorkingTreeLocation(t *testing.T) {
 	t.Setenv("EDITOR", "printf")
-	m := New(coveragePatch(), nil, nil)
+	m := testModel(coveragePatch(), nil, nil)
 	m.review.patch.Repository = "/tmp/repo with spaces"
 	m.review.cursor = findLine(t, m, "new()")
 	cmd, err := m.openCurrentLine()
@@ -153,7 +153,7 @@ func TestOpenCurrentLineUsesEditorWithWorkingTreeLocation(t *testing.T) {
 
 func TestOpenCurrentLineRequiresEditor(t *testing.T) {
 	t.Setenv("EDITOR", "")
-	m := updateModel(t, New(coveragePatch(), nil, nil), textKey("e"))
+	m := updateModel(t, testModel(coveragePatch(), nil, nil), textKey("e"))
 	if m.err == nil || m.err.Error() != "$EDITOR is not set" {
 		t.Fatalf("error = %v", m.err)
 	}
@@ -163,7 +163,7 @@ func TestInboxCommentsCanBeViewedEditedAndDeleted(t *testing.T) {
 	t.Setenv("EDITOR", "true")
 	comments := []review.Comment{{ID: "one", Body: "old body"}, {ID: "two", Body: "second"}}
 	var persisted, deleted review.Comment
-	m := New(coveragePatch(), comments, func(stored review.Comment, _ patch.Patch) (review.Comment, error) {
+	m := testModel(coveragePatch(), comments, func(stored review.Comment, _ patch.Patch) (review.Comment, error) {
 		persisted = stored
 		return stored, nil
 	})
@@ -188,7 +188,7 @@ func TestInboxCommentsCanBeViewedEditedAndDeleted(t *testing.T) {
 }
 
 func TestOpeningCommentsReloadsAcknowledgedInbox(t *testing.T) {
-	m := New(coveragePatch(), []review.Comment{{ID: "read", Body: "already read"}}, nil)
+	m := testModel(coveragePatch(), []review.Comment{{ID: "read", Body: "already read"}}, nil)
 	m.SetLoadComments(func() ([]review.Comment, error) { return nil, nil })
 
 	next, cmd := m.Update(textKey("C"))
@@ -203,7 +203,7 @@ func TestOpeningCommentsReloadsAcknowledgedInbox(t *testing.T) {
 }
 
 func TestCommentReloadFailurePreservesCurrentInbox(t *testing.T) {
-	m := New(coveragePatch(), []review.Comment{{ID: "keep", Body: "keep"}}, nil)
+	m := testModel(coveragePatch(), []review.Comment{{ID: "keep", Body: "keep"}}, nil)
 	m.SetLoadComments(func() ([]review.Comment, error) { return nil, fmt.Errorf("storage unavailable") })
 
 	next, cmd := m.Update(textKey("C"))
@@ -216,7 +216,7 @@ func TestCommentReloadFailurePreservesCurrentInbox(t *testing.T) {
 
 func TestEmptyEditedCommentIsDeleted(t *testing.T) {
 	t.Setenv("EDITOR", "true")
-	m := New(coveragePatch(), []review.Comment{{ID: "one", Body: "old"}}, nil)
+	m := testModel(coveragePatch(), []review.Comment{{ID: "one", Body: "old"}}, nil)
 	deleted := false
 	m.SetDelete(func(review.Comment, patch.Patch) error { deleted = true; return nil })
 	m = updateModel(t, m, textKey("C"))
@@ -228,7 +228,7 @@ func TestEmptyEditedCommentIsDeleted(t *testing.T) {
 }
 
 func TestCommentDeleteFailureKeepsCommentAndShowsError(t *testing.T) {
-	m := New(coveragePatch(), []review.Comment{{ID: "one", Body: "keep"}}, nil)
+	m := testModel(coveragePatch(), []review.Comment{{ID: "one", Body: "keep"}}, nil)
 	m.SetDelete(func(review.Comment, patch.Patch) error { return fmt.Errorf("delete failed") })
 	m = updateModel(t, m, textKey("C"))
 	m = updateModel(t, m, textKey("D"))
@@ -238,7 +238,7 @@ func TestCommentDeleteFailureKeepsCommentAndShowsError(t *testing.T) {
 }
 
 func TestSelectionCannotCrossHunk(t *testing.T) {
-	m := New(coveragePatch(), nil, nil)
+	m := testModel(coveragePatch(), nil, nil)
 	m = updateModel(t, m, textKey("v"))
 	for range 10 {
 		m = updateModel(t, m, textKey("j"))
@@ -250,7 +250,7 @@ func TestSelectionCannotCrossHunk(t *testing.T) {
 }
 
 func TestVimSequencesAndLayoutToggle(t *testing.T) {
-	m := New(coveragePatch(), nil, nil)
+	m := testModel(coveragePatch(), nil, nil)
 	var saved []bool
 	m.SetSideBySide(false, func(enabled bool) error { saved = append(saved, enabled); return nil })
 	m = updateModel(t, m, tea.WindowSizeMsg{Width: 120, Height: 20})
@@ -276,7 +276,7 @@ func TestVimSequencesAndLayoutToggle(t *testing.T) {
 }
 
 func TestSavedSideBySideCanBeDisabledInNarrowTerminal(t *testing.T) {
-	m := New(coveragePatch(), nil, nil)
+	m := testModel(coveragePatch(), nil, nil)
 	var saved []bool
 	m.SetSideBySide(true, func(enabled bool) error { saved = append(saved, enabled); return nil })
 	m = updateModel(t, m, tea.WindowSizeMsg{Width: 80, Height: 20})
@@ -287,7 +287,7 @@ func TestSavedSideBySideCanBeDisabledInNarrowTerminal(t *testing.T) {
 }
 
 func TestResizeAcrossSideBySideThresholdPreservesCursorScreenRow(t *testing.T) {
-	m := New(coveragePatch(), nil, nil)
+	m := testModel(coveragePatch(), nil, nil)
 	m.SetSideBySide(true, nil)
 	m.review.cursor = findLine(t, m, "keep()")
 	m.review.viewport = m.review.view.Align(m.review.viewport, m.review.cursor, view.Middle)
@@ -300,7 +300,7 @@ func TestResizeAcrossSideBySideThresholdPreservesCursorScreenRow(t *testing.T) {
 }
 
 func TestZSequencesPositionCurrentLineInViewport(t *testing.T) {
-	m := New(longModelPatch(), nil, nil)
+	m := testModel(longModelPatch(), nil, nil)
 	for range 10 {
 		m.move(view.Forward)
 	}
@@ -320,7 +320,7 @@ func TestZSequencesPositionCurrentLineInViewport(t *testing.T) {
 }
 
 func TestPendingKeyIsConsumedByNextKey(t *testing.T) {
-	m := New(coveragePatch(), nil, nil)
+	m := testModel(coveragePatch(), nil, nil)
 	m = updateModel(t, m, textKey("G"))
 	last := m.review.cursor
 	m = updateModel(t, m, textKey("g"))
@@ -332,7 +332,7 @@ func TestPendingKeyIsConsumedByNextKey(t *testing.T) {
 }
 
 func TestStatusShowsBasicBindingsAndHelpShowsCompleteKeyMap(t *testing.T) {
-	m := New(coveragePatch(), nil, nil)
+	m := testModel(coveragePatch(), nil, nil)
 	status := ansi.Strip(m.renderStatus())
 	if !strings.HasPrefix(status, "j/k/h/l move") || !strings.HasSuffix(status, "local changes") {
 		t.Fatalf("status=%q", status)
@@ -346,7 +346,7 @@ func TestStatusShowsBasicBindingsAndHelpShowsCompleteKeyMap(t *testing.T) {
 }
 
 func TestStatusShowsProgressOnlyAfterViewportMoves(t *testing.T) {
-	m := New(longModelPatch(), nil, nil)
+	m := testModel(longModelPatch(), nil, nil)
 	m = updateModel(t, m, tea.WindowSizeMsg{Width: 80, Height: 9})
 	if label := m.viewLabel(); label != "local changes" {
 		t.Fatalf("initial label=%q", label)
@@ -368,7 +368,7 @@ func TestStatusShowsProgressOnlyAfterViewportMoves(t *testing.T) {
 }
 
 func TestStatusHidesProgressWhenDiffFitsViewport(t *testing.T) {
-	m := New(coveragePatch(), nil, nil)
+	m := testModel(coveragePatch(), nil, nil)
 	m = updateModel(t, m, tea.WindowSizeMsg{Width: 100, Height: 100})
 	if label := m.viewLabel(); label != "local changes" {
 		t.Fatalf("label=%q", label)
@@ -383,7 +383,7 @@ func TestRenderKeyBindingsAlignsDescriptions(t *testing.T) {
 }
 
 func TestSideBySidePaneSwitchingUsesCtrlWSequences(t *testing.T) {
-	m := New(coveragePatch(), nil, nil)
+	m := testModel(coveragePatch(), nil, nil)
 	m.width = 120
 	m.setSideBySide(true)
 	m.review.cursor = findLine(t, m, "new()")
@@ -400,7 +400,7 @@ func TestSideBySidePaneSwitchingUsesCtrlWSequences(t *testing.T) {
 }
 
 func TestHorizontalScrollKeysMoveByStepAndReset(t *testing.T) {
-	m := New(longModelPatch(), nil, nil)
+	m := testModel(longModelPatch(), nil, nil)
 	m.width = 37
 	m.review.viewport = m.review.view.Resize(m.review.viewport, m.width, m.screenBodyHeight())
 	m = updateModel(t, m, textKey("l"))
@@ -424,7 +424,7 @@ func TestHorizontalScrollKeysMoveByStepAndReset(t *testing.T) {
 }
 
 func TestFocusAndManualRefreshLoadCurrentView(t *testing.T) {
-	m := New(coveragePatch(), nil, nil)
+	m := testModel(coveragePatch(), nil, nil)
 	m.SetDefaultBranch("main")
 	m.showDefault = true
 	var requested []string
@@ -452,7 +452,7 @@ func TestFocusAndManualRefreshLoadCurrentView(t *testing.T) {
 }
 
 func TestSourceEditorCompletionRefreshesDiff(t *testing.T) {
-	m := New(coveragePatch(), nil, nil)
+	m := testModel(coveragePatch(), nil, nil)
 	refreshed := coveragePatch()
 	refreshed.Fingerprint = "after-editor"
 	m.SetRefresh(func(string) (patch.Patch, error) { return refreshed, nil })
@@ -469,14 +469,14 @@ func TestSourceEditorCompletionRefreshesDiff(t *testing.T) {
 }
 
 func TestHeaderShowsAddedAndRemovedLineCounts(t *testing.T) {
-	header := strings.SplitN(ansi.Strip(New(coveragePatch(), nil, nil).render()), "\n", 2)[0]
+	header := strings.SplitN(ansi.Strip(testModel(coveragePatch(), nil, nil).render()), "\n", 2)[0]
 	if header != "review-my-slop  +2-1" {
 		t.Fatalf("header = %q", header)
 	}
 }
 
 func TestSearchMovesIncrementallyRepeatsAndRestoresOrigin(t *testing.T) {
-	m := New(coveragePatch(), nil, nil)
+	m := testModel(coveragePatch(), nil, nil)
 	origin := m.review.cursor
 	m = updateModel(t, m, textKey("/"))
 	m = updateModel(t, m, textKey("keep"))
@@ -505,7 +505,7 @@ func TestSearchMovesIncrementallyRepeatsAndRestoresOrigin(t *testing.T) {
 }
 
 func TestSearchMatchesFileNamesAndBackspaceRestoresOrigin(t *testing.T) {
-	m := New(coveragePatch(), nil, nil)
+	m := testModel(coveragePatch(), nil, nil)
 	origin := m.review.cursor
 	m = updateModel(t, m, textKey("/"))
 	m = updateModel(t, m, textKey("main.go"))
@@ -522,7 +522,7 @@ func TestSearchMatchesFileNamesAndBackspaceRestoresOrigin(t *testing.T) {
 }
 
 func TestSideBySideSearchActivatesPaneAndCancelRestoresIt(t *testing.T) {
-	m := New(coveragePatch(), nil, nil)
+	m := testModel(coveragePatch(), nil, nil)
 	m.width = 120
 	m.setSideBySide(true)
 	origin := m.review.cursor
@@ -538,7 +538,7 @@ func TestSideBySideSearchActivatesPaneAndCancelRestoresIt(t *testing.T) {
 }
 
 func TestTabTogglesDefaultBranchAndIgnoresStaleRefresh(t *testing.T) {
-	m := New(coveragePatch(), nil, nil)
+	m := testModel(coveragePatch(), nil, nil)
 	m.SetDefaultBranch("main")
 	m.SetRefresh(func(string) (patch.Patch, error) { return coveragePatch(), nil })
 	next, _ := m.Update(textKey("tab"))
@@ -559,7 +559,7 @@ func TestTabTogglesDefaultBranchAndIgnoresStaleRefresh(t *testing.T) {
 }
 
 func TestTabDoesNothingWithoutDefaultBranch(t *testing.T) {
-	m := New(coveragePatch(), nil, nil)
+	m := testModel(coveragePatch(), nil, nil)
 	refreshed := false
 	m.SetRefresh(func(string) (patch.Patch, error) {
 		refreshed = true
@@ -573,7 +573,7 @@ func TestTabDoesNothingWithoutDefaultBranch(t *testing.T) {
 }
 
 func TestDiffRefreshFallbackAndEmptyDiff(t *testing.T) {
-	m := New(patch.Patch{}, nil, nil)
+	m := testModel(patch.Patch{}, nil, nil)
 	refreshed := coveragePatch()
 	refreshed.Fingerprint = "new"
 	m = updateModel(t, m, refreshDiffMsg{patch: refreshed})
@@ -594,7 +594,7 @@ func TestDiffRefreshFallbackAndEmptyDiff(t *testing.T) {
 func TestCommentAfterRefreshUsesCurrentPatch(t *testing.T) {
 	t.Setenv("EDITOR", "true")
 	var saved patch.Patch
-	m := New(coveragePatch(), nil, func(stored review.Comment, p patch.Patch) (review.Comment, error) {
+	m := testModel(coveragePatch(), nil, func(stored review.Comment, p patch.Patch) (review.Comment, error) {
 		saved = p
 		return stored, nil
 	})
@@ -609,7 +609,7 @@ func TestCommentAfterRefreshUsesCurrentPatch(t *testing.T) {
 }
 
 func TestViewPreservesTerminalColors(t *testing.T) {
-	result := New(coveragePatch(), nil, nil).View()
+	result := testModel(coveragePatch(), nil, nil).View()
 	if result.BackgroundColor != nil || result.ForegroundColor != nil || !result.AltScreen || !result.ReportFocus {
 		t.Fatalf("view=%#v", result)
 	}

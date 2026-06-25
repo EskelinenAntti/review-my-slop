@@ -37,7 +37,7 @@ func NewUnifiedView(p patch.Patch, dark bool) View {
 	return v
 }
 
-func NewSplitView(p patch.Patch, dark bool) View {
+func NewSideBySideView(p patch.Patch, dark bool) View {
 	v := &diffView{patch: p, split: true, dark: dark}
 	v.buildSplit()
 	return v
@@ -50,7 +50,7 @@ func (v *diffView) buildUnified() {
 		for _, metadata := range file.Metadata {
 			v.rows = append(v.rows, entry{kind: metadataRow, file: fileIndex, hunk: -1, leftLine: -1, rightLine: -1, text: metadata})
 		}
-		highlighted := highlight.Sources(file.Path(), file.OldSource, file.NewSource, v.dark)
+		highlighted := v.highlight(file)
 		for hunkIndex := range file.Hunks {
 			hunk := &file.Hunks[hunkIndex]
 			v.rows = append(v.rows, entry{kind: hunkRow, file: fileIndex, hunk: hunkIndex, leftLine: -1, rightLine: -1, text: hunkHeader(hunk.Header)})
@@ -74,7 +74,7 @@ func (v *diffView) buildSplit() {
 		for _, metadata := range file.Metadata {
 			v.rows = append(v.rows, entry{kind: metadataRow, file: fileIndex, hunk: -1, leftLine: -1, rightLine: -1, text: metadata})
 		}
-		highlighted := highlight.Sources(file.Path(), file.OldSource, file.NewSource, v.dark)
+		highlighted := v.highlight(file)
 		for hunkIndex := range file.Hunks {
 			hunk := &file.Hunks[hunkIndex]
 			v.rows = append(v.rows, entry{kind: hunkRow, file: fileIndex, hunk: hunkIndex, leftLine: -1, rightLine: -1, text: hunkHeader(hunk.Header)})
@@ -118,6 +118,10 @@ func (v *diffView) buildSplit() {
 			}
 		}
 	}
+}
+
+func (v *diffView) highlight(file *patch.File) highlight.Pair {
+	return highlight.Sources(file.Path(), file.OldSource, file.NewSource, v.dark)
 }
 
 func hunkHeader(header string) string {
