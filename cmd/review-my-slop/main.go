@@ -9,7 +9,6 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/term"
 
-	"github.com/eskelinenantti/review-my-slop/internal/gitdiff"
 	"github.com/eskelinenantti/review-my-slop/internal/inbox"
 	"github.com/eskelinenantti/review-my-slop/internal/patch"
 	"github.com/eskelinenantti/review-my-slop/internal/review"
@@ -45,7 +44,7 @@ func runCode(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	loaded, err := (gitdiff.Loader{}).Load(ctx, current)
+	loaded, err := (patch.Loader{}).Load(ctx, current)
 	if err != nil {
 		return err
 	}
@@ -62,7 +61,7 @@ func runCode(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	loader := gitdiff.Loader{}
+	loader := patch.Loader{}
 	defaultBranch, err := loader.DefaultBranch(ctx, current)
 	if err != nil {
 		return err
@@ -117,7 +116,7 @@ func runComments(ctx context.Context, output io.Writer) error {
 }
 
 func runCommentsAt(ctx context.Context, current string, output io.Writer) error {
-	root, err := (gitdiff.Loader{}).Root(ctx, current)
+	root, err := (patch.Loader{}).Root(ctx, current)
 	if err != nil {
 		return err
 	}
