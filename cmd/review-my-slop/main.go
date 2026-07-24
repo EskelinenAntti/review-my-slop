@@ -44,7 +44,8 @@ func runCode(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	loaded, err := (patch.Loader{}).Load(ctx, current)
+	loader := patch.Loader{}
+	loaded, err := loader.Load(ctx, current)
 	if err != nil {
 		return err
 	}
@@ -61,7 +62,6 @@ func runCode(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	loader := patch.Loader{}
 	defaultBranch, err := loader.DefaultBranch(ctx, current)
 	if err != nil {
 		return err
