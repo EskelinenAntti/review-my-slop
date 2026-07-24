@@ -21,7 +21,7 @@ func TestLoaderIncludesUnstagedAndUntrackedButNotStagedOnly(t *testing.T) {
 	git(t, repo, "add", "staged.txt")
 	writeFile(t, repo, "new.py", "def hello():\n    return 'world'\n")
 
-	got, err := (Loader{}).Load(context.Background(), repo)
+	got, err := Load(context.Background(), repo)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -74,7 +74,7 @@ func TestLoaderShowsBinaryMetadataWithoutBinaryDiffLines(t *testing.T) {
 	writeFile(t, repo, "tracked.bin", "\x00new")
 	writeFile(t, repo, "untracked.bin", "\x00content")
 
-	got, err := (Loader{}).Load(context.Background(), repo)
+	got, err := Load(context.Background(), repo)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -109,7 +109,7 @@ func TestLoadBranchIncludesCommittedStagedUnstagedAndUntrackedChanges(t *testing
 	writeFile(t, repo, "mixed.txt", "unstaged on feature\n")
 	writeFile(t, repo, "untracked.txt", "untracked on feature\n")
 
-	got, err := (Loader{}).LoadBranch(context.Background(), repo, "main")
+	got, err := LoadBranch(context.Background(), repo, "main")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -152,7 +152,7 @@ func TestDefaultBranchFallbacks(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			root := t.TempDir()
 			runner := &defaultBranchRunner{root: root, originHEAD: tt.originHEAD, available: tt.available}
-			got, err := (Loader{Runner: runner}).DefaultBranch(context.Background(), root)
+			got, err := (loader{Runner: runner}).DefaultBranch(context.Background(), root)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -200,7 +200,7 @@ func TestLoaderDoesNotFollowUntrackedSymlink(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	got, err := (Loader{}).Load(context.Background(), repo)
+	got, err := Load(context.Background(), repo)
 	if err != nil {
 		t.Fatal(err)
 	}

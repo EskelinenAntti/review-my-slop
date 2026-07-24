@@ -42,11 +42,15 @@ func (ExecRunner) Run(ctx context.Context, dir string, args ...string) ([]byte, 
 	return nil, fmt.Errorf("git %s: %w", strings.Join(args, " "), err)
 }
 
-type Loader struct {
+type loader struct {
 	Runner Runner
 }
 
-func (l Loader) Root(ctx context.Context, dir string) (string, error) {
+func Root(ctx context.Context, dir string) (string, error) {
+	return loader{Runner: ExecRunner{}}.Root(ctx, dir)
+}
+
+func (l loader) Root(ctx context.Context, dir string) (string, error) {
 	if l.Runner == nil {
 		l.Runner = ExecRunner{}
 	}
@@ -61,7 +65,11 @@ func (l Loader) Root(ctx context.Context, dir string) (string, error) {
 	return root, nil
 }
 
-func (l Loader) Load(ctx context.Context, dir string) (Patch, error) {
+func Load(ctx context.Context, dir string) (Patch, error) {
+	return loader{Runner: ExecRunner{}}.Load(ctx, dir)
+}
+
+func (l loader) Load(ctx context.Context, dir string) (Patch, error) {
 	if l.Runner == nil {
 		l.Runner = ExecRunner{}
 	}
@@ -77,7 +85,11 @@ func (l Loader) Load(ctx context.Context, dir string) (Patch, error) {
 	return l.build(ctx, root, "", raw, readIndex)
 }
 
-func (l Loader) LoadBranch(ctx context.Context, dir, branch string) (Patch, error) {
+func LoadBranch(ctx context.Context, dir, branch string) (Patch, error) {
+	return loader{Runner: ExecRunner{}}.LoadBranch(ctx, dir, branch)
+}
+
+func (l loader) LoadBranch(ctx context.Context, dir, branch string) (Patch, error) {
 	if l.Runner == nil {
 		l.Runner = ExecRunner{}
 	}
@@ -100,7 +112,11 @@ func (l Loader) LoadBranch(ctx context.Context, dir, branch string) (Patch, erro
 	return l.build(ctx, root, branch, raw, readBase)
 }
 
-func (l Loader) DefaultBranch(ctx context.Context, dir string) (string, error) {
+func DefaultBranch(ctx context.Context, dir string) (string, error) {
+	return loader{Runner: ExecRunner{}}.DefaultBranch(ctx, dir)
+}
+
+func (l loader) DefaultBranch(ctx context.Context, dir string) (string, error) {
 	if l.Runner == nil {
 		l.Runner = ExecRunner{}
 	}
@@ -111,7 +127,7 @@ func (l Loader) DefaultBranch(ctx context.Context, dir string) (string, error) {
 	return l.defaultBranch(ctx, root), nil
 }
 
-func (l Loader) diff(ctx context.Context, root string, revisions ...string) ([]byte, error) {
+func (l loader) diff(ctx context.Context, root string, revisions ...string) ([]byte, error) {
 	args := []string{
 		"-c", "core.quotepath=false",
 		"-c", "diff.external=",
@@ -125,7 +141,7 @@ func (l Loader) diff(ctx context.Context, root string, revisions ...string) ([]b
 
 type sourceReader func(context.Context, Runner, string, string) string
 
-func (l Loader) build(ctx context.Context, root, base string, raw []byte, readOld sourceReader) (Patch, error) {
+func (l loader) build(ctx context.Context, root, base string, raw []byte, readOld sourceReader) (Patch, error) {
 	files, err := parseTracked(ctx, l.Runner, root, raw, readOld)
 	if err != nil {
 		return Patch{}, err
@@ -152,7 +168,7 @@ func (l Loader) build(ctx context.Context, root, base string, raw []byte, readOl
 	}, nil
 }
 
-func (l Loader) defaultBranch(ctx context.Context, root string) string {
+func (l loader) defaultBranch(ctx context.Context, root string) string {
 	if out, err := l.Runner.Run(ctx, root, "symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD"); err == nil {
 		return strings.TrimSpace(string(out))
 	}
@@ -203,7 +219,7 @@ func parseTracked(ctx context.Context, runner Runner, root string, raw []byte, r
 	return files, nil
 }
 
-func (l Loader) loadUntracked(ctx context.Context, root string) ([]File, error) {
+func (l loader) loadUntracked(ctx context.Context, root string) ([]File, error) {
 	out, err := l.Runner.Run(ctx, root, "ls-files", "--others", "--exclude-standard", "-z")
 	if err != nil {
 		return nil, err

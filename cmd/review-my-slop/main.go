@@ -44,8 +44,7 @@ func runCode(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	loader := patch.Loader{}
-	loaded, err := loader.Load(ctx, current)
+	loadedPatch, err := patch.Load(ctx, current)
 	if err != nil {
 		return err
 	}
@@ -54,7 +53,7 @@ func runCode(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	comments, err := store.List(loaded.Repository)
+	comments, err := store.List(loadedPatch.Repository)
 	if err != nil {
 		return err
 	}
@@ -62,7 +61,7 @@ func runCode(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	defaultBranch, err := loader.DefaultBranch(ctx, current)
+	defaultBranch, err := patch.DefaultBranch(ctx, current)
 	if err != nil {
 		return err
 	}
@@ -74,13 +73,13 @@ func runCode(ctx context.Context) error {
 		return store.Add(comment)
 	}
 	size := initialTerminalSize()
-	model := tui.New(loaded, comments, saveComment, tui.InitialLayout{
+	model := tui.New(loadedPatch, comments, saveComment, tui.InitialLayout{
 		SideBySide:     sideBySide,
 		SaveSideBySide: store.SetSideBySide,
 		Size:           size,
 	})
 	model.SetLoadComments(func() ([]review.Comment, error) {
-		return store.List(loaded.Repository)
+		return store.List(loadedPatch.Repository)
 	})
 	model.SetDelete(func(comment review.Comment, current patch.Patch) error {
 		return store.Delete(current.Repository, comment.ID)
@@ -88,9 +87,9 @@ func runCode(ctx context.Context) error {
 	model.SetDefaultBranch(defaultBranch)
 	model.SetRefresh(func(branch string) (patch.Patch, error) {
 		if branch != "" {
-			return loader.LoadBranch(ctx, current, branch)
+			return patch.LoadBranch(ctx, current, branch)
 		}
-		return loader.Load(ctx, current)
+		return patch.Load(ctx, current)
 	})
 	program := tea.NewProgram(model, tea.WithWindowSize(size.Width, size.Height))
 	_, err = program.Run()
@@ -116,7 +115,7 @@ func runComments(ctx context.Context, output io.Writer) error {
 }
 
 func runCommentsAt(ctx context.Context, current string, output io.Writer) error {
-	root, err := (patch.Loader{}).Root(ctx, current)
+	root, err := patch.Root(ctx, current)
 	if err != nil {
 		return err
 	}
