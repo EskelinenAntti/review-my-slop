@@ -10,7 +10,7 @@ import (
 	"github.com/charmbracelet/x/term"
 
 	"github.com/eskelinenantti/review-my-slop/internal/inbox"
-	"github.com/eskelinenantti/review-my-slop/internal/patch"
+	"github.com/eskelinenantti/review-my-slop/internal/repository"
 	"github.com/eskelinenantti/review-my-slop/internal/review"
 	"github.com/eskelinenantti/review-my-slop/internal/tui"
 )
@@ -44,7 +44,7 @@ func runCode(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	loadedPatch, err := patch.Load(ctx, current)
+	loadedPatch, err := repository.Load(ctx, current)
 	if err != nil {
 		return err
 	}
@@ -61,11 +61,11 @@ func runCode(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	defaultBranch, err := patch.DefaultBranch(ctx, current)
+	defaultBranch, err := repository.DefaultBranch(ctx, current)
 	if err != nil {
 		return err
 	}
-	saveComment := func(comment review.Comment, current patch.Patch) (review.Comment, error) {
+	saveComment := func(comment review.Comment, current repository.Patch) (review.Comment, error) {
 		comment.Repository = current.Repository
 		if comment.ID != "" {
 			return comment, store.Update(comment)
@@ -81,15 +81,15 @@ func runCode(ctx context.Context) error {
 	model.SetLoadComments(func() ([]review.Comment, error) {
 		return store.List(loadedPatch.Repository)
 	})
-	model.SetDelete(func(comment review.Comment, current patch.Patch) error {
+	model.SetDelete(func(comment review.Comment, current repository.Patch) error {
 		return store.Delete(current.Repository, comment.ID)
 	})
 	model.SetDefaultBranch(defaultBranch)
-	model.SetRefresh(func(branch string) (patch.Patch, error) {
+	model.SetRefresh(func(branch string) (repository.Patch, error) {
 		if branch != "" {
-			return patch.LoadBranch(ctx, current, branch)
+			return repository.LoadBranch(ctx, current, branch)
 		}
-		return patch.Load(ctx, current)
+		return repository.Load(ctx, current)
 	})
 	program := tea.NewProgram(model, tea.WithWindowSize(size.Width, size.Height))
 	_, err = program.Run()
@@ -115,7 +115,7 @@ func runComments(ctx context.Context, output io.Writer) error {
 }
 
 func runCommentsAt(ctx context.Context, current string, output io.Writer) error {
-	root, err := patch.Root(ctx, current)
+	root, err := repository.Root(ctx, current)
 	if err != nil {
 		return err
 	}

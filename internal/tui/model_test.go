@@ -10,11 +10,11 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/eskelinenantti/review-my-slop/internal/editor"
-	"github.com/eskelinenantti/review-my-slop/internal/patch"
+	"github.com/eskelinenantti/review-my-slop/internal/repository"
 	"github.com/eskelinenantti/review-my-slop/internal/review"
 )
 
-func testModel(p patch.Patch, comments []review.Comment, save SaveCommentFunc) Model {
+func testModel(p repository.Patch, comments []review.Comment, save SaveCommentFunc) Model {
 	return New(p, comments, save, InitialLayout{Size: Size{Width: 100, Height: 30}})
 }
 
@@ -98,8 +98,8 @@ func TestViewSwitchPreservesSemanticCursor(t *testing.T) {
 }
 
 func TestCommentSaveUsesPatchAndPreservesAnchor(t *testing.T) {
-	var savedPatch patch.Patch
-	m := testModel(modelPatch(), nil, func(stored review.Comment, p patch.Patch) (review.Comment, error) {
+	var savedPatch repository.Patch
+	m := testModel(modelPatch(), nil, func(stored review.Comment, p repository.Patch) (review.Comment, error) {
 		savedPatch = p
 		stored.ID = "1"
 		return stored, nil
@@ -129,7 +129,7 @@ func TestRenderingAndKeyBindingsRemainAvailable(t *testing.T) {
 }
 
 func TestEmptyViewKeepsKeyboardHintAtBottom(t *testing.T) {
-	m := testModel(patch.Patch{}, nil, nil)
+	m := testModel(repository.Patch{}, nil, nil)
 	m.width, m.height = 80, 10
 
 	lines := strings.Split(m.render(), "\n")
@@ -191,6 +191,6 @@ func TestCommentDraftRoundTrip(t *testing.T) {
 	}
 }
 
-func modelPatch() patch.Patch {
-	return patch.Patch{Repository: "/repo", Fingerprint: "old", Files: []patch.File{{DisplayPath: "main.go", OldPath: "main.go", NewPath: "main.go", Hunks: []patch.Hunk{{Header: "@@ -1,2 +1,2 @@", Lines: []patch.Line{{Kind: patch.Context, Text: "keep()", OldNumber: 1, NewNumber: 1}, {Kind: patch.Deletion, Text: "old()", OldNumber: 2}, {Kind: patch.Addition, Text: "new()", NewNumber: 2}}}}}}}
+func modelPatch() repository.Patch {
+	return repository.Patch{Repository: "/repo", Fingerprint: "old", Files: []repository.File{{DisplayPath: "main.go", OldPath: "main.go", NewPath: "main.go", Hunks: []repository.Hunk{{Header: "@@ -1,2 +1,2 @@", Lines: []repository.Line{{Kind: repository.Context, Text: "keep()", OldNumber: 1, NewNumber: 1}, {Kind: repository.Deletion, Text: "old()", OldNumber: 2}, {Kind: repository.Addition, Text: "new()", NewNumber: 2}}}}}}}
 }

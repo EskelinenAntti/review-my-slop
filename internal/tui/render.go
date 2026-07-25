@@ -8,7 +8,7 @@ import (
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 
-	"github.com/eskelinenantti/review-my-slop/internal/patch"
+	"github.com/eskelinenantti/review-my-slop/internal/repository"
 )
 
 func (m Model) View() tea.View {
@@ -63,14 +63,14 @@ func (m Model) renderScreen(header string, body []string, footer string) string 
 	return strings.Join(lines, "\n")
 }
 
-func patchLineCounts(p patch.Patch) (added, removed int) {
+func patchLineCounts(p repository.Patch) (added, removed int) {
 	for _, file := range p.Files {
 		for _, hunk := range file.Hunks {
 			for _, line := range hunk.Lines {
-				if line.Kind == patch.Addition {
+				if line.Kind == repository.Addition {
 					added++
 				}
-				if line.Kind == patch.Deletion {
+				if line.Kind == repository.Deletion {
 					removed++
 				}
 			}

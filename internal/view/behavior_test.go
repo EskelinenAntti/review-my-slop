@@ -9,13 +9,13 @@ import (
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 
-	"github.com/eskelinenantti/review-my-slop/internal/patch"
+	"github.com/eskelinenantti/review-my-slop/internal/repository"
 )
 
 func TestSplitPairsUnequalChangeBlocksAndKeepsHunksSeparate(t *testing.T) {
-	p := patch.Patch{Files: []patch.File{{DisplayPath: "file", Hunks: []patch.Hunk{
-		{Header: "one", Lines: []patch.Line{{Kind: patch.Deletion, Text: "d1", OldNumber: 1}, {Kind: patch.Deletion, Text: "d2", OldNumber: 2}, {Kind: patch.Addition, Text: "a1", NewNumber: 1}, {Kind: patch.Addition, Text: "a2", NewNumber: 2}, {Kind: patch.Addition, Text: "a3", NewNumber: 3}, {Kind: patch.Context, Text: "c", OldNumber: 3, NewNumber: 4}}},
-		{Header: "two", Lines: []patch.Line{{Kind: patch.Addition, Text: "separate", NewNumber: 5}}},
+	p := repository.Patch{Files: []repository.File{{DisplayPath: "file", Hunks: []repository.Hunk{
+		{Header: "one", Lines: []repository.Line{{Kind: repository.Deletion, Text: "d1", OldNumber: 1}, {Kind: repository.Deletion, Text: "d2", OldNumber: 2}, {Kind: repository.Addition, Text: "a1", NewNumber: 1}, {Kind: repository.Addition, Text: "a2", NewNumber: 2}, {Kind: repository.Addition, Text: "a3", NewNumber: 3}, {Kind: repository.Context, Text: "c", OldNumber: 3, NewNumber: 4}}},
+		{Header: "two", Lines: []repository.Line{{Kind: repository.Addition, Text: "separate", NewNumber: 5}}},
 	}}}}
 	v := NewSideBySideView(p, true).(*diffView)
 	var code []entry
@@ -42,20 +42,20 @@ func TestSplitSelectionOnlyIncludesActivePane(t *testing.T) {
 	added, _ := v.Search("added one", first, Forward)
 	left := v.BeginSelection(removed)
 	left, ok := v.ExtendSelection(left, removed)
-	if !ok || len(v.Lines(left)) != 1 || v.Lines(left)[0].Kind != patch.Deletion {
+	if !ok || len(v.Lines(left)) != 1 || v.Lines(left)[0].Kind != repository.Deletion {
 		t.Fatalf("left lines = %#v", v.Lines(left))
 	}
 	right := v.BeginSelection(added)
-	if len(v.Lines(right)) != 1 || v.Lines(right)[0].Kind != patch.Addition {
+	if len(v.Lines(right)) != 1 || v.Lines(right)[0].Kind != repository.Addition {
 		t.Fatalf("right lines = %#v", v.Lines(right))
 	}
 }
 
 func TestSplitPaneSwitchingFindsRowsAboveAndBelowEmptyTargets(t *testing.T) {
-	p := patch.Patch{Files: []patch.File{{DisplayPath: "file", Hunks: []patch.Hunk{{Header: "@@", Lines: []patch.Line{
-		{Kind: patch.Addition, Text: "right", NewNumber: 1},
-		{Kind: patch.Context, Text: "both", OldNumber: 1, NewNumber: 2},
-		{Kind: patch.Deletion, Text: "left", OldNumber: 2},
+	p := repository.Patch{Files: []repository.File{{DisplayPath: "file", Hunks: []repository.Hunk{{Header: "@@", Lines: []repository.Line{
+		{Kind: repository.Addition, Text: "right", NewNumber: 1},
+		{Kind: repository.Context, Text: "both", OldNumber: 1, NewNumber: 2},
+		{Kind: repository.Deletion, Text: "left", OldNumber: 2},
 	}}}}}}
 	v := NewSideBySideView(p, true)
 	first := mustFirst(t, v)
@@ -79,7 +79,7 @@ func TestSplitPaneSwitchingFindsRowsAboveAndBelowEmptyTargets(t *testing.T) {
 }
 
 func TestSplitPaneSwitchDoesNothingWhenTargetPaneIsEmpty(t *testing.T) {
-	p := patch.Patch{Files: []patch.File{{DisplayPath: "file", Hunks: []patch.Hunk{{Header: "@@", Lines: []patch.Line{{Kind: patch.Addition, Text: "one", NewNumber: 1}, {Kind: patch.Addition, Text: "two", NewNumber: 2}}}}}}}
+	p := repository.Patch{Files: []repository.File{{DisplayPath: "file", Hunks: []repository.Hunk{{Header: "@@", Lines: []repository.Line{{Kind: repository.Addition, Text: "one", NewNumber: 1}, {Kind: repository.Addition, Text: "two", NewNumber: 2}}}}}}}
 	v := NewSideBySideView(p, true)
 	cursor := mustFirst(t, v)
 	if _, ok := v.SwitchPane(cursor, Left); ok {
@@ -88,7 +88,7 @@ func TestSplitPaneSwitchDoesNothingWhenTargetPaneIsEmpty(t *testing.T) {
 }
 
 func TestSplitVerticalMovementSkipsEmptyActivePane(t *testing.T) {
-	p := patch.Patch{Files: []patch.File{{DisplayPath: "file", Hunks: []patch.Hunk{{Header: "@@", Lines: []patch.Line{{Kind: patch.Context, Text: "one", OldNumber: 1, NewNumber: 1}, {Kind: patch.Addition, Text: "right", NewNumber: 2}, {Kind: patch.Context, Text: "two", OldNumber: 2, NewNumber: 3}, {Kind: patch.Deletion, Text: "left", OldNumber: 3}, {Kind: patch.Context, Text: "three", OldNumber: 4, NewNumber: 4}}}}}}}
+	p := repository.Patch{Files: []repository.File{{DisplayPath: "file", Hunks: []repository.Hunk{{Header: "@@", Lines: []repository.Line{{Kind: repository.Context, Text: "one", OldNumber: 1, NewNumber: 1}, {Kind: repository.Addition, Text: "right", NewNumber: 2}, {Kind: repository.Context, Text: "two", OldNumber: 2, NewNumber: 3}, {Kind: repository.Deletion, Text: "left", OldNumber: 3}, {Kind: repository.Context, Text: "three", OldNumber: 4, NewNumber: 4}}}}}}}
 	v := NewSideBySideView(p, true)
 	first := mustFirst(t, v)
 	left, _ := v.SwitchPane(first, Left)
@@ -106,12 +106,12 @@ func TestSplitVerticalMovementSkipsEmptyActivePane(t *testing.T) {
 }
 
 func TestSplitVerticalMovementAndHalfPageUseVisualRows(t *testing.T) {
-	lines := []patch.Line{
-		{Kind: patch.Deletion, Text: "d1", OldNumber: 1}, {Kind: patch.Addition, Text: "a1", NewNumber: 1}, {Kind: patch.Context, Text: "c1", OldNumber: 2, NewNumber: 2},
-		{Kind: patch.Deletion, Text: "d2", OldNumber: 3}, {Kind: patch.Addition, Text: "a2", NewNumber: 3}, {Kind: patch.Context, Text: "c2", OldNumber: 4, NewNumber: 4},
-		{Kind: patch.Deletion, Text: "d3", OldNumber: 5}, {Kind: patch.Addition, Text: "a3", NewNumber: 5}, {Kind: patch.Context, Text: "c3", OldNumber: 6, NewNumber: 6},
+	lines := []repository.Line{
+		{Kind: repository.Deletion, Text: "d1", OldNumber: 1}, {Kind: repository.Addition, Text: "a1", NewNumber: 1}, {Kind: repository.Context, Text: "c1", OldNumber: 2, NewNumber: 2},
+		{Kind: repository.Deletion, Text: "d2", OldNumber: 3}, {Kind: repository.Addition, Text: "a2", NewNumber: 3}, {Kind: repository.Context, Text: "c2", OldNumber: 4, NewNumber: 4},
+		{Kind: repository.Deletion, Text: "d3", OldNumber: 5}, {Kind: repository.Addition, Text: "a3", NewNumber: 5}, {Kind: repository.Context, Text: "c3", OldNumber: 6, NewNumber: 6},
 	}
-	v := NewSideBySideView(patch.Patch{Files: []patch.File{{DisplayPath: "file", Hunks: []patch.Hunk{{Header: "@@", Lines: lines}}}}}, true)
+	v := NewSideBySideView(repository.Patch{Files: []repository.File{{DisplayPath: "file", Hunks: []repository.Hunk{{Header: "@@", Lines: lines}}}}}, true)
 	cursor := mustFirst(t, v)
 	viewport := v.NewViewport(120, 4)
 	viewport = v.KeepVisible(viewport, cursor)
@@ -127,14 +127,14 @@ func TestSplitVerticalMovementAndHalfPageUseVisualRows(t *testing.T) {
 }
 
 func TestFileHeaderSticksWithoutCoveringDiffRows(t *testing.T) {
-	p := patch.Patch{Files: []patch.File{
-		{DisplayPath: "first.go", Hunks: []patch.Hunk{{Header: "@@", Lines: []patch.Line{
-			{Kind: patch.Context, Text: "first one", OldNumber: 1, NewNumber: 1},
-			{Kind: patch.Context, Text: "first two", OldNumber: 2, NewNumber: 2},
-			{Kind: patch.Context, Text: "first three", OldNumber: 3, NewNumber: 3},
+	p := repository.Patch{Files: []repository.File{
+		{DisplayPath: "first.go", Hunks: []repository.Hunk{{Header: "@@", Lines: []repository.Line{
+			{Kind: repository.Context, Text: "first one", OldNumber: 1, NewNumber: 1},
+			{Kind: repository.Context, Text: "first two", OldNumber: 2, NewNumber: 2},
+			{Kind: repository.Context, Text: "first three", OldNumber: 3, NewNumber: 3},
 		}}}},
-		{DisplayPath: "second.go", Hunks: []patch.Hunk{{Header: "@@", Lines: []patch.Line{
-			{Kind: patch.Context, Text: "second one", OldNumber: 1, NewNumber: 1},
+		{DisplayPath: "second.go", Hunks: []repository.Hunk{{Header: "@@", Lines: []repository.Line{
+			{Kind: repository.Context, Text: "second one", OldNumber: 1, NewNumber: 1},
 		}}}},
 	}}
 	v := NewUnifiedView(p, true).(*diffView)
@@ -175,7 +175,7 @@ func TestKeepVisibleAccountsForStickyFileHeader(t *testing.T) {
 }
 
 func TestSplitTabsDoNotShiftLineNumbersOrDivider(t *testing.T) {
-	p := patch.Patch{Files: []patch.File{{DisplayPath: "file", Hunks: []patch.Hunk{{Header: "@@", Lines: []patch.Line{{Kind: patch.Context, Text: "\t\tlong line", OldNumber: 1, NewNumber: 1}}}}}}}
+	p := repository.Patch{Files: []repository.File{{DisplayPath: "file", Hunks: []repository.Hunk{{Header: "@@", Lines: []repository.Line{{Kind: repository.Context, Text: "\t\tlong line", OldNumber: 1, NewNumber: 1}}}}}}}
 	v := NewSideBySideView(p, true)
 	cursor := mustFirst(t, v)
 	rendered := ansi.Strip(renderOne(v, cursor, 120, nil))
@@ -252,7 +252,7 @@ func TestSelectionBackgroundKeepsDefaultWeight(t *testing.T) {
 }
 
 func TestSyntaxHighlightingSurvivesDiffStyling(t *testing.T) {
-	p := patch.Patch{Files: []patch.File{{DisplayPath: "main.go", NewPath: "main.go", OldSource: "package main\nold()\n", NewSource: "package main\nnew()\n", Hunks: []patch.Hunk{{Header: "@@", Lines: []patch.Line{{Kind: patch.Deletion, Text: "old()", OldNumber: 2}, {Kind: patch.Addition, Text: "new()", NewNumber: 2}}}}}}}
+	p := repository.Patch{Files: []repository.File{{DisplayPath: "main.go", NewPath: "main.go", OldSource: "package main\nold()\n", NewSource: "package main\nnew()\n", Hunks: []repository.Hunk{{Header: "@@", Lines: []repository.Line{{Kind: repository.Deletion, Text: "old()", OldNumber: 2}, {Kind: repository.Addition, Text: "new()", NewNumber: 2}}}}}}}
 	v := NewUnifiedView(p, true)
 	first := mustFirst(t, v)
 	added, _ := v.Search("new()", first, Forward)
@@ -266,7 +266,7 @@ func TestSyntaxHighlightingSurvivesDiffStyling(t *testing.T) {
 
 func TestRenderedCodeRowsHaveExactTerminalWidth(t *testing.T) {
 	for _, test := range []struct {
-		constructor func(patch.Patch, bool) View
+		constructor func(repository.Patch, bool) View
 		width       int
 	}{{NewUnifiedView, 37}, {NewSideBySideView, 120}} {
 		v := test.constructor(testPatch(), true)
@@ -286,7 +286,7 @@ func TestRenderedCodeRowsHaveExactTerminalWidth(t *testing.T) {
 
 func TestRenderStyledRowStripsSyntaxBackgroundColors(t *testing.T) {
 	value := strings.Join([]string{"\x1b[48;2;255;0;0;38;2;1;2;3mtruecolor", "\x1b[48;5;123;1mindexed", "\x1b[45mstandard", "\x1b[105mbright"}, " ")
-	rendered := renderStyledRow(lineStyle(patch.Addition, true), value, 80, false)
+	rendered := renderStyledRow(lineStyle(repository.Addition, true), value, 80, false)
 	for _, forbidden := range []string{"48;2;255;0;0", "48;5;123", "[45m", "[105m"} {
 		if strings.Contains(rendered, forbidden) {
 			t.Fatalf("retains %q: %q", forbidden, rendered)
@@ -304,8 +304,8 @@ func renderTarget(v View, target, active Cursor, width int, selection *Selection
 	return v.Render(viewport, active, selection)
 }
 
-func longLinePatch() patch.Patch {
-	return patch.Patch{Files: []patch.File{{DisplayPath: "long", Hunks: []patch.Hunk{{Header: "@@", Lines: []patch.Line{{Kind: patch.Context, Text: "abcdefghijklmnopqrstuvwxyz0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ", OldNumber: 1, NewNumber: 1}}}}}}}
+func longLinePatch() repository.Patch {
+	return repository.Patch{Files: []repository.File{{DisplayPath: "long", Hunks: []repository.Hunk{{Header: "@@", Lines: []repository.Line{{Kind: repository.Context, Text: "abcdefghijklmnopqrstuvwxyz0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ", OldNumber: 1, NewNumber: 1}}}}}}}
 }
 
 type sgrExpectation struct {

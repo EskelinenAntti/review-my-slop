@@ -7,7 +7,7 @@ import (
 
 	"charm.land/lipgloss/v2"
 
-	"github.com/eskelinenantti/review-my-slop/internal/patch"
+	"github.com/eskelinenantti/review-my-slop/internal/repository"
 )
 
 func TestCursorContainsOnlyCoordinateAndPane(t *testing.T) {
@@ -32,7 +32,7 @@ func TestUnifiedNavigationSearchAndFileJumps(t *testing.T) {
 		t.Fatal("Move returned no cursor")
 	}
 	line, _ = v.Line(next)
-	if line.Kind != patch.Deletion {
+	if line.Kind != repository.Deletion {
 		t.Fatalf("next kind = %v", line.Kind)
 	}
 	match, ok := v.Search("added", first, Forward)
@@ -221,7 +221,7 @@ func TestFindCursorUsesSemanticIdentityAcrossChangedCoordinates(t *testing.T) {
 }
 
 func TestSplitViewWithOnlyDeletionsStartsInLeftPane(t *testing.T) {
-	p := patch.Patch{Files: []patch.File{{DisplayPath: "deleted.go", Hunks: []patch.Hunk{{Header: "@@", Lines: []patch.Line{{Kind: patch.Deletion, Text: "gone", OldNumber: 1}}}}}}}
+	p := repository.Patch{Files: []repository.File{{DisplayPath: "deleted.go", Hunks: []repository.Hunk{{Header: "@@", Lines: []repository.Line{{Kind: repository.Deletion, Text: "gone", OldNumber: 1}}}}}}}
 	v := NewSideBySideView(p, true)
 	cursor, ok := v.First()
 	if !ok || cursor.Pane != Left {
@@ -248,7 +248,7 @@ func TestFindCursorFallsBackNearRemovedLine(t *testing.T) {
 		t.Fatal("nearby cursor was not found")
 	}
 	fallbackLine, _ := newView.Line(fallback)
-	if fallbackLine.Kind != patch.Deletion {
+	if fallbackLine.Kind != repository.Deletion {
 		t.Fatalf("fallback kind = %v", fallbackLine.Kind)
 	}
 }
@@ -262,23 +262,23 @@ func mustFirst(t *testing.T, v View) Cursor {
 	return cursor
 }
 
-func testPatch() patch.Patch {
-	return patch.Patch{Repository: "/repo", Files: []patch.File{
-		{DisplayPath: "first.go", OldPath: "first.go", NewPath: "first.go", Hunks: []patch.Hunk{{Header: "@@ -1,3 +1,3 @@", Lines: []patch.Line{
-			{Kind: patch.Context, Text: "before", OldNumber: 1, NewNumber: 1},
-			{Kind: patch.Deletion, Text: "removed one", OldNumber: 2},
-			{Kind: patch.Deletion, Text: "removed two", OldNumber: 3},
-			{Kind: patch.Addition, Text: "added one", NewNumber: 2},
-			{Kind: patch.Context, Text: "after", OldNumber: 4, NewNumber: 3},
+func testPatch() repository.Patch {
+	return repository.Patch{Repository: "/repo", Files: []repository.File{
+		{DisplayPath: "first.go", OldPath: "first.go", NewPath: "first.go", Hunks: []repository.Hunk{{Header: "@@ -1,3 +1,3 @@", Lines: []repository.Line{
+			{Kind: repository.Context, Text: "before", OldNumber: 1, NewNumber: 1},
+			{Kind: repository.Deletion, Text: "removed one", OldNumber: 2},
+			{Kind: repository.Deletion, Text: "removed two", OldNumber: 3},
+			{Kind: repository.Addition, Text: "added one", NewNumber: 2},
+			{Kind: repository.Context, Text: "after", OldNumber: 4, NewNumber: 3},
 		}}}},
-		{DisplayPath: "second.go", OldPath: "second.go", NewPath: "second.go", Hunks: []patch.Hunk{{Header: "@@ -1 +1 @@", Lines: []patch.Line{{Kind: patch.Addition, Text: "other", NewNumber: 1}}}}},
+		{DisplayPath: "second.go", OldPath: "second.go", NewPath: "second.go", Hunks: []repository.Hunk{{Header: "@@ -1 +1 @@", Lines: []repository.Line{{Kind: repository.Addition, Text: "other", NewNumber: 1}}}}},
 	}}
 }
 
-func longPatch() patch.Patch {
-	lines := make([]patch.Line, 20)
+func longPatch() repository.Patch {
+	lines := make([]repository.Line, 20)
 	for index := range lines {
-		lines[index] = patch.Line{Kind: patch.Context, Text: strings.Repeat("long", 20), OldNumber: patch.LineNumber(index + 1), NewNumber: patch.LineNumber(index + 1)}
+		lines[index] = repository.Line{Kind: repository.Context, Text: strings.Repeat("long", 20), OldNumber: repository.LineNumber(index + 1), NewNumber: repository.LineNumber(index + 1)}
 	}
-	return patch.Patch{Files: []patch.File{{DisplayPath: "long.go", Hunks: []patch.Hunk{{Header: "@@", Lines: lines}}}}}
+	return repository.Patch{Files: []repository.File{{DisplayPath: "long.go", Hunks: []repository.Hunk{{Header: "@@", Lines: lines}}}}}
 }

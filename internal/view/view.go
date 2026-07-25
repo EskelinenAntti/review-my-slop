@@ -4,7 +4,7 @@ import (
 	"strings"
 
 	"github.com/eskelinenantti/review-my-slop/internal/highlight"
-	"github.com/eskelinenantti/review-my-slop/internal/patch"
+	"github.com/eskelinenantti/review-my-slop/internal/repository"
 )
 
 type rowKind uint8
@@ -25,19 +25,19 @@ type entry struct {
 }
 
 type diffView struct {
-	patch patch.Patch
+	patch repository.Patch
 	rows  []entry
 	split bool
 	dark  bool
 }
 
-func NewUnifiedView(p patch.Patch, dark bool) View {
+func NewUnifiedView(p repository.Patch, dark bool) View {
 	v := &diffView{patch: p, dark: dark}
 	v.buildUnified()
 	return v
 }
 
-func NewSideBySideView(p patch.Patch, dark bool) View {
+func NewSideBySideView(p repository.Patch, dark bool) View {
 	v := &diffView{patch: p, split: true, dark: dark}
 	v.buildSplit()
 	return v
@@ -56,7 +56,7 @@ func (v *diffView) buildUnified() {
 			v.rows = append(v.rows, entry{kind: hunkRow, file: fileIndex, hunk: hunkIndex, leftLine: -1, rightLine: -1, text: hunkHeader(hunk.Header)})
 			for lineIndex, line := range hunk.Lines {
 				text := line.Text
-				if line.Kind == patch.Deletion {
+				if line.Kind == repository.Deletion {
 					text = highlightedLine(highlighted.Old, line.OldNumber, text)
 				} else {
 					text = highlightedLine(highlighted.New, line.NewNumber, text)
@@ -81,21 +81,21 @@ func (v *diffView) buildSplit() {
 			for index := 0; index < len(hunk.Lines); {
 				line := hunk.Lines[index]
 				switch line.Kind {
-				case patch.Context:
+				case repository.Context:
 					text := highlightedLine(highlighted.New, line.NewNumber, line.Text)
 					v.rows = append(v.rows, entry{kind: lineRow, file: fileIndex, hunk: hunkIndex, leftLine: index, rightLine: index, left: text, right: text})
 					index++
-				case patch.Addition:
+				case repository.Addition:
 					text := highlightedLine(highlighted.New, line.NewNumber, line.Text)
 					v.rows = append(v.rows, entry{kind: lineRow, file: fileIndex, hunk: hunkIndex, leftLine: -1, rightLine: index, right: text})
 					index++
-				case patch.Deletion:
+				case repository.Deletion:
 					removedStart := index
-					for index < len(hunk.Lines) && hunk.Lines[index].Kind == patch.Deletion {
+					for index < len(hunk.Lines) && hunk.Lines[index].Kind == repository.Deletion {
 						index++
 					}
 					addedStart, addedEnd := index, index
-					for addedEnd < len(hunk.Lines) && hunk.Lines[addedEnd].Kind == patch.Addition {
+					for addedEnd < len(hunk.Lines) && hunk.Lines[addedEnd].Kind == repository.Addition {
 						addedEnd++
 					}
 					count := max(index-removedStart, addedEnd-addedStart)
@@ -120,7 +120,7 @@ func (v *diffView) buildSplit() {
 	}
 }
 
-func (v *diffView) highlight(file *patch.File) highlight.Pair {
+func (v *diffView) highlight(file *repository.File) highlight.Pair {
 	return highlight.Sources(file.Path(), file.OldSource, file.NewSource, v.dark)
 }
 
