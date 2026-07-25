@@ -51,9 +51,6 @@ func Root(ctx context.Context, dir string) (string, error) {
 }
 
 func (l loader) Root(ctx context.Context, dir string) (string, error) {
-	if l.Runner == nil {
-		l.Runner = ExecRunner{}
-	}
 	rootBytes, err := l.Runner.Run(ctx, dir, "rev-parse", "--show-toplevel")
 	if err != nil {
 		return "", err
@@ -70,9 +67,6 @@ func Load(ctx context.Context, dir string) (Patch, error) {
 }
 
 func (l loader) Load(ctx context.Context, dir string) (Patch, error) {
-	if l.Runner == nil {
-		l.Runner = ExecRunner{}
-	}
 	root, err := l.Root(ctx, dir)
 	if err != nil {
 		return Patch{}, err
@@ -90,9 +84,6 @@ func LoadBranch(ctx context.Context, dir, branch string) (Patch, error) {
 }
 
 func (l loader) LoadBranch(ctx context.Context, dir, branch string) (Patch, error) {
-	if l.Runner == nil {
-		l.Runner = ExecRunner{}
-	}
 	root, err := l.Root(ctx, dir)
 	if err != nil {
 		return Patch{}, err
@@ -117,9 +108,6 @@ func DefaultBranch(ctx context.Context, dir string) (string, error) {
 }
 
 func (l loader) DefaultBranch(ctx context.Context, dir string) (string, error) {
-	if l.Runner == nil {
-		l.Runner = ExecRunner{}
-	}
 	root, err := l.Root(ctx, dir)
 	if err != nil {
 		return "", err
