@@ -70,27 +70,27 @@ func New(ctx context.Context) (Repository, error) {
 }
 
 func (r Repository) LocalChanges(ctx context.Context) (Patch, error) {
-	raw, err := r.diff(ctx)
-	if err != nil {
-		return Patch{}, err
-	}
-	return r.build(ctx, raw, readIndex)
+	return r.BranchChanges(ctx, "")
 }
 
 func (r Repository) BranchChanges(ctx context.Context, branch string) (Patch, error) {
-	baseBytes, err := r.Git.Run(ctx, r.Root, "merge-base", branch, "HEAD")
-	if err != nil {
-		return Patch{}, fmt.Errorf("find branch point with %s: %w", branch, err)
+	var raw []byte
+	var err error
+	if branch == "" {
+		raw, err = r.diff(ctx)
+	} else {
+		baseBytes, err := r.Git.Run(ctx, r.Root, "merge-base", branch, "HEAD")
+		if err != nil {
+			return Patch{}, fmt.Errorf("find branch point with %s: %w", branch, err)
+		}
+		base := strings.TrimSpace(string(baseBytes))
+		raw, err = r.diff(ctx, base)
 	}
-	base := strings.TrimSpace(string(baseBytes))
-	raw, err := r.diff(ctx, base)
+
 	if err != nil {
 		return Patch{}, err
 	}
-	readBase := func(ctx context.Context, runner Runner, root, path string) string {
-		return readRevision(ctx, runner, root, base, path)
-	}
-	return r.build(ctx, raw, readBase)
+	return r.build(ctx, raw, branch)
 }
 
 func (r Repository) DefaultBranch(ctx context.Context) (string, error) {
@@ -109,10 +109,8 @@ func (r Repository) diff(ctx context.Context, revisions ...string) ([]byte, erro
 	return r.Git.Run(ctx, r.Root, args...)
 }
 
-type sourceReader func(context.Context, Runner, string, string) string
-
-func (r Repository) build(ctx context.Context, raw []byte, readOld sourceReader) (Patch, error) {
-	tracked, err := r.parseTracked(ctx, r.Git, raw, readOld)
+func (r Repository) build(ctx context.Context, raw []byte, branch string) (Patch, error) {
+	tracked, err := r.parseTracked(ctx, r.Git, raw, branch)
 	if err != nil {
 		return Patch{}, err
 	}
@@ -149,7 +147,7 @@ func (r Repository) defaultBranch(ctx context.Context) string {
 	return ""
 }
 
-func (r Repository) parseTracked(ctx context.Context, runner Runner, raw []byte, readOld sourceReader) ([]File, error) {
+func (r Repository) parseTracked(ctx context.Context, runner Runner, raw []byte, branch string) ([]File, error) {
 	if len(bytes.TrimSpace(raw)) == 0 {
 		return nil, nil
 	}
@@ -171,7 +169,7 @@ func (r Repository) parseTracked(ctx context.Context, runner Runner, raw []byte,
 			DisplayPath: visibleText(display),
 			Metadata:    visibleStrings(fd.Extended),
 		}
-		file.OldSource = readOld(ctx, runner, r.Root, oldPath)
+		file.OldSource = r.readRevision(ctx, runner, branch, oldPath)
 		file.NewSource = readWorkingTree(r.Root, newPath)
 		for _, h := range fd.Hunks {
 			lines, parseErr := parseHunkBody(h.OrigStartLine, h.NewStartLine, h.Body)
@@ -290,22 +288,11 @@ func parseHunkBody(oldLine, newLine int32, body []byte) ([]Line, error) {
 	return lines, nil
 }
 
-func readIndex(ctx context.Context, runner Runner, root, path string) string {
+func (r Repository) readRevision(ctx context.Context, runner Runner, revision, path string) string {
 	if path == "" || path == "/dev/null" {
 		return ""
 	}
-	out, err := runner.Run(ctx, root, "show", ":"+path)
-	if err != nil || len(out) > maxFileBytes || bytes.IndexByte(out, 0) >= 0 {
-		return ""
-	}
-	return visibleSource(string(out))
-}
-
-func readRevision(ctx context.Context, runner Runner, root, revision, path string) string {
-	if path == "" || path == "/dev/null" {
-		return ""
-	}
-	out, err := runner.Run(ctx, root, "show", revision+":"+path)
+	out, err := runner.Run(ctx, r.Root, "show", revision+":"+path)
 	if err != nil || len(out) > maxFileBytes || bytes.IndexByte(out, 0) >= 0 {
 		return ""
 	}
