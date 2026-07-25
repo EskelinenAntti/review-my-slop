@@ -62,11 +62,11 @@ func (l loader) Root(ctx context.Context, dir string) (string, error) {
 	return root, nil
 }
 
-func Load(ctx context.Context, dir string) (Patch, error) {
-	return loader{Runner: ExecRunner{}}.Load(ctx, dir)
+func LocalChanges(ctx context.Context, dir string) (Patch, error) {
+	return loader{Runner: ExecRunner{}}.LocalChanges(ctx, dir)
 }
 
-func (l loader) Load(ctx context.Context, dir string) (Patch, error) {
+func (l loader) LocalChanges(ctx context.Context, dir string) (Patch, error) {
 	root, err := l.Root(ctx, dir)
 	if err != nil {
 		return Patch{}, err
@@ -79,11 +79,11 @@ func (l loader) Load(ctx context.Context, dir string) (Patch, error) {
 	return l.build(ctx, root, "", raw, readIndex)
 }
 
-func LoadBranch(ctx context.Context, dir, branch string) (Patch, error) {
-	return loader{Runner: ExecRunner{}}.LoadBranch(ctx, dir, branch)
+func BranchChanges(ctx context.Context, dir, branch string) (Patch, error) {
+	return loader{Runner: ExecRunner{}}.BranchChanges(ctx, dir, branch)
 }
 
-func (l loader) LoadBranch(ctx context.Context, dir, branch string) (Patch, error) {
+func (l loader) BranchChanges(ctx context.Context, dir, branch string) (Patch, error) {
 	root, err := l.Root(ctx, dir)
 	if err != nil {
 		return Patch{}, err

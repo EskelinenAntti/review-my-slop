@@ -44,7 +44,7 @@ func runCode(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	loadedPatch, err := repository.Load(ctx, current)
+	loadedPatch, err := repository.LocalChanges(ctx, current)
 	if err != nil {
 		return err
 	}
@@ -87,9 +87,9 @@ func runCode(ctx context.Context) error {
 	model.SetDefaultBranch(defaultBranch)
 	model.SetRefresh(func(branch string) (repository.Patch, error) {
 		if branch != "" {
-			return repository.LoadBranch(ctx, current, branch)
+			return repository.BranchChanges(ctx, current, branch)
 		}
-		return repository.Load(ctx, current)
+		return repository.LocalChanges(ctx, current)
 	})
 	program := tea.NewProgram(model, tea.WithWindowSize(size.Width, size.Height))
 	_, err = program.Run()
