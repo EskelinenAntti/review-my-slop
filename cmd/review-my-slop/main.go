@@ -40,11 +40,11 @@ func run(ctx context.Context, args []string, output io.Writer) error {
 }
 
 func runCode(ctx context.Context) error {
-	current, err := os.Getwd()
+	repo, err := repository.New()
 	if err != nil {
 		return err
 	}
-	loadedPatch, err := repository.LocalChanges(ctx, current)
+	loadedPatch, err := repo.LocalChanges(ctx)
 	if err != nil {
 		return err
 	}
@@ -61,7 +61,7 @@ func runCode(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	defaultBranch, err := repository.DefaultBranch(ctx, current)
+	defaultBranch, err := repo.DefaultBranch(ctx)
 	if err != nil {
 		return err
 	}
@@ -87,9 +87,9 @@ func runCode(ctx context.Context) error {
 	model.SetDefaultBranch(defaultBranch)
 	model.SetRefresh(func(branch string) (repository.Patch, error) {
 		if branch != "" {
-			return repository.BranchChanges(ctx, current, branch)
+			return repo.BranchChanges(ctx, branch)
 		}
-		return repository.LocalChanges(ctx, current)
+		return repo.LocalChanges(ctx)
 	})
 	program := tea.NewProgram(model, tea.WithWindowSize(size.Width, size.Height))
 	_, err = program.Run()
@@ -107,15 +107,15 @@ func initialTerminalSize() tui.Size {
 }
 
 func runComments(ctx context.Context, output io.Writer) error {
-	current, err := os.Getwd()
+	repo, err := repository.New()
 	if err != nil {
 		return err
 	}
-	return runCommentsAt(ctx, current, output)
+	return runCommentsAt(ctx, repo, output)
 }
 
-func runCommentsAt(ctx context.Context, current string, output io.Writer) error {
-	root, err := repository.Root(ctx, current)
+func runCommentsAt(ctx context.Context, repo repository.Repository, output io.Writer) error {
+	root, err := repo.Root(ctx)
 	if err != nil {
 		return err
 	}

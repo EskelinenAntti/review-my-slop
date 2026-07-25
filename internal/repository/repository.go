@@ -42,12 +42,26 @@ func (ExecRunner) Run(ctx context.Context, dir string, args ...string) ([]byte, 
 	return nil, fmt.Errorf("git %s: %w", strings.Join(args, " "), err)
 }
 
+type Repository struct {
+	Dir string
+}
+
 type loader struct {
 	Runner Runner
 }
 
-func Root(ctx context.Context, dir string) (string, error) {
-	return loader{Runner: ExecRunner{}}.Root(ctx, dir)
+func New() (Repository, error) {
+	current, err := os.Getwd()
+	if err != nil {
+		return Repository{}, err
+	}
+	return Repository{
+		Dir: current,
+	}, nil
+}
+
+func (r Repository) Root(ctx context.Context) (string, error) {
+	return loader{Runner: ExecRunner{}}.Root(ctx, r.Dir)
 }
 
 func (l loader) Root(ctx context.Context, dir string) (string, error) {
@@ -62,8 +76,8 @@ func (l loader) Root(ctx context.Context, dir string) (string, error) {
 	return root, nil
 }
 
-func LocalChanges(ctx context.Context, dir string) (Patch, error) {
-	return loader{Runner: ExecRunner{}}.LocalChanges(ctx, dir)
+func (r Repository) LocalChanges(ctx context.Context) (Patch, error) {
+	return loader{Runner: ExecRunner{}}.LocalChanges(ctx, r.Dir)
 }
 
 func (l loader) LocalChanges(ctx context.Context, dir string) (Patch, error) {
@@ -79,8 +93,8 @@ func (l loader) LocalChanges(ctx context.Context, dir string) (Patch, error) {
 	return l.build(ctx, root, "", raw, readIndex)
 }
 
-func BranchChanges(ctx context.Context, dir, branch string) (Patch, error) {
-	return loader{Runner: ExecRunner{}}.BranchChanges(ctx, dir, branch)
+func (r Repository) BranchChanges(ctx context.Context, branch string) (Patch, error) {
+	return loader{Runner: ExecRunner{}}.BranchChanges(ctx, r.Dir, branch)
 }
 
 func (l loader) BranchChanges(ctx context.Context, dir, branch string) (Patch, error) {
@@ -103,8 +117,8 @@ func (l loader) BranchChanges(ctx context.Context, dir, branch string) (Patch, e
 	return l.build(ctx, root, branch, raw, readBase)
 }
 
-func DefaultBranch(ctx context.Context, dir string) (string, error) {
-	return loader{Runner: ExecRunner{}}.DefaultBranch(ctx, dir)
+func (r Repository) DefaultBranch(ctx context.Context) (string, error) {
+	return loader{Runner: ExecRunner{}}.DefaultBranch(ctx, r.Dir)
 }
 
 func (l loader) DefaultBranch(ctx context.Context, dir string) (string, error) {

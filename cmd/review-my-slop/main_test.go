@@ -10,11 +10,12 @@ import (
 	"testing"
 
 	"github.com/eskelinenantti/review-my-slop/internal/inbox"
+	"github.com/eskelinenantti/review-my-slop/internal/repository"
 	"github.com/eskelinenantti/review-my-slop/internal/review"
 )
 
 func TestRunCommentsPrintsAndConsumesCurrentRepositoryFeedback(t *testing.T) {
-	repo := initRepository(t)
+	repo := newTestRepository(t)
 	data := t.TempDir()
 	t.Setenv("XDG_DATA_HOME", data)
 	store, err := inbox.OpenDefault()
@@ -22,7 +23,7 @@ func TestRunCommentsPrintsAndConsumesCurrentRepositoryFeedback(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, err := store.Add(review.Comment{
-		Repository: repo,
+		Repository: repo.Dir,
 		Anchor:     review.Anchor{FilePath: "main.go", NewStart: 3, NewEnd: 3},
 		Body:       "Check this error.",
 	}); err != nil {
@@ -61,14 +62,14 @@ func TestRunCommentsPrintsAndConsumesCurrentRepositoryFeedback(t *testing.T) {
 }
 
 func TestRunCommentsPreservesFeedbackWhenOutputFails(t *testing.T) {
-	repo := initRepository(t)
+	repo := newTestRepository(t)
 	t.Setenv("XDG_DATA_HOME", t.TempDir())
 	store, err := inbox.OpenDefault()
 	if err != nil {
 		t.Fatal(err)
 	}
 	if _, err := store.Add(review.Comment{
-		Repository: repo,
+		Repository: repo.Dir,
 		Anchor:     review.Anchor{FilePath: "main.go", NewStart: 1},
 		Body:       "Preserve me.",
 	}); err != nil {
@@ -78,7 +79,7 @@ func TestRunCommentsPreservesFeedbackWhenOutputFails(t *testing.T) {
 	if err := runCommentsAt(context.Background(), repo, failingWriter{}); err == nil {
 		t.Fatal("output failure was ignored")
 	}
-	comments, err := store.List(repo)
+	comments, err := store.List(repo.Dir)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -100,16 +101,16 @@ func (failingWriter) Write([]byte) (int, error) {
 	return 0, os.ErrClosed
 }
 
-func initRepository(t *testing.T) string {
+func newTestRepository(t *testing.T) repository.Repository {
 	t.Helper()
-	repo, err := filepath.EvalSymlinks(t.TempDir())
+	dir, err := filepath.EvalSymlinks(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
 	cmd := exec.Command("git", "init", "-q")
-	cmd.Dir = repo
+	cmd.Dir = dir
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("git init: %v\n%s", err, out)
 	}
-	return repo
+	return repository.Repository{Dir: dir}
 }
