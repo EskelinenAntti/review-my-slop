@@ -126,7 +126,7 @@ func (r Repository) diff(ctx context.Context, root string, revisions ...string) 
 type sourceReader func(context.Context, Runner, string, string) string
 
 func (r Repository) build(ctx context.Context, root, base string, raw []byte, readOld sourceReader) (Patch, error) {
-	files, err := parseTracked(ctx, r.Git, root, raw, readOld)
+	tracked, err := parseTracked(ctx, r.Git, root, raw, readOld)
 	if err != nil {
 		return Patch{}, err
 	}
@@ -134,7 +134,7 @@ func (r Repository) build(ctx context.Context, root, base string, raw []byte, re
 	if err != nil {
 		return Patch{}, err
 	}
-	files = append(files, untracked...)
+	files := append(tracked, untracked...)
 	sort.SliceStable(files, func(i, j int) bool { return files[i].DisplayPath < files[j].DisplayPath })
 
 	hash := sha256.New()
