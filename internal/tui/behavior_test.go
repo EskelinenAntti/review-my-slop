@@ -469,7 +469,7 @@ func TestSourceEditorCompletionRefreshesDiff(t *testing.T) {
 }
 
 func TestHeaderShowsAddedAndRemovedLineCounts(t *testing.T) {
-	header := strings.SplitN(ansi.Strip(testModel(coveragePatch(), nil, nil).render()), "\n", 2)[0]
+	header, _, _ := strings.Cut(ansi.Strip(testModel(coveragePatch(), nil, nil).render()), "\n")
 	if header != "review-my-slop  +2-1" {
 		t.Fatalf("header = %q", header)
 	}
