@@ -22,9 +22,9 @@ type Runner interface {
 	Run(ctx context.Context, dir string, args ...string) ([]byte, error)
 }
 
-type ExecRunner struct{}
+type Git struct{}
 
-func (ExecRunner) Run(ctx context.Context, dir string, args ...string) ([]byte, error) {
+func (Git) Run(ctx context.Context, dir string, args ...string) ([]byte, error) {
 	cmd := exec.CommandContext(ctx, "git", args...)
 	cmd.Dir = dir
 	cmd.Env = append(os.Environ(),
@@ -44,10 +44,7 @@ func (ExecRunner) Run(ctx context.Context, dir string, args ...string) ([]byte, 
 
 type Repository struct {
 	Dir string
-}
-
-type loader struct {
-	Runner Runner
+	Git Runner
 }
 
 func New() (Repository, error) {
@@ -57,15 +54,12 @@ func New() (Repository, error) {
 	}
 	return Repository{
 		Dir: current,
+		Git: Git{},
 	}, nil
 }
 
 func (r Repository) Root(ctx context.Context) (string, error) {
-	return loader{Runner: ExecRunner{}}.Root(ctx, r.Dir)
-}
-
-func (l loader) Root(ctx context.Context, dir string) (string, error) {
-	rootBytes, err := l.Runner.Run(ctx, dir, "rev-parse", "--show-toplevel")
+	rootBytes, err := r.Git.Run(ctx, r.Dir, "rev-parse", "--show-toplevel")
 	if err != nil {
 		return "", err
 	}
@@ -77,59 +71,47 @@ func (l loader) Root(ctx context.Context, dir string) (string, error) {
 }
 
 func (r Repository) LocalChanges(ctx context.Context) (Patch, error) {
-	return loader{Runner: ExecRunner{}}.LocalChanges(ctx, r.Dir)
-}
-
-func (l loader) LocalChanges(ctx context.Context, dir string) (Patch, error) {
-	root, err := l.Root(ctx, dir)
+	root, err := r.Root(ctx)
 	if err != nil {
 		return Patch{}, err
 	}
 
-	raw, err := l.diff(ctx, root)
+	raw, err := r.diff(ctx, root)
 	if err != nil {
 		return Patch{}, err
 	}
-	return l.build(ctx, root, "", raw, readIndex)
+	return r.build(ctx, root, "", raw, readIndex)
 }
 
 func (r Repository) BranchChanges(ctx context.Context, branch string) (Patch, error) {
-	return loader{Runner: ExecRunner{}}.BranchChanges(ctx, r.Dir, branch)
-}
-
-func (l loader) BranchChanges(ctx context.Context, dir, branch string) (Patch, error) {
-	root, err := l.Root(ctx, dir)
+	root, err := r.Root(ctx)
 	if err != nil {
 		return Patch{}, err
 	}
-	baseBytes, err := l.Runner.Run(ctx, root, "merge-base", branch, "HEAD")
+	baseBytes, err := r.Git.Run(ctx, root, "merge-base", branch, "HEAD")
 	if err != nil {
 		return Patch{}, fmt.Errorf("find branch point with %s: %w", branch, err)
 	}
 	base := strings.TrimSpace(string(baseBytes))
-	raw, err := l.diff(ctx, root, base)
+	raw, err := r.diff(ctx, root, base)
 	if err != nil {
 		return Patch{}, err
 	}
 	readBase := func(ctx context.Context, runner Runner, root, path string) string {
 		return readRevision(ctx, runner, root, base, path)
 	}
-	return l.build(ctx, root, branch, raw, readBase)
+	return r.build(ctx, root, branch, raw, readBase)
 }
 
 func (r Repository) DefaultBranch(ctx context.Context) (string, error) {
-	return loader{Runner: ExecRunner{}}.DefaultBranch(ctx, r.Dir)
-}
-
-func (l loader) DefaultBranch(ctx context.Context, dir string) (string, error) {
-	root, err := l.Root(ctx, dir)
+	root, err := r.Root(ctx)
 	if err != nil {
 		return "", err
 	}
-	return l.defaultBranch(ctx, root), nil
+	return r.defaultBranch(ctx, root), nil
 }
 
-func (l loader) diff(ctx context.Context, root string, revisions ...string) ([]byte, error) {
+func (r Repository) diff(ctx context.Context, root string, revisions ...string) ([]byte, error) {
 	args := []string{
 		"-c", "core.quotepath=false",
 		"-c", "diff.external=",
@@ -138,17 +120,17 @@ func (l loader) diff(ctx context.Context, root string, revisions ...string) ([]b
 	}
 	args = append(args, revisions...)
 	args = append(args, "--")
-	return l.Runner.Run(ctx, root, args...)
+	return r.Git.Run(ctx, root, args...)
 }
 
 type sourceReader func(context.Context, Runner, string, string) string
 
-func (l loader) build(ctx context.Context, root, base string, raw []byte, readOld sourceReader) (Patch, error) {
-	files, err := parseTracked(ctx, l.Runner, root, raw, readOld)
+func (r Repository) build(ctx context.Context, root, base string, raw []byte, readOld sourceReader) (Patch, error) {
+	files, err := parseTracked(ctx, r.Git, root, raw, readOld)
 	if err != nil {
 		return Patch{}, err
 	}
-	untracked, err := l.loadUntracked(ctx, root)
+	untracked, err := r.loadUntracked(ctx, root)
 	if err != nil {
 		return Patch{}, err
 	}
@@ -170,12 +152,12 @@ func (l loader) build(ctx context.Context, root, base string, raw []byte, readOl
 	}, nil
 }
 
-func (l loader) defaultBranch(ctx context.Context, root string) string {
-	if out, err := l.Runner.Run(ctx, root, "symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD"); err == nil {
+func (r Repository) defaultBranch(ctx context.Context, root string) string {
+	if out, err := r.Git.Run(ctx, root, "symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD"); err == nil {
 		return strings.TrimSpace(string(out))
 	}
 	for _, candidate := range []string{"origin/main", "main", "origin/master", "master"} {
-		if _, err := l.Runner.Run(ctx, root, "rev-parse", "--verify", "--quiet", candidate+"^{commit}"); err == nil {
+		if _, err := r.Git.Run(ctx, root, "rev-parse", "--verify", "--quiet", candidate+"^{commit}"); err == nil {
 			return candidate
 		}
 	}
@@ -221,8 +203,8 @@ func parseTracked(ctx context.Context, runner Runner, root string, raw []byte, r
 	return files, nil
 }
 
-func (l loader) loadUntracked(ctx context.Context, root string) ([]File, error) {
-	out, err := l.Runner.Run(ctx, root, "ls-files", "--others", "--exclude-standard", "-z")
+func (r Repository) loadUntracked(ctx context.Context, root string) ([]File, error) {
+	out, err := r.Git.Run(ctx, root, "ls-files", "--others", "--exclude-standard", "-z")
 	if err != nil {
 		return nil, err
 	}

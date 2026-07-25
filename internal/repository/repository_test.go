@@ -155,7 +155,7 @@ func TestDefaultBranchFallbacks(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			root := t.TempDir()
 			runner := &defaultBranchRunner{root: root, originHEAD: tt.originHEAD, available: tt.available}
-			got, err := (loader{Runner: runner}).DefaultBranch(context.Background(), root)
+			got, err := (Repository{Dir: root, Git: runner}).DefaultBranch(context.Background())
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -277,7 +277,7 @@ func newTestRepository(t *testing.T) Repository {
 	git(t, repo, "init", "-q")
 	git(t, repo, "config", "user.email", "test@example.com")
 	git(t, repo, "config", "user.name", "Test")
-	return Repository{Dir: repo}
+	return Repository{Dir: repo, Git: Git{}}
 }
 
 func git(t *testing.T, dir string, args ...string) {
