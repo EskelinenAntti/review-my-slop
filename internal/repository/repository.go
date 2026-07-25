@@ -74,7 +74,7 @@ func (r Repository) LocalChanges(ctx context.Context) (Patch, error) {
 	if err != nil {
 		return Patch{}, err
 	}
-	return r.build(ctx, "", raw, readIndex)
+	return r.build(ctx, raw, readIndex)
 }
 
 func (r Repository) BranchChanges(ctx context.Context, branch string) (Patch, error) {
@@ -90,7 +90,7 @@ func (r Repository) BranchChanges(ctx context.Context, branch string) (Patch, er
 	readBase := func(ctx context.Context, runner Runner, root, path string) string {
 		return readRevision(ctx, runner, root, base, path)
 	}
-	return r.build(ctx, branch, raw, readBase)
+	return r.build(ctx, raw, readBase)
 }
 
 func (r Repository) DefaultBranch(ctx context.Context) (string, error) {
@@ -111,7 +111,7 @@ func (r Repository) diff(ctx context.Context, revisions ...string) ([]byte, erro
 
 type sourceReader func(context.Context, Runner, string, string) string
 
-func (r Repository) build(ctx context.Context, base string, raw []byte, readOld sourceReader) (Patch, error) {
+func (r Repository) build(ctx context.Context, raw []byte, readOld sourceReader) (Patch, error) {
 	tracked, err := r.parseTracked(ctx, r.Git, raw, readOld)
 	if err != nil {
 		return Patch{}, err
@@ -124,7 +124,6 @@ func (r Repository) build(ctx context.Context, base string, raw []byte, readOld 
 	sort.SliceStable(files, func(i, j int) bool { return files[i].DisplayPath < files[j].DisplayPath })
 
 	hash := sha256.New()
-	_, _ = hash.Write([]byte(base))
 	_, _ = hash.Write(raw)
 	for _, file := range untracked {
 		_, _ = hash.Write([]byte(file.NewPath))
