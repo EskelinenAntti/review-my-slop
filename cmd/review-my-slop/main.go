@@ -40,7 +40,7 @@ func run(ctx context.Context, args []string, output io.Writer) error {
 }
 
 func runCode(ctx context.Context) error {
-	repo, err := repository.New()
+	repo, err := repository.New(ctx)
 	if err != nil {
 		return err
 	}
@@ -107,23 +107,19 @@ func initialTerminalSize() tui.Size {
 }
 
 func runComments(ctx context.Context, output io.Writer) error {
-	repo, err := repository.New()
+	repo, err := repository.New(ctx)
 	if err != nil {
 		return err
 	}
-	return runCommentsAt(ctx, repo, output)
+	return runCommentsAt(repo, output)
 }
 
-func runCommentsAt(ctx context.Context, repo repository.Repository, output io.Writer) error {
-	root, err := repo.Root(ctx)
-	if err != nil {
-		return err
-	}
+func runCommentsAt(repo repository.Repository, output io.Writer) error {
 	store, err := inbox.OpenDefault()
 	if err != nil {
 		return err
 	}
-	comments, err := store.List(root)
+	comments, err := store.List(repo.Root)
 	if err != nil {
 		return err
 	}
@@ -134,5 +130,5 @@ func runCommentsAt(ctx context.Context, repo repository.Repository, output io.Wr
 	for index, comment := range comments {
 		ids[index] = comment.ID
 	}
-	return store.Acknowledge(root, ids)
+	return store.Acknowledge(repo.Root, ids)
 }

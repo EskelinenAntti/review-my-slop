@@ -23,7 +23,7 @@ func TestRunCommentsPrintsAndConsumesCurrentRepositoryFeedback(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, err := store.Add(review.Comment{
-		Repository: repo.Dir,
+		Repository: repo.Root,
 		Anchor:     review.Anchor{FilePath: "main.go", NewStart: 3, NewEnd: 3},
 		Body:       "Check this error.",
 	}); err != nil {
@@ -31,7 +31,7 @@ func TestRunCommentsPrintsAndConsumesCurrentRepositoryFeedback(t *testing.T) {
 	}
 
 	var output bytes.Buffer
-	if err := runCommentsAt(context.Background(), repo, &output); err != nil {
+	if err := runCommentsAt(repo, &output); err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(output.String(), "Check this error.") {
@@ -45,7 +45,7 @@ func TestRunCommentsPrintsAndConsumesCurrentRepositoryFeedback(t *testing.T) {
 	}
 
 	var empty bytes.Buffer
-	if err := runCommentsAt(context.Background(), repo, &empty); err != nil {
+	if err := runCommentsAt(repo, &empty); err != nil {
 		t.Fatal(err)
 	}
 	if strings.TrimSpace(empty.String()) != "No pending review comments." {
@@ -69,17 +69,17 @@ func TestRunCommentsPreservesFeedbackWhenOutputFails(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, err := store.Add(review.Comment{
-		Repository: repo.Dir,
+		Repository: repo.Root,
 		Anchor:     review.Anchor{FilePath: "main.go", NewStart: 1},
 		Body:       "Preserve me.",
 	}); err != nil {
 		t.Fatal(err)
 	}
 
-	if err := runCommentsAt(context.Background(), repo, failingWriter{}); err == nil {
+	if err := runCommentsAt(repo, failingWriter{}); err == nil {
 		t.Fatal("output failure was ignored")
 	}
-	comments, err := store.List(repo.Dir)
+	comments, err := store.List(repo.Root)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -112,5 +112,5 @@ func newTestRepository(t *testing.T) repository.Repository {
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("git init: %v\n%s", err, out)
 	}
-	return repository.Repository{Dir: dir, Git: repository.Git{}}
+	return repository.Repository{Root: dir, Git: repository.Git{}}
 }

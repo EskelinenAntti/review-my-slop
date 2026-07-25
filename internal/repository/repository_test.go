@@ -11,7 +11,7 @@ import (
 
 func TestLoaderIncludesUnstagedAndUntrackedButNotStagedOnly(t *testing.T) {
 	repo := newTestRepository(t)
-	dir := repo.Dir
+	dir := repo.Root
 	writeFile(t, dir, "modified.go", "package main\n\nfunc value() int { return 1 }\n")
 	writeFile(t, dir, "staged.txt", "before\n")
 	git(t, dir, "add", ".")
@@ -69,7 +69,7 @@ func TestAddedFileKeepsRawAndDisplayPathsSeparate(t *testing.T) {
 
 func TestLoaderShowsBinaryMetadataWithoutBinaryDiffLines(t *testing.T) {
 	repo := newTestRepository(t)
-	dir := repo.Dir
+	dir := repo.Root
 	writeFile(t, dir, "tracked.bin", "\x00old")
 	git(t, dir, "add", "tracked.bin")
 	git(t, dir, "commit", "-m", "base")
@@ -95,7 +95,7 @@ func TestLoaderShowsBinaryMetadataWithoutBinaryDiffLines(t *testing.T) {
 
 func TestLoadBranchIncludesCommittedStagedUnstagedAndUntrackedChanges(t *testing.T) {
 	repo := newTestRepository(t)
-	dir := repo.Dir
+	dir := repo.Root
 	git(t, dir, "branch", "-M", "main")
 	writeFile(t, dir, "committed.txt", "base\n")
 	writeFile(t, dir, "mixed.txt", "base\n")
@@ -155,7 +155,7 @@ func TestDefaultBranchFallbacks(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			root := t.TempDir()
 			runner := &defaultBranchRunner{root: root, originHEAD: tt.originHEAD, available: tt.available}
-			got, err := (Repository{Dir: root, Git: runner}).DefaultBranch(context.Background())
+			got, err := (Repository{Root: root, Git: runner}).DefaultBranch(context.Background())
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -199,7 +199,7 @@ func TestLoaderDoesNotFollowUntrackedSymlink(t *testing.T) {
 	if err := os.WriteFile(outside, []byte("do not read"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Symlink(outside, filepath.Join(repo.Dir, "link")); err != nil {
+	if err := os.Symlink(outside, filepath.Join(repo.Root, "link")); err != nil {
 		t.Fatal(err)
 	}
 
@@ -277,7 +277,7 @@ func newTestRepository(t *testing.T) Repository {
 	git(t, repo, "init", "-q")
 	git(t, repo, "config", "user.email", "test@example.com")
 	git(t, repo, "config", "user.name", "Test")
-	return Repository{Dir: repo, Git: Git{}}
+	return Repository{Root: repo, Git: Git{}}
 }
 
 func git(t *testing.T, dir string, args ...string) {
