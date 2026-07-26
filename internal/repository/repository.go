@@ -90,7 +90,26 @@ func (r Repository) BranchChanges(ctx context.Context, branch string) (Patch, er
 	if err != nil {
 		return Patch{}, err
 	}
-	return r.build(ctx, raw, branch)
+
+	tracked, err := r.parseTracked(ctx, raw, branch)
+	if err != nil {
+		return Patch{}, err
+	}
+	untracked, err := r.loadUntracked(ctx)
+	if err != nil {
+		return Patch{}, err
+	}
+	files := append(tracked, untracked...)
+	sort.SliceStable(files, func(i, j int) bool {
+		return files[i].DisplayPath < files[j].DisplayPath
+	})
+	hash := sha256.New()
+	_, _ = hash.Write(raw)
+	for _, file := range untracked {
+		_, _ = hash.Write([]byte(file.NewPath))
+		_, _ = hash.Write([]byte(file.NewSource))
+	}
+	return Patch{Repository: r.Root, Fingerprint: hex.EncodeToString(hash.Sum(nil)), Files: files}, nil
 }
 
 func (r Repository) DefaultBranch(ctx context.Context) (string, error) {
@@ -109,32 +128,6 @@ func (r Repository) diff(ctx context.Context, revisions ...string) ([]byte, erro
 	return r.Git.Run(ctx, r.Root, args...)
 }
 
-func (r Repository) build(ctx context.Context, raw []byte, branch string) (Patch, error) {
-	tracked, err := r.parseTracked(ctx, r.Git, raw, branch)
-	if err != nil {
-		return Patch{}, err
-	}
-	untracked, err := r.loadUntracked(ctx, r.Root)
-	if err != nil {
-		return Patch{}, err
-	}
-	files := append(tracked, untracked...)
-	sort.SliceStable(files, func(i, j int) bool { return files[i].DisplayPath < files[j].DisplayPath })
-
-	hash := sha256.New()
-	_, _ = hash.Write(raw)
-	for _, file := range untracked {
-		_, _ = hash.Write([]byte(file.NewPath))
-		_, _ = hash.Write([]byte(file.NewSource))
-	}
-
-	return Patch{
-		Repository:  r.Root,
-		Fingerprint: hex.EncodeToString(hash.Sum(nil)),
-		Files:       files,
-	}, nil
-}
-
 func (r Repository) defaultBranch(ctx context.Context) string {
 	if out, err := r.Git.Run(ctx, r.Root, "symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD"); err == nil {
 		return strings.TrimSpace(string(out))
@@ -147,7 +140,7 @@ func (r Repository) defaultBranch(ctx context.Context) string {
 	return ""
 }
 
-func (r Repository) parseTracked(ctx context.Context, runner Runner, raw []byte, branch string) ([]File, error) {
+func (r Repository) parseTracked(ctx context.Context, raw []byte, branch string) ([]File, error) {
 	if len(bytes.TrimSpace(raw)) == 0 {
 		return nil, nil
 	}
@@ -169,7 +162,7 @@ func (r Repository) parseTracked(ctx context.Context, runner Runner, raw []byte,
 			DisplayPath: visibleText(display),
 			Metadata:    visibleStrings(fd.Extended),
 		}
-		file.OldSource = r.readRevision(ctx, runner, branch, oldPath)
+		file.OldSource = r.readRevision(ctx, branch, oldPath)
 		file.NewSource = readWorkingTree(r.Root, newPath)
 		for _, h := range fd.Hunks {
 			lines, parseErr := parseHunkBody(h.OrigStartLine, h.NewStartLine, h.Body)
@@ -186,8 +179,8 @@ func (r Repository) parseTracked(ctx context.Context, runner Runner, raw []byte,
 	return files, nil
 }
 
-func (r Repository) loadUntracked(ctx context.Context, root string) ([]File, error) {
-	out, err := r.Git.Run(ctx, root, "ls-files", "--others", "--exclude-standard", "-z")
+func (r Repository) loadUntracked(ctx context.Context) ([]File, error) {
+	out, err := r.Git.Run(ctx, r.Root, "ls-files", "--others", "--exclude-standard", "-z")
 	if err != nil {
 		return nil, err
 	}
@@ -198,7 +191,7 @@ func (r Repository) loadUntracked(ctx context.Context, root string) ([]File, err
 		}
 		path := string(rawPath)
 		display := visibleText(path)
-		full := filepath.Join(root, filepath.FromSlash(path))
+		full := filepath.Join(r.Root, filepath.FromSlash(path))
 		info, statErr := os.Lstat(full)
 		if statErr != nil {
 			return nil, fmt.Errorf("stat untracked %q: %w", path, statErr)
@@ -288,11 +281,11 @@ func parseHunkBody(oldLine, newLine int32, body []byte) ([]Line, error) {
 	return lines, nil
 }
 
-func (r Repository) readRevision(ctx context.Context, runner Runner, revision, path string) string {
+func (r Repository) readRevision(ctx context.Context, revision, path string) string {
 	if path == "" || path == "/dev/null" {
 		return ""
 	}
-	out, err := runner.Run(ctx, r.Root, "show", revision+":"+path)
+	out, err := r.Git.Run(ctx, r.Root, "show", revision+":"+path)
 	if err != nil || len(out) > maxFileBytes || bytes.IndexByte(out, 0) >= 0 {
 		return ""
 	}
