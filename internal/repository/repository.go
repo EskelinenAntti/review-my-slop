@@ -73,25 +73,26 @@ func (r Repository) LocalChanges(ctx context.Context) (Patch, error) {
 	return r.BranchChanges(ctx, "")
 }
 
-func (r Repository) BranchChanges(ctx context.Context, branch string) (Patch, error) {
+func (r Repository) BranchChanges(ctx context.Context, parentBranch string) (Patch, error) {
 	var raw []byte
 	var err error
-	if branch == "" {
-		raw, err = r.diff(ctx)
+	var baseCommit string
+	if parentBranch == "" {
+		baseCommit = ""
 	} else {
-		baseBytes, err := r.Git.Run(ctx, r.Root, "merge-base", branch, "HEAD")
+		baseBytes, err := r.Git.Run(ctx, r.Root, "merge-base", parentBranch, "HEAD")
 		if err != nil {
-			return Patch{}, fmt.Errorf("find branch point with %s: %w", branch, err)
+			return Patch{}, fmt.Errorf("find branch point with %s: %w", parentBranch, err)
 		}
-		base := strings.TrimSpace(string(baseBytes))
-		raw, err = r.diff(ctx, base)
+		baseCommit = strings.TrimSpace(string(baseBytes))
 	}
+	raw, err = r.diff(ctx, baseCommit)
 
 	if err != nil {
 		return Patch{}, err
 	}
 
-	tracked, err := r.parseTracked(ctx, raw, branch)
+	tracked, err := r.parseTracked(ctx, raw, parentBranch)
 	if err != nil {
 		return Patch{}, err
 	}
@@ -116,14 +117,22 @@ func (r Repository) DefaultBranch(ctx context.Context) (string, error) {
 	return r.defaultBranch(ctx), nil
 }
 
-func (r Repository) diff(ctx context.Context, revisions ...string) ([]byte, error) {
+func (r Repository) diff(ctx context.Context, branch string) ([]byte, error) {
 	args := []string{
 		"-c", "core.quotepath=false",
 		"-c", "diff.external=",
-		"--no-pager", "diff", "--no-ext-diff", "--no-color", "--find-renames",
-		"--src-prefix=a/", "--dst-prefix=b/", "--unified=3",
+		"--no-pager",
+		"diff",
+		"--no-ext-diff",
+		"--no-color",
+		"--find-renames",
+		"--src-prefix=a/",
+		"--dst-prefix=b/",
+		"--unified=3",
 	}
-	args = append(args, revisions...)
+	if branch != "" {
+		args = append(args, branch)
+	}
 	args = append(args, "--")
 	return r.Git.Run(ctx, r.Root, args...)
 }
