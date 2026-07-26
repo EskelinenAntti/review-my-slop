@@ -113,8 +113,16 @@ func (r Repository) BranchChanges(ctx context.Context, parentBranch string) (Pat
 	return Patch{Repository: r.Root, Fingerprint: hex.EncodeToString(hash.Sum(nil)), Files: files}, nil
 }
 
-func (r Repository) DefaultBranch(ctx context.Context) (string, error) {
-	return r.defaultBranch(ctx), nil
+func (r Repository) DefaultBranch(ctx context.Context) string {
+	if out, err := r.Git.Run(ctx, r.Root, "symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD"); err == nil {
+		return strings.TrimSpace(string(out))
+	}
+	for _, candidate := range []string{"origin/main", "main", "origin/master", "master"} {
+		if _, err := r.Git.Run(ctx, r.Root, "rev-parse", "--verify", "--quiet", candidate+"^{commit}"); err == nil {
+			return candidate
+		}
+	}
+	return ""
 }
 
 func (r Repository) diff(ctx context.Context, branch string) ([]byte, error) {

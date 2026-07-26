@@ -61,10 +61,7 @@ func runCode(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	defaultBranch, err := repo.DefaultBranch(ctx)
-	if err != nil {
-		return err
-	}
+	defaultBranch := repo.DefaultBranch(ctx)
 	saveComment := func(comment review.Comment, current repository.Patch) (review.Comment, error) {
 		comment.Repository = current.Repository
 		if comment.ID != "" {

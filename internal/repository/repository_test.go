@@ -155,10 +155,7 @@ func TestDefaultBranchFallbacks(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			root := t.TempDir()
 			runner := &defaultBranchRunner{root: root, originHEAD: tt.originHEAD, available: tt.available}
-			got, err := (Repository{Root: root, Git: runner}).DefaultBranch(context.Background())
-			if err != nil {
-				t.Fatal(err)
-			}
+			got := (Repository{Root: root, Git: runner}).DefaultBranch(context.Background())
 			if got != tt.want {
 				t.Fatalf("default branch = %q, want %q", got, tt.want)
 			}
