@@ -13,7 +13,7 @@ import (
 type SaveCommentFunc func(review.Comment, repository.Patch) (review.Comment, error)
 type DeleteCommentFunc func(review.Comment, repository.Patch) error
 type LoadCommentsFunc func() ([]review.Comment, error)
-type RefreshDiffFunc func(parent string) (repository.Patch, error)
+type RefreshDiffFunc func(showBranchChanges bool) (repository.Patch, error)
 type SaveSideBySideFunc func(bool) error
 
 type Size struct {
@@ -206,7 +206,10 @@ func (m Model) loadRefresh() tea.Cmd {
 		return nil
 	}
 	branch := m.currentBranch()
-	return func() tea.Msg { p, err := m.refresh(branch); return refreshDiffMsg{patch: p, branch: branch, err: err} }
+	return func() tea.Msg {
+		p, err := m.refresh(m.showDefault)
+		return refreshDiffMsg{patch: p, branch: branch, err: err}
+	}
 }
 
 func (m Model) loadComments() tea.Cmd {

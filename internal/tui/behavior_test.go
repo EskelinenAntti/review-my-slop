@@ -427,9 +427,9 @@ func TestFocusAndManualRefreshLoadCurrentView(t *testing.T) {
 	m := testModel(coveragePatch(), nil, nil)
 	m.SetDefaultBranch("main")
 	m.showDefault = true
-	var requested []string
-	m.SetRefresh(func(parent string) (repository.Patch, error) {
-		requested = append(requested, parent)
+	var requested []bool
+	m.SetRefresh(func(showBranchChanges bool) (repository.Patch, error) {
+		requested = append(requested, showBranchChanges)
 		p := coveragePatch()
 		p.Fingerprint = fmt.Sprintf("refresh-%d", len(requested))
 		return p, nil
@@ -446,7 +446,7 @@ func TestFocusAndManualRefreshLoadCurrentView(t *testing.T) {
 		t.Fatal("R did not refresh")
 	}
 	m = updateModel(t, m, cmd())
-	if !slices.Equal(requested, []string{"main", "main"}) || m.review.patch.Fingerprint != "refresh-2" {
+	if !slices.Equal(requested, []bool{true, true}) || m.review.patch.Fingerprint != "refresh-2" {
 		t.Fatalf("requested=%v fingerprint=%q", requested, m.review.patch.Fingerprint)
 	}
 }
@@ -455,7 +455,7 @@ func TestSourceEditorCompletionRefreshesDiff(t *testing.T) {
 	m := testModel(coveragePatch(), nil, nil)
 	refreshed := coveragePatch()
 	refreshed.Fingerprint = "after-editor"
-	m.SetRefresh(func(string) (repository.Patch, error) { return refreshed, nil })
+	m.SetRefresh(func(bool) (repository.Patch, error) { return refreshed, nil })
 
 	next, cmd := m.Update(sourceEditorFinishedMsg{})
 	m = next.(Model)
@@ -540,7 +540,7 @@ func TestSideBySideSearchActivatesPaneAndCancelRestoresIt(t *testing.T) {
 func TestTabTogglesDefaultBranchAndIgnoresStaleRefresh(t *testing.T) {
 	m := testModel(coveragePatch(), nil, nil)
 	m.SetDefaultBranch("main")
-	m.SetRefresh(func(string) (repository.Patch, error) { return coveragePatch(), nil })
+	m.SetRefresh(func(bool) (repository.Patch, error) { return coveragePatch(), nil })
 	next, _ := m.Update(textKey("tab"))
 	m = next.(Model)
 	if m.currentBranch() != "main" {
@@ -561,7 +561,7 @@ func TestTabTogglesDefaultBranchAndIgnoresStaleRefresh(t *testing.T) {
 func TestTabDoesNothingWithoutDefaultBranch(t *testing.T) {
 	m := testModel(coveragePatch(), nil, nil)
 	refreshed := false
-	m.SetRefresh(func(string) (repository.Patch, error) {
+	m.SetRefresh(func(bool) (repository.Patch, error) {
 		refreshed = true
 		return coveragePatch(), nil
 	})

@@ -43,8 +43,9 @@ func (Git) Run(ctx context.Context, dir string, args ...string) ([]byte, error) 
 }
 
 type Repository struct {
-	Root string
-	Git  Runner
+	Root          string
+	Git           Runner
+	DefaultBranch string
 }
 
 func New(ctx context.Context) (Repository, error) {
@@ -54,45 +55,52 @@ func New(ctx context.Context) (Repository, error) {
 	}
 
 	git := Git{}
-	rootBytes, err := git.Run(ctx, current, "rev-parse", "--show-toplevel")
-	if err != nil {
-		return Repository{}, err
-	}
-	root, err := filepath.EvalSymlinks(strings.TrimSpace(string(rootBytes)))
+	root, err := root(ctx, git, current)
 	if err != nil {
 		return Repository{}, fmt.Errorf("resolve repository root: %w", err)
 	}
+	defaultBranch := defaultBranch(ctx, git, root)
 
 	return Repository{
-		Root: root,
-		Git:  git,
+		Root:          root,
+		Git:           git,
+		DefaultBranch: defaultBranch,
 	}, nil
 }
 
-func (r Repository) LocalChanges(ctx context.Context) (Patch, error) {
-	return r.BranchChanges(ctx, "")
+func root(ctx context.Context, git Git, current string) (string, error) {
+	rootBytes, err := git.Run(ctx, current, "rev-parse", "--show-toplevel")
+	if err != nil {
+		return "", err
+	}
+	root, err := filepath.EvalSymlinks(strings.TrimSpace(string(rootBytes)))
+	return root, err
 }
 
-func (r Repository) BranchChanges(ctx context.Context, parentBranch string) (Patch, error) {
+func defaultBranch(ctx context.Context, git Git, root string) string {
+	if out, err := git.Run(ctx, root, "symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD"); err == nil {
+		return strings.TrimSpace(string(out))
+	}
+	for _, candidate := range []string{"origin/main", "main", "origin/master", "master"} {
+		if _, err := git.Run(ctx, root, "rev-parse", "--verify", "--quiet", candidate+"^{commit}"); err == nil {
+			return candidate
+		}
+	}
+	return ""
+}
+
+func (r Repository) LocalChanges(ctx context.Context) (Patch, error) {
 	var raw []byte
 	var err error
-	var baseCommit string
-	if parentBranch == "" {
-		baseCommit = ""
-	} else {
-		baseBytes, err := r.Git.Run(ctx, r.Root, "merge-base", parentBranch, "HEAD")
-		if err != nil {
-			return Patch{}, fmt.Errorf("find branch point with %s: %w", parentBranch, err)
-		}
-		baseCommit = strings.TrimSpace(string(baseBytes))
-	}
+	baseCommit := ""
+
 	raw, err = r.diff(ctx, baseCommit)
 
 	if err != nil {
 		return Patch{}, err
 	}
 
-	tracked, err := r.parseTracked(ctx, raw, parentBranch)
+	tracked, err := r.parseTracked(ctx, raw, "")
 	if err != nil {
 		return Patch{}, err
 	}
@@ -113,16 +121,40 @@ func (r Repository) BranchChanges(ctx context.Context, parentBranch string) (Pat
 	return Patch{Repository: r.Root, Fingerprint: hex.EncodeToString(hash.Sum(nil)), Files: files}, nil
 }
 
-func (r Repository) DefaultBranch(ctx context.Context) string {
-	if out, err := r.Git.Run(ctx, r.Root, "symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD"); err == nil {
-		return strings.TrimSpace(string(out))
+func (r Repository) BranchChanges(ctx context.Context) (Patch, error) {
+	var raw []byte
+	var err error
+	var baseCommit string
+	baseBytes, err := r.Git.Run(ctx, r.Root, "merge-base", r.DefaultBranch, "HEAD")
+	if err != nil {
+		return Patch{}, fmt.Errorf("find branch point with %s: %w", r.DefaultBranch, err)
 	}
-	for _, candidate := range []string{"origin/main", "main", "origin/master", "master"} {
-		if _, err := r.Git.Run(ctx, r.Root, "rev-parse", "--verify", "--quiet", candidate+"^{commit}"); err == nil {
-			return candidate
-		}
+	baseCommit = strings.TrimSpace(string(baseBytes))
+	raw, err = r.diff(ctx, baseCommit)
+
+	if err != nil {
+		return Patch{}, err
 	}
-	return ""
+
+	tracked, err := r.parseTracked(ctx, raw, r.DefaultBranch)
+	if err != nil {
+		return Patch{}, err
+	}
+	untracked, err := r.loadUntracked(ctx)
+	if err != nil {
+		return Patch{}, err
+	}
+	files := append(tracked, untracked...)
+	sort.SliceStable(files, func(i, j int) bool {
+		return files[i].DisplayPath < files[j].DisplayPath
+	})
+	hash := sha256.New()
+	_, _ = hash.Write(raw)
+	for _, file := range untracked {
+		_, _ = hash.Write([]byte(file.NewPath))
+		_, _ = hash.Write([]byte(file.NewSource))
+	}
+	return Patch{Repository: r.Root, Fingerprint: hex.EncodeToString(hash.Sum(nil)), Files: files}, nil
 }
 
 func (r Repository) diff(ctx context.Context, branch string) ([]byte, error) {

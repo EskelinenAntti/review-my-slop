@@ -61,7 +61,6 @@ func runCode(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	defaultBranch := repo.DefaultBranch(ctx)
 	saveComment := func(comment review.Comment, current repository.Patch) (review.Comment, error) {
 		comment.Repository = current.Repository
 		if comment.ID != "" {
@@ -81,10 +80,10 @@ func runCode(ctx context.Context) error {
 	model.SetDelete(func(comment review.Comment, current repository.Patch) error {
 		return store.Delete(current.Repository, comment.ID)
 	})
-	model.SetDefaultBranch(defaultBranch)
-	model.SetRefresh(func(branch string) (repository.Patch, error) {
-		if branch != "" {
-			return repo.BranchChanges(ctx, branch)
+	model.SetDefaultBranch(repo.DefaultBranch)
+	model.SetRefresh(func(showBranchChanges bool) (repository.Patch, error) {
+		if showBranchChanges {
+			return repo.BranchChanges(ctx)
 		}
 		return repo.LocalChanges(ctx)
 	})
