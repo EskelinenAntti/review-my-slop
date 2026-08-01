@@ -137,8 +137,6 @@ func TestLoadBranchIncludesCommittedStagedUnstagedAndUntrackedChanges(t *testing
 	}
 }
 
-// TODO: Add this test coverage back
-/*
 func TestDefaultBranchFallbacks(t *testing.T) {
 	tests := []struct {
 		name       string
@@ -157,7 +155,11 @@ func TestDefaultBranchFallbacks(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			root := t.TempDir()
 			runner := &defaultBranchRunner{root: root, originHEAD: tt.originHEAD, available: tt.available}
-			got := (Repository{Root: root, Git: runner}).DefaultBranch(context.Background())
+			repo, err := New(context.Background(), runner)
+			if err != nil {
+				t.Fatalf("could not create repository %v", err)
+			}
+			got := repo.DefaultBranch
 			if got != tt.want {
 				t.Fatalf("default branch = %q, want %q", got, tt.want)
 			}
@@ -169,7 +171,6 @@ func TestDefaultBranchFallbacks(t *testing.T) {
 		})
 	}
 }
-*/
 
 type defaultBranchRunner struct {
 	root       string

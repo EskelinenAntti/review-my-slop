@@ -63,7 +63,7 @@ func NewEnvironment(ctx context.Context) (Environment, error) {
 	}, nil
 }
 
-func New(ctx context.Context, git Git) (Repository, error) {
+func New(ctx context.Context, git Runner) (Repository, error) {
 	current, err := os.Getwd()
 	if err != nil {
 		return Repository{}, err
@@ -81,7 +81,7 @@ func New(ctx context.Context, git Git) (Repository, error) {
 	}, nil
 }
 
-func root(ctx context.Context, git Git, current string) (string, error) {
+func root(ctx context.Context, git Runner, current string) (string, error) {
 	rootBytes, err := git.Run(ctx, current, "rev-parse", "--show-toplevel")
 	if err != nil {
 		return "", err
@@ -90,7 +90,7 @@ func root(ctx context.Context, git Git, current string) (string, error) {
 	return root, err
 }
 
-func defaultBranch(ctx context.Context, git Git, root string) string {
+func defaultBranch(ctx context.Context, git Runner, root string) string {
 	if out, err := git.Run(ctx, root, "symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD"); err == nil {
 		return strings.TrimSpace(string(out))
 	}
