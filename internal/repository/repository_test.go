@@ -10,7 +10,7 @@ import (
 )
 
 func TestLoaderIncludesUnstagedAndUntrackedButNotStagedOnly(t *testing.T) {
-	repo := newTestRepository(t)
+	repo := newTestEnvironment(t)
 	dir := repo.Root
 	writeFile(t, dir, "modified.go", "package main\n\nfunc value() int { return 1 }\n")
 	writeFile(t, dir, "staged.txt", "before\n")
@@ -68,7 +68,7 @@ func TestAddedFileKeepsRawAndDisplayPathsSeparate(t *testing.T) {
 }
 
 func TestLoaderShowsBinaryMetadataWithoutBinaryDiffLines(t *testing.T) {
-	repo := newTestRepository(t)
+	repo := newTestEnvironment(t)
 	dir := repo.Root
 	writeFile(t, dir, "tracked.bin", "\x00old")
 	git(t, dir, "add", "tracked.bin")
@@ -94,7 +94,7 @@ func TestLoaderShowsBinaryMetadataWithoutBinaryDiffLines(t *testing.T) {
 }
 
 func TestLoadBranchIncludesCommittedStagedUnstagedAndUntrackedChanges(t *testing.T) {
-	repo := newTestRepository(t)
+	repo := newTestEnvironment(t)
 	dir := repo.Root
 	git(t, dir, "branch", "-M", "main")
 	writeFile(t, dir, "committed.txt", "base\n")
@@ -194,7 +194,7 @@ func (r *defaultBranchRunner) Run(_ context.Context, _ string, args ...string) (
 }
 
 func TestLoaderDoesNotFollowUntrackedSymlink(t *testing.T) {
-	repo := newTestRepository(t)
+	repo := newTestEnvironment(t)
 	outside := filepath.Join(t.TempDir(), "secret")
 	if err := os.WriteFile(outside, []byte("do not read"), 0o600); err != nil {
 		t.Fatal(err)
@@ -268,7 +268,7 @@ func containsKind(file File, kind LineKind, text string) bool {
 	return false
 }
 
-func newTestRepository(t *testing.T) Repository {
+func newTestEnvironment(t *testing.T) Environment {
 	t.Helper()
 	repo, err := filepath.EvalSymlinks(t.TempDir())
 	if err != nil {
@@ -277,7 +277,7 @@ func newTestRepository(t *testing.T) Repository {
 	git(t, repo, "init", "-q")
 	git(t, repo, "config", "user.email", "test@example.com")
 	git(t, repo, "config", "user.name", "Test")
-	return Repository{Root: repo, Git: Git{}, DefaultBranch: "main"}
+	return Environment{Repository: Repository{Root: repo, DefaultBranch: "main"}, Git: Git{}}
 }
 
 func git(t *testing.T, dir string, args ...string) {

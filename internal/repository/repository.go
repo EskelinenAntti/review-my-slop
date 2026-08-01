@@ -42,19 +42,33 @@ func (Git) Run(ctx context.Context, dir string, args ...string) ([]byte, error) 
 	return nil, fmt.Errorf("git %s: %w", strings.Join(args, " "), err)
 }
 
+type Environment struct {
+	Repository
+	Git
+}
 type Repository struct {
 	Root          string
-	Git           Runner
 	DefaultBranch string
 }
 
-func New(ctx context.Context) (Repository, error) {
+func NewEnvironment(ctx context.Context) (Environment, error) {
+	git := Git{}
+	repo, err := New(ctx, git)
+	if err != nil {
+		return Environment{}, err
+	}
+	return Environment{
+		Git:        git,
+		Repository: repo,
+	}, nil
+}
+
+func New(ctx context.Context, git Git) (Repository, error) {
 	current, err := os.Getwd()
 	if err != nil {
 		return Repository{}, err
 	}
 
-	git := Git{}
 	root, err := root(ctx, git, current)
 	if err != nil {
 		return Repository{}, fmt.Errorf("resolve repository root: %w", err)
@@ -63,7 +77,6 @@ func New(ctx context.Context) (Repository, error) {
 
 	return Repository{
 		Root:          root,
-		Git:           git,
 		DefaultBranch: defaultBranch,
 	}, nil
 }
@@ -89,22 +102,22 @@ func defaultBranch(ctx context.Context, git Git, root string) string {
 	return ""
 }
 
-func (r Repository) LocalChanges(ctx context.Context) (Patch, error) {
+func (e Environment) LocalChanges(ctx context.Context) (Patch, error) {
 	var raw []byte
 	var err error
 	baseCommit := ""
 
-	raw, err = r.diff(ctx, baseCommit)
+	raw, err = e.diff(ctx, baseCommit)
 
 	if err != nil {
 		return Patch{}, err
 	}
 
-	tracked, err := r.parseTracked(ctx, raw, "")
+	tracked, err := e.parseTracked(ctx, raw, "")
 	if err != nil {
 		return Patch{}, err
 	}
-	untracked, err := r.loadUntracked(ctx)
+	untracked, err := e.loadUntracked(ctx)
 	if err != nil {
 		return Patch{}, err
 	}
@@ -118,29 +131,29 @@ func (r Repository) LocalChanges(ctx context.Context) (Patch, error) {
 		_, _ = hash.Write([]byte(file.NewPath))
 		_, _ = hash.Write([]byte(file.NewSource))
 	}
-	return Patch{Repository: r.Root, Fingerprint: hex.EncodeToString(hash.Sum(nil)), Files: files}, nil
+	return Patch{Repository: e.Root, Fingerprint: hex.EncodeToString(hash.Sum(nil)), Files: files}, nil
 }
 
-func (r Repository) BranchChanges(ctx context.Context) (Patch, error) {
+func (e Environment) BranchChanges(ctx context.Context) (Patch, error) {
 	var raw []byte
 	var err error
 	var baseCommit string
-	baseBytes, err := r.Git.Run(ctx, r.Root, "merge-base", r.DefaultBranch, "HEAD")
+	baseBytes, err := e.Git.Run(ctx, e.Root, "merge-base", e.DefaultBranch, "HEAD")
 	if err != nil {
-		return Patch{}, fmt.Errorf("find branch point with %s: %w", r.DefaultBranch, err)
+		return Patch{}, fmt.Errorf("find branch point with %s: %w", e.DefaultBranch, err)
 	}
 	baseCommit = strings.TrimSpace(string(baseBytes))
-	raw, err = r.diff(ctx, baseCommit)
+	raw, err = e.diff(ctx, baseCommit)
 
 	if err != nil {
 		return Patch{}, err
 	}
 
-	tracked, err := r.parseTracked(ctx, raw, r.DefaultBranch)
+	tracked, err := e.parseTracked(ctx, raw, e.DefaultBranch)
 	if err != nil {
 		return Patch{}, err
 	}
-	untracked, err := r.loadUntracked(ctx)
+	untracked, err := e.loadUntracked(ctx)
 	if err != nil {
 		return Patch{}, err
 	}
@@ -154,10 +167,10 @@ func (r Repository) BranchChanges(ctx context.Context) (Patch, error) {
 		_, _ = hash.Write([]byte(file.NewPath))
 		_, _ = hash.Write([]byte(file.NewSource))
 	}
-	return Patch{Repository: r.Root, Fingerprint: hex.EncodeToString(hash.Sum(nil)), Files: files}, nil
+	return Patch{Repository: e.Root, Fingerprint: hex.EncodeToString(hash.Sum(nil)), Files: files}, nil
 }
 
-func (r Repository) diff(ctx context.Context, branch string) ([]byte, error) {
+func (e Environment) diff(ctx context.Context, branch string) ([]byte, error) {
 	args := []string{
 		"-c", "core.quotepath=false",
 		"-c", "diff.external=",
@@ -174,22 +187,10 @@ func (r Repository) diff(ctx context.Context, branch string) ([]byte, error) {
 		args = append(args, branch)
 	}
 	args = append(args, "--")
-	return r.Git.Run(ctx, r.Root, args...)
+	return e.Git.Run(ctx, e.Root, args...)
 }
 
-func (r Repository) defaultBranch(ctx context.Context) string {
-	if out, err := r.Git.Run(ctx, r.Root, "symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD"); err == nil {
-		return strings.TrimSpace(string(out))
-	}
-	for _, candidate := range []string{"origin/main", "main", "origin/master", "master"} {
-		if _, err := r.Git.Run(ctx, r.Root, "rev-parse", "--verify", "--quiet", candidate+"^{commit}"); err == nil {
-			return candidate
-		}
-	}
-	return ""
-}
-
-func (r Repository) parseTracked(ctx context.Context, raw []byte, branch string) ([]File, error) {
+func (e Environment) parseTracked(ctx context.Context, raw []byte, branch string) ([]File, error) {
 	if len(bytes.TrimSpace(raw)) == 0 {
 		return nil, nil
 	}
@@ -211,8 +212,8 @@ func (r Repository) parseTracked(ctx context.Context, raw []byte, branch string)
 			DisplayPath: visibleText(display),
 			Metadata:    visibleStrings(fd.Extended),
 		}
-		file.OldSource = r.readRevision(ctx, branch, oldPath)
-		file.NewSource = readWorkingTree(r.Root, newPath)
+		file.OldSource = e.readRevision(ctx, branch, oldPath)
+		file.NewSource = readWorkingTree(e.Root, newPath)
 		for _, h := range fd.Hunks {
 			lines, parseErr := parseHunkBody(h.OrigStartLine, h.NewStartLine, h.Body)
 			if parseErr != nil {
@@ -228,8 +229,8 @@ func (r Repository) parseTracked(ctx context.Context, raw []byte, branch string)
 	return files, nil
 }
 
-func (r Repository) loadUntracked(ctx context.Context) ([]File, error) {
-	out, err := r.Git.Run(ctx, r.Root, "ls-files", "--others", "--exclude-standard", "-z")
+func (e Environment) loadUntracked(ctx context.Context) ([]File, error) {
+	out, err := e.Git.Run(ctx, e.Root, "ls-files", "--others", "--exclude-standard", "-z")
 	if err != nil {
 		return nil, err
 	}
@@ -240,7 +241,7 @@ func (r Repository) loadUntracked(ctx context.Context) ([]File, error) {
 		}
 		path := string(rawPath)
 		display := visibleText(path)
-		full := filepath.Join(r.Root, filepath.FromSlash(path))
+		full := filepath.Join(e.Root, filepath.FromSlash(path))
 		info, statErr := os.Lstat(full)
 		if statErr != nil {
 			return nil, fmt.Errorf("stat untracked %q: %w", path, statErr)
@@ -330,11 +331,11 @@ func parseHunkBody(oldLine, newLine int32, body []byte) ([]Line, error) {
 	return lines, nil
 }
 
-func (r Repository) readRevision(ctx context.Context, revision, path string) string {
+func (e Environment) readRevision(ctx context.Context, revision, path string) string {
 	if path == "" || path == "/dev/null" {
 		return ""
 	}
-	out, err := r.Git.Run(ctx, r.Root, "show", revision+":"+path)
+	out, err := e.Git.Run(ctx, e.Root, "show", revision+":"+path)
 	if err != nil || len(out) > maxFileBytes || bytes.IndexByte(out, 0) >= 0 {
 		return ""
 	}

@@ -40,11 +40,11 @@ func run(ctx context.Context, args []string, output io.Writer) error {
 }
 
 func runCode(ctx context.Context) error {
-	repo, err := repository.New(ctx)
+	env, err := repository.NewEnvironment(ctx)
 	if err != nil {
 		return err
 	}
-	loadedPatch, err := repo.LocalChanges(ctx)
+	loadedPatch, err := env.LocalChanges(ctx)
 	if err != nil {
 		return err
 	}
@@ -80,12 +80,12 @@ func runCode(ctx context.Context) error {
 	model.SetDelete(func(comment review.Comment, current repository.Patch) error {
 		return store.Delete(current.Repository, comment.ID)
 	})
-	model.SetDefaultBranch(repo.DefaultBranch)
+	model.SetDefaultBranch(env.Repository.DefaultBranch)
 	model.SetRefresh(func(showBranchChanges bool) (repository.Patch, error) {
 		if showBranchChanges {
-			return repo.BranchChanges(ctx)
+			return env.BranchChanges(ctx)
 		}
-		return repo.LocalChanges(ctx)
+		return env.LocalChanges(ctx)
 	})
 	program := tea.NewProgram(model, tea.WithWindowSize(size.Width, size.Height))
 	_, err = program.Run()
@@ -103,19 +103,19 @@ func initialTerminalSize() tui.Size {
 }
 
 func runComments(ctx context.Context, output io.Writer) error {
-	repo, err := repository.New(ctx)
+	env, err := repository.NewEnvironment(ctx)
 	if err != nil {
 		return err
 	}
-	return runCommentsAt(repo, output)
+	return runCommentsAt(env, output)
 }
 
-func runCommentsAt(repo repository.Repository, output io.Writer) error {
+func runCommentsAt(env repository.Environment, output io.Writer) error {
 	store, err := inbox.OpenDefault()
 	if err != nil {
 		return err
 	}
-	comments, err := store.List(repo.Root)
+	comments, err := store.List(env.Root)
 	if err != nil {
 		return err
 	}
@@ -126,5 +126,5 @@ func runCommentsAt(repo repository.Repository, output io.Writer) error {
 	for index, comment := range comments {
 		ids[index] = comment.ID
 	}
-	return store.Acknowledge(repo.Root, ids)
+	return store.Acknowledge(env.Repository.Root, ids)
 }
