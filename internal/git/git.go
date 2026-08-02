@@ -1,4 +1,4 @@
-package repository
+package git
 
 import (
 	"bytes"
@@ -22,9 +22,9 @@ type Runner interface {
 	Run(ctx context.Context, dir string, args ...string) ([]byte, error)
 }
 
-type Git struct{}
+type ExecRunner struct{}
 
-func (Git) Run(ctx context.Context, dir string, args ...string) ([]byte, error) {
+func (ExecRunner) Run(ctx context.Context, dir string, args ...string) ([]byte, error) {
 	cmd := exec.CommandContext(ctx, "git", args...)
 	cmd.Dir = dir
 	cmd.Env = append(os.Environ(),
@@ -42,28 +42,28 @@ func (Git) Run(ctx context.Context, dir string, args ...string) ([]byte, error) 
 	return nil, fmt.Errorf("git %s: %w", strings.Join(args, " "), err)
 }
 
-type Environment struct {
+type Git struct {
 	Repository Repository
-	Git        Runner
+	Runner     Runner
 }
 type Repository struct {
 	Root          string
 	DefaultBranch string
 }
 
-func NewEnvironment(ctx context.Context) (Environment, error) {
-	git := Git{}
-	repo, err := New(ctx, git)
+func New(ctx context.Context) (Git, error) {
+	git := ExecRunner{}
+	repo, err := NewRepository(ctx, git)
 	if err != nil {
-		return Environment{}, err
+		return Git{}, err
 	}
-	return Environment{
-		Git:        git,
+	return Git{
+		Runner:     git,
 		Repository: repo,
 	}, nil
 }
 
-func New(ctx context.Context, git Runner) (Repository, error) {
+func NewRepository(ctx context.Context, git Runner) (Repository, error) {
 	current, err := os.Getwd()
 	if err != nil {
 		return Repository{}, err
@@ -102,41 +102,41 @@ func defaultBranch(ctx context.Context, git Runner, root string) string {
 	return ""
 }
 
-func (e Environment) LocalChanges(ctx context.Context) (Patch, error) {
-	raw, err := e.diff(ctx, "")
+func (g Git) LocalChanges(ctx context.Context) (Patch, error) {
+	raw, err := g.diff(ctx, "")
 	if err != nil {
 		return Patch{}, err
 	}
 
-	files, err := e.files(ctx, raw)
+	files, err := g.files(ctx, raw)
 	if err != nil {
 		return Patch{}, err
 	}
-	return Patch{Repository: e.Repository.Root, Fingerprint: fingerprint(files), Files: files}, nil
+	return Patch{Repository: g.Repository.Root, Fingerprint: fingerprint(files), Files: files}, nil
 }
 
-func (e Environment) BranchChanges(ctx context.Context) (Patch, error) {
-	baseCommit, p, err := e.baseCommit(ctx)
+func (g Git) BranchChanges(ctx context.Context) (Patch, error) {
+	baseCommit, p, err := g.baseCommit(ctx)
 	if err != nil {
 		return p, err
 	}
-	raw, err := e.diff(ctx, baseCommit)
+	raw, err := g.diff(ctx, baseCommit)
 
 	if err != nil {
 		return Patch{}, err
 	}
 
-	files, err := e.files(ctx, raw)
+	files, err := g.files(ctx, raw)
 	if err != nil {
 		return Patch{}, err
 	}
-	return Patch{Repository: e.Repository.Root, Fingerprint: fingerprint(files), Files: files}, nil
+	return Patch{Repository: g.Repository.Root, Fingerprint: fingerprint(files), Files: files}, nil
 }
 
-func (e Environment) baseCommit(ctx context.Context) (string, Patch, error) {
-	baseBytes, err := e.Git.Run(ctx, e.Repository.Root, "merge-base", e.Repository.DefaultBranch, "HEAD")
+func (g Git) baseCommit(ctx context.Context) (string, Patch, error) {
+	baseBytes, err := g.Runner.Run(ctx, g.Repository.Root, "merge-base", g.Repository.DefaultBranch, "HEAD")
 	if err != nil {
-		return "", Patch{}, fmt.Errorf("find branch point with %s: %w", e.Repository.DefaultBranch, err)
+		return "", Patch{}, fmt.Errorf("find branch point with %s: %w", g.Repository.DefaultBranch, err)
 	}
 	baseCommit := strings.TrimSpace(string(baseBytes))
 	return baseCommit, Patch{}, nil
@@ -153,12 +153,12 @@ func fingerprint(files []File) string {
 	return hex.EncodeToString(hash.Sum(nil))
 }
 
-func (e Environment) files(ctx context.Context, raw []byte) ([]File, error) {
-	tracked, err := e.parseTracked(ctx, raw)
+func (g Git) files(ctx context.Context, raw []byte) ([]File, error) {
+	tracked, err := g.parseTracked(ctx, raw)
 	if err != nil {
 		return nil, err
 	}
-	untracked, err := e.loadUntracked(ctx)
+	untracked, err := g.loadUntracked(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -169,7 +169,7 @@ func (e Environment) files(ctx context.Context, raw []byte) ([]File, error) {
 	return files, nil
 }
 
-func (e Environment) diff(ctx context.Context, baseCommit string) ([]byte, error) {
+func (g Git) diff(ctx context.Context, baseCommit string) ([]byte, error) {
 	args := []string{
 		"-c", "core.quotepath=false",
 		"-c", "diff.external=",
@@ -186,10 +186,10 @@ func (e Environment) diff(ctx context.Context, baseCommit string) ([]byte, error
 		args = append(args, baseCommit)
 	}
 	args = append(args, "--")
-	return e.Git.Run(ctx, e.Repository.Root, args...)
+	return g.Runner.Run(ctx, g.Repository.Root, args...)
 }
 
-func (e Environment) parseTracked(ctx context.Context, raw []byte) ([]File, error) {
+func (g Git) parseTracked(ctx context.Context, raw []byte) ([]File, error) {
 	if len(bytes.TrimSpace(raw)) == 0 {
 		return nil, nil
 	}
@@ -211,8 +211,8 @@ func (e Environment) parseTracked(ctx context.Context, raw []byte) ([]File, erro
 			DisplayPath: visibleText(display),
 			Metadata:    visibleStrings(fd.Extended),
 		}
-		file.OldSource = e.readRevision(ctx, e.Repository.DefaultBranch, oldPath)
-		file.NewSource = readWorkingTree(e.Repository.Root, newPath)
+		file.OldSource = g.readRevision(ctx, g.Repository.DefaultBranch, oldPath)
+		file.NewSource = readWorkingTree(g.Repository.Root, newPath)
 		for _, h := range fd.Hunks {
 			lines, parseErr := parseHunkBody(h.OrigStartLine, h.NewStartLine, h.Body)
 			if parseErr != nil {
@@ -228,8 +228,8 @@ func (e Environment) parseTracked(ctx context.Context, raw []byte) ([]File, erro
 	return files, nil
 }
 
-func (e Environment) loadUntracked(ctx context.Context) ([]File, error) {
-	out, err := e.Git.Run(ctx, e.Repository.Root, "ls-files", "--others", "--exclude-standard", "-z")
+func (g Git) loadUntracked(ctx context.Context) ([]File, error) {
+	out, err := g.Runner.Run(ctx, g.Repository.Root, "ls-files", "--others", "--exclude-standard", "-z")
 	if err != nil {
 		return nil, err
 	}
@@ -240,7 +240,7 @@ func (e Environment) loadUntracked(ctx context.Context) ([]File, error) {
 		}
 		path := string(rawPath)
 		display := visibleText(path)
-		full := filepath.Join(e.Repository.Root, filepath.FromSlash(path))
+		full := filepath.Join(g.Repository.Root, filepath.FromSlash(path))
 		info, statErr := os.Lstat(full)
 		if statErr != nil {
 			return nil, fmt.Errorf("stat untracked %q: %w", path, statErr)
@@ -330,11 +330,11 @@ func parseHunkBody(oldLine, newLine int32, body []byte) ([]Line, error) {
 	return lines, nil
 }
 
-func (e Environment) readRevision(ctx context.Context, revision, path string) string {
+func (g Git) readRevision(ctx context.Context, revision, path string) string {
 	if path == "" || path == "/dev/null" {
 		return ""
 	}
-	out, err := e.Git.Run(ctx, e.Repository.Root, "show", revision+":"+path)
+	out, err := g.Runner.Run(ctx, g.Repository.Root, "show", revision+":"+path)
 	if err != nil || len(out) > maxFileBytes || bytes.IndexByte(out, 0) >= 0 {
 		return ""
 	}

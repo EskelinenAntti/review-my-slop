@@ -3,7 +3,7 @@ package view
 import (
 	"fmt"
 
-	"github.com/eskelinenantti/review-my-slop/internal/repository"
+	"github.com/eskelinenantti/review-my-slop/internal/git"
 	"github.com/eskelinenantti/review-my-slop/internal/review"
 )
 
@@ -24,7 +24,7 @@ func (v *diffView) ExtendSelection(selection Selection, cursor Cursor) (Selectio
 	return selection, true
 }
 
-func (v *diffView) Lines(selection Selection) []repository.Line {
+func (v *diffView) Lines(selection Selection) []git.Line {
 	if _, ok := v.ExtendSelection(selection, selection.Last); !ok {
 		return nil
 	}
@@ -32,7 +32,7 @@ func (v *diffView) Lines(selection Selection) []repository.Line {
 	if first > last {
 		first, last = last, first
 	}
-	lines := make([]repository.Line, 0, last-first+1)
+	lines := make([]git.Line, 0, last-first+1)
 	if first == last && selection.First.Pane != selection.Last.Pane {
 		current := v.rows[first]
 		indices := []int{v.lineIndex(current, selection.First.Pane), v.lineIndex(current, selection.Last.Pane)}
@@ -82,10 +82,10 @@ func (v *diffView) Anchor(selection Selection) (review.Anchor, error) {
 			}
 			line := hunk.Lines[index]
 			prefix := " "
-			if line.Kind == repository.Addition {
+			if line.Kind == git.Addition {
 				prefix = "+"
 			}
-			if line.Kind == repository.Deletion {
+			if line.Kind == git.Deletion {
 				prefix = "-"
 			}
 			anchor.QuotedLines = append(anchor.QuotedLines, prefix+line.Text)
@@ -96,30 +96,30 @@ func (v *diffView) Anchor(selection Selection) (review.Anchor, error) {
 	return anchor, nil
 }
 
-func (v *diffView) File(cursor Cursor) (repository.File, bool) {
+func (v *diffView) File(cursor Cursor) (git.File, bool) {
 	if !v.valid(cursor) {
-		return repository.File{}, false
+		return git.File{}, false
 	}
 	return v.patch.Files[v.rows[cursor.Coordinate.Y].file], true
 }
 
-func (v *diffView) Hunk(cursor Cursor) (repository.Hunk, bool) {
+func (v *diffView) Hunk(cursor Cursor) (git.Hunk, bool) {
 	if !v.valid(cursor) {
-		return repository.Hunk{}, false
+		return git.Hunk{}, false
 	}
 	current := v.rows[cursor.Coordinate.Y]
 	return v.patch.Files[current.file].Hunks[current.hunk], true
 }
 
-func (v *diffView) Line(cursor Cursor) (repository.Line, bool) {
+func (v *diffView) Line(cursor Cursor) (git.Line, bool) {
 	if !v.valid(cursor) {
-		return repository.Line{}, false
+		return git.Line{}, false
 	}
 	current := v.rows[cursor.Coordinate.Y]
 	return v.patch.Files[current.file].Hunks[current.hunk].Lines[v.lineIndex(current, cursor.Pane)], true
 }
 
-func (v *diffView) FindCursor(file repository.File, hunk repository.Hunk, line repository.Line, nearby Coordinate, pane Pane) (Cursor, bool) {
+func (v *diffView) FindCursor(file git.File, hunk git.Hunk, line git.Line, nearby Coordinate, pane Pane) (Cursor, bool) {
 	candidates := make([]Cursor, 0)
 	fallbacks := make([]Cursor, 0)
 	nearbyCandidates := make([]Cursor, 0)
@@ -157,7 +157,7 @@ func (v *diffView) FindCursor(file repository.File, hunk repository.Hunk, line r
 	return Cursor{}, false
 }
 
-func sameFile(candidate, target repository.File) bool {
+func sameFile(candidate, target git.File) bool {
 	return candidate.OldPath != "" && candidate.OldPath == target.OldPath ||
 		candidate.NewPath != "" && candidate.NewPath == target.NewPath
 }
@@ -191,7 +191,7 @@ func abs(value int) int {
 	return value
 }
 
-func highlightedLine(lines []string, number repository.LineNumber, fallback string) string {
+func highlightedLine(lines []string, number git.LineNumber, fallback string) string {
 	if number <= 0 || int(number) > len(lines) {
 		return fallback
 	}

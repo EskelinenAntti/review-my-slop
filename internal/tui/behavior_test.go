@@ -12,7 +12,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/eskelinenantti/review-my-slop/internal/editor"
-	"github.com/eskelinenantti/review-my-slop/internal/repository"
+	"github.com/eskelinenantti/review-my-slop/internal/git"
 	"github.com/eskelinenantti/review-my-slop/internal/review"
 	"github.com/eskelinenantti/review-my-slop/internal/view"
 )
@@ -20,7 +20,7 @@ import (
 func TestVisualSelectionCreatesMappedAnchorAndSubmits(t *testing.T) {
 	t.Setenv("EDITOR", "true")
 	var saved []review.Comment
-	m := testModel(coveragePatch(), nil, func(stored review.Comment, _ repository.Patch) (review.Comment, error) {
+	m := testModel(coveragePatch(), nil, func(stored review.Comment, _ git.Patch) (review.Comment, error) {
 		saved = append(saved, stored)
 		stored.ID = "new"
 		return stored, nil
@@ -41,7 +41,7 @@ func TestVisualSelectionCreatesMappedAnchorAndSubmits(t *testing.T) {
 
 func TestCommentSaveFailureClearsPendingEdit(t *testing.T) {
 	t.Setenv("EDITOR", "true")
-	m := testModel(coveragePatch(), nil, func(review.Comment, repository.Patch) (review.Comment, error) {
+	m := testModel(coveragePatch(), nil, func(review.Comment, git.Patch) (review.Comment, error) {
 		return review.Comment{}, fmt.Errorf("storage unavailable")
 	})
 	m = updateModel(t, m, textKey("c"))
@@ -125,7 +125,7 @@ func TestExternalEditorCommandReadsEditedDraft(t *testing.T) {
 func TestEmptyNewCommentIsDiscarded(t *testing.T) {
 	t.Setenv("EDITOR", "true")
 	called := false
-	m := testModel(coveragePatch(), nil, func(stored review.Comment, p repository.Patch) (review.Comment, error) {
+	m := testModel(coveragePatch(), nil, func(stored review.Comment, p git.Patch) (review.Comment, error) {
 		called = true
 		return stored, nil
 	})
@@ -163,11 +163,11 @@ func TestInboxCommentsCanBeViewedEditedAndDeleted(t *testing.T) {
 	t.Setenv("EDITOR", "true")
 	comments := []review.Comment{{ID: "one", Body: "old body"}, {ID: "two", Body: "second"}}
 	var persisted, deleted review.Comment
-	m := testModel(coveragePatch(), comments, func(stored review.Comment, _ repository.Patch) (review.Comment, error) {
+	m := testModel(coveragePatch(), comments, func(stored review.Comment, _ git.Patch) (review.Comment, error) {
 		persisted = stored
 		return stored, nil
 	})
-	m.SetDelete(func(stored review.Comment, _ repository.Patch) error { deleted = stored; return nil })
+	m.SetDelete(func(stored review.Comment, _ git.Patch) error { deleted = stored; return nil })
 	m = updateModel(t, m, textKey("C"))
 	if m.mode != modeComments || !strings.Contains(m.render(), "old body") {
 		t.Fatal("comments did not open")
@@ -218,7 +218,7 @@ func TestEmptyEditedCommentIsDeleted(t *testing.T) {
 	t.Setenv("EDITOR", "true")
 	m := testModel(coveragePatch(), []review.Comment{{ID: "one", Body: "old"}}, nil)
 	deleted := false
-	m.SetDelete(func(review.Comment, repository.Patch) error { deleted = true; return nil })
+	m.SetDelete(func(review.Comment, git.Patch) error { deleted = true; return nil })
 	m = updateModel(t, m, textKey("C"))
 	m = updateModel(t, m, specialKey(tea.KeyEnter))
 	m = updateModel(t, m, commentEditorFinishedMsg{body: "\n"})
@@ -229,7 +229,7 @@ func TestEmptyEditedCommentIsDeleted(t *testing.T) {
 
 func TestCommentDeleteFailureKeepsCommentAndShowsError(t *testing.T) {
 	m := testModel(coveragePatch(), []review.Comment{{ID: "one", Body: "keep"}}, nil)
-	m.SetDelete(func(review.Comment, repository.Patch) error { return fmt.Errorf("delete failed") })
+	m.SetDelete(func(review.Comment, git.Patch) error { return fmt.Errorf("delete failed") })
 	m = updateModel(t, m, textKey("C"))
 	m = updateModel(t, m, textKey("D"))
 	if len(m.comments.items) != 1 || !strings.Contains(ansi.Strip(m.renderComments()), "delete failed") {
@@ -428,7 +428,7 @@ func TestFocusAndManualRefreshLoadCurrentView(t *testing.T) {
 	m.SetDefaultBranch("main")
 	m.showDefault = true
 	var requested []bool
-	m.SetRefresh(func(showBranchChanges bool) (repository.Patch, error) {
+	m.SetRefresh(func(showBranchChanges bool) (git.Patch, error) {
 		requested = append(requested, showBranchChanges)
 		p := coveragePatch()
 		p.Fingerprint = fmt.Sprintf("refresh-%d", len(requested))
@@ -455,7 +455,7 @@ func TestSourceEditorCompletionRefreshesDiff(t *testing.T) {
 	m := testModel(coveragePatch(), nil, nil)
 	refreshed := coveragePatch()
 	refreshed.Fingerprint = "after-editor"
-	m.SetRefresh(func(bool) (repository.Patch, error) { return refreshed, nil })
+	m.SetRefresh(func(bool) (git.Patch, error) { return refreshed, nil })
 
 	next, cmd := m.Update(sourceEditorFinishedMsg{})
 	m = next.(Model)
@@ -540,7 +540,7 @@ func TestSideBySideSearchActivatesPaneAndCancelRestoresIt(t *testing.T) {
 func TestTabTogglesDefaultBranchAndIgnoresStaleRefresh(t *testing.T) {
 	m := testModel(coveragePatch(), nil, nil)
 	m.SetDefaultBranch("main")
-	m.SetRefresh(func(bool) (repository.Patch, error) { return coveragePatch(), nil })
+	m.SetRefresh(func(bool) (git.Patch, error) { return coveragePatch(), nil })
 	next, _ := m.Update(textKey("tab"))
 	m = next.(Model)
 	if m.currentBranch() != "main" {
@@ -561,7 +561,7 @@ func TestTabTogglesDefaultBranchAndIgnoresStaleRefresh(t *testing.T) {
 func TestTabDoesNothingWithoutDefaultBranch(t *testing.T) {
 	m := testModel(coveragePatch(), nil, nil)
 	refreshed := false
-	m.SetRefresh(func(bool) (repository.Patch, error) {
+	m.SetRefresh(func(bool) (git.Patch, error) {
 		refreshed = true
 		return coveragePatch(), nil
 	})
@@ -573,7 +573,7 @@ func TestTabDoesNothingWithoutDefaultBranch(t *testing.T) {
 }
 
 func TestDiffRefreshFallbackAndEmptyDiff(t *testing.T) {
-	m := testModel(repository.Patch{}, nil, nil)
+	m := testModel(git.Patch{}, nil, nil)
 	refreshed := coveragePatch()
 	refreshed.Fingerprint = "new"
 	m = updateModel(t, m, refreshDiffMsg{patch: refreshed})
@@ -593,8 +593,8 @@ func TestDiffRefreshFallbackAndEmptyDiff(t *testing.T) {
 
 func TestCommentAfterRefreshUsesCurrentPatch(t *testing.T) {
 	t.Setenv("EDITOR", "true")
-	var saved repository.Patch
-	m := testModel(coveragePatch(), nil, func(stored review.Comment, p repository.Patch) (review.Comment, error) {
+	var saved git.Patch
+	m := testModel(coveragePatch(), nil, func(stored review.Comment, p git.Patch) (review.Comment, error) {
 		saved = p
 		return stored, nil
 	})
@@ -654,17 +654,17 @@ func findLine(t *testing.T, m Model, text string) view.Cursor {
 }
 func lineText(m Model) string { line, _ := m.review.view.Line(m.review.cursor); return line.Text }
 
-func coveragePatch() repository.Patch {
-	return repository.Patch{Repository: "/repo", Fingerprint: "fingerprint", Files: []repository.File{{DisplayPath: "main.go", OldPath: "main.go", NewPath: "main.go", OldSource: "package main\nold()\nkeep()\n", NewSource: "package main\nnew()\nkeep()\nmore()\n", Hunks: []repository.Hunk{
-		{Header: "@@ -1,3 +1,3 @@", Lines: []repository.Line{{Kind: repository.Context, Text: "package main", OldNumber: 1, NewNumber: 1}, {Kind: repository.Deletion, Text: "old()", OldNumber: 2}, {Kind: repository.Addition, Text: "new()", NewNumber: 2}, {Kind: repository.Context, Text: "keep()", OldNumber: 3, NewNumber: 3}}},
-		{Header: "@@ -3,1 +3,2 @@", Lines: []repository.Line{{Kind: repository.Context, Text: "keep()", OldNumber: 3, NewNumber: 3}, {Kind: repository.Addition, Text: "more()", NewNumber: 4}}},
+func coveragePatch() git.Patch {
+	return git.Patch{Repository: "/repo", Fingerprint: "fingerprint", Files: []git.File{{DisplayPath: "main.go", OldPath: "main.go", NewPath: "main.go", OldSource: "package main\nold()\nkeep()\n", NewSource: "package main\nnew()\nkeep()\nmore()\n", Hunks: []git.Hunk{
+		{Header: "@@ -1,3 +1,3 @@", Lines: []git.Line{{Kind: git.Context, Text: "package main", OldNumber: 1, NewNumber: 1}, {Kind: git.Deletion, Text: "old()", OldNumber: 2}, {Kind: git.Addition, Text: "new()", NewNumber: 2}, {Kind: git.Context, Text: "keep()", OldNumber: 3, NewNumber: 3}}},
+		{Header: "@@ -3,1 +3,2 @@", Lines: []git.Line{{Kind: git.Context, Text: "keep()", OldNumber: 3, NewNumber: 3}, {Kind: git.Addition, Text: "more()", NewNumber: 4}}},
 	}}}}
 }
 
-func longModelPatch() repository.Patch {
-	lines := make([]repository.Line, 30)
+func longModelPatch() git.Patch {
+	lines := make([]git.Line, 30)
 	for index := range lines {
-		lines[index] = repository.Line{Kind: repository.Context, Text: fmt.Sprintf("line %d %s", index, strings.Repeat("x", 80)), OldNumber: repository.LineNumber(index + 1), NewNumber: repository.LineNumber(index + 1)}
+		lines[index] = git.Line{Kind: git.Context, Text: fmt.Sprintf("line %d %s", index, strings.Repeat("x", 80)), OldNumber: git.LineNumber(index + 1), NewNumber: git.LineNumber(index + 1)}
 	}
-	return repository.Patch{Files: []repository.File{{DisplayPath: "long.go", Hunks: []repository.Hunk{{Header: "@@", Lines: lines}}}}}
+	return git.Patch{Files: []git.File{{DisplayPath: "long.go", Hunks: []git.Hunk{{Header: "@@", Lines: lines}}}}}
 }

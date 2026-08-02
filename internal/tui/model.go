@@ -5,15 +5,15 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
-	"github.com/eskelinenantti/review-my-slop/internal/repository"
+	"github.com/eskelinenantti/review-my-slop/internal/git"
 	"github.com/eskelinenantti/review-my-slop/internal/review"
 	"github.com/eskelinenantti/review-my-slop/internal/view"
 )
 
-type SaveCommentFunc func(review.Comment, repository.Patch) (review.Comment, error)
-type DeleteCommentFunc func(review.Comment, repository.Patch) error
+type SaveCommentFunc func(review.Comment, git.Patch) (review.Comment, error)
+type DeleteCommentFunc func(review.Comment, git.Patch) error
 type LoadCommentsFunc func() ([]review.Comment, error)
-type RefreshDiffFunc func(showBranchChanges bool) (repository.Patch, error)
+type RefreshDiffFunc func(showBranchChanges bool) (git.Patch, error)
 type SaveSideBySideFunc func(bool) error
 
 type Size struct {
@@ -28,7 +28,7 @@ type InitialLayout struct {
 }
 
 type refreshDiffMsg struct {
-	patch  repository.Patch
+	patch  git.Patch
 	branch string
 	err    error
 }
@@ -61,7 +61,7 @@ const (
 var DefaultSize = Size{Width: 80, Height: 30}
 
 type reviewState struct {
-	patch      repository.Patch
+	patch      git.Patch
 	view       view.View
 	cursor     view.Cursor
 	viewport   view.Viewport
@@ -105,7 +105,7 @@ type Model struct {
 	dark          bool
 }
 
-func New(p repository.Patch, comments []review.Comment, save SaveCommentFunc, layout InitialLayout) Model {
+func New(p git.Patch, comments []review.Comment, save SaveCommentFunc, layout InitialLayout) Model {
 	size := layout.Size
 	if size.Width <= 0 || size.Height <= 0 {
 		size = DefaultSize
@@ -224,9 +224,9 @@ func (m Model) loadComments() tea.Cmd {
 }
 
 type cursorIdentity struct {
-	file   repository.File
-	hunk   repository.Hunk
-	line   repository.Line
+	file   git.File
+	hunk   git.Hunk
+	line   git.Line
 	cursor view.Cursor
 	valid  bool
 }
@@ -238,7 +238,7 @@ func (m Model) identify(cursor view.Cursor) cursorIdentity {
 	return cursorIdentity{file: file, hunk: hunk, line: line, cursor: cursor, valid: fileOK && hunkOK && lineOK}
 }
 
-func (m *Model) rebuildView(p repository.Patch) {
+func (m *Model) rebuildView(p git.Patch) {
 	cursor := m.identify(m.review.cursor)
 	var first, last cursorIdentity
 	if m.review.selection != nil {
@@ -275,14 +275,14 @@ func (m *Model) rebuildView(p repository.Patch) {
 	m.review.viewport = m.review.view.KeepVisible(m.review.viewport, m.review.cursor)
 }
 
-func (m Model) newReviewView(p repository.Patch) view.View {
+func (m Model) newReviewView(p git.Patch) view.View {
 	if m.sideBySideActive() {
 		return view.NewSideBySideView(p, m.dark)
 	}
 	return view.NewUnifiedView(p, m.dark)
 }
 
-func samePatchFile(first, last repository.File) bool {
+func samePatchFile(first, last git.File) bool {
 	return first.OldPath == last.OldPath && first.NewPath == last.NewPath
 }
 

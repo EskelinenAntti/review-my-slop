@@ -9,7 +9,7 @@ import (
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 
-	"github.com/eskelinenantti/review-my-slop/internal/repository"
+	"github.com/eskelinenantti/review-my-slop/internal/git"
 )
 
 func (v *diffView) Render(viewport Viewport, cursor Cursor, selection *Selection) string {
@@ -46,10 +46,10 @@ func (v *diffView) renderUnifiedRow(current entry, y int, viewport Viewport, cur
 	case lineRow:
 		line := v.patch.Files[current.file].Hunks[current.hunk].Lines[current.rightLine]
 		prefix := " "
-		if line.Kind == repository.Addition {
+		if line.Kind == git.Addition {
 			prefix = addedStyle.Render("+")
 		}
-		if line.Kind == repository.Deletion {
+		if line.Kind == git.Deletion {
 			prefix = removedStyle.Render("-")
 		}
 		gutter := fmt.Sprintf("%5s %5s %s ", number(line.OldNumber), number(line.NewNumber), prefix)
@@ -92,10 +92,10 @@ func (v *diffView) renderPane(current entry, y int, pane Pane, width, offset int
 		text, numberValue = current.left, line.OldNumber
 	}
 	prefix := "  "
-	if line.Kind == repository.Addition {
+	if line.Kind == git.Addition {
 		prefix = addedStyle.Render("+") + " "
 	}
-	if line.Kind == repository.Deletion {
+	if line.Kind == git.Deletion {
 		prefix = removedStyle.Render("-") + " "
 	}
 	gutter := fmt.Sprintf("%5s ", number(numberValue))
@@ -129,12 +129,12 @@ func selected(selection *Selection, cursor Cursor) bool {
 	return cursor.Coordinate.Y >= first && cursor.Coordinate.Y <= last
 }
 
-func lineStyle(kind repository.LineKind, dark bool) lipgloss.Style {
+func lineStyle(kind git.LineKind, dark bool) lipgloss.Style {
 	lightDark := lipgloss.LightDark(dark)
 	switch kind {
-	case repository.Addition:
+	case git.Addition:
 		return lipgloss.NewStyle().Background(lightDark(lipgloss.Color("#dafbe1"), lipgloss.Color("#1b3823")))
-	case repository.Deletion:
+	case git.Deletion:
 		return lipgloss.NewStyle().Background(lightDark(lipgloss.Color("#ffebe9"), lipgloss.Color("#402222")))
 	default:
 		return contextStyle
@@ -145,7 +145,7 @@ func selectionRowStyle(dark bool) lipgloss.Style {
 	return lipgloss.NewStyle().Background(lipgloss.LightDark(dark)(lipgloss.Color("#dbeafe"), lipgloss.Color("#1e3a5f")))
 }
 
-func number(value repository.LineNumber) string {
+func number(value git.LineNumber) string {
 	if value == 0 {
 		return ""
 	}

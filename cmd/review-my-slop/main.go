@@ -9,8 +9,8 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/term"
 
+	"github.com/eskelinenantti/review-my-slop/internal/git"
 	"github.com/eskelinenantti/review-my-slop/internal/inbox"
-	"github.com/eskelinenantti/review-my-slop/internal/repository"
 	"github.com/eskelinenantti/review-my-slop/internal/review"
 	"github.com/eskelinenantti/review-my-slop/internal/tui"
 )
@@ -40,7 +40,7 @@ func run(ctx context.Context, args []string, output io.Writer) error {
 }
 
 func runCode(ctx context.Context) error {
-	env, err := repository.NewEnvironment(ctx)
+	env, err := git.New(ctx)
 	if err != nil {
 		return err
 	}
@@ -61,7 +61,7 @@ func runCode(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	saveComment := func(comment review.Comment, current repository.Patch) (review.Comment, error) {
+	saveComment := func(comment review.Comment, current git.Patch) (review.Comment, error) {
 		comment.Repository = current.Repository
 		if comment.ID != "" {
 			return comment, store.Update(comment)
@@ -77,11 +77,11 @@ func runCode(ctx context.Context) error {
 	model.SetLoadComments(func() ([]review.Comment, error) {
 		return store.List(loadedPatch.Repository)
 	})
-	model.SetDelete(func(comment review.Comment, current repository.Patch) error {
+	model.SetDelete(func(comment review.Comment, current git.Patch) error {
 		return store.Delete(current.Repository, comment.ID)
 	})
 	model.SetDefaultBranch(env.Repository.DefaultBranch)
-	model.SetRefresh(func(showBranchChanges bool) (repository.Patch, error) {
+	model.SetRefresh(func(showBranchChanges bool) (git.Patch, error) {
 		if showBranchChanges {
 			return env.BranchChanges(ctx)
 		}
@@ -103,14 +103,14 @@ func initialTerminalSize() tui.Size {
 }
 
 func runComments(ctx context.Context, output io.Writer) error {
-	env, err := repository.NewEnvironment(ctx)
+	env, err := git.New(ctx)
 	if err != nil {
 		return err
 	}
 	return runCommentsAt(env, output)
 }
 
-func runCommentsAt(env repository.Environment, output io.Writer) error {
+func runCommentsAt(env git.Git, output io.Writer) error {
 	store, err := inbox.OpenDefault()
 	if err != nil {
 		return err

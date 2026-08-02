@@ -9,13 +9,13 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/eskelinenantti/review-my-slop/internal/git"
 	"github.com/eskelinenantti/review-my-slop/internal/inbox"
-	"github.com/eskelinenantti/review-my-slop/internal/repository"
 	"github.com/eskelinenantti/review-my-slop/internal/review"
 )
 
 func TestRunCommentsPrintsAndConsumesCurrentRepositoryFeedback(t *testing.T) {
-	env := newTestEnvironment(t)
+	git := newTestGit(t)
 	data := t.TempDir()
 	t.Setenv("XDG_DATA_HOME", data)
 	store, err := inbox.OpenDefault()
@@ -23,7 +23,7 @@ func TestRunCommentsPrintsAndConsumesCurrentRepositoryFeedback(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, err := store.Add(review.Comment{
-		Repository: env.Repository.Root,
+		Repository: git.Repository.Root,
 		Anchor:     review.Anchor{FilePath: "main.go", NewStart: 3, NewEnd: 3},
 		Body:       "Check this error.",
 	}); err != nil {
@@ -31,7 +31,7 @@ func TestRunCommentsPrintsAndConsumesCurrentRepositoryFeedback(t *testing.T) {
 	}
 
 	var output bytes.Buffer
-	if err := runCommentsAt(env, &output); err != nil {
+	if err := runCommentsAt(git, &output); err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(output.String(), "Check this error.") {
@@ -45,7 +45,7 @@ func TestRunCommentsPrintsAndConsumesCurrentRepositoryFeedback(t *testing.T) {
 	}
 
 	var empty bytes.Buffer
-	if err := runCommentsAt(env, &empty); err != nil {
+	if err := runCommentsAt(git, &empty); err != nil {
 		t.Fatal(err)
 	}
 	if strings.TrimSpace(empty.String()) != "No pending review comments." {
@@ -62,7 +62,7 @@ func TestRunCommentsPrintsAndConsumesCurrentRepositoryFeedback(t *testing.T) {
 }
 
 func TestRunCommentsPreservesFeedbackWhenOutputFails(t *testing.T) {
-	repo := newTestEnvironment(t)
+	repo := newTestGit(t)
 	t.Setenv("XDG_DATA_HOME", t.TempDir())
 	store, err := inbox.OpenDefault()
 	if err != nil {
@@ -101,7 +101,7 @@ func (failingWriter) Write([]byte) (int, error) {
 	return 0, os.ErrClosed
 }
 
-func newTestEnvironment(t *testing.T) repository.Environment {
+func newTestGit(t *testing.T) git.Git {
 	t.Helper()
 	dir, err := filepath.EvalSymlinks(t.TempDir())
 	if err != nil {
@@ -112,5 +112,5 @@ func newTestEnvironment(t *testing.T) repository.Environment {
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("git init: %v\n%s", err, out)
 	}
-	return repository.Environment{Repository: repository.Repository{Root: dir}, Git: repository.Git{}}
+	return git.Git{Repository: git.Repository{Root: dir}, Runner: git.ExecRunner{}}
 }

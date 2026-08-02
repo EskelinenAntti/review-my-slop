@@ -1,4 +1,4 @@
-package repository
+package git
 
 type Patch struct {
 	Repository  string

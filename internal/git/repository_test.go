@@ -1,4 +1,4 @@
-package repository
+package git
 
 import (
 	"context"
@@ -10,25 +10,25 @@ import (
 )
 
 func TestLoaderIncludesUnstagedAndUntrackedButNotStagedOnly(t *testing.T) {
-	env := newTestEnvironment(t)
-	dir := env.Repository.Root
+	git := newTestGit(t)
+	dir := git.Repository.Root
 	writeFile(t, dir, "modified.go", "package main\n\nfunc value() int { return 1 }\n")
 	writeFile(t, dir, "staged.txt", "before\n")
-	git(t, dir, "add", ".")
-	git(t, dir, "commit", "-m", "base")
+	run(t, dir, "add", ".")
+	run(t, dir, "commit", "-m", "base")
 
 	writeFile(t, dir, "modified.go", "package main\n\nfunc value() int { return 2 }\n")
 	writeFile(t, dir, "staged.txt", "after\n")
-	git(t, dir, "add", "staged.txt")
+	run(t, dir, "add", "staged.txt")
 	writeFile(t, dir, "new.py", "def hello():\n    return 'world'\n")
 
-	got, err := env.LocalChanges(context.Background())
+	got, err := git.LocalChanges(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	if got.Repository != dir {
-		t.Fatalf("repository = %q, want %q", got.Repository, env)
+		t.Fatalf("repository = %q, want %q", got.Repository, git)
 	}
 	if len(got.Files) != 2 {
 		t.Fatalf("files = %d, want 2: %#v", len(got.Files), got.Files)
@@ -68,15 +68,15 @@ func TestAddedFileKeepsRawAndDisplayPathsSeparate(t *testing.T) {
 }
 
 func TestLoaderShowsBinaryMetadataWithoutBinaryDiffLines(t *testing.T) {
-	env := newTestEnvironment(t)
-	dir := env.Repository.Root
+	git := newTestGit(t)
+	dir := git.Repository.Root
 	writeFile(t, dir, "tracked.bin", "\x00old")
-	git(t, dir, "add", "tracked.bin")
-	git(t, dir, "commit", "-m", "base")
+	run(t, dir, "add", "tracked.bin")
+	run(t, dir, "commit", "-m", "base")
 	writeFile(t, dir, "tracked.bin", "\x00new")
 	writeFile(t, dir, "untracked.bin", "\x00content")
 
-	got, err := env.LocalChanges(context.Background())
+	got, err := git.LocalChanges(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -94,25 +94,25 @@ func TestLoaderShowsBinaryMetadataWithoutBinaryDiffLines(t *testing.T) {
 }
 
 func TestLoadBranchIncludesCommittedStagedUnstagedAndUntrackedChanges(t *testing.T) {
-	env := newTestEnvironment(t)
-	dir := env.Repository.Root
-	git(t, dir, "branch", "-M", "main")
+	git := newTestGit(t)
+	dir := git.Repository.Root
+	run(t, dir, "branch", "-M", "main")
 	writeFile(t, dir, "committed.txt", "base\n")
 	writeFile(t, dir, "mixed.txt", "base\n")
 	writeFile(t, dir, "staged.txt", "base\n")
-	git(t, dir, "add", ".")
-	git(t, dir, "commit", "-m", "base")
+	run(t, dir, "add", ".")
+	run(t, dir, "commit", "-m", "base")
 
-	git(t, dir, "switch", "-c", "feature")
+	run(t, dir, "switch", "-c", "feature")
 	writeFile(t, dir, "committed.txt", "committed on feature\n")
-	git(t, dir, "add", "committed.txt")
-	git(t, dir, "commit", "-m", "feature commit")
+	run(t, dir, "add", "committed.txt")
+	run(t, dir, "commit", "-m", "feature commit")
 	writeFile(t, dir, "staged.txt", "staged on feature\n")
-	git(t, dir, "add", "staged.txt")
+	run(t, dir, "add", "staged.txt")
 	writeFile(t, dir, "mixed.txt", "unstaged on feature\n")
 	writeFile(t, dir, "untracked.txt", "untracked on feature\n")
 
-	got, err := env.BranchChanges(context.Background())
+	got, err := git.BranchChanges(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -155,7 +155,7 @@ func TestDefaultBranchFallbacks(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			root := t.TempDir()
 			runner := &defaultBranchRunner{root: root, originHEAD: tt.originHEAD, available: tt.available}
-			repo, err := New(context.Background(), runner)
+			repo, err := NewRepository(context.Background(), runner)
 			if err != nil {
 				t.Fatalf("could not create repository %v", err)
 			}
@@ -195,16 +195,16 @@ func (r *defaultBranchRunner) Run(_ context.Context, _ string, args ...string) (
 }
 
 func TestLoaderDoesNotFollowUntrackedSymlink(t *testing.T) {
-	env := newTestEnvironment(t)
+	git := newTestGit(t)
 	outside := filepath.Join(t.TempDir(), "secret")
 	if err := os.WriteFile(outside, []byte("do not read"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Symlink(outside, filepath.Join(env.Repository.Root, "link")); err != nil {
+	if err := os.Symlink(outside, filepath.Join(git.Repository.Root, "link")); err != nil {
 		t.Fatal(err)
 	}
 
-	got, err := env.LocalChanges(context.Background())
+	got, err := git.LocalChanges(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -269,19 +269,19 @@ func containsKind(file File, kind LineKind, text string) bool {
 	return false
 }
 
-func newTestEnvironment(t *testing.T) Environment {
+func newTestGit(t *testing.T) Git {
 	t.Helper()
 	repo, err := filepath.EvalSymlinks(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
-	git(t, repo, "init", "-q")
-	git(t, repo, "config", "user.email", "test@example.com")
-	git(t, repo, "config", "user.name", "Test")
-	return Environment{Repository: Repository{Root: repo, DefaultBranch: "main"}, Git: Git{}}
+	run(t, repo, "init", "-q")
+	run(t, repo, "config", "user.email", "test@example.com")
+	run(t, repo, "config", "user.name", "Test")
+	return Git{Repository: Repository{Root: repo, DefaultBranch: "main"}, Runner: ExecRunner{}}
 }
 
-func git(t *testing.T, dir string, args ...string) {
+func run(t *testing.T, dir string, args ...string) {
 	t.Helper()
 	cmd := exec.Command("git", args...)
 	cmd.Dir = dir

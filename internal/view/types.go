@@ -1,7 +1,7 @@
 package view
 
 import (
-	"github.com/eskelinenantti/review-my-slop/internal/repository"
+	"github.com/eskelinenantti/review-my-slop/internal/git"
 	"github.com/eskelinenantti/review-my-slop/internal/review"
 )
 
@@ -73,13 +73,13 @@ type View interface {
 
 	BeginSelection(Cursor) Selection
 	ExtendSelection(Selection, Cursor) (Selection, bool)
-	Lines(Selection) []repository.Line
+	Lines(Selection) []git.Line
 	Anchor(Selection) (review.Anchor, error)
 
-	File(Cursor) (repository.File, bool)
-	Hunk(Cursor) (repository.Hunk, bool)
-	Line(Cursor) (repository.Line, bool)
+	File(Cursor) (git.File, bool)
+	Hunk(Cursor) (git.Hunk, bool)
+	Line(Cursor) (git.Line, bool)
 
-	FindCursor(repository.File, repository.Hunk, repository.Line, Coordinate, Pane) (Cursor, bool)
+	FindCursor(git.File, git.Hunk, git.Line, Coordinate, Pane) (Cursor, bool)
 	Render(Viewport, Cursor, *Selection) string
 }
