@@ -103,74 +103,73 @@ func defaultBranch(ctx context.Context, git Runner, root string) string {
 }
 
 func (e Environment) LocalChanges(ctx context.Context) (Patch, error) {
-	var raw []byte
-	var err error
-	baseCommit := ""
-
-	raw, err = e.diff(ctx, baseCommit)
-
+	raw, err := e.diff(ctx, "")
 	if err != nil {
 		return Patch{}, err
 	}
 
-	tracked, err := e.parseTracked(ctx, raw, "")
+	files, err := e.files(ctx, raw)
 	if err != nil {
 		return Patch{}, err
 	}
-	untracked, err := e.loadUntracked(ctx)
-	if err != nil {
-		return Patch{}, err
-	}
-	files := append(tracked, untracked...)
-	sort.SliceStable(files, func(i, j int) bool {
-		return files[i].DisplayPath < files[j].DisplayPath
-	})
-	hash := sha256.New()
-	_, _ = hash.Write(raw)
-	for _, file := range untracked {
-		_, _ = hash.Write([]byte(file.NewPath))
-		_, _ = hash.Write([]byte(file.NewSource))
-	}
-	return Patch{Repository: e.Root, Fingerprint: hex.EncodeToString(hash.Sum(nil)), Files: files}, nil
+	return Patch{Repository: e.Root, Fingerprint: fingerprint(files), Files: files}, nil
 }
 
 func (e Environment) BranchChanges(ctx context.Context) (Patch, error) {
-	var raw []byte
-	var err error
-	var baseCommit string
+	baseCommit, p, err := e.baseCommit(ctx)
+	if err != nil {
+		return p, err
+	}
+	raw, err := e.diff(ctx, baseCommit)
+
+	if err != nil {
+		return Patch{}, err
+	}
+
+	files, err := e.files(ctx, raw)
+	if err != nil {
+		return Patch{}, err
+	}
+	return Patch{Repository: e.Root, Fingerprint: fingerprint(files), Files: files}, nil
+}
+
+func (e Environment) baseCommit(ctx context.Context) (string, Patch, error) {
 	baseBytes, err := e.Git.Run(ctx, e.Root, "merge-base", e.DefaultBranch, "HEAD")
 	if err != nil {
-		return Patch{}, fmt.Errorf("find branch point with %s: %w", e.DefaultBranch, err)
+		return "", Patch{}, fmt.Errorf("find branch point with %s: %w", e.DefaultBranch, err)
 	}
-	baseCommit = strings.TrimSpace(string(baseBytes))
-	raw, err = e.diff(ctx, baseCommit)
+	baseCommit := strings.TrimSpace(string(baseBytes))
+	return baseCommit, Patch{}, nil
+}
 
-	if err != nil {
-		return Patch{}, err
+func fingerprint(files []File) string {
+	hash := sha256.New()
+	for _, file := range files {
+		_, _ = hash.Write([]byte(file.NewPath))
+		_, _ = hash.Write([]byte(file.NewSource))
+		_, _ = hash.Write([]byte(file.OldSource))
+		_, _ = hash.Write([]byte(file.OldPath))
 	}
+	return hex.EncodeToString(hash.Sum(nil))
+}
 
-	tracked, err := e.parseTracked(ctx, raw, e.DefaultBranch)
+func (e Environment) files(ctx context.Context, raw []byte) ([]File, error) {
+	tracked, err := e.parseTracked(ctx, raw)
 	if err != nil {
-		return Patch{}, err
+		return nil, err
 	}
 	untracked, err := e.loadUntracked(ctx)
 	if err != nil {
-		return Patch{}, err
+		return nil, err
 	}
 	files := append(tracked, untracked...)
 	sort.SliceStable(files, func(i, j int) bool {
 		return files[i].DisplayPath < files[j].DisplayPath
 	})
-	hash := sha256.New()
-	_, _ = hash.Write(raw)
-	for _, file := range untracked {
-		_, _ = hash.Write([]byte(file.NewPath))
-		_, _ = hash.Write([]byte(file.NewSource))
-	}
-	return Patch{Repository: e.Root, Fingerprint: hex.EncodeToString(hash.Sum(nil)), Files: files}, nil
+	return files, nil
 }
 
-func (e Environment) diff(ctx context.Context, branch string) ([]byte, error) {
+func (e Environment) diff(ctx context.Context, baseCommit string) ([]byte, error) {
 	args := []string{
 		"-c", "core.quotepath=false",
 		"-c", "diff.external=",
@@ -183,14 +182,14 @@ func (e Environment) diff(ctx context.Context, branch string) ([]byte, error) {
 		"--dst-prefix=b/",
 		"--unified=3",
 	}
-	if branch != "" {
-		args = append(args, branch)
+	if baseCommit != "" {
+		args = append(args, baseCommit)
 	}
 	args = append(args, "--")
 	return e.Git.Run(ctx, e.Root, args...)
 }
 
-func (e Environment) parseTracked(ctx context.Context, raw []byte, branch string) ([]File, error) {
+func (e Environment) parseTracked(ctx context.Context, raw []byte) ([]File, error) {
 	if len(bytes.TrimSpace(raw)) == 0 {
 		return nil, nil
 	}
@@ -212,7 +211,7 @@ func (e Environment) parseTracked(ctx context.Context, raw []byte, branch string
 			DisplayPath: visibleText(display),
 			Metadata:    visibleStrings(fd.Extended),
 		}
-		file.OldSource = e.readRevision(ctx, branch, oldPath)
+		file.OldSource = e.readRevision(ctx, e.Repository.DefaultBranch, oldPath)
 		file.NewSource = readWorkingTree(e.Root, newPath)
 		for _, h := range fd.Hunks {
 			lines, parseErr := parseHunkBody(h.OrigStartLine, h.NewStartLine, h.Body)
