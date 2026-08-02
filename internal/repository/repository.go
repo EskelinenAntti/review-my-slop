@@ -81,8 +81,8 @@ func New(ctx context.Context, git Runner) (Repository, error) {
 	}, nil
 }
 
-func root(ctx context.Context, git Runner, current string) (string, error) {
-	rootBytes, err := git.Run(ctx, current, "rev-parse", "--show-toplevel")
+func root(ctx context.Context, git Runner, cwd string) (string, error) {
+	rootBytes, err := git.Run(ctx, cwd, "rev-parse", "--show-toplevel")
 	if err != nil {
 		return "", err
 	}
