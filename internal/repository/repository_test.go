@@ -10,8 +10,8 @@ import (
 )
 
 func TestLoaderIncludesUnstagedAndUntrackedButNotStagedOnly(t *testing.T) {
-	repo := newTestEnvironment(t)
-	dir := repo.Root
+	env := newTestEnvironment(t)
+	dir := env.Repository.Root
 	writeFile(t, dir, "modified.go", "package main\n\nfunc value() int { return 1 }\n")
 	writeFile(t, dir, "staged.txt", "before\n")
 	git(t, dir, "add", ".")
@@ -22,13 +22,13 @@ func TestLoaderIncludesUnstagedAndUntrackedButNotStagedOnly(t *testing.T) {
 	git(t, dir, "add", "staged.txt")
 	writeFile(t, dir, "new.py", "def hello():\n    return 'world'\n")
 
-	got, err := repo.LocalChanges(context.Background())
+	got, err := env.LocalChanges(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	if got.Repository != dir {
-		t.Fatalf("repository = %q, want %q", got.Repository, repo)
+		t.Fatalf("repository = %q, want %q", got.Repository, env)
 	}
 	if len(got.Files) != 2 {
 		t.Fatalf("files = %d, want 2: %#v", len(got.Files), got.Files)
@@ -68,15 +68,15 @@ func TestAddedFileKeepsRawAndDisplayPathsSeparate(t *testing.T) {
 }
 
 func TestLoaderShowsBinaryMetadataWithoutBinaryDiffLines(t *testing.T) {
-	repo := newTestEnvironment(t)
-	dir := repo.Root
+	env := newTestEnvironment(t)
+	dir := env.Repository.Root
 	writeFile(t, dir, "tracked.bin", "\x00old")
 	git(t, dir, "add", "tracked.bin")
 	git(t, dir, "commit", "-m", "base")
 	writeFile(t, dir, "tracked.bin", "\x00new")
 	writeFile(t, dir, "untracked.bin", "\x00content")
 
-	got, err := repo.LocalChanges(context.Background())
+	got, err := env.LocalChanges(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -94,8 +94,8 @@ func TestLoaderShowsBinaryMetadataWithoutBinaryDiffLines(t *testing.T) {
 }
 
 func TestLoadBranchIncludesCommittedStagedUnstagedAndUntrackedChanges(t *testing.T) {
-	repo := newTestEnvironment(t)
-	dir := repo.Root
+	env := newTestEnvironment(t)
+	dir := env.Repository.Root
 	git(t, dir, "branch", "-M", "main")
 	writeFile(t, dir, "committed.txt", "base\n")
 	writeFile(t, dir, "mixed.txt", "base\n")
@@ -112,7 +112,7 @@ func TestLoadBranchIncludesCommittedStagedUnstagedAndUntrackedChanges(t *testing
 	writeFile(t, dir, "mixed.txt", "unstaged on feature\n")
 	writeFile(t, dir, "untracked.txt", "untracked on feature\n")
 
-	got, err := repo.BranchChanges(context.Background())
+	got, err := env.BranchChanges(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -195,16 +195,16 @@ func (r *defaultBranchRunner) Run(_ context.Context, _ string, args ...string) (
 }
 
 func TestLoaderDoesNotFollowUntrackedSymlink(t *testing.T) {
-	repo := newTestEnvironment(t)
+	env := newTestEnvironment(t)
 	outside := filepath.Join(t.TempDir(), "secret")
 	if err := os.WriteFile(outside, []byte("do not read"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Symlink(outside, filepath.Join(repo.Root, "link")); err != nil {
+	if err := os.Symlink(outside, filepath.Join(env.Repository.Root, "link")); err != nil {
 		t.Fatal(err)
 	}
 
-	got, err := repo.LocalChanges(context.Background())
+	got, err := env.LocalChanges(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}

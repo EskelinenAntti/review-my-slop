@@ -43,8 +43,8 @@ func (Git) Run(ctx context.Context, dir string, args ...string) ([]byte, error) 
 }
 
 type Environment struct {
-	Repository
-	Git
+	Repository Repository
+	Git        Runner
 }
 type Repository struct {
 	Root          string
@@ -112,7 +112,7 @@ func (e Environment) LocalChanges(ctx context.Context) (Patch, error) {
 	if err != nil {
 		return Patch{}, err
 	}
-	return Patch{Repository: e.Root, Fingerprint: fingerprint(files), Files: files}, nil
+	return Patch{Repository: e.Repository.Root, Fingerprint: fingerprint(files), Files: files}, nil
 }
 
 func (e Environment) BranchChanges(ctx context.Context) (Patch, error) {
@@ -130,13 +130,13 @@ func (e Environment) BranchChanges(ctx context.Context) (Patch, error) {
 	if err != nil {
 		return Patch{}, err
 	}
-	return Patch{Repository: e.Root, Fingerprint: fingerprint(files), Files: files}, nil
+	return Patch{Repository: e.Repository.Root, Fingerprint: fingerprint(files), Files: files}, nil
 }
 
 func (e Environment) baseCommit(ctx context.Context) (string, Patch, error) {
-	baseBytes, err := e.Git.Run(ctx, e.Root, "merge-base", e.DefaultBranch, "HEAD")
+	baseBytes, err := e.Git.Run(ctx, e.Repository.Root, "merge-base", e.Repository.DefaultBranch, "HEAD")
 	if err != nil {
-		return "", Patch{}, fmt.Errorf("find branch point with %s: %w", e.DefaultBranch, err)
+		return "", Patch{}, fmt.Errorf("find branch point with %s: %w", e.Repository.DefaultBranch, err)
 	}
 	baseCommit := strings.TrimSpace(string(baseBytes))
 	return baseCommit, Patch{}, nil
@@ -186,7 +186,7 @@ func (e Environment) diff(ctx context.Context, baseCommit string) ([]byte, error
 		args = append(args, baseCommit)
 	}
 	args = append(args, "--")
-	return e.Git.Run(ctx, e.Root, args...)
+	return e.Git.Run(ctx, e.Repository.Root, args...)
 }
 
 func (e Environment) parseTracked(ctx context.Context, raw []byte) ([]File, error) {
@@ -212,7 +212,7 @@ func (e Environment) parseTracked(ctx context.Context, raw []byte) ([]File, erro
 			Metadata:    visibleStrings(fd.Extended),
 		}
 		file.OldSource = e.readRevision(ctx, e.Repository.DefaultBranch, oldPath)
-		file.NewSource = readWorkingTree(e.Root, newPath)
+		file.NewSource = readWorkingTree(e.Repository.Root, newPath)
 		for _, h := range fd.Hunks {
 			lines, parseErr := parseHunkBody(h.OrigStartLine, h.NewStartLine, h.Body)
 			if parseErr != nil {
@@ -229,7 +229,7 @@ func (e Environment) parseTracked(ctx context.Context, raw []byte) ([]File, erro
 }
 
 func (e Environment) loadUntracked(ctx context.Context) ([]File, error) {
-	out, err := e.Git.Run(ctx, e.Root, "ls-files", "--others", "--exclude-standard", "-z")
+	out, err := e.Git.Run(ctx, e.Repository.Root, "ls-files", "--others", "--exclude-standard", "-z")
 	if err != nil {
 		return nil, err
 	}
@@ -240,7 +240,7 @@ func (e Environment) loadUntracked(ctx context.Context) ([]File, error) {
 		}
 		path := string(rawPath)
 		display := visibleText(path)
-		full := filepath.Join(e.Root, filepath.FromSlash(path))
+		full := filepath.Join(e.Repository.Root, filepath.FromSlash(path))
 		info, statErr := os.Lstat(full)
 		if statErr != nil {
 			return nil, fmt.Errorf("stat untracked %q: %w", path, statErr)
@@ -334,7 +334,7 @@ func (e Environment) readRevision(ctx context.Context, revision, path string) st
 	if path == "" || path == "/dev/null" {
 		return ""
 	}
-	out, err := e.Git.Run(ctx, e.Root, "show", revision+":"+path)
+	out, err := e.Git.Run(ctx, e.Repository.Root, "show", revision+":"+path)
 	if err != nil || len(out) > maxFileBytes || bytes.IndexByte(out, 0) >= 0 {
 		return ""
 	}

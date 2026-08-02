@@ -23,7 +23,7 @@ func TestRunCommentsPrintsAndConsumesCurrentRepositoryFeedback(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, err := store.Add(review.Comment{
-		Repository: env.Root,
+		Repository: env.Repository.Root,
 		Anchor:     review.Anchor{FilePath: "main.go", NewStart: 3, NewEnd: 3},
 		Body:       "Check this error.",
 	}); err != nil {
@@ -69,7 +69,7 @@ func TestRunCommentsPreservesFeedbackWhenOutputFails(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, err := store.Add(review.Comment{
-		Repository: repo.Root,
+		Repository: repo.Repository.Root,
 		Anchor:     review.Anchor{FilePath: "main.go", NewStart: 1},
 		Body:       "Preserve me.",
 	}); err != nil {
@@ -79,7 +79,7 @@ func TestRunCommentsPreservesFeedbackWhenOutputFails(t *testing.T) {
 	if err := runCommentsAt(repo, failingWriter{}); err == nil {
 		t.Fatal("output failure was ignored")
 	}
-	comments, err := store.List(repo.Root)
+	comments, err := store.List(repo.Repository.Root)
 	if err != nil {
 		t.Fatal(err)
 	}

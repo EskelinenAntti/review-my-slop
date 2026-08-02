@@ -115,7 +115,7 @@ func runCommentsAt(env repository.Environment, output io.Writer) error {
 	if err != nil {
 		return err
 	}
-	comments, err := store.List(env.Root)
+	comments, err := store.List(env.Repository.Root)
 	if err != nil {
 		return err
 	}
