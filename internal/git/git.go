@@ -103,16 +103,7 @@ func defaultBranch(ctx context.Context, git Runner, root string) string {
 }
 
 func (g Git) LocalChanges(ctx context.Context) (Patch, error) {
-	raw, err := g.diff(ctx, "")
-	if err != nil {
-		return Patch{}, err
-	}
-
-	files, err := g.files(ctx, raw)
-	if err != nil {
-		return Patch{}, err
-	}
-	return Patch{Repository: g.Repository.Root, Fingerprint: fingerprint(files), Files: files}, nil
+	return g.changes(ctx, "")
 }
 
 func (g Git) BranchChanges(ctx context.Context) (Patch, error) {
@@ -120,16 +111,23 @@ func (g Git) BranchChanges(ctx context.Context) (Patch, error) {
 	if err != nil {
 		return p, err
 	}
-	raw, err := g.diff(ctx, baseCommit)
+	return g.changes(ctx, baseCommit)
+}
 
+func (g Git) changes(ctx context.Context, baseCommit string) (Patch, error) {
+	changes, err := g.changedFiles(ctx, baseCommit)
 	if err != nil {
 		return Patch{}, err
 	}
 
-	files, err := g.files(ctx, raw)
+	untracked, err := g.untrackedFiles(ctx)
 	if err != nil {
 		return Patch{}, err
 	}
+	files := append(changes, untracked...)
+	sort.SliceStable(files, func(i, j int) bool {
+		return files[i].DisplayPath < files[j].DisplayPath
+	})
 	return Patch{Repository: g.Repository.Root, Fingerprint: fingerprint(files), Files: files}, nil
 }
 
@@ -153,23 +151,7 @@ func fingerprint(files []File) string {
 	return hex.EncodeToString(hash.Sum(nil))
 }
 
-func (g Git) files(ctx context.Context, raw []byte) ([]File, error) {
-	tracked, err := g.parseTracked(ctx, raw)
-	if err != nil {
-		return nil, err
-	}
-	untracked, err := g.loadUntracked(ctx)
-	if err != nil {
-		return nil, err
-	}
-	files := append(tracked, untracked...)
-	sort.SliceStable(files, func(i, j int) bool {
-		return files[i].DisplayPath < files[j].DisplayPath
-	})
-	return files, nil
-}
-
-func (g Git) diff(ctx context.Context, baseCommit string) ([]byte, error) {
+func (g Git) changedFiles(ctx context.Context, baseCommit string) ([]File, error) {
 	args := []string{
 		"-c", "core.quotepath=false",
 		"-c", "diff.external=",
@@ -186,7 +168,12 @@ func (g Git) diff(ctx context.Context, baseCommit string) ([]byte, error) {
 		args = append(args, baseCommit)
 	}
 	args = append(args, "--")
-	return g.Runner.Run(ctx, g.Repository.Root, args...)
+	raw, err := g.Runner.Run(ctx, g.Repository.Root, args...)
+	if err != nil {
+		return nil, err
+	}
+
+	return g.parseTracked(ctx, raw)
 }
 
 func (g Git) parseTracked(ctx context.Context, raw []byte) ([]File, error) {
@@ -228,7 +215,7 @@ func (g Git) parseTracked(ctx context.Context, raw []byte) ([]File, error) {
 	return files, nil
 }
 
-func (g Git) loadUntracked(ctx context.Context) ([]File, error) {
+func (g Git) untrackedFiles(ctx context.Context) ([]File, error) {
 	out, err := g.Runner.Run(ctx, g.Repository.Root, "ls-files", "--others", "--exclude-standard", "-z")
 	if err != nil {
 		return nil, err
