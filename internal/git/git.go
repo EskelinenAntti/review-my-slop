@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 
@@ -168,19 +169,19 @@ func (g Git) changedFiles(ctx context.Context, baseCommit string) ([]File, error
 		args = append(args, baseCommit)
 	}
 	args = append(args, "--")
-	raw, err := g.Runner.Run(ctx, g.Repository.Root, args...)
+	rawDiff, err := g.Runner.Run(ctx, g.Repository.Root, args...)
 	if err != nil {
 		return nil, err
 	}
 
-	return g.parseTracked(ctx, raw)
+	return g.parseTracked(ctx, rawDiff)
 }
 
-func (g Git) parseTracked(ctx context.Context, raw []byte) ([]File, error) {
-	if len(bytes.TrimSpace(raw)) == 0 {
+func (g Git) parseTracked(ctx context.Context, rawDiff []byte) ([]File, error) {
+	if len(bytes.TrimSpace(rawDiff)) == 0 {
 		return nil, nil
 	}
-	parsed, err := diff.ParseMultiFileDiff(raw)
+	parsed, err := diff.ParseMultiFileDiff(rawDiff)
 	if err != nil {
 		return nil, fmt.Errorf("parse git diff: %w", err)
 	}
@@ -195,7 +196,7 @@ func (g Git) parseTracked(ctx context.Context, raw []byte) ([]File, error) {
 		file := File{
 			OldPath:     oldPath,
 			NewPath:     newPath,
-			DisplayPath: visibleText(display),
+			DisplayPath: escapeSingleLineText(display),
 			Metadata:    visibleStrings(fd.Extended),
 		}
 		file.OldSource = g.readRevision(ctx, g.Repository.DefaultBranch, oldPath)
@@ -226,18 +227,18 @@ func (g Git) untrackedFiles(ctx context.Context) ([]File, error) {
 			continue
 		}
 		path := string(rawPath)
-		display := visibleText(path)
+		display := escapeSingleLineText(path)
 		full := filepath.Join(g.Repository.Root, filepath.FromSlash(path))
 		info, statErr := os.Lstat(full)
 		if statErr != nil {
 			return nil, fmt.Errorf("stat untracked %q: %w", path, statErr)
 		}
 		if info.Mode()&os.ModeSymlink != 0 {
-			target, readErr := os.Readlink(full)
+			symlinkDestination, readErr := os.Readlink(full)
 			if readErr != nil {
 				return nil, fmt.Errorf("read symlink %q: %w", path, readErr)
 			}
-			files = append(files, addedFile(path, visibleText(target)))
+			files = append(files, addedFile(path, escapeSingleLineText(symlinkDestination)))
 			continue
 		}
 		if !info.Mode().IsRegular() {
@@ -263,20 +264,20 @@ func (g Git) untrackedFiles(ctx context.Context) ([]File, error) {
 			})
 			continue
 		}
-		files = append(files, addedFile(display, visibleSource(string(content))))
+		files = append(files, addedFile(display, escapeMultiLineText(string(content))))
 	}
 	return files, nil
 }
 
 func addedFile(path, content string) File {
-	sourceLines := splitSourceLines(content)
+	sourceLines := Lines(content)
 	lines := make([]Line, 0, len(sourceLines))
 	for i, line := range sourceLines {
 		lines = append(lines, Line{Kind: Addition, Text: line, NewNumber: LineNumber(i + 1)})
 	}
 	return File{
 		NewPath:     path,
-		DisplayPath: visibleText(path),
+		DisplayPath: escapeSingleLineText(path),
 		NewSource:   content,
 		Metadata:    []string{"untracked file"},
 		Hunks: []Hunk{{
@@ -296,7 +297,7 @@ func parseHunkBody(oldLine, newLine int32, body []byte) ([]Line, error) {
 		if len(raw) == 0 {
 			return nil, errors.New("malformed empty diff line")
 		}
-		text := visibleText(string(raw[1:]))
+		text := escapeSingleLineText(string(raw[1:]))
 		switch raw[0] {
 		case ' ':
 			lines = append(lines, Line{Kind: Context, Text: text, OldNumber: LineNumber(oldLine), NewNumber: LineNumber(newLine)})
@@ -325,7 +326,7 @@ func (g Git) readRevision(ctx context.Context, revision, path string) string {
 	if err != nil || len(out) > maxFileBytes || bytes.IndexByte(out, 0) >= 0 {
 		return ""
 	}
-	return visibleSource(string(out))
+	return escapeMultiLineText(string(out))
 }
 
 func readWorkingTree(root, path string) string {
@@ -341,7 +342,7 @@ func readWorkingTree(root, path string) string {
 	if err != nil || bytes.IndexByte(out, 0) >= 0 {
 		return ""
 	}
-	return visibleSource(string(out))
+	return escapeMultiLineText(string(out))
 }
 
 func cleanDiffPath(path string) string {
@@ -354,7 +355,7 @@ func cleanDiffPath(path string) string {
 	return path
 }
 
-func splitSourceLines(content string) []string {
+func Lines(content string) []string {
 	content = strings.TrimSuffix(content, "\n")
 	if content == "" {
 		return nil
@@ -365,17 +366,29 @@ func splitSourceLines(content string) []string {
 func visibleStrings(values []string) []string {
 	result := make([]string, len(values))
 	for index, value := range values {
-		result[index] = visibleText(value)
+		result[index] = escapeSingleLineText(value)
 	}
 	return result
 }
 
-func visibleSource(value string) string {
+func escapeMultiLineText(value string) string {
+	return escapeInvisibleChars(value, '\n', '\t')
+}
+
+func escapeSingleLineText(value string) string {
+	return escapeInvisibleChars(value, '\t')
+}
+
+func escapeInvisibleChars(value string, exceptions ...rune) string {
 	var result strings.Builder
 	for _, r := range value {
 		switch {
-		case r == '\n' || r == '\t':
+		case slices.Contains(exceptions, r):
 			result.WriteRune(r)
+		case r == '\n':
+			result.WriteString(`\n`)
+		case r == '\t':
+			result.WriteString(`\t`)
 		case r == '\r':
 			result.WriteString(`\r`)
 		case r < 0x20 || r == 0x7f:
@@ -385,10 +398,6 @@ func visibleSource(value string) string {
 		}
 	}
 	return result.String()
-}
-
-func visibleText(value string) string {
-	return strings.ReplaceAll(visibleSource(value), "\n", `\n`)
 }
 
 func formatHunkHeader(h *diff.Hunk) string {
