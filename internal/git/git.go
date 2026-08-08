@@ -52,7 +52,7 @@ type Repository struct {
 	DefaultBranch string
 }
 
-func New(ctx context.Context) (Git, error) {
+func NewGit(ctx context.Context) (Git, error) {
 	git := ExecRunner{}
 	repo, err := NewRepository(ctx, git)
 	if err != nil {

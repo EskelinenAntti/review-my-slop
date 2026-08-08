@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -10,10 +11,13 @@ import (
 	"github.com/charmbracelet/x/term"
 
 	"github.com/eskelinenantti/review-my-slop/internal/git"
+	source "github.com/eskelinenantti/review-my-slop/internal/git"
 	"github.com/eskelinenantti/review-my-slop/internal/inbox"
 	"github.com/eskelinenantti/review-my-slop/internal/review"
 	"github.com/eskelinenantti/review-my-slop/internal/tui"
 )
+
+var unexpectedArgumentErr = errors.New("usage: review-my-slop [code|comments]")
 
 func main() {
 	if err := run(context.Background(), os.Args[1:], os.Stdout); err != nil {
@@ -23,32 +27,36 @@ func main() {
 }
 
 func run(ctx context.Context, args []string, output io.Writer) error {
+	git, err := source.NewGit(ctx)
+	if err != nil {
+		return err
+	}
 	if len(args) == 0 {
-		return runCode(ctx)
+		return runCode(ctx, git)
 	}
 	if len(args) > 1 {
-		return fmt.Errorf("usage: review-my-slop [code|comments]")
+		return unexpectedArgumentErr
 	}
+
 	switch args[0] {
 	case "code":
-		return runCode(ctx)
+		return runCode(ctx, git)
 	case "comments":
-		return runComments(ctx, output)
+		return runComments(git, output)
 	default:
-		return fmt.Errorf("unknown subcommand %q; usage: review-my-slop [code|comments]", args[0])
+		return unexpectedArgumentErr
 	}
 }
 
-func runCode(ctx context.Context) error {
-	env, err := git.New(ctx)
+func runCode(ctx context.Context, git git.Git) error {
+	git, err := source.NewGit(ctx)
 	if err != nil {
 		return err
 	}
-	loadedPatch, err := env.LocalChanges(ctx)
+	loadedPatch, err := git.LocalChanges(ctx)
 	if err != nil {
 		return err
 	}
-
 	store, err := inbox.OpenDefault()
 	if err != nil {
 		return err
@@ -61,7 +69,7 @@ func runCode(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	saveComment := func(comment review.Comment, current git.Patch) (review.Comment, error) {
+	saveComment := func(comment review.Comment, current source.Patch) (review.Comment, error) {
 		comment.Repository = current.Repository
 		if comment.ID != "" {
 			return comment, store.Update(comment)
@@ -77,15 +85,15 @@ func runCode(ctx context.Context) error {
 	model.SetLoadComments(func() ([]review.Comment, error) {
 		return store.List(loadedPatch.Repository)
 	})
-	model.SetDelete(func(comment review.Comment, current git.Patch) error {
+	model.SetDelete(func(comment review.Comment, current source.Patch) error {
 		return store.Delete(current.Repository, comment.ID)
 	})
-	model.SetDefaultBranch(env.Repository.DefaultBranch)
-	model.SetRefresh(func(showBranchChanges bool) (git.Patch, error) {
+	model.SetDefaultBranch(git.Repository.DefaultBranch)
+	model.SetRefresh(func(showBranchChanges bool) (source.Patch, error) {
 		if showBranchChanges {
-			return env.BranchChanges(ctx)
+			return git.BranchChanges(ctx)
 		}
-		return env.LocalChanges(ctx)
+		return git.LocalChanges(ctx)
 	})
 	program := tea.NewProgram(model, tea.WithWindowSize(size.Width, size.Height))
 	_, err = program.Run()
@@ -102,20 +110,12 @@ func initialTerminalSize() tui.Size {
 	return tui.DefaultSize
 }
 
-func runComments(ctx context.Context, output io.Writer) error {
-	env, err := git.New(ctx)
-	if err != nil {
-		return err
-	}
-	return runCommentsAt(env, output)
-}
-
-func runCommentsAt(env git.Git, output io.Writer) error {
+func runComments(git git.Git, output io.Writer) error {
 	store, err := inbox.OpenDefault()
 	if err != nil {
 		return err
 	}
-	comments, err := store.List(env.Repository.Root)
+	comments, err := store.List(git.Repository.Root)
 	if err != nil {
 		return err
 	}
@@ -126,5 +126,5 @@ func runCommentsAt(env git.Git, output io.Writer) error {
 	for index, comment := range comments {
 		ids[index] = comment.ID
 	}
-	return store.Acknowledge(env.Repository.Root, ids)
+	return store.Acknowledge(git.Repository.Root, ids)
 }

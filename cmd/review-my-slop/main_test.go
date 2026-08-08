@@ -31,7 +31,7 @@ func TestRunCommentsPrintsAndConsumesCurrentRepositoryFeedback(t *testing.T) {
 	}
 
 	var output bytes.Buffer
-	if err := runCommentsAt(git, &output); err != nil {
+	if err := runComments(git, &output); err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(output.String(), "Check this error.") {
@@ -45,7 +45,7 @@ func TestRunCommentsPrintsAndConsumesCurrentRepositoryFeedback(t *testing.T) {
 	}
 
 	var empty bytes.Buffer
-	if err := runCommentsAt(git, &empty); err != nil {
+	if err := runComments(git, &empty); err != nil {
 		t.Fatal(err)
 	}
 	if strings.TrimSpace(empty.String()) != "No pending review comments." {
@@ -76,7 +76,7 @@ func TestRunCommentsPreservesFeedbackWhenOutputFails(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := runCommentsAt(repo, failingWriter{}); err == nil {
+	if err := runComments(repo, failingWriter{}); err == nil {
 		t.Fatal("output failure was ignored")
 	}
 	comments, err := store.List(repo.Repository.Root)
