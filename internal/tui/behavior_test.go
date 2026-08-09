@@ -543,8 +543,8 @@ func TestTabTogglesDefaultBranchAndIgnoresStaleRefresh(t *testing.T) {
 	m.SetRefresh(func(bool) (git.Patch, error) { return coveragePatch(), nil })
 	next, _ := m.Update(textKey("tab"))
 	m = next.(Model)
-	if m.currentBranch() != "main" {
-		t.Fatalf("branch=%q", m.currentBranch())
+	if m.parentBranch() != "main" {
+		t.Fatalf("branch=%q", m.parentBranch())
 	}
 	stale := coveragePatch()
 	stale.Fingerprint = "stale"
@@ -553,8 +553,8 @@ func TestTabTogglesDefaultBranchAndIgnoresStaleRefresh(t *testing.T) {
 		t.Fatal("stale refresh applied")
 	}
 	m = updateModel(t, m, textKey("tab"))
-	if m.currentBranch() != "" {
-		t.Fatalf("branch=%q after toggling back to local", m.currentBranch())
+	if m.parentBranch() != "" {
+		t.Fatalf("branch=%q after toggling back to local", m.parentBranch())
 	}
 }
 

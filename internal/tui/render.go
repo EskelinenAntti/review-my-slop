@@ -33,7 +33,7 @@ func (m Model) render() string {
 	var body []string
 	if len(m.review.patch.Files) == 0 {
 		empty := "No unstaged or untracked changes."
-		if m.currentBranch() != "" {
+		if m.parentBranch() != "" {
 			empty = "No branch or worktree changes."
 		}
 		body = make([]string, m.screenBodyHeight())
@@ -105,7 +105,7 @@ func (m Model) viewLabel() string {
 	if m.review.viewport.Top.Y > 0 {
 		progress = fmt.Sprintf(" (%d%%)", m.review.view.ViewportProgress(m.review.viewport))
 	}
-	if branch := m.currentBranch(); branch != "" {
+	if branch := m.parentBranch(); branch != "" {
 		return "branch changes from " + branch + progress
 	}
 	return "local changes" + progress

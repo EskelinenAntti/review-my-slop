@@ -186,7 +186,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.FocusMsg:
 		return m, m.loadRefresh()
 	case refreshDiffMsg:
-		if msg.branch != m.currentBranch() {
+		if msg.branch != m.parentBranch() {
 			return m, nil
 		}
 		if msg.err != nil {
@@ -205,7 +205,7 @@ func (m Model) loadRefresh() tea.Cmd {
 	if m.refresh == nil {
 		return nil
 	}
-	branch := m.currentBranch()
+	branch := m.parentBranch()
 	return func() tea.Msg {
 		p, err := m.refresh(m.showDefault)
 		return refreshDiffMsg{patch: p, branch: branch, err: err}
@@ -426,7 +426,7 @@ func (m Model) updateKey(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m Model) currentBranch() string {
+func (m Model) parentBranch() string {
 	if !m.showDefault {
 		return ""
 	}
