@@ -82,7 +82,7 @@ func TestRefreshTranslatesCursorAndSelection(t *testing.T) {
 
 func TestViewSwitchPreservesSemanticCursor(t *testing.T) {
 	m := testModel(modelPatch(), nil, nil)
-	m.width = 120
+	m.size.Width = 120
 	m.move(1)
 	m.move(1)
 	want, _ := m.review.view.Line(m.review.cursor)
@@ -114,8 +114,8 @@ func TestCommentSaveUsesPatchAndPreservesAnchor(t *testing.T) {
 
 func TestRenderingAndKeyBindingsRemainAvailable(t *testing.T) {
 	m := testModel(modelPatch(), nil, nil)
-	m.width, m.height = 80, 10
-	m.review.viewport = m.review.view.Resize(m.review.viewport, m.width, m.screenBodyHeight())
+	m.size.Width, m.size.Height = 80, 10
+	m.review.viewport = m.review.view.Resize(m.review.viewport, m.size.Width, m.screenBodyHeight())
 	rendered := m.render()
 	for _, value := range []string{"review-my-slop", "+1-1", "old()", "new()", "local changes"} {
 		if !strings.Contains(rendered, value) {
@@ -130,11 +130,11 @@ func TestRenderingAndKeyBindingsRemainAvailable(t *testing.T) {
 
 func TestEmptyViewKeepsKeyboardHintAtBottom(t *testing.T) {
 	m := testModel(git.Patch{}, nil, nil)
-	m.width, m.height = 80, 10
+	m.size.Width, m.size.Height = 80, 10
 
 	lines := strings.Split(m.render(), "\n")
-	if got, want := lines[m.height-2], "j/k/h/l move"; !strings.Contains(got, want) {
-		t.Fatalf("line %d = %q, want it to contain %q", m.height-1, got, want)
+	if got, want := lines[m.size.Height-2], "j/k/h/l move"; !strings.Contains(got, want) {
+		t.Fatalf("line %d = %q, want it to contain %q", m.size.Height-1, got, want)
 	}
 	if got := lines[2]; !strings.Contains(got, "No unstaged or untracked changes.") {
 		t.Fatalf("empty-state line = %q", got)
@@ -143,7 +143,7 @@ func TestEmptyViewKeepsKeyboardHintAtBottom(t *testing.T) {
 
 func TestMenuKeyboardHintsStayAtBottom(t *testing.T) {
 	m := testModel(modelPatch(), []review.Comment{{Body: "first", Anchor: review.Anchor{FilePath: "main.go", NewStart: 2}}}, nil)
-	m.width, m.height = 80, 10
+	m.size.Width, m.size.Height = 80, 10
 
 	tests := []struct {
 		name string
@@ -157,8 +157,8 @@ func TestMenuKeyboardHintsStayAtBottom(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			m.mode = test.mode
 			lines := strings.Split(m.render(), "\n")
-			if got := lines[m.height-2]; !strings.Contains(got, test.hint) {
-				t.Fatalf("line %d = %q, want it to contain %q", m.height-1, got, test.hint)
+			if got := lines[m.size.Height-2]; !strings.Contains(got, test.hint) {
+				t.Fatalf("line %d = %q, want it to contain %q", m.size.Height-1, got, test.hint)
 			}
 		})
 	}
@@ -170,16 +170,16 @@ func TestCommentsMenuScrollsWithinScreenBody(t *testing.T) {
 		comments[index] = review.Comment{Body: fmt.Sprintf("comment %d", index), Anchor: review.Anchor{FilePath: "main.go"}}
 	}
 	m := testModel(modelPatch(), comments, nil)
-	m.width, m.height = 80, 7
+	m.size.Width, m.size.Height = 80, 7
 	m.mode = modeComments
 	m.comments.row = len(comments) - 1
 
 	rendered := strings.Split(ansi.Strip(m.render()), "\n")
-	if !strings.Contains(strings.Join(rendered[1:m.height-2], "\n"), "comment 9") {
+	if !strings.Contains(strings.Join(rendered[1:m.size.Height-2], "\n"), "comment 9") {
 		t.Fatalf("selected comment is outside the screen body: %q", rendered)
 	}
-	if !strings.Contains(rendered[m.height-2], "j/k move") {
-		t.Fatalf("footer line = %q", rendered[m.height-2])
+	if !strings.Contains(rendered[m.size.Height-2], "j/k move") {
+		t.Fatalf("footer line = %q", rendered[m.size.Height-2])
 	}
 }
 

@@ -94,7 +94,7 @@ func (m Model) renderStatus() string {
 
 func (m Model) renderFooter(left string) string {
 	right := mutedStyle.Render(m.viewLabel())
-	width := max(20, m.width)
+	width := max(20, m.size.Width)
 	rightWidth := lipgloss.Width(right)
 	left = ansi.Truncate(left, max(0, width-rightWidth-1), "")
 	return left + strings.Repeat(" ", max(1, width-lipgloss.Width(left)-rightWidth)) + right
@@ -134,8 +134,8 @@ func (m Model) renderComments() string {
 				location += fmt.Sprintf(":%d", comment.Anchor.OldStart)
 			}
 			commentBody := strings.ReplaceAll(strings.TrimSpace(comment.Body), "\n", " ")
-			line := ansi.Truncate(fmt.Sprintf("%s%s  %s", prefix, location, commentBody), max(20, m.width), "")
-			body = append(body, style.Width(max(20, m.width)).Render(line))
+			line := ansi.Truncate(fmt.Sprintf("%s%s  %s", prefix, location, commentBody), max(20, m.size.Width), "")
+			body = append(body, style.Width(max(20, m.size.Width)).Render(line))
 		}
 	}
 	footer := mutedStyle.Render("j/k move  Enter/e edit  D delete  Esc/q return")

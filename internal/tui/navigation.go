@@ -72,12 +72,12 @@ func (m *Model) switchPane(pane view.Pane) {
 }
 
 func (m Model) sideBySideActive() bool {
-	return m.review.sideBySide && m.width >= minimumSideBySideWidth
+	return m.review.sideBySide && m.size.Width >= minimumSideBySideWidth
 }
 
 func (m *Model) toggleSideBySide() {
 	enabled := !m.review.sideBySide
-	if enabled && m.width < minimumSideBySideWidth {
+	if enabled && m.size.Width < minimumSideBySideWidth {
 		m.err = fmt.Errorf("side-by-side view requires a terminal at least %d columns wide", minimumSideBySideWidth)
 		return
 	}

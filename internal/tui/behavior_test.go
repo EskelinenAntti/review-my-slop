@@ -304,8 +304,8 @@ func TestZSequencesPositionCurrentLineInViewport(t *testing.T) {
 	for range 10 {
 		m.move(view.Forward)
 	}
-	m.height = 9
-	m.review.viewport = m.review.view.Resize(m.review.viewport, m.width, m.screenBodyHeight())
+	m.size.Height = 9
+	m.review.viewport = m.review.view.Resize(m.review.viewport, m.size.Width, m.screenBodyHeight())
 	for _, test := range []struct {
 		key       string
 		alignment view.VerticalAlignment
@@ -384,7 +384,7 @@ func TestRenderKeyBindingsAlignsDescriptions(t *testing.T) {
 
 func TestSideBySidePaneSwitchingUsesCtrlWSequences(t *testing.T) {
 	m := testModel(coveragePatch(), nil, nil)
-	m.width = 120
+	m.size.Width = 120
 	m.setSideBySide(true)
 	m.review.cursor = findLine(t, m, "new()")
 	m = updateModel(t, m, controlKey('w'))
@@ -401,8 +401,8 @@ func TestSideBySidePaneSwitchingUsesCtrlWSequences(t *testing.T) {
 
 func TestHorizontalScrollKeysMoveByStepAndReset(t *testing.T) {
 	m := testModel(longModelPatch(), nil, nil)
-	m.width = 37
-	m.review.viewport = m.review.view.Resize(m.review.viewport, m.width, m.screenBodyHeight())
+	m.size.Width = 37
+	m.review.viewport = m.review.view.Resize(m.review.viewport, m.size.Width, m.screenBodyHeight())
 	m = updateModel(t, m, textKey("l"))
 	m = updateModel(t, m, tea.KeyPressMsg(tea.Key{Code: tea.KeyRight}))
 	if m.review.viewport.LeftColumn != 2*horizontalScrollStep {
@@ -523,7 +523,7 @@ func TestSearchMatchesFileNamesAndBackspaceRestoresOrigin(t *testing.T) {
 
 func TestSideBySideSearchActivatesPaneAndCancelRestoresIt(t *testing.T) {
 	m := testModel(coveragePatch(), nil, nil)
-	m.width = 120
+	m.size.Width = 120
 	m.setSideBySide(true)
 	origin := m.review.cursor
 	m = updateModel(t, m, textKey("/"))

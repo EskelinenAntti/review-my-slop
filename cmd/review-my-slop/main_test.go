@@ -90,7 +90,7 @@ func TestRunCommentsPreservesFeedbackWhenOutputFails(t *testing.T) {
 
 func TestRunRejectsUnknownSubcommand(t *testing.T) {
 	err := run(context.Background(), []string{"unknown"}, &bytes.Buffer{})
-	if err == nil || !strings.Contains(err.Error(), `unknown subcommand "unknown"`) {
+	if err == nil || !strings.Contains(err.Error(), `usage: review-my-slop [code|comments]`) {
 		t.Fatalf("error = %v", err)
 	}
 }
