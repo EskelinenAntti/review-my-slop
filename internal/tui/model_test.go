@@ -114,7 +114,7 @@ func TestCommentSaveUsesPatchAndPreservesAnchor(t *testing.T) {
 
 func TestRenderingAndKeyBindingsRemainAvailable(t *testing.T) {
 	m := testModel(modelPatch(), nil, nil)
-	m.size.Width, m.size.Height = 80, 10
+	m.size = Size{Width: 80, Height: 10}
 	m.review.viewport = m.review.view.Resize(m.review.viewport, m.size.Width, m.screenBodyHeight())
 	rendered := m.render()
 	for _, value := range []string{"review-my-slop", "+1-1", "old()", "new()", "local changes"} {
@@ -130,7 +130,7 @@ func TestRenderingAndKeyBindingsRemainAvailable(t *testing.T) {
 
 func TestEmptyViewKeepsKeyboardHintAtBottom(t *testing.T) {
 	m := testModel(git.Patch{}, nil, nil)
-	m.size.Width, m.size.Height = 80, 10
+	m.size = Size{Width: 80, Height: 10}
 
 	lines := strings.Split(m.render(), "\n")
 	if got, want := lines[m.size.Height-2], "j/k/h/l move"; !strings.Contains(got, want) {
@@ -143,7 +143,7 @@ func TestEmptyViewKeepsKeyboardHintAtBottom(t *testing.T) {
 
 func TestMenuKeyboardHintsStayAtBottom(t *testing.T) {
 	m := testModel(modelPatch(), []review.Comment{{Body: "first", Anchor: review.Anchor{FilePath: "main.go", NewStart: 2}}}, nil)
-	m.size.Width, m.size.Height = 80, 10
+	m.size = Size{Width: 80, Height: 10}
 
 	tests := []struct {
 		name string
@@ -170,7 +170,7 @@ func TestCommentsMenuScrollsWithinScreenBody(t *testing.T) {
 		comments[index] = review.Comment{Body: fmt.Sprintf("comment %d", index), Anchor: review.Anchor{FilePath: "main.go"}}
 	}
 	m := testModel(modelPatch(), comments, nil)
-	m.size.Width, m.size.Height = 80, 7
+	m.size = Size{Width: 80, Height: 7}
 	m.mode = modeComments
 	m.comments.row = len(comments) - 1
 
