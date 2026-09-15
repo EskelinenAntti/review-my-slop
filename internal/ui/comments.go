@@ -47,12 +47,12 @@ func (m Model) updateComments(name string) (tea.Model, tea.Cmd) {
 }
 
 func (m *Model) beginComment() (tea.Cmd, error) {
-	selection := m.changes.selection
+	selection := m.review.selection
 	if selection == nil {
-		current := m.changes.view.BeginSelection(m.changes.cursor)
+		current := m.layout.view.BeginSelection(m.review.cursor)
 		selection = &current
 	}
-	anchor, err := m.changes.view.Anchor(*selection)
+	anchor, err := m.layout.view.Anchor(*selection)
 	if err != nil {
 		return nil, err
 	}
@@ -87,7 +87,7 @@ func (m *Model) finishCommentEdit() {
 	} else {
 		item = comment.Comment{Anchor: m.comments.editAnchor, Body: body}
 	}
-	saved, err := m.dependencies.SaveComment(item, m.changes.changes)
+	saved, err := m.dependencies.SaveComment(item, m.review.changes)
 	if err != nil {
 		m.err = err
 		m.clearCommentEdit()
@@ -113,7 +113,7 @@ func (m *Model) deleteComment(index int) {
 		m.err = fmt.Errorf("comment storage is unavailable")
 		return
 	}
-	if err := m.dependencies.DeleteComment(m.comments.items[index], m.changes.changes); err != nil {
+	if err := m.dependencies.DeleteComment(m.comments.items[index], m.review.changes); err != nil {
 		m.err = err
 		return
 	}
@@ -129,7 +129,7 @@ func (m *Model) clearCommentEdit() {
 	m.comments.editAnchor = comment.Anchor{}
 }
 
-func (m *Model) cancelSelection() { m.changes.selection = nil }
+func (m *Model) cancelSelection() { m.review.selection = nil }
 
 func (m Model) openCommentEditor() (tea.Cmd, error) {
 	editor := m.dependencies.Editor

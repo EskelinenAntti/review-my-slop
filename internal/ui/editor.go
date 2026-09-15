@@ -57,8 +57,8 @@ func editorCommand() (string, error) {
 }
 
 func (m Model) openCurrentLine() (tea.Cmd, error) {
-	file, fileOK := m.changes.view.File(m.changes.cursor)
-	line, lineOK := m.changes.view.Line(m.changes.cursor)
+	file, fileOK := m.layout.view.File(m.review.cursor)
+	line, lineOK := m.layout.view.Line(m.review.cursor)
 	if !fileOK || !lineOK {
 		return nil, fmt.Errorf("select a code line to open in $EDITOR")
 	}
@@ -73,7 +73,7 @@ func (m Model) openCurrentLine() (tea.Cmd, error) {
 		return nil, fmt.Errorf("current line has no editable working-tree location")
 	}
 	if !filepath.IsAbs(path) {
-		path = filepath.Join(m.changes.changes.Repository, filepath.FromSlash(path))
+		path = filepath.Join(m.review.changes.Repository, filepath.FromSlash(path))
 	}
 	editor := m.dependencies.Editor
 	if editor == nil {

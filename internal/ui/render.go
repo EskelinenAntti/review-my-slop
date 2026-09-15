@@ -28,18 +28,18 @@ func (m Model) render() string {
 	if m.mode == modeComments {
 		return m.renderComments()
 	}
-	added, removed := changeLineCounts(m.changes.changes)
+	added, removed := changeLineCounts(m.review.changes)
 	header := titleStyle.Render("review-my-slop") + "  " + mutedStyle.Render(fmt.Sprintf("+%d-%d", added, removed))
 	var body []string
-	if len(m.changes.changes.Files) == 0 {
+	if len(m.review.changes.Files) == 0 {
 		empty := "No unstaged or untracked changes."
 		if m.currentBranch() != "" {
 			empty = "No branch or worktree changes."
 		}
-		body = make([]string, m.bodyHeight())
+		body = make([]string, m.layout.bodyHeight())
 		body[min(1, len(body)-1)] = mutedStyle.Render(empty)
 	} else {
-		body = strings.Split(m.changes.view.Render(m.changes.viewport, m.changes.cursor, m.changes.selection), "\n")
+		body = strings.Split(m.layout.view.Render(m.layout.viewport, m.review.cursor, m.review.selection), "\n")
 	}
 	footer := m.renderStatus()
 	if m.err != nil {
@@ -49,7 +49,7 @@ func (m Model) render() string {
 }
 
 func (m Model) renderScreen(header string, body []string, footer string) string {
-	height := m.bodyHeight()
+	height := m.layout.bodyHeight()
 	if len(body) > height {
 		body = body[:height]
 	}
@@ -86,7 +86,7 @@ func (m Model) renderStatus() string {
 		if m.search.miss {
 			status += errorStyle.Render("  no matches")
 		}
-	} else if m.changes.selection != nil {
+	} else if m.review.selection != nil {
 		status = "visual selection  j/k extend  c comment  Esc cancel"
 	}
 	return m.renderFooter(mutedStyle.Render(status))
@@ -94,7 +94,7 @@ func (m Model) renderStatus() string {
 
 func (m Model) renderFooter(left string) string {
 	right := mutedStyle.Render(m.viewLabel())
-	width := max(20, m.width)
+	width := max(20, m.layout.size.Width)
 	rightWidth := lipgloss.Width(right)
 	left = ansi.Truncate(left, max(0, width-rightWidth-1), "")
 	return left + strings.Repeat(" ", max(1, width-lipgloss.Width(left)-rightWidth)) + right
@@ -102,8 +102,8 @@ func (m Model) renderFooter(left string) string {
 
 func (m Model) viewLabel() string {
 	progress := ""
-	if m.changes.viewport.Top.Y > 0 {
-		progress = fmt.Sprintf(" (%d%%)", m.changes.view.ViewportProgress(m.changes.viewport))
+	if m.layout.viewport.Top.Y > 0 {
+		progress = fmt.Sprintf(" (%d%%)", m.layout.view.ViewportProgress(m.layout.viewport))
 	}
 	if branch := m.currentBranch(); branch != "" {
 		return "branch changes from " + branch + progress
@@ -113,7 +113,7 @@ func (m Model) viewLabel() string {
 
 func (m Model) renderComments() string {
 	header := titleStyle.Render("comments") + "  " + mutedStyle.Render(fmt.Sprintf("%d pending", len(m.comments.items)))
-	height := m.bodyHeight()
+	height := m.layout.bodyHeight()
 	body := make([]string, 0, height)
 	if len(m.comments.items) == 0 {
 		body = make([]string, height)
@@ -134,8 +134,8 @@ func (m Model) renderComments() string {
 				location += fmt.Sprintf(":%d", item.Anchor.OldStart)
 			}
 			commentBody := strings.ReplaceAll(strings.TrimSpace(item.Body), "\n", " ")
-			line := ansi.Truncate(fmt.Sprintf("%s%s  %s", prefix, location, commentBody), max(20, m.width), "")
-			body = append(body, style.Width(max(20, m.width)).Render(line))
+			line := ansi.Truncate(fmt.Sprintf("%s%s  %s", prefix, location, commentBody), max(20, m.layout.size.Width), "")
+			body = append(body, style.Width(max(20, m.layout.size.Width)).Render(line))
 		}
 	}
 	footer := mutedStyle.Render("j/k move  Enter/e edit  D delete  Esc/q return")

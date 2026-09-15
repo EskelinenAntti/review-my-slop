@@ -123,6 +123,28 @@ func TestResizeAndLayoutToggleKeepReviewUsable(t *testing.T) {
 	}
 }
 
+func TestLayoutRebuildPreservesSelectionAnchor(t *testing.T) {
+	editor := &fakeEditor{bodies: []string{"comment after layout change"}}
+	var saved comment.Comment
+	model := newTestModel(editor, ui.Dependencies{
+		SaveComment: func(item comment.Comment, _ diff.ChangeSet) (comment.Comment, error) {
+			saved = item
+			return item, nil
+		},
+	})
+	model = sendKey(t, model, "j")
+	model = sendKey(t, model, "v")
+	model = sendKey(t, model, "j")
+	model = sendKey(t, model, "t")
+	model = sendKey(t, model, "t")
+	command := sendKeyCommand(t, &model, "c")
+	finishCommand(t, &model, command)
+
+	if saved.Anchor.FilePath != "main.go" || saved.Anchor.NewStart != 2 || !equalQuoted(saved.Anchor.QuotedLines, []string{"-old()", "+new()"}) {
+		t.Fatalf("anchor after layout rebuild = %#v", saved.Anchor)
+	}
+}
+
 func TestRefreshUsesCurrentChangeSetForNewComment(t *testing.T) {
 	editor := &fakeEditor{bodies: []string{"comment"}}
 	var saved diff.ChangeSet

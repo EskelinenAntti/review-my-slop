@@ -7,91 +7,85 @@ import (
 )
 
 func (m *Model) move(direction Direction) {
-	next, ok := m.changes.view.Move(m.changes.cursor, direction)
+	next, ok := m.layout.view.Move(m.review.cursor, direction)
 	if !ok {
 		return
 	}
-	if m.changes.selection != nil {
-		selection, selectionOK := m.changes.view.ExtendSelection(*m.changes.selection, next)
+	if m.review.selection != nil {
+		selection, selectionOK := m.layout.view.ExtendSelection(*m.review.selection, next)
 		if !selectionOK {
 			return
 		}
-		m.changes.selection = &selection
+		m.review.selection = &selection
 	}
 	m.setCursor(next)
 }
 
 func (m *Model) setCursor(cursor Cursor) {
-	m.changes.cursor = cursor
-	m.changes.viewport = m.changes.view.KeepVisible(m.changes.viewport, cursor)
+	m.review.cursor = cursor
+	m.layout.keepCursorVisible(cursor)
 }
 
 func (m *Model) halfPage(direction Direction) {
-	viewport, cursor := m.changes.view.ScrollHalfPage(m.changes.viewport, m.changes.cursor, direction)
-	if m.changes.selection != nil {
-		selection, ok := m.changes.view.ExtendSelection(*m.changes.selection, cursor)
+	viewport, cursor := m.layout.view.ScrollHalfPage(m.layout.viewport, m.review.cursor, direction)
+	if m.review.selection != nil {
+		selection, ok := m.layout.view.ExtendSelection(*m.review.selection, cursor)
 		if !ok {
 			return
 		}
-		m.changes.selection = &selection
+		m.review.selection = &selection
 	}
-	m.changes.viewport, m.changes.cursor = viewport, cursor
+	m.layout.viewport, m.review.cursor = viewport, cursor
 }
 
 func (m *Model) jumpFile(direction Direction) {
 	m.cancelSelection()
-	if cursor, ok := m.changes.view.JumpFile(m.changes.cursor, direction); ok {
+	if cursor, ok := m.layout.view.JumpFile(m.review.cursor, direction); ok {
 		m.setCursor(cursor)
 	}
 }
 
 func (m *Model) switchPane(pane Pane) {
-	if !m.sideBySideActive() {
+	if !m.layout.sideBySideActive() {
 		return
 	}
-	cursor, ok := m.changes.view.SwitchPane(m.changes.cursor, pane)
+	cursor, ok := m.layout.view.SwitchPane(m.review.cursor, pane)
 	if !ok {
 		return
 	}
-	if m.changes.selection != nil {
-		first, firstOK := m.changes.view.SwitchPane(m.changes.selection.First, pane)
-		last, lastOK := m.changes.view.SwitchPane(m.changes.selection.Last, pane)
+	if m.review.selection != nil {
+		first, firstOK := m.layout.view.SwitchPane(m.review.selection.First, pane)
+		last, lastOK := m.layout.view.SwitchPane(m.review.selection.Last, pane)
 		if !firstOK || !lastOK {
 			return
 		}
-		selection := m.changes.view.BeginSelection(first)
-		selection, ok = m.changes.view.ExtendSelection(selection, last)
+		selection := m.layout.view.BeginSelection(first)
+		selection, ok = m.layout.view.ExtendSelection(selection, last)
 		if !ok {
 			return
 		}
-		m.changes.selection = &selection
+		m.review.selection = &selection
 	}
 	m.setCursor(cursor)
 }
 
-func (m Model) sideBySideActive() bool {
-	return m.changes.sideBySide && m.width >= minimumSideBySideWidth
-}
-
 func (m *Model) toggleSideBySide() {
-	enabled := !m.changes.sideBySide
-	if enabled && m.width < minimumSideBySideWidth {
+	enabled := !m.layout.sideBySide
+	if enabled && m.layout.size.Width < minimumSideBySideWidth {
 		m.err = fmt.Errorf("side-by-side view requires a terminal at least %d columns wide", minimumSideBySideWidth)
 		return
 	}
 	m.setSideBySide(enabled)
 	if m.dependencies.SaveSideBySide != nil {
-		if err := m.dependencies.SaveSideBySide(m.changes.sideBySide); err != nil {
+		if err := m.dependencies.SaveSideBySide(m.layout.sideBySide); err != nil {
 			m.err = fmt.Errorf("save side-by-side preference: %w", err)
 		}
 	}
 }
 
 func (m *Model) setSideBySide(enabled bool) {
-	wasActive := m.sideBySideActive()
-	m.changes.sideBySide = enabled
-	if wasActive != m.sideBySideActive() {
-		m.rebuildView(m.changes.changes)
+	if m.layout.setSideBySide(enabled) {
+		m.rebuildReviewView(m.review.changes)
 	}
 }
 
@@ -129,7 +123,7 @@ func (m *Model) updateIncrementalSearch() {
 		m.search.miss = false
 		return
 	}
-	match, ok := m.changes.view.Search(string(m.search.query), m.search.from, Forward)
+	match, ok := m.layout.view.Search(string(m.search.query), m.search.from, Forward)
 	m.search.miss = !ok
 	if ok {
 		m.setCursor(match)
@@ -140,7 +134,7 @@ func (m *Model) repeatSearch(direction Direction) {
 	if m.search.term == "" {
 		return
 	}
-	match, ok := m.changes.view.Search(m.search.term, m.changes.cursor, direction)
+	match, ok := m.layout.view.Search(m.search.term, m.review.cursor, direction)
 	if !ok {
 		m.err = fmt.Errorf("no matches for %q", m.search.term)
 		return

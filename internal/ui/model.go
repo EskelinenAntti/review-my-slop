@@ -71,13 +71,50 @@ const (
 
 var DefaultSize = Size{Width: 80, Height: 30}
 
-type changeState struct {
-	changes    diff.ChangeSet
-	view       View
-	cursor     Cursor
-	viewport   Viewport
-	selection  *Selection
+type reviewState struct {
+	changes   diff.ChangeSet
+	cursor    Cursor
+	selection *Selection
+}
+
+type layoutState struct {
+	size       Size
 	sideBySide bool
+	dark       bool
+	view       View
+	viewport   Viewport
+}
+
+func (layout layoutState) bodyHeight() int {
+	return max(1, layout.size.Height-3)
+}
+
+func (layout layoutState) sideBySideActive() bool {
+	return layout.sideBySide && layout.size.Width >= minimumSideBySideWidth
+}
+
+func (layout *layoutState) resize(width, height int) bool {
+	wasActive := layout.sideBySideActive()
+	layout.size = Size{Width: width, Height: height}
+	layout.viewport = layout.view.Resize(layout.viewport, width, layout.bodyHeight())
+	return wasActive != layout.sideBySideActive()
+}
+
+func (layout *layoutState) keepCursorVisible(cursor Cursor) {
+	layout.viewport = layout.view.KeepVisible(layout.viewport, cursor)
+}
+
+func (layout *layoutState) setSideBySide(enabled bool) bool {
+	wasActive := layout.sideBySideActive()
+	layout.sideBySide = enabled
+	return wasActive != layout.sideBySideActive()
+}
+
+func (layout layoutState) viewFor(changes diff.ChangeSet) View {
+	if layout.sideBySideActive() {
+		return NewSideBySideView(changes, layout.dark)
+	}
+	return NewUnifiedView(changes, layout.dark)
 }
 
 type commentState struct {
@@ -97,11 +134,10 @@ type searchState struct {
 }
 
 type Model struct {
-	changes       changeState
+	review        reviewState
 	comments      commentState
 	search        searchState
-	width         int
-	height        int
+	layout        layoutState
 	mode          mode
 	dependencies  Dependencies
 	err           error
@@ -109,7 +145,6 @@ type Model struct {
 	pendingKey    string
 	defaultBranch string
 	showDefault   bool
-	dark          bool
 }
 
 func New(changes diff.ChangeSet, comments []comment.Comment, dependencies Dependencies, layout Layout) Model {
@@ -118,16 +153,14 @@ func New(changes diff.ChangeSet, comments []comment.Comment, dependencies Depend
 		size = DefaultSize
 	}
 	model := Model{
-		changes:      changeState{changes: changes, sideBySide: layout.SideBySide},
+		review:       reviewState{changes: changes},
 		comments:     commentState{items: comments, editIndex: -1},
-		width:        size.Width,
-		height:       size.Height,
+		layout:       layoutState{size: size, sideBySide: layout.SideBySide, dark: true},
 		dependencies: dependencies,
-		dark:         true,
 	}
-	model.changes.view = model.newView(changes)
-	model.changes.viewport = model.changes.view.NewViewport(model.width, model.bodyHeight())
-	model.changes.cursor, _ = model.changes.view.First()
+	model.layout.view = model.layout.viewFor(changes)
+	model.layout.viewport = model.layout.view.NewViewport(size.Width, model.layout.bodyHeight())
+	model.review.cursor, _ = model.layout.view.First()
 	return model
 }
 
@@ -169,21 +202,18 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m *Model) updateBackground(message tea.BackgroundColorMsg) {
-	if dark := message.IsDark(); dark != m.dark {
-		m.dark = dark
-		m.rebuildView(m.changes.changes)
+	if dark := message.IsDark(); dark != m.layout.dark {
+		m.layout.dark = dark
+		m.rebuildReviewView(m.review.changes)
 	}
 }
 
 func (m *Model) resize(width, height int) {
-	wasActive := m.sideBySideActive()
-	m.width, m.height = width, height
-	m.changes.viewport = m.changes.view.Resize(m.changes.viewport, m.width, m.bodyHeight())
-	if wasActive != m.sideBySideActive() {
-		m.rebuildView(m.changes.changes)
+	if m.layout.resize(width, height) {
+		m.rebuildReviewView(m.review.changes)
 		return
 	}
-	m.changes.viewport = m.changes.view.KeepVisible(m.changes.viewport, m.changes.cursor)
+	m.layout.keepCursorVisible(m.review.cursor)
 }
 
 func (m *Model) finishEditor(message CommentEditedMsg) {
@@ -217,8 +247,8 @@ func (m *Model) applyRefresh(message refreshDiffMsg) {
 		m.err = fmt.Errorf("refresh diff: %w", message.err)
 		return
 	}
-	if message.changes.Fingerprint != m.changes.changes.Fingerprint {
-		m.rebuildView(message.changes)
+	if message.changes.Fingerprint != m.review.changes.Fingerprint {
+		m.rebuildReviewView(message.changes)
 		m.err = nil
 	}
 }
@@ -253,55 +283,79 @@ type cursorIdentity struct {
 	valid  bool
 }
 
+type reviewSnapshot struct {
+	cursor       cursorIdentity
+	first        cursorIdentity
+	last         cursorIdentity
+	hasSelection bool
+	rowsAbove    int
+}
+
 func (m Model) identify(cursor Cursor) cursorIdentity {
-	file, fileOK := m.changes.view.File(cursor)
-	hunk, hunkOK := m.changes.view.Hunk(cursor)
-	line, lineOK := m.changes.view.Line(cursor)
+	file, fileOK := m.layout.view.File(cursor)
+	hunk, hunkOK := m.layout.view.Hunk(cursor)
+	line, lineOK := m.layout.view.Line(cursor)
 	return cursorIdentity{file: file, hunk: hunk, line: line, cursor: cursor, valid: fileOK && hunkOK && lineOK}
 }
 
-func (m *Model) rebuildView(changes diff.ChangeSet) {
-	cursor := m.identify(m.changes.cursor)
-	var first, last cursorIdentity
-	if m.changes.selection != nil {
-		first, last = m.identify(m.changes.selection.First), m.identify(m.changes.selection.Last)
+func (m Model) snapshotReview() reviewSnapshot {
+	snapshot := reviewSnapshot{
+		cursor:    m.identify(m.review.cursor),
+		rowsAbove: m.review.cursor.Coordinate.Y - m.layout.viewport.Top.Y,
 	}
-	rowsAbove := m.changes.cursor.Coordinate.Y - m.changes.viewport.Top.Y
-	m.changes.changes = changes
-	m.changes.view = m.newView(changes)
-	m.changes.viewport = m.changes.view.NewViewport(m.width, m.bodyHeight())
-	if cursor.valid {
-		m.changes.cursor, cursor.valid = m.changes.view.FindCursor(cursor.file, cursor.hunk, cursor.line, cursor.cursor.Coordinate, cursor.cursor.Pane)
+	if m.review.selection != nil {
+		snapshot.first = m.identify(m.review.selection.First)
+		snapshot.last = m.identify(m.review.selection.Last)
+		snapshot.hasSelection = true
 	}
-	if !cursor.valid {
-		m.changes.cursor, _ = m.changes.view.First()
-	}
-	m.changes.selection = nil
-	if first.valid && last.valid {
-		translatedFirst, firstOK := m.changes.view.FindCursor(first.file, first.hunk, first.line, first.cursor.Coordinate, first.cursor.Pane)
-		translatedLast, lastOK := m.changes.view.FindCursor(last.file, last.hunk, last.line, last.cursor.Coordinate, last.cursor.Pane)
-		if firstOK && lastOK {
-			selection := Selection{First: translatedFirst, Last: translatedLast}
-			if firstHunk, ok := m.changes.view.Hunk(translatedFirst); ok {
-				if firstFile, fileOK := m.changes.view.File(translatedFirst); fileOK {
-					if lastFile, lastFileOK := m.changes.view.File(translatedLast); lastFileOK && sameChangeFile(firstFile, lastFile) {
-						if lastHunk, hunkOK := m.changes.view.Hunk(translatedLast); hunkOK && firstHunk.Header == lastHunk.Header {
-							m.changes.selection = &selection
-						}
-					}
-				}
-			}
-		}
-	}
-	m.changes.viewport.Top.Y = max(0, m.changes.cursor.Coordinate.Y-rowsAbove)
-	m.changes.viewport = m.changes.view.KeepVisible(m.changes.viewport, m.changes.cursor)
+	return snapshot
 }
 
-func (m Model) newView(changes diff.ChangeSet) View {
-	if m.sideBySideActive() {
-		return NewSideBySideView(changes, m.dark)
+func (m *Model) rebuildReviewView(changes diff.ChangeSet) {
+	snapshot := m.snapshotReview()
+	m.review.changes = changes
+	m.layout.view = m.layout.viewFor(changes)
+	m.layout.viewport = m.layout.view.NewViewport(m.layout.size.Width, m.layout.bodyHeight())
+	m.review.cursor = m.restoreCursor(snapshot.cursor)
+	if snapshot.hasSelection {
+		m.review.selection = m.restoreSelection(snapshot.first, snapshot.last)
+	} else {
+		m.review.selection = nil
 	}
-	return NewUnifiedView(changes, m.dark)
+	m.layout.viewport.Top.Y = max(0, m.review.cursor.Coordinate.Y-snapshot.rowsAbove)
+	m.layout.keepCursorVisible(m.review.cursor)
+}
+
+func (m Model) restoreCursor(identity cursorIdentity) Cursor {
+	if identity.valid {
+		if cursor, ok := m.layout.view.FindCursor(identity.file, identity.hunk, identity.line, identity.cursor.Coordinate, identity.cursor.Pane); ok {
+			return cursor
+		}
+	}
+	cursor, _ := m.layout.view.First()
+	return cursor
+}
+
+func (m Model) restoreSelection(first, last cursorIdentity) *Selection {
+	if !first.valid || !last.valid {
+		return nil
+	}
+	translatedFirst, firstOK := m.layout.view.FindCursor(first.file, first.hunk, first.line, first.cursor.Coordinate, first.cursor.Pane)
+	translatedLast, lastOK := m.layout.view.FindCursor(last.file, last.hunk, last.line, last.cursor.Coordinate, last.cursor.Pane)
+	if !firstOK || !lastOK {
+		return nil
+	}
+	firstHunk, firstHunkOK := m.layout.view.Hunk(translatedFirst)
+	firstFile, firstFileOK := m.layout.view.File(translatedFirst)
+	lastHunk, lastHunkOK := m.layout.view.Hunk(translatedLast)
+	lastFile, lastFileOK := m.layout.view.File(translatedLast)
+	if !firstHunkOK || !firstFileOK || !lastHunkOK || !lastFileOK {
+		return nil
+	}
+	if !sameChangeFile(firstFile, lastFile) || firstHunk.Header != lastHunk.Header {
+		return nil
+	}
+	return &Selection{First: translatedFirst, Last: translatedLast}
 }
 
 func sameChangeFile(first, last diff.File) bool {
@@ -328,7 +382,7 @@ func (m Model) handleKey(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	if m.handlePendingKey(pending, name) {
 		return m, nil
 	}
-	return m.handleBrowseKey(name, key, pending)
+	return m.handleBrowseKey(name, pending)
 }
 
 func (m *Model) handlePendingKey(pending, name string) bool {
@@ -344,11 +398,11 @@ func (m *Model) handlePendingKey(pending, name string) bool {
 	if pending == "z" {
 		switch name {
 		case "z":
-			m.changes.viewport = m.changes.view.Align(m.changes.viewport, m.changes.cursor, Middle)
+			m.layout.viewport = m.layout.view.Align(m.layout.viewport, m.review.cursor, Middle)
 		case "t":
-			m.changes.viewport = m.changes.view.Align(m.changes.viewport, m.changes.cursor, Top)
+			m.layout.viewport = m.layout.view.Align(m.layout.viewport, m.review.cursor, Top)
 		case "b":
-			m.changes.viewport = m.changes.view.Align(m.changes.viewport, m.changes.cursor, Bottom)
+			m.layout.viewport = m.layout.view.Align(m.layout.viewport, m.review.cursor, Bottom)
 		}
 		return true
 	}
@@ -359,14 +413,14 @@ func (m *Model) handlePendingKey(pending, name string) bool {
 		case "l":
 			m.switchPane(Right)
 		case "ctrl+w":
-			m.switchPane(m.changes.cursor.Pane.Other())
+			m.switchPane(m.review.cursor.Pane.Other())
 		}
 		return true
 	}
 	return false
 }
 
-func (m Model) handleBrowseKey(name string, key tea.KeyPressMsg, pending string) (tea.Model, tea.Cmd) {
+func (m Model) handleBrowseKey(name, pending string) (tea.Model, tea.Cmd) {
 	switch name {
 	case "ctrl+c", "q":
 		m.quitting = true
@@ -377,7 +431,7 @@ func (m Model) handleBrowseKey(name string, key tea.KeyPressMsg, pending string)
 		m.cancelSelection()
 		m.mode = modeSearch
 		m.search.query = nil
-		m.search.from = m.changes.cursor
+		m.search.from = m.review.cursor
 		m.search.miss = false
 	case "n":
 		m.repeatSearch(Forward)
@@ -388,13 +442,13 @@ func (m Model) handleBrowseKey(name string, key tea.KeyPressMsg, pending string)
 	case "k", "up":
 		m.move(Backward)
 	case "h", "left":
-		m.changes.viewport = m.changes.view.ScrollHorizontal(m.changes.viewport, -horizontalScrollStep)
+		m.layout.viewport = m.layout.view.ScrollHorizontal(m.layout.viewport, -horizontalScrollStep)
 	case "l", "right":
-		m.changes.viewport = m.changes.view.ScrollHorizontal(m.changes.viewport, horizontalScrollStep)
+		m.layout.viewport = m.layout.view.ScrollHorizontal(m.layout.viewport, horizontalScrollStep)
 	case "0":
-		m.changes.viewport.LeftColumn = 0
+		m.layout.viewport.LeftColumn = 0
 	case "$":
-		m.changes.viewport = m.changes.view.ScrollHorizontal(m.changes.viewport, int(^uint(0)>>1))
+		m.layout.viewport = m.layout.view.ScrollHorizontal(m.layout.viewport, int(^uint(0)>>1))
 	case "ctrl+d":
 		m.halfPage(Forward)
 	case "ctrl+u":
@@ -403,14 +457,14 @@ func (m Model) handleBrowseKey(name string, key tea.KeyPressMsg, pending string)
 		m.pendingKey = name
 	case "g":
 		if pending == "g" {
-			if cursor, ok := m.changes.view.First(); ok {
+			if cursor, ok := m.layout.view.First(); ok {
 				m.setCursor(cursor)
 			}
 		} else {
 			m.pendingKey = "g"
 		}
 	case "G":
-		if cursor, ok := m.changes.view.Last(); ok {
+		if cursor, ok := m.layout.view.Last(); ok {
 			m.setCursor(cursor)
 		}
 	case "z":
@@ -418,9 +472,9 @@ func (m Model) handleBrowseKey(name string, key tea.KeyPressMsg, pending string)
 	case "]", "[":
 		m.pendingKey = name
 	case "v":
-		if m.changes.selection == nil {
-			selection := m.changes.view.BeginSelection(m.changes.cursor)
-			m.changes.selection = &selection
+		if m.review.selection == nil {
+			selection := m.layout.view.BeginSelection(m.review.cursor)
+			m.review.selection = &selection
 		} else {
 			m.cancelSelection()
 		}
@@ -465,5 +519,3 @@ func (m Model) currentBranch() string {
 	}
 	return m.defaultBranch
 }
-
-func (m Model) bodyHeight() int { return max(1, m.height-3) }
