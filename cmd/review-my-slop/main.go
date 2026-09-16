@@ -87,6 +87,7 @@ func runCode(ctx context.Context) error {
 			return loader.Load(ctx, current)
 		},
 		SaveSideBySide: inbox.SetSideBySide,
+		Editor:         systemEditor{},
 	}, ui.Layout{
 		SideBySide: sideBySide,
 		Size:       size,

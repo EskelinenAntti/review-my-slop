@@ -132,9 +132,8 @@ func (m *Model) clearCommentEdit() {
 func (m *Model) cancelSelection() { m.review.selection = nil }
 
 func (m Model) openCommentEditor() (tea.Cmd, error) {
-	editor := m.dependencies.Editor
-	if editor == nil {
-		editor = SystemEditor{}
+	if m.dependencies.Editor == nil {
+		return nil, fmt.Errorf("editor is unavailable")
 	}
-	return editor.EditComment(m.comments.body, m.comments.editAnchor)
+	return m.dependencies.Editor.EditComment(m.comments.body, m.comments.editAnchor)
 }

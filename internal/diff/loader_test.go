@@ -111,6 +111,23 @@ func TestLoadDescribesBinaryFilesAndDoesNotReadSymlinkTargets(t *testing.T) {
 	}
 }
 
+func TestLoadOmitsOversizedUntrackedContent(t *testing.T) {
+	repository := newRepository(t)
+	writeFile(t, repository, "large.txt", strings.Repeat("x", maxFileBytes+1))
+
+	changes, err := (Loader{}).Load(context.Background(), repository)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(changes.Files) != 1 {
+		t.Fatalf("files = %#v", changes.Files)
+	}
+	file := changes.Files[0]
+	if file.NewSource != "" || len(file.Hunks) != 0 || !hasMetadata(file, "content omitted: file exceeds 2 MiB") {
+		t.Fatalf("oversized file = %#v", file)
+	}
+}
+
 func TestDefaultBranchUsesConfiguredFallbacks(t *testing.T) {
 	tests := []struct {
 		name       string
@@ -167,6 +184,25 @@ func TestParseHunkBodyRejectsUnknownPrefix(t *testing.T) {
 	}
 }
 
+func TestParseHunkBodyRejectsEmptyDiffLine(t *testing.T) {
+	if _, err := parseHunkBody(1, 1, []byte(" context\n\n")); err == nil {
+		t.Fatal("empty diff line was accepted")
+	}
+}
+
+func TestCleanDiffPath(t *testing.T) {
+	for input, want := range map[string]string{
+		"a/main.go":   "main.go",
+		"b/main.go":   "main.go",
+		" /dev/null ": "",
+		"nested/file": "nested/file",
+	} {
+		if got := cleanDiffPath(input); got != want {
+			t.Fatalf("cleanDiffPath(%q) = %q, want %q", input, got, want)
+		}
+	}
+}
+
 func FuzzParseHunkBody(f *testing.F) {
 	f.Add([]byte("+hello\n-world\n"))
 	f.Add([]byte(" context\n"))
@@ -209,6 +245,15 @@ func hasLine(file File, kind LineKind, text string) bool {
 			if line.Kind == kind && strings.Contains(line.Text, text) {
 				return true
 			}
+		}
+	}
+	return false
+}
+
+func hasMetadata(file File, want string) bool {
+	for _, metadata := range file.Metadata {
+		if metadata == want {
+			return true
 		}
 	}
 	return false

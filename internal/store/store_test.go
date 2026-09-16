@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"reflect"
 	"testing"
 	"time"
 
@@ -96,30 +97,54 @@ func TestStoreSetsSecurePermissionsAndSideBySidePreference(t *testing.T) {
 	}
 }
 
-func TestStoreReadsLegacyNestedCommentRecords(t *testing.T) {
+func TestStoreWritesCanonicalCommentRecords(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "inbox.db")
+	storage := Store{Path: path}
+	want := comment.Comment{
+		ID:         "canonical",
+		Repository: "/repo",
+		CreatedAt:  time.Unix(10, 0).UTC(),
+		Anchor:     comment.Anchor{FilePath: "main.go", NewStart: 4},
+		Body:       "current body",
+	}
+	got, err := storage.Add(want)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("added comment = %#v, want %#v", got, want)
+	}
+
 	database, err := bbolt.Open(path, 0o600, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	legacy := struct {
-		ID         string    `json:"id"`
-		Repository string    `json:"repository"`
-		CreatedAt  time.Time `json:"created_at"`
-		Comment    struct {
-			Anchor comment.Anchor `json:"anchor"`
-			Body   string         `json:"body"`
-		} `json:"comment"`
-	}{
-		ID:         "legacy",
-		Repository: "/repo",
-		CreatedAt:  time.Unix(10, 0).UTC(),
-		Comment: struct {
-			Anchor comment.Anchor `json:"anchor"`
-			Body   string         `json:"body"`
-		}{Anchor: comment.Anchor{FilePath: "main.go", NewStart: 4}, Body: "legacy body"},
+	defer database.Close()
+	if err := database.View(func(tx *bbolt.Tx) error {
+		value := tx.Bucket(messagesBucket).Get([]byte(want.ID))
+		var record map[string]json.RawMessage
+		if err := json.Unmarshal(value, &record); err != nil {
+			return err
+		}
+		for _, field := range []string{"id", "repository", "created_at", "anchor", "body"} {
+			if _, ok := record[field]; !ok {
+				t.Fatalf("canonical record is missing %q: %s", field, value)
+			}
+		}
+		for _, field := range []string{"comment", "comments", "diff_fingerprint", "hunk", "start_row", "end_row"} {
+			if _, ok := record[field]; ok {
+				t.Fatalf("canonical record contains legacy field %q: %s", field, value)
+			}
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
 	}
-	data, err := json.Marshal(legacy)
+}
+
+func TestStoreReportsCorruptCommentRecords(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "inbox.db")
+	database, err := bbolt.Open(path, 0o600, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -128,7 +153,7 @@ func TestStoreReadsLegacyNestedCommentRecords(t *testing.T) {
 		if err != nil {
 			return err
 		}
-		return bucket.Put([]byte("legacy"), data)
+		return bucket.Put([]byte("broken"), []byte("not json"))
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -137,12 +162,8 @@ func TestStoreReadsLegacyNestedCommentRecords(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	items, err := (Store{Path: path}).List("/repo")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(items) != 1 || items[0].ID != "legacy" || items[0].Body != "legacy body" || items[0].Anchor.NewStart != 4 {
-		t.Fatalf("legacy item = %#v", items)
+	if _, err := (Store{Path: path}).List("/repo"); err == nil {
+		t.Fatal("corrupt comment record was accepted")
 	}
 }
 

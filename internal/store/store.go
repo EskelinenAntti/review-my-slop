@@ -2,7 +2,6 @@ package store
 
 import (
 	"bytes"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -52,9 +51,9 @@ func (s Store) Add(item comment.Comment) (comment.Comment, error) {
 	if item.CreatedAt.IsZero() {
 		item.CreatedAt = time.Now().UTC()
 	}
-	data, err := json.Marshal(item)
+	data, err := encodeComment(item)
 	if err != nil {
-		return comment.Comment{}, fmt.Errorf("encode comment: %w", err)
+		return comment.Comment{}, err
 	}
 	err = s.updateMessages(func(bucket *bbolt.Bucket) error {
 		pending := pendingBytes(bucket)
@@ -93,28 +92,24 @@ func (s Store) Update(item comment.Comment) error {
 	if err := validateComment(item); err != nil {
 		return err
 	}
-	data, err := json.Marshal(item)
+	data, err := encodeComment(item)
 	if err != nil {
-		return fmt.Errorf("encode comment: %w", err)
+		return err
 	}
 	return s.updateMessages(func(bucket *bbolt.Bucket) error {
-		oldKey, found, err := findComment(bucket, item.Repository, item.ID)
+		key := []byte(item.ID)
+		stored := bucket.Get(key)
+		if stored == nil {
+			return errors.New("comment is no longer in the inbox")
+		}
+		current, err := decodeComment(stored)
 		if err != nil {
 			return err
 		}
-		if !found {
+		if current.Repository != item.Repository {
 			return errors.New("comment is no longer in the inbox")
 		}
-		newKey := []byte(item.ID)
-		if !bytes.Equal(oldKey, newKey) {
-			if bucket.Get(newKey) != nil {
-				return errors.New("comment ID already exists")
-			}
-			if err := bucket.Delete(oldKey); err != nil {
-				return err
-			}
-		}
-		return bucket.Put(newKey, data)
+		return bucket.Put(key, data)
 	})
 }
 
@@ -123,14 +118,19 @@ func (s Store) Delete(repository, id string) error {
 		return errors.New("repository and comment ID are required")
 	}
 	return s.updateMessages(func(bucket *bbolt.Bucket) error {
-		key, found, err := findComment(bucket, repository, id)
+		key := []byte(id)
+		stored := bucket.Get(key)
+		if stored == nil {
+			return errors.New("comment is no longer in the inbox")
+		}
+		item, err := decodeComment(stored)
 		if err != nil {
 			return err
 		}
-		if found {
-			return bucket.Delete(key)
+		if item.Repository != repository {
+			return errors.New("comment is no longer in the inbox")
 		}
-		return errors.New("comment is no longer in the inbox")
+		return bucket.Delete(key)
 	})
 }
 
@@ -138,27 +138,20 @@ func (s Store) Acknowledge(repository string, ids []string) error {
 	if len(ids) == 0 {
 		return nil
 	}
-	wanted := make(map[string]struct{}, len(ids))
-	for _, id := range ids {
-		wanted[id] = struct{}{}
-	}
 	return s.updateMessages(func(bucket *bbolt.Bucket) error {
-		var keys [][]byte
-		if err := bucket.ForEach(func(key, value []byte) error {
+		for _, id := range ids {
+			key := []byte(id)
+			value := bucket.Get(key)
+			if value == nil {
+				continue
+			}
 			item, err := decodeComment(value)
 			if err != nil {
 				return err
 			}
-			if item.Repository == repository {
-				if _, ok := wanted[item.ID]; ok {
-					keys = append(keys, append([]byte(nil), key...))
-				}
+			if item.Repository != repository {
+				continue
 			}
-			return nil
-		}); err != nil {
-			return err
-		}
-		for _, key := range keys {
 			if err := bucket.Delete(key); err != nil {
 				return err
 			}
@@ -196,29 +189,6 @@ func validateComment(item comment.Comment) error {
 	return nil
 }
 
-func decodeComment(data []byte) (comment.Comment, error) {
-	var legacy struct {
-		ID         string    `json:"id"`
-		Repository string    `json:"repository"`
-		CreatedAt  time.Time `json:"created_at"`
-		Comment    *struct {
-			Anchor comment.Anchor `json:"anchor"`
-			Body   string         `json:"body"`
-		} `json:"comment"`
-	}
-	if err := json.Unmarshal(data, &legacy); err != nil {
-		return comment.Comment{}, fmt.Errorf("decode comment: %w", err)
-	}
-	if legacy.Comment != nil {
-		return comment.Comment{ID: legacy.ID, Repository: legacy.Repository, CreatedAt: legacy.CreatedAt, Anchor: legacy.Comment.Anchor, Body: legacy.Comment.Body}, nil
-	}
-	var item comment.Comment
-	if err := json.Unmarshal(data, &item); err != nil {
-		return comment.Comment{}, fmt.Errorf("decode comment: %w", err)
-	}
-	return item, nil
-}
-
 func pendingBytes(bucket *bbolt.Bucket) int {
 	total := 0
 	cursor := bucket.Cursor()
@@ -226,20 +196,6 @@ func pendingBytes(bucket *bbolt.Bucket) int {
 		total += len(value)
 	}
 	return total
-}
-
-func findComment(bucket *bbolt.Bucket, repository, id string) ([]byte, bool, error) {
-	cursor := bucket.Cursor()
-	for key, value := cursor.First(); key != nil; key, value = cursor.Next() {
-		item, err := decodeComment(value)
-		if err != nil {
-			return nil, false, err
-		}
-		if item.Repository == repository && item.ID == id {
-			return append([]byte(nil), key...), true, nil
-		}
-	}
-	return nil, false, nil
 }
 
 func (s Store) updateMessages(fn func(*bbolt.Bucket) error) error {

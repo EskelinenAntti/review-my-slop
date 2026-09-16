@@ -168,6 +168,36 @@ func TestRefreshUsesCurrentChangeSetForNewComment(t *testing.T) {
 	}
 }
 
+func TestStaleRefreshCannotReplaceNewerDiff(t *testing.T) {
+	first := sampleChanges()
+	first.Fingerprint = "first"
+	first.Files[0].NewSource = "package main\nfirst()\nkeep()\nmore()\n"
+	first.Files[0].Hunks[0].Lines[2].Text = "first()"
+	second := sampleChanges()
+	second.Fingerprint = "second"
+	second.Files[0].NewSource = "package main\nsecond()\nkeep()\nmore()\n"
+	second.Files[0].Hunks[0].Lines[2].Text = "second()"
+	refreshes := 0
+	model := newTestModel(&fakeEditor{}, ui.Dependencies{
+		RefreshDiff: func(string) (diff.ChangeSet, error) {
+			refreshes++
+			if refreshes == 1 {
+				return second, nil
+			}
+			return first, nil
+		},
+	})
+	firstCommand := sendKeyCommand(t, &model, "R")
+	secondCommand := sendKeyCommand(t, &model, "R")
+	finishCommand(t, &model, secondCommand)
+	finishCommand(t, &model, firstCommand)
+
+	screen := ansi.Strip(model.View().Content)
+	if !strings.Contains(screen, "second()") || strings.Contains(screen, "first()") {
+		t.Fatalf("stale refresh changed screen: %q", screen)
+	}
+}
+
 func TestEmptyChangesShowActionableEmptyState(t *testing.T) {
 	model := ui.New(diff.ChangeSet{}, nil, ui.Dependencies{}, ui.Layout{Size: ui.Size{Width: 80, Height: 10}})
 	screen := ansi.Strip(model.View().Content)

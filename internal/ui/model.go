@@ -35,6 +35,7 @@ type Layout struct {
 }
 
 type refreshDiffMsg struct {
+	request uint64
 	changes diff.ChangeSet
 	branch  string
 	err     error
@@ -145,6 +146,7 @@ type Model struct {
 	pendingKey    string
 	defaultBranch string
 	showDefault   bool
+	refreshID     uint64
 }
 
 func New(changes diff.ChangeSet, comments []comment.Comment, dependencies Dependencies, layout Layout) Model {
@@ -240,7 +242,7 @@ func (m *Model) applyLoadedComments(message commentsLoadedMsg) {
 }
 
 func (m *Model) applyRefresh(message refreshDiffMsg) {
-	if message.branch != m.currentBranch() {
+	if message.request != m.refreshID || message.branch != m.currentBranch() {
 		return
 	}
 	if message.err != nil {
@@ -253,14 +255,16 @@ func (m *Model) applyRefresh(message refreshDiffMsg) {
 	}
 }
 
-func (m Model) refresh() tea.Cmd {
+func (m *Model) refresh() tea.Cmd {
 	if m.dependencies.RefreshDiff == nil {
 		return nil
 	}
+	m.refreshID++
+	request := m.refreshID
 	branch := m.currentBranch()
 	return func() tea.Msg {
 		changes, err := m.dependencies.RefreshDiff(branch)
-		return refreshDiffMsg{changes: changes, branch: branch, err: err}
+		return refreshDiffMsg{request: request, changes: changes, branch: branch, err: err}
 	}
 }
 
