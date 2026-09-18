@@ -1,4 +1,4 @@
-package tui
+package ui
 
 import (
 	"fmt"
@@ -8,7 +8,7 @@ import (
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 
-	"github.com/eskelinenantti/review-my-slop/internal/patch"
+	"github.com/eskelinenantti/review-my-slop/internal/diff"
 )
 
 func (m Model) View() tea.View {
@@ -28,18 +28,18 @@ func (m Model) render() string {
 	if m.mode == modeComments {
 		return m.renderComments()
 	}
-	added, removed := patchLineCounts(m.review.patch)
+	added, removed := lineCounts(m.review.changes)
 	header := titleStyle.Render("review-my-slop") + "  " + mutedStyle.Render(fmt.Sprintf("+%d-%d", added, removed))
 	var body []string
-	if len(m.review.patch.Files) == 0 {
+	if len(m.review.changes.Files) == 0 {
 		empty := "No unstaged or untracked changes."
-		if m.currentBranch() != "" {
+		if m.viewMode == BranchChanges {
 			empty = "No branch or worktree changes."
 		}
 		body = make([]string, m.screenBodyHeight())
 		body[min(1, len(body)-1)] = mutedStyle.Render(empty)
 	} else {
-		body = strings.Split(m.review.view.Render(m.review.viewport, m.review.cursor, m.review.selection), "\n")
+		body = strings.Split(m.review.present.Render(m.review.viewport, m.review.cursor, m.review.selection), "\n")
 	}
 	footer := m.renderStatus()
 	if m.err != nil {
@@ -63,14 +63,14 @@ func (m Model) renderScreen(header string, body []string, footer string) string 
 	return strings.Join(lines, "\n")
 }
 
-func patchLineCounts(p patch.Patch) (added, removed int) {
-	for _, file := range p.Files {
+func lineCounts(changes diff.ChangeSet) (added, removed int) {
+	for _, file := range changes.Files {
 		for _, hunk := range file.Hunks {
 			for _, line := range hunk.Lines {
-				if line.Kind == patch.Addition {
+				if line.Kind == diff.Addition {
 					added++
 				}
-				if line.Kind == patch.Deletion {
+				if line.Kind == diff.Deletion {
 					removed++
 				}
 			}
@@ -103,10 +103,10 @@ func (m Model) renderFooter(left string) string {
 func (m Model) viewLabel() string {
 	progress := ""
 	if m.review.viewport.Top.Y > 0 {
-		progress = fmt.Sprintf(" (%d%%)", m.review.view.ViewportProgress(m.review.viewport))
+		progress = fmt.Sprintf(" (%d%%)", m.review.present.Progress(m.review.viewport))
 	}
-	if branch := m.currentBranch(); branch != "" {
-		return "branch changes from " + branch + progress
+	if m.viewMode == BranchChanges {
+		return "branch changes from " + m.defaultBranch + progress
 	}
 	return "local changes" + progress
 }
@@ -134,7 +134,7 @@ func (m Model) renderComments() string {
 				location += fmt.Sprintf(":%d", comment.Anchor.OldStart)
 			}
 			commentBody := strings.ReplaceAll(strings.TrimSpace(comment.Body), "\n", " ")
-			line := ansi.Truncate(fmt.Sprintf("%s%s  %s", prefix, location, commentBody), max(20, m.width), "")
+			line := ansi.Truncate(fmt.Sprintf("%s%s  %s", prefix, visibleText(location), visibleText(commentBody)), max(20, m.width), "")
 			body = append(body, style.Width(max(20, m.width)).Render(line))
 		}
 	}

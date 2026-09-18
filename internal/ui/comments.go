@@ -1,4 +1,4 @@
-package tui
+package ui
 
 import (
 	"fmt"
@@ -8,8 +8,8 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
+	"github.com/eskelinenantti/review-my-slop/internal/comments"
 	"github.com/eskelinenantti/review-my-slop/internal/editor"
-	"github.com/eskelinenantti/review-my-slop/internal/review"
 )
 
 func (m Model) updateComments(name string) (tea.Model, tea.Cmd) {
@@ -52,10 +52,10 @@ func (m Model) updateComments(name string) (tea.Model, tea.Cmd) {
 func (m *Model) beginComment() (tea.Cmd, error) {
 	selection := m.review.selection
 	if selection == nil {
-		current := m.review.view.BeginSelection(m.review.cursor)
+		current := m.review.present.BeginSelection(m.review.cursor)
 		selection = &current
 	}
-	anchor, err := m.review.view.Anchor(*selection)
+	anchor, err := m.review.present.anchor(*selection)
 	if err != nil {
 		return nil, err
 	}
@@ -78,19 +78,19 @@ func (m *Model) finishCommentEdit() {
 		m.cancelSelection()
 		return
 	}
-	if m.save == nil {
+	if m.deps.SaveComment == nil {
 		m.err = fmt.Errorf("comment storage is unavailable")
 		m.clearCommentEdit()
 		return
 	}
-	var comment review.Comment
+	var comment comments.Comment
 	if m.comments.editIndex >= 0 {
 		comment = m.comments.items[m.comments.editIndex]
 		comment.Body = body
 	} else {
-		comment = review.Comment{Anchor: m.comments.editAnchor, Body: body}
+		comment = comments.Comment{Anchor: m.comments.editAnchor, Body: body}
 	}
-	saved, err := m.save(comment, m.review.patch)
+	saved, err := m.deps.SaveComment(comment, m.review.changes)
 	if err != nil {
 		m.err = err
 		m.clearCommentEdit()
@@ -112,11 +112,11 @@ func (m *Model) deleteComment(index int) {
 	if index < 0 || index >= len(m.comments.items) {
 		return
 	}
-	if m.delete == nil {
+	if m.deps.DeleteComment == nil {
 		m.err = fmt.Errorf("comment storage is unavailable")
 		return
 	}
-	if err := m.delete(m.comments.items[index], m.review.patch); err != nil {
+	if err := m.deps.DeleteComment(m.comments.items[index], m.review.changes); err != nil {
 		m.err = err
 		return
 	}
@@ -129,7 +129,7 @@ func (m *Model) deleteComment(index int) {
 func (m *Model) clearCommentEdit() {
 	m.comments.body = ""
 	m.comments.editIndex = -1
-	m.comments.editAnchor = review.Anchor{}
+	m.comments.editAnchor = comments.Anchor{}
 }
 
 func (m *Model) cancelSelection() { m.review.selection = nil }
@@ -139,23 +139,23 @@ func (m Model) openCurrentLine() (tea.Cmd, error) {
 	if editorCommand == "" {
 		return nil, fmt.Errorf("$EDITOR is not set")
 	}
-	file, fileOK := m.review.view.File(m.review.cursor)
-	line, lineOK := m.review.view.Line(m.review.cursor)
+	file, fileOK := m.review.present.file(m.review.cursor)
+	line, lineOK := m.review.present.line(m.review.cursor)
 	if !fileOK || !lineOK {
 		return nil, fmt.Errorf("select a code line to open in $EDITOR")
 	}
 	path, number := file.NewPath, line.NewNumber
-	if path == "" || path == "/dev/null" {
+	if path == "" {
 		path = file.OldPath
 	}
 	if number == 0 {
 		number = line.OldNumber
 	}
-	if path == "" || path == "/dev/null" || number < 1 {
+	if path == "" || number < 1 {
 		return nil, fmt.Errorf("current line has no editable working-tree location")
 	}
 	if !filepath.IsAbs(path) {
-		path = filepath.Join(m.review.patch.Repository, filepath.FromSlash(path))
+		path = filepath.Join(m.review.changes.Repository, filepath.FromSlash(path))
 	}
 	return tea.ExecProcess(editor.SourceCommand(editorCommand, path, int(number)), func(err error) tea.Msg {
 		return sourceEditorFinishedMsg{err: err}

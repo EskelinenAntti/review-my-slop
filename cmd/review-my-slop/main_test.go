@@ -9,21 +9,20 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/eskelinenantti/review-my-slop/internal/inbox"
-	"github.com/eskelinenantti/review-my-slop/internal/review"
+	"github.com/eskelinenantti/review-my-slop/internal/comments"
 )
 
 func TestRunCommentsPrintsAndConsumesCurrentRepositoryFeedback(t *testing.T) {
 	repo := initRepository(t)
 	data := t.TempDir()
 	t.Setenv("XDG_DATA_HOME", data)
-	store, err := inbox.OpenDefault()
+	store, err := comments.OpenDefault()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.Add(review.Comment{
+	if _, err := store.Add(comments.Comment{
 		Repository: repo,
-		Anchor:     review.Anchor{FilePath: "main.go", NewStart: 3, NewEnd: 3},
+		Anchor:     comments.Anchor{FilePath: "main.go", NewStart: 3, NewEnd: 3},
 		Body:       "Check this error.",
 	}); err != nil {
 		t.Fatal(err)
@@ -51,7 +50,7 @@ func TestRunCommentsPrintsAndConsumesCurrentRepositoryFeedback(t *testing.T) {
 		t.Fatalf("second output = %q", empty.String())
 	}
 
-	info, err := os.Stat(filepath.Join(data, "review-my-slop", "inbox.db"))
+	info, err := os.Stat(filepath.Join(data, "review-my-slop", "inbox-v2.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -63,13 +62,13 @@ func TestRunCommentsPrintsAndConsumesCurrentRepositoryFeedback(t *testing.T) {
 func TestRunCommentsPreservesFeedbackWhenOutputFails(t *testing.T) {
 	repo := initRepository(t)
 	t.Setenv("XDG_DATA_HOME", t.TempDir())
-	store, err := inbox.OpenDefault()
+	store, err := comments.OpenDefault()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.Add(review.Comment{
+	if _, err := store.Add(comments.Comment{
 		Repository: repo,
-		Anchor:     review.Anchor{FilePath: "main.go", NewStart: 1},
+		Anchor:     comments.Anchor{FilePath: "main.go", NewStart: 1},
 		Body:       "Preserve me.",
 	}); err != nil {
 		t.Fatal(err)

@@ -33,6 +33,12 @@ comments. Press `?` at any time to see the complete key map.
 
 All data stays truly local, and no telemetry is sent.
 
+The implementation keeps domain changes in `internal/diff`, Git access in
+`internal/git`, terminal interaction in `internal/ui`, comment delivery in
+`internal/comments`, and editor drafts in `internal/editor`. Pending feedback
+is stored in the fresh XDG data file `review-my-slop/inbox-v2.db`; it is not
+read from or migrated from the older inbox format.
+
 ## Install
 
 ```sh

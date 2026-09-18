@@ -1,4 +1,4 @@
-package view
+package ui
 
 import (
 	"fmt"
@@ -9,23 +9,23 @@ import (
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 
-	"github.com/eskelinenantti/review-my-slop/internal/patch"
+	"github.com/eskelinenantti/review-my-slop/internal/diff"
 )
 
-func (v *diffView) Render(viewport Viewport, cursor Cursor, selection *Selection) string {
-	viewport = v.clampViewport(viewport)
+func (p *presentation) Render(viewport Viewport, cursor Cursor, selection *Selection) string {
+	viewport = p.clampViewport(viewport)
 	lines := make([]string, 0, viewport.Height)
-	if v.hasStickyHeader(viewport.Top, viewport.Height) {
-		current := v.rows[viewport.Top.Y]
-		lines = append(lines, v.renderFileRow(v.patch.Files[current.file].DisplayPath, viewport.Width))
+	if p.hasStickyHeader(viewport.Top, viewport.Height) {
+		current := p.rows[viewport.Top.Y]
+		lines = append(lines, p.renderFileRow(p.changes.Files[current.fileIndex].Path(), viewport.Width))
 	}
-	end := min(len(v.rows), viewport.Top.Y+v.contentHeight(viewport))
+	end := min(len(p.rows), viewport.Top.Y+p.contentHeight(viewport))
 	for y := viewport.Top.Y; y < end; y++ {
-		current := v.rows[y]
-		if v.split && current.kind == lineRow {
-			lines = append(lines, v.renderSplitRow(current, y, viewport, cursor, selection))
+		current := p.rows[y]
+		if p.split && current.kind == lineRow {
+			lines = append(lines, p.renderSplitRow(current, y, viewport, cursor, selection))
 		} else {
-			lines = append(lines, v.renderUnifiedRow(current, y, viewport, cursor, selection))
+			lines = append(lines, p.renderUnifiedRow(current, y, viewport, cursor, selection))
 		}
 	}
 	for len(lines) < viewport.Height {
@@ -34,31 +34,31 @@ func (v *diffView) Render(viewport Viewport, cursor Cursor, selection *Selection
 	return strings.Join(lines, "\n")
 }
 
-func (v *diffView) renderUnifiedRow(current entry, y int, viewport Viewport, cursor Cursor, selection *Selection) string {
+func (p *presentation) renderUnifiedRow(current row, y int, viewport Viewport, cursor Cursor, selection *Selection) string {
 	width := max(20, viewport.Width)
 	switch current.kind {
 	case fileRow:
-		return v.renderFileRow(current.text, width)
+		return p.renderFileRow(current.text, width)
 	case metadataRow:
 		return metadataStyle.Render("  " + current.text)
 	case hunkRow:
 		return hunkStyle.Render(current.text)
 	case lineRow:
-		line := v.patch.Files[current.file].Hunks[current.hunk].Lines[current.rightLine]
+		line := p.changes.Files[current.fileIndex].Hunks[current.hunkIndex].Lines[current.rightLine]
 		prefix := " "
-		if line.Kind == patch.Addition {
+		if line.Kind == diff.Addition {
 			prefix = addedStyle.Render("+")
 		}
-		if line.Kind == patch.Deletion {
+		if line.Kind == diff.Deletion {
 			prefix = removedStyle.Render("-")
 		}
 		gutter := fmt.Sprintf("%5s %5s %s ", number(line.OldNumber), number(line.NewNumber), prefix)
 		value := gutter + fitANSIWindow(current.text, viewport.LeftColumn, width-lipgloss.Width(gutter))
-		style := lineStyle(line.Kind, v.dark)
+		style := lineStyle(line.Kind, p.dark)
 		strip := false
 		candidate := Cursor{Coordinate: Coordinate{Y: y}, Pane: cursor.Pane}
 		if selected(selection, candidate) {
-			style, strip = selectionRowStyle(v.dark), true
+			style, strip = selectionRowStyle(p.dark), true
 		}
 		if cursor.Coordinate.Y == y {
 			style, strip = cursorStyle, true
@@ -68,43 +68,43 @@ func (v *diffView) renderUnifiedRow(current entry, y int, viewport Viewport, cur
 	return ""
 }
 
-func (v *diffView) renderFileRow(path string, width int) string {
-	return fileStyle.Width(max(20, width)).Render(path)
+func (p *presentation) renderFileRow(path string, width int) string {
+	return fileStyle.Width(max(20, width)).Render(visibleText(path))
 }
 
-func (v *diffView) renderSplitRow(current entry, y int, viewport Viewport, cursor Cursor, selection *Selection) string {
+func (p *presentation) renderSplitRow(current row, y int, viewport Viewport, cursor Cursor, selection *Selection) string {
 	leftWidth := max(20, (viewport.Width-3)/2)
 	rightWidth := max(20, viewport.Width-3-leftWidth)
-	left := v.renderPane(current, y, Left, leftWidth, viewport.LeftColumn, cursor, selection)
-	right := v.renderPane(current, y, Right, rightWidth, viewport.LeftColumn, cursor, selection)
+	left := p.renderPane(current, y, Left, leftWidth, viewport.LeftColumn, cursor, selection)
+	right := p.renderPane(current, y, Right, rightWidth, viewport.LeftColumn, cursor, selection)
 	return left + " │ " + right
 }
 
-func (v *diffView) renderPane(current entry, y int, pane Pane, width, offset int, cursor Cursor, selection *Selection) string {
-	index := v.lineIndex(current, pane)
+func (p *presentation) renderPane(current row, y int, pane Pane, width, offset int, cursor Cursor, selection *Selection) string {
+	index := p.lineIndex(current, pane)
 	if index < 0 {
 		return strings.Repeat(" ", width)
 	}
-	line := v.patch.Files[current.file].Hunks[current.hunk].Lines[index]
+	line := p.changes.Files[current.fileIndex].Hunks[current.hunkIndex].Lines[index]
 	text := current.right
 	numberValue := line.NewNumber
 	if pane == Left {
 		text, numberValue = current.left, line.OldNumber
 	}
 	prefix := "  "
-	if line.Kind == patch.Addition {
+	if line.Kind == diff.Addition {
 		prefix = addedStyle.Render("+") + " "
 	}
-	if line.Kind == patch.Deletion {
+	if line.Kind == diff.Deletion {
 		prefix = removedStyle.Render("-") + " "
 	}
 	gutter := fmt.Sprintf("%5s ", number(numberValue))
 	value := gutter + fitANSIWindow(prefix+text, offset, width-lipgloss.Width(gutter))
-	style := lineStyle(line.Kind, v.dark)
+	style := lineStyle(line.Kind, p.dark)
 	strip := false
 	candidate := Cursor{Coordinate: Coordinate{Y: y}, Pane: pane}
 	if selected(selection, candidate) {
-		style, strip = selectionRowStyle(v.dark), true
+		style, strip = selectionRowStyle(p.dark), true
 	}
 	if cursor == candidate {
 		style, strip = cursorStyle, true
@@ -120,21 +120,23 @@ func selected(selection *Selection, cursor Cursor) bool {
 	if first == last && selection.First.Pane != selection.Last.Pane {
 		return cursor.Coordinate.Y == first && (cursor.Pane == selection.First.Pane || cursor.Pane == selection.Last.Pane)
 	}
-	if selection.First.Pane != cursor.Pane {
+	low, high := selection.First, selection.Last
+	if low.Coordinate.Y > high.Coordinate.Y {
+		low, high = high, low
+	}
+	if low.Pane != cursor.Pane {
 		return false
 	}
-	if first > last {
-		first, last = last, first
-	}
+	first, last = low.Coordinate.Y, high.Coordinate.Y
 	return cursor.Coordinate.Y >= first && cursor.Coordinate.Y <= last
 }
 
-func lineStyle(kind patch.LineKind, dark bool) lipgloss.Style {
+func lineStyle(kind diff.LineKind, dark bool) lipgloss.Style {
 	lightDark := lipgloss.LightDark(dark)
 	switch kind {
-	case patch.Addition:
+	case diff.Addition:
 		return lipgloss.NewStyle().Background(lightDark(lipgloss.Color("#dafbe1"), lipgloss.Color("#1b3823")))
-	case patch.Deletion:
+	case diff.Deletion:
 		return lipgloss.NewStyle().Background(lightDark(lipgloss.Color("#ffebe9"), lipgloss.Color("#402222")))
 	default:
 		return contextStyle
@@ -145,7 +147,7 @@ func selectionRowStyle(dark bool) lipgloss.Style {
 	return lipgloss.NewStyle().Background(lipgloss.LightDark(dark)(lipgloss.Color("#dbeafe"), lipgloss.Color("#1e3a5f")))
 }
 
-func number(value patch.LineNumber) string {
+func number(value diff.LineNumber) string {
 	if value == 0 {
 		return ""
 	}
@@ -228,13 +230,33 @@ func stylePrefix(style lipgloss.Style) string {
 	return rendered[:index]
 }
 
+var ansiSGRPattern = regexp.MustCompile(`\x1b\[[0-9;]*m`)
+
 var (
-	ansiSGRPattern = regexp.MustCompile(`\x1b\[[0-9;]*m`)
-	fileStyle      = lipgloss.NewStyle().Bold(true)
-	metadataStyle  = lipgloss.NewStyle().Faint(true)
-	hunkStyle      = lipgloss.NewStyle().Foreground(lipgloss.Magenta)
-	contextStyle   = lipgloss.NewStyle()
-	addedStyle     = lipgloss.NewStyle().Foreground(lipgloss.Green)
-	removedStyle   = lipgloss.NewStyle().Foreground(lipgloss.Red)
-	cursorStyle    = lipgloss.NewStyle().Reverse(true)
+	fileStyle     = lipgloss.NewStyle().Bold(true)
+	metadataStyle = lipgloss.NewStyle().Faint(true)
+	hunkStyle     = lipgloss.NewStyle().Foreground(lipgloss.Magenta)
+	addedStyle    = lipgloss.NewStyle().Foreground(lipgloss.Green)
+	removedStyle  = lipgloss.NewStyle().Foreground(lipgloss.Red)
 )
+
+func visibleSource(value string) string {
+	var result strings.Builder
+	for _, char := range value {
+		switch {
+		case char == '\n' || char == '\t':
+			result.WriteRune(char)
+		case char == '\r':
+			result.WriteString(`\r`)
+		case char < 0x20 || char == 0x7f:
+			fmt.Fprintf(&result, `\x%02x`, char)
+		default:
+			result.WriteRune(char)
+		}
+	}
+	return result.String()
+}
+
+func visibleText(value string) string {
+	return strings.ReplaceAll(visibleSource(value), "\n", `\n`)
+}
