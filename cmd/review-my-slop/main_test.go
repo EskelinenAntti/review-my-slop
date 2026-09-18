@@ -9,21 +9,21 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/eskelinenantti/review-my-slop/internal/inbox"
-	"github.com/eskelinenantti/review-my-slop/internal/review"
+	"github.com/eskelinenantti/review-my-slop/internal/comment"
+	"github.com/eskelinenantti/review-my-slop/internal/store"
 )
 
 func TestRunCommentsPrintsAndConsumesCurrentRepositoryFeedback(t *testing.T) {
 	repo := initRepository(t)
 	data := t.TempDir()
 	t.Setenv("XDG_DATA_HOME", data)
-	store, err := inbox.OpenDefault()
+	inbox, err := store.OpenDefault()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.Add(review.Comment{
+	if _, err := inbox.Add(comment.Comment{
 		Repository: repo,
-		Anchor:     review.Anchor{FilePath: "main.go", NewStart: 3, NewEnd: 3},
+		Anchor:     comment.Anchor{FilePath: "main.go", NewStart: 3, NewEnd: 3},
 		Body:       "Check this error.",
 	}); err != nil {
 		t.Fatal(err)
@@ -63,13 +63,13 @@ func TestRunCommentsPrintsAndConsumesCurrentRepositoryFeedback(t *testing.T) {
 func TestRunCommentsPreservesFeedbackWhenOutputFails(t *testing.T) {
 	repo := initRepository(t)
 	t.Setenv("XDG_DATA_HOME", t.TempDir())
-	store, err := inbox.OpenDefault()
+	inbox, err := store.OpenDefault()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.Add(review.Comment{
+	if _, err := inbox.Add(comment.Comment{
 		Repository: repo,
-		Anchor:     review.Anchor{FilePath: "main.go", NewStart: 1},
+		Anchor:     comment.Anchor{FilePath: "main.go", NewStart: 1},
 		Body:       "Preserve me.",
 	}); err != nil {
 		t.Fatal(err)
@@ -78,7 +78,7 @@ func TestRunCommentsPreservesFeedbackWhenOutputFails(t *testing.T) {
 	if err := runCommentsAt(context.Background(), repo, failingWriter{}); err == nil {
 		t.Fatal("output failure was ignored")
 	}
-	comments, err := store.List(repo)
+	comments, err := inbox.List(repo)
 	if err != nil {
 		t.Fatal(err)
 	}

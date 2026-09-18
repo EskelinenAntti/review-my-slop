@@ -9,11 +9,10 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/term"
 
-	"github.com/eskelinenantti/review-my-slop/internal/gitdiff"
-	"github.com/eskelinenantti/review-my-slop/internal/inbox"
-	"github.com/eskelinenantti/review-my-slop/internal/patch"
-	"github.com/eskelinenantti/review-my-slop/internal/review"
-	"github.com/eskelinenantti/review-my-slop/internal/tui"
+	"github.com/eskelinenantti/review-my-slop/internal/comment"
+	"github.com/eskelinenantti/review-my-slop/internal/diff"
+	"github.com/eskelinenantti/review-my-slop/internal/store"
+	"github.com/eskelinenantti/review-my-slop/internal/ui"
 )
 
 func main() {
@@ -45,67 +44,68 @@ func runCode(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	loaded, err := (gitdiff.Loader{}).Load(ctx, current)
+	loaded, err := (diff.Loader{}).Load(ctx, current)
 	if err != nil {
 		return err
 	}
 
-	store, err := inbox.OpenDefault()
+	inbox, err := store.OpenDefault()
 	if err != nil {
 		return err
 	}
-	comments, err := store.List(loaded.Repository)
+	comments, err := inbox.List(loaded.Repository)
 	if err != nil {
 		return err
 	}
-	sideBySide, err := store.SideBySide()
+	sideBySide, err := inbox.SideBySide()
 	if err != nil {
 		return err
 	}
-	loader := gitdiff.Loader{}
+	loader := diff.Loader{}
 	defaultBranch, err := loader.DefaultBranch(ctx, current)
 	if err != nil {
 		return err
 	}
-	saveComment := func(comment review.Comment, current patch.Patch) (review.Comment, error) {
-		comment.Repository = current.Repository
-		if comment.ID != "" {
-			return comment, store.Update(comment)
+	saveComment := func(item comment.Comment, current diff.ChangeSet) (comment.Comment, error) {
+		item.Repository = current.Repository
+		if item.ID != "" {
+			return item, inbox.Update(item)
 		}
-		return store.Add(comment)
+		return inbox.Add(item)
 	}
 	size := initialTerminalSize()
-	model := tui.New(loaded, comments, saveComment, tui.InitialLayout{
-		SideBySide:     sideBySide,
-		SaveSideBySide: store.SetSideBySide,
-		Size:           size,
-	})
-	model.SetLoadComments(func() ([]review.Comment, error) {
-		return store.List(loaded.Repository)
-	})
-	model.SetDelete(func(comment review.Comment, current patch.Patch) error {
-		return store.Delete(current.Repository, comment.ID)
+	model := ui.New(loaded, comments, ui.Dependencies{
+		SaveComment: saveComment,
+		DeleteComment: func(item comment.Comment, current diff.ChangeSet) error {
+			return inbox.Delete(current.Repository, item.ID)
+		},
+		LoadComments: func() ([]comment.Comment, error) { return inbox.List(loaded.Repository) },
+		RefreshDiff: func(branch string) (diff.ChangeSet, error) {
+			if branch != "" {
+				return loader.LoadBranch(ctx, current, branch)
+			}
+			return loader.Load(ctx, current)
+		},
+		SaveSideBySide: inbox.SetSideBySide,
+		Editor:         systemEditor{},
+	}, ui.Layout{
+		SideBySide: sideBySide,
+		Size:       size,
 	})
 	model.SetDefaultBranch(defaultBranch)
-	model.SetRefresh(func(branch string) (patch.Patch, error) {
-		if branch != "" {
-			return loader.LoadBranch(ctx, current, branch)
-		}
-		return loader.Load(ctx, current)
-	})
 	program := tea.NewProgram(model, tea.WithWindowSize(size.Width, size.Height))
 	_, err = program.Run()
 	return err
 }
 
-func initialTerminalSize() tui.Size {
+func initialTerminalSize() ui.Size {
 	if width, height, err := term.GetSize(os.Stdin.Fd()); err == nil {
-		return tui.Size{Width: width, Height: height}
+		return ui.Size{Width: width, Height: height}
 	}
 	if width, height, err := term.GetSize(os.Stdout.Fd()); err == nil {
-		return tui.Size{Width: width, Height: height}
+		return ui.Size{Width: width, Height: height}
 	}
-	return tui.DefaultSize
+	return ui.DefaultSize
 }
 
 func runComments(ctx context.Context, output io.Writer) error {
@@ -117,24 +117,24 @@ func runComments(ctx context.Context, output io.Writer) error {
 }
 
 func runCommentsAt(ctx context.Context, current string, output io.Writer) error {
-	root, err := (gitdiff.Loader{}).Root(ctx, current)
+	root, err := (diff.Loader{}).Root(ctx, current)
 	if err != nil {
 		return err
 	}
-	store, err := inbox.OpenDefault()
+	inbox, err := store.OpenDefault()
 	if err != nil {
 		return err
 	}
-	comments, err := store.List(root)
+	comments, err := inbox.List(root)
 	if err != nil {
 		return err
 	}
-	if err := inbox.WritePrompt(output, comments); err != nil {
+	if err := comment.WritePrompt(output, comments); err != nil {
 		return err
 	}
 	ids := make([]string, len(comments))
-	for index, comment := range comments {
-		ids[index] = comment.ID
+	for index, item := range comments {
+		ids[index] = item.ID
 	}
-	return store.Acknowledge(root, ids)
+	return inbox.Acknowledge(root, ids)
 }
