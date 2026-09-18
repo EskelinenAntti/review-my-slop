@@ -4,15 +4,16 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
 
-	"github.com/eskelinenantti/review-my-slop/internal/review"
-	"github.com/eskelinenantti/review-my-slop/internal/xdg"
+	"github.com/eskelinenantti/review-my-slop/internal/comments"
 )
 
-func CreateCommentFile(body string, anchor review.Anchor) (string, error) {
-	state, err := xdg.StateDir()
+// CreateCommentFile creates a private draft for the external editor.
+func CreateCommentFile(body string, anchor comments.Anchor) (string, error) {
+	state, err := stateDir()
 	if err != nil {
 		return "", err
 	}
@@ -39,7 +40,8 @@ func CreateCommentFile(body string, anchor review.Anchor) (string, error) {
 	return path, nil
 }
 
-func ReadCommentFile(path string, anchor review.Anchor, editorErr error) (string, error) {
+// ReadCommentFile reads and removes a completed editor draft.
+func ReadCommentFile(path string, anchor comments.Anchor, editorErr error) (string, error) {
 	defer os.Remove(path)
 	if editorErr != nil {
 		return "", fmt.Errorf("editor: %w", editorErr)
@@ -51,7 +53,8 @@ func ReadCommentFile(path string, anchor review.Anchor, editorErr error) (string
 	return StripUnchangedSuggestion(string(body), anchor.QuotedLines), nil
 }
 
-func CommentDraft(body string, anchor review.Anchor) string {
+// CommentDraft combines the comment body and an optional suggestion block.
+func CommentDraft(body string, anchor comments.Anchor) string {
 	if len(anchor.QuotedLines) == 0 {
 		return body
 	}
@@ -74,6 +77,8 @@ func CommentDraft(body string, anchor review.Anchor) string {
 	return draft.String()
 }
 
+// StripUnchangedSuggestion removes the untouched suggestion inserted by the
+// application, leaving an agent-facing comment body.
 func StripUnchangedSuggestion(body string, quoted []string) string {
 	if len(quoted) == 0 {
 		return body
@@ -107,6 +112,18 @@ func CommentCommand(editor, path string) *exec.Cmd {
 
 func SourceCommand(editor, path string, line int) *exec.Cmd {
 	return exec.Command("sh", "-c", editor+" +"+strconv.Itoa(line)+" "+shellQuote(path))
+}
+
+func stateDir() (string, error) {
+	root := os.Getenv("XDG_STATE_HOME")
+	if !filepath.IsAbs(root) {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return "", fmt.Errorf("resolve user home directory: %w", err)
+		}
+		root = filepath.Join(home, ".local", "state")
+	}
+	return filepath.Join(root, "review-my-slop"), nil
 }
 
 func suggestionLines(quoted []string) []string {

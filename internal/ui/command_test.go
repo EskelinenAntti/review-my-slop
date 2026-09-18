@@ -1,0 +1,116 @@
+package ui
+
+import (
+	"bytes"
+	"context"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
+	"testing"
+
+	"github.com/eskelinenantti/review-my-slop/internal/comments"
+)
+
+func TestRunCommentsPrintsAndConsumesCurrentRepositoryFeedback(t *testing.T) {
+	repo := initRepository(t)
+	t.Chdir(repo)
+	data := t.TempDir()
+	t.Setenv("XDG_DATA_HOME", data)
+	store, err := comments.OpenDefault()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.Add(comments.Comment{
+		Repository: repo,
+		Anchor:     comments.Anchor{FilePath: "main.go", NewStart: 3, NewEnd: 3},
+		Body:       "Check this error.",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	var output bytes.Buffer
+	if err := Run(context.Background(), []string{"comments"}, &output); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(output.String(), "Check this error.") {
+		t.Fatalf("unexpected output:\n%s", output.String())
+	}
+	if !strings.HasPrefix(output.String(), "New comments since last run:\n") {
+		t.Fatalf("unexpected output heading:\n%s", output.String())
+	}
+	if strings.Contains(output.String(), "batch") {
+		t.Fatalf("output exposes internal batches:\n%s", output.String())
+	}
+
+	var empty bytes.Buffer
+	if err := Run(context.Background(), []string{"comments"}, &empty); err != nil {
+		t.Fatal(err)
+	}
+	if strings.TrimSpace(empty.String()) != "No pending review comments." {
+		t.Fatalf("second output = %q", empty.String())
+	}
+
+	info, err := os.Stat(filepath.Join(data, "review-my-slop", "inbox-v2.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Mode().Perm() != 0o600 {
+		t.Fatalf("database mode = %o", info.Mode().Perm())
+	}
+}
+
+func TestRunCommentsPreservesFeedbackWhenOutputFails(t *testing.T) {
+	repo := initRepository(t)
+	t.Chdir(repo)
+	t.Setenv("XDG_DATA_HOME", t.TempDir())
+	store, err := comments.OpenDefault()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.Add(comments.Comment{
+		Repository: repo,
+		Anchor:     comments.Anchor{FilePath: "main.go", NewStart: 1},
+		Body:       "Preserve me.",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := Run(context.Background(), []string{"comments"}, failingWriter{}); err == nil {
+		t.Fatal("output failure was ignored")
+	}
+	pending, err := store.List(repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(pending) != 1 {
+		t.Fatalf("pending comments = %d, want 1", len(pending))
+	}
+}
+
+func TestRunRejectsUnknownSubcommand(t *testing.T) {
+	err := Run(context.Background(), []string{"unknown"}, &bytes.Buffer{})
+	if err == nil || !strings.Contains(err.Error(), `unknown subcommand "unknown"`) {
+		t.Fatalf("error = %v", err)
+	}
+}
+
+type failingWriter struct{}
+
+func (failingWriter) Write([]byte) (int, error) {
+	return 0, os.ErrClosed
+}
+
+func initRepository(t *testing.T) string {
+	t.Helper()
+	repo, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command("git", "init", "-q")
+	cmd.Dir = repo
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("git init: %v\n%s", err, out)
+	}
+	return repo
+}
