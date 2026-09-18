@@ -12,6 +12,67 @@ import (
 	"github.com/eskelinenantti/review-my-slop/internal/review"
 )
 
+type commentState struct {
+	items      []review.Comment
+	row        int
+	body       string
+	editIndex  int
+	editAnchor review.Anchor
+	revision   uint64
+}
+
+func (s *commentState) beginEdit(index int) bool {
+	if index < 0 || index >= len(s.items) {
+		return false
+	}
+	s.editIndex = index
+	s.body = s.items[index].Body
+	s.editAnchor = s.items[index].Anchor
+	return true
+}
+
+func (s *commentState) beginNew(anchor review.Anchor) {
+	s.body = ""
+	s.editIndex = -1
+	s.editAnchor = anchor
+}
+
+func (s commentState) pendingComment(body string) review.Comment {
+	if s.editIndex >= 0 {
+		comment := s.items[s.editIndex]
+		comment.Body = body
+		return comment
+	}
+	return review.Comment{Anchor: s.editAnchor, Body: body}
+}
+
+func (s *commentState) store(comment review.Comment) {
+	if s.editIndex >= 0 {
+		s.items[s.editIndex] = comment
+	} else {
+		s.items = append(s.items, comment)
+		s.row = len(s.items) - 1
+	}
+	s.revision++
+}
+
+func (s *commentState) remove(index int) {
+	s.items = append(s.items[:index], s.items[index+1:]...)
+	s.row = min(s.row, max(0, len(s.items)-1))
+	s.revision++
+}
+
+func (s *commentState) setItems(items []review.Comment) {
+	s.items = items
+	s.row = min(s.row, max(0, len(s.items)-1))
+}
+
+func (s *commentState) clearEdit() {
+	s.body = ""
+	s.editIndex = -1
+	s.editAnchor = review.Anchor{}
+}
+
 func (m Model) updateComments(name string) (tea.Model, tea.Cmd) {
 	m.err = nil
 	switch name {
@@ -21,48 +82,51 @@ func (m Model) updateComments(name string) (tea.Model, tea.Cmd) {
 		m.quitting = true
 		return m, tea.Quit
 	case "j", "down":
-		if m.comments.row < len(m.comments.items)-1 {
-			m.comments.row++
-		}
+		m.moveCommentRow(1)
 	case "k", "up":
-		if m.comments.row > 0 {
-			m.comments.row--
-		}
+		m.moveCommentRow(-1)
 	case "enter", "e":
-		if len(m.comments.items) > 0 {
-			m.comments.editIndex = m.comments.row
-			m.comments.body = m.comments.items[m.comments.editIndex].Body
-			m.comments.editAnchor = m.comments.items[m.comments.editIndex].Anchor
-			cmd, err := m.openCommentEditor()
-			if err != nil {
-				m.err = err
-				m.clearCommentEdit()
-				return m, nil
-			}
-			return m, cmd
-		}
+		cmd := m.editCurrentComment()
+		return m, cmd
 	case "D":
-		if len(m.comments.items) > 0 {
-			m.deleteComment(m.comments.row)
-		}
+		m.removeComment(m.comments.row)
 	}
 	return m, nil
+}
+
+func (m *Model) moveCommentRow(delta int) {
+	m.comments.row = min(max(0, m.comments.row+delta), max(0, len(m.comments.items)-1))
+}
+
+func (m *Model) editCurrentComment() tea.Cmd {
+	if !m.comments.beginEdit(m.comments.row) {
+		return nil
+	}
+	cmd, err := m.openCommentEditor()
+	if err != nil {
+		m.err = err
+		m.comments.clearEdit()
+		return nil
+	}
+	return cmd
 }
 
 func (m *Model) beginComment() (tea.Cmd, error) {
 	selection := m.review.selection
 	if selection == nil {
-		current := m.review.view.BeginSelection(m.review.cursor)
-		selection = &current
+		currentSelection := m.review.view.BeginSelection(m.review.cursor)
+		selection = &currentSelection
 	}
-	anchor, err := m.review.view.Anchor(*selection)
-	if err != nil {
-		return nil, err
+	file, fileFound := m.review.view.File(selection.First)
+	lines := m.review.view.Lines(*selection)
+	if !fileFound || len(lines) == 0 {
+		return nil, fmt.Errorf("select code lines before commenting")
 	}
-	m.comments.body, m.comments.editIndex, m.comments.editAnchor = "", -1, anchor
+	anchor := review.NewAnchor(file.Path(), lines)
+	m.comments.beginNew(anchor)
 	cmd, err := m.openCommentEditor()
 	if err != nil {
-		m.clearCommentEdit()
+		m.comments.clearEdit()
 		return nil, err
 	}
 	return cmd, nil
@@ -72,76 +136,54 @@ func (m *Model) finishCommentEdit() {
 	body := strings.TrimSpace(m.comments.body)
 	if body == "" {
 		if m.comments.editIndex >= 0 {
-			m.deleteComment(m.comments.editIndex)
+			m.removeComment(m.comments.editIndex)
 		}
-		m.clearCommentEdit()
+		m.comments.clearEdit()
 		m.cancelSelection()
 		return
 	}
-	if m.save == nil {
+	if m.saveComment == nil {
 		m.err = fmt.Errorf("comment storage is unavailable")
-		m.clearCommentEdit()
+		m.comments.clearEdit()
 		return
 	}
-	var comment review.Comment
-	if m.comments.editIndex >= 0 {
-		comment = m.comments.items[m.comments.editIndex]
-		comment.Body = body
-	} else {
-		comment = review.Comment{Anchor: m.comments.editAnchor, Body: body}
-	}
-	saved, err := m.save(comment, m.review.patch)
+	saved, err := m.saveComment(m.comments.pendingComment(body), m.review.patch)
 	if err != nil {
 		m.err = err
-		m.clearCommentEdit()
+		m.comments.clearEdit()
 		return
 	}
-	if m.comments.editIndex >= 0 {
-		m.comments.items[m.comments.editIndex] = saved
-	} else {
-		m.comments.items = append(m.comments.items, saved)
-		m.comments.row = len(m.comments.items) - 1
-	}
-	m.comments.revision++
-	m.clearCommentEdit()
+	m.comments.store(saved)
+	m.comments.clearEdit()
 	m.err = nil
 	m.cancelSelection()
 }
 
-func (m *Model) deleteComment(index int) {
+func (m *Model) removeComment(index int) {
 	if index < 0 || index >= len(m.comments.items) {
 		return
 	}
-	if m.delete == nil {
+	if m.deleteComment == nil {
 		m.err = fmt.Errorf("comment storage is unavailable")
 		return
 	}
-	if err := m.delete(m.comments.items[index], m.review.patch); err != nil {
+	comment := m.comments.items[index]
+	if err := m.deleteComment(comment, m.review.patch); err != nil {
 		m.err = err
 		return
 	}
-	m.comments.items = append(m.comments.items[:index], m.comments.items[index+1:]...)
-	m.comments.row = min(m.comments.row, max(0, len(m.comments.items)-1))
-	m.comments.revision++
+	m.comments.remove(index)
 	m.err = nil
 }
 
-func (m *Model) clearCommentEdit() {
-	m.comments.body = ""
-	m.comments.editIndex = -1
-	m.comments.editAnchor = review.Anchor{}
-}
-
-func (m *Model) cancelSelection() { m.review.selection = nil }
-
 func (m Model) openCurrentLine() (tea.Cmd, error) {
-	editorCommand := strings.TrimSpace(os.Getenv("EDITOR"))
-	if editorCommand == "" {
-		return nil, fmt.Errorf("$EDITOR is not set")
+	editorCommand, err := configuredEditor()
+	if err != nil {
+		return nil, err
 	}
-	file, fileOK := m.review.view.File(m.review.cursor)
-	line, lineOK := m.review.view.Line(m.review.cursor)
-	if !fileOK || !lineOK {
+	file, fileFound := m.review.view.File(m.review.cursor)
+	line, lineFound := m.review.view.Line(m.review.cursor)
+	if !fileFound || !lineFound {
 		return nil, fmt.Errorf("select a code line to open in $EDITOR")
 	}
 	path, number := file.NewPath, line.NewNumber
@@ -163,16 +205,28 @@ func (m Model) openCurrentLine() (tea.Cmd, error) {
 }
 
 func (m Model) openCommentEditor() (tea.Cmd, error) {
-	editorCommand := strings.TrimSpace(os.Getenv("EDITOR"))
-	if editorCommand == "" {
-		return nil, fmt.Errorf("$EDITOR is not set")
+	editorCommand, err := configuredEditor()
+	if err != nil {
+		return nil, err
 	}
 	path, err := editor.CreateCommentFile(m.comments.body, m.comments.editAnchor)
 	if err != nil {
 		return nil, err
 	}
 	return tea.ExecProcess(editor.CommentCommand(editorCommand, path), func(editorErr error) tea.Msg {
-		body, err := editor.ReadCommentFile(path, m.comments.editAnchor, editorErr)
+		if editorErr != nil {
+			_ = os.Remove(path)
+			return commentEditorFinishedMsg{err: fmt.Errorf("editor: %w", editorErr)}
+		}
+		body, err := editor.ReadCommentFile(path, m.comments.editAnchor)
 		return commentEditorFinishedMsg{body: body, err: err}
 	}), nil
+}
+
+func configuredEditor() (string, error) {
+	command := strings.TrimSpace(os.Getenv("EDITOR"))
+	if command == "" {
+		return "", fmt.Errorf("$EDITOR is not set")
+	}
+	return command, nil
 }

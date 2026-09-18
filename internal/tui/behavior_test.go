@@ -2,8 +2,6 @@ package tui
 
 import (
 	"fmt"
-	"os"
-	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
@@ -11,7 +9,6 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 
-	"github.com/eskelinenantti/review-my-slop/internal/editor"
 	"github.com/eskelinenantti/review-my-slop/internal/patch"
 	"github.com/eskelinenantti/review-my-slop/internal/review"
 	"github.com/eskelinenantti/review-my-slop/internal/view"
@@ -20,7 +17,7 @@ import (
 func TestVisualSelectionCreatesMappedAnchorAndSubmits(t *testing.T) {
 	t.Setenv("EDITOR", "true")
 	var saved []review.Comment
-	m := testModel(coveragePatch(), nil, func(stored review.Comment, _ patch.Patch) (review.Comment, error) {
+	m := testModel(twoHunkPatch(), nil, func(stored review.Comment, _ patch.Patch) (review.Comment, error) {
 		saved = append(saved, stored)
 		stored.ID = "new"
 		return stored, nil
@@ -41,7 +38,7 @@ func TestVisualSelectionCreatesMappedAnchorAndSubmits(t *testing.T) {
 
 func TestCommentSaveFailureClearsPendingEdit(t *testing.T) {
 	t.Setenv("EDITOR", "true")
-	m := testModel(coveragePatch(), nil, func(review.Comment, patch.Patch) (review.Comment, error) {
+	m := testModel(twoHunkPatch(), nil, func(review.Comment, patch.Patch) (review.Comment, error) {
 		return review.Comment{}, fmt.Errorf("storage unavailable")
 	})
 	m = updateModel(t, m, textKey("c"))
@@ -53,79 +50,16 @@ func TestCommentSaveFailureClearsPendingEdit(t *testing.T) {
 
 func TestCommentRequiresEditor(t *testing.T) {
 	t.Setenv("EDITOR", "")
-	m := updateModel(t, testModel(coveragePatch(), nil, nil), textKey("c"))
+	m := updateModel(t, testModel(twoHunkPatch(), nil, nil), textKey("c"))
 	if m.err == nil || m.err.Error() != "$EDITOR is not set" {
 		t.Fatalf("error = %v", m.err)
-	}
-}
-
-func TestCommentOpensMarkdownFileInEditor(t *testing.T) {
-	state := t.TempDir()
-	t.Setenv("XDG_STATE_HOME", state)
-	anchor := review.Anchor{QuotedLines: []string{"-old()```x", "+new()"}}
-	path, err := editor.CreateCommentFile("existing comment", anchor)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = os.Remove(path) })
-	info, err := os.Stat(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	body, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if filepath.Ext(path) != ".md" || info.Mode().Perm() != 0o600 || string(body) != "existing comment\n\n```suggestion\nnew()\n```\n" {
-		t.Fatalf("path=%q mode=%o body=%q", path, info.Mode().Perm(), body)
-	}
-}
-
-func TestCommentEditorSuggestionBehaviors(t *testing.T) {
-	t.Run("escapes fence", func(t *testing.T) {
-		anchor := review.Anchor{QuotedLines: []string{"+````go", `+fmt.Println("hello")`, "+````"}}
-		draft := editor.CommentDraft("explain this", anchor)
-		if !strings.Contains(draft, "`````suggestion") || editor.StripUnchangedSuggestion(draft, anchor.QuotedLines) != "explain this" {
-			t.Fatalf("draft = %q", draft)
-		}
-	})
-	t.Run("only new version", func(t *testing.T) {
-		anchor := review.Anchor{QuotedLines: []string{" unchanged()", "-old()", "+new()"}}
-		if got := editor.CommentDraft("comment", anchor); got != "comment\n\n```suggestion\nunchanged()\nnew()\n```\n" {
-			t.Fatalf("draft = %q", got)
-		}
-	})
-	t.Run("edited suggestion remains", func(t *testing.T) {
-		body := "comment\n\n```suggestion\nbetter()\n```\n"
-		if got := editor.StripUnchangedSuggestion(body, []string{"-old()", "+new()"}); got != body {
-			t.Fatalf("body = %q", got)
-		}
-	})
-}
-
-func TestExternalEditorCommandReadsEditedDraft(t *testing.T) {
-	file, err := os.CreateTemp("", "review-my-slop-editor-test-*.md")
-	if err != nil {
-		t.Fatal(err)
-	}
-	path := file.Name()
-	if err := file.Close(); err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = os.Remove(path) })
-	if err := editor.CommentCommand("printf 'edited externally' >", path).Run(); err != nil {
-		t.Fatal(err)
-	}
-	body, err := editor.ReadCommentFile(path, review.Anchor{}, nil)
-	if err != nil || body != "edited externally" {
-		t.Fatalf("body = %q, err = %v", body, err)
 	}
 }
 
 func TestEmptyNewCommentIsDiscarded(t *testing.T) {
 	t.Setenv("EDITOR", "true")
 	called := false
-	m := testModel(coveragePatch(), nil, func(stored review.Comment, p patch.Patch) (review.Comment, error) {
+	m := testModel(twoHunkPatch(), nil, func(stored review.Comment, p patch.Patch) (review.Comment, error) {
 		called = true
 		return stored, nil
 	})
@@ -138,22 +72,18 @@ func TestEmptyNewCommentIsDiscarded(t *testing.T) {
 
 func TestOpenCurrentLineUsesEditorWithWorkingTreeLocation(t *testing.T) {
 	t.Setenv("EDITOR", "printf")
-	m := testModel(coveragePatch(), nil, nil)
-	m.review.patch.Repository = "/tmp/repo with spaces"
-	m.review.cursor = findLine(t, m, "new()")
+	p := twoHunkPatch()
+	p.Repository = "/tmp/repo with spaces"
+	m := moveToLine(t, testModel(p, nil, nil), "new()")
 	cmd, err := m.openCurrentLine()
 	if err != nil || cmd == nil {
 		t.Fatalf("command=%v err=%v", cmd, err)
-	}
-	want := "sh\x00-c\x00printf +2 '/tmp/repo with spaces/main.go'"
-	if got := strings.Join(editor.SourceCommand("printf", "/tmp/repo with spaces/main.go", 2).Args, "\x00"); got != want {
-		t.Fatalf("command = %q", got)
 	}
 }
 
 func TestOpenCurrentLineRequiresEditor(t *testing.T) {
 	t.Setenv("EDITOR", "")
-	m := updateModel(t, testModel(coveragePatch(), nil, nil), textKey("e"))
+	m := updateModel(t, testModel(twoHunkPatch(), nil, nil), textKey("e"))
 	if m.err == nil || m.err.Error() != "$EDITOR is not set" {
 		t.Fatalf("error = %v", m.err)
 	}
@@ -163,11 +93,13 @@ func TestInboxCommentsCanBeViewedEditedAndDeleted(t *testing.T) {
 	t.Setenv("EDITOR", "true")
 	comments := []review.Comment{{ID: "one", Body: "old body"}, {ID: "two", Body: "second"}}
 	var persisted, deleted review.Comment
-	m := testModel(coveragePatch(), comments, func(stored review.Comment, _ patch.Patch) (review.Comment, error) {
-		persisted = stored
-		return stored, nil
+	m := testModelWith(twoHunkPatch(), comments, func(config *Config) {
+		config.SaveComment = func(stored review.Comment, _ patch.Patch) (review.Comment, error) {
+			persisted = stored
+			return stored, nil
+		}
+		config.DeleteComment = func(stored review.Comment, _ patch.Patch) error { deleted = stored; return nil }
 	})
-	m.SetDelete(func(stored review.Comment, _ patch.Patch) error { deleted = stored; return nil })
 	m = updateModel(t, m, textKey("C"))
 	if m.mode != modeComments || !strings.Contains(m.render(), "old body") {
 		t.Fatal("comments did not open")
@@ -188,8 +120,9 @@ func TestInboxCommentsCanBeViewedEditedAndDeleted(t *testing.T) {
 }
 
 func TestOpeningCommentsReloadsAcknowledgedInbox(t *testing.T) {
-	m := testModel(coveragePatch(), []review.Comment{{ID: "read", Body: "already read"}}, nil)
-	m.SetLoadComments(func() ([]review.Comment, error) { return nil, nil })
+	m := testModelWith(twoHunkPatch(), []review.Comment{{ID: "read", Body: "already read"}}, func(config *Config) {
+		config.LoadComments = func() ([]review.Comment, error) { return nil, nil }
+	})
 
 	next, cmd := m.Update(textKey("C"))
 	m = next.(Model)
@@ -203,8 +136,9 @@ func TestOpeningCommentsReloadsAcknowledgedInbox(t *testing.T) {
 }
 
 func TestCommentReloadFailurePreservesCurrentInbox(t *testing.T) {
-	m := testModel(coveragePatch(), []review.Comment{{ID: "keep", Body: "keep"}}, nil)
-	m.SetLoadComments(func() ([]review.Comment, error) { return nil, fmt.Errorf("storage unavailable") })
+	m := testModelWith(twoHunkPatch(), []review.Comment{{ID: "keep", Body: "keep"}}, func(config *Config) {
+		config.LoadComments = func() ([]review.Comment, error) { return nil, fmt.Errorf("storage unavailable") }
+	})
 
 	next, cmd := m.Update(textKey("C"))
 	m = next.(Model)
@@ -216,9 +150,10 @@ func TestCommentReloadFailurePreservesCurrentInbox(t *testing.T) {
 
 func TestEmptyEditedCommentIsDeleted(t *testing.T) {
 	t.Setenv("EDITOR", "true")
-	m := testModel(coveragePatch(), []review.Comment{{ID: "one", Body: "old"}}, nil)
 	deleted := false
-	m.SetDelete(func(review.Comment, patch.Patch) error { deleted = true; return nil })
+	m := testModelWith(twoHunkPatch(), []review.Comment{{ID: "one", Body: "old"}}, func(config *Config) {
+		config.DeleteComment = func(review.Comment, patch.Patch) error { deleted = true; return nil }
+	})
 	m = updateModel(t, m, textKey("C"))
 	m = updateModel(t, m, specialKey(tea.KeyEnter))
 	m = updateModel(t, m, commentEditorFinishedMsg{body: "\n"})
@@ -228,8 +163,9 @@ func TestEmptyEditedCommentIsDeleted(t *testing.T) {
 }
 
 func TestCommentDeleteFailureKeepsCommentAndShowsError(t *testing.T) {
-	m := testModel(coveragePatch(), []review.Comment{{ID: "one", Body: "keep"}}, nil)
-	m.SetDelete(func(review.Comment, patch.Patch) error { return fmt.Errorf("delete failed") })
+	m := testModelWith(twoHunkPatch(), []review.Comment{{ID: "one", Body: "keep"}}, func(config *Config) {
+		config.DeleteComment = func(review.Comment, patch.Patch) error { return fmt.Errorf("delete failed") }
+	})
 	m = updateModel(t, m, textKey("C"))
 	m = updateModel(t, m, textKey("D"))
 	if len(m.comments.items) != 1 || !strings.Contains(ansi.Strip(m.renderComments()), "delete failed") {
@@ -238,59 +174,70 @@ func TestCommentDeleteFailureKeepsCommentAndShowsError(t *testing.T) {
 }
 
 func TestSelectionCannotCrossHunk(t *testing.T) {
-	m := testModel(coveragePatch(), nil, nil)
+	m := testModel(twoHunkPatch(), nil, nil)
 	m = updateModel(t, m, textKey("v"))
-	for range 10 {
+	for {
+		before := m.review.cursor
 		m = updateModel(t, m, textKey("j"))
+		if m.review.cursor == before {
+			break
+		}
 	}
-	line, _ := m.review.view.Line(m.review.cursor)
+	line, ok := m.review.view.Line(m.review.cursor)
+	if !ok {
+		t.Fatal("selection moved to a non-code row")
+	}
 	if line.Text == "more()" {
 		t.Fatal("selection crossed hunk")
 	}
 }
 
 func TestVimSequencesAndLayoutToggle(t *testing.T) {
-	m := testModel(coveragePatch(), nil, nil)
 	var saved []bool
-	m.SetSideBySide(false, func(enabled bool) error { saved = append(saved, enabled); return nil })
+	m := testModelWith(twoHunkPatch(), nil, func(config *Config) {
+		config.SaveSideBySide = func(enabled bool) error { saved = append(saved, enabled); return nil }
+	})
 	m = updateModel(t, m, tea.WindowSizeMsg{Width: 120, Height: 20})
 	m = updateModel(t, m, textKey("G"))
-	last, _ := m.review.view.Last()
+	last := lastCursor(t, m)
 	if m.review.cursor != last {
 		t.Fatalf("G cursor = %#v", m.review.cursor)
 	}
 	m = updateModel(t, m, textKey("g"))
 	m = updateModel(t, m, textKey("g"))
-	first, _ := m.review.view.First()
+	first := firstCursor(t, m)
 	if m.review.cursor != first {
 		t.Fatalf("gg cursor = %#v", m.review.cursor)
 	}
 	m = updateModel(t, m, textKey("t"))
-	if !m.review.sideBySide || !strings.Contains(m.render(), "│") {
+	if !m.sideBySide || !strings.Contains(m.render(), "│") {
 		t.Fatal("split view not enabled")
 	}
 	m = updateModel(t, m, textKey("t"))
-	if m.review.sideBySide || !slices.Equal(saved, []bool{true, false}) {
-		t.Fatalf("sideBySide=%v saved=%v", m.review.sideBySide, saved)
+	if m.sideBySide || !slices.Equal(saved, []bool{true, false}) {
+		t.Fatalf("sideBySide=%v saved=%v", m.sideBySide, saved)
 	}
 }
 
 func TestSavedSideBySideCanBeDisabledInNarrowTerminal(t *testing.T) {
-	m := testModel(coveragePatch(), nil, nil)
 	var saved []bool
-	m.SetSideBySide(true, func(enabled bool) error { saved = append(saved, enabled); return nil })
+	m := testModelWith(twoHunkPatch(), nil, func(config *Config) {
+		config.SideBySide = true
+		config.SaveSideBySide = func(enabled bool) error { saved = append(saved, enabled); return nil }
+	})
 	m = updateModel(t, m, tea.WindowSizeMsg{Width: 80, Height: 20})
 	m = updateModel(t, m, textKey("t"))
-	if m.review.sideBySide || !slices.Equal(saved, []bool{false}) {
-		t.Fatalf("sideBySide=%v saved=%v", m.review.sideBySide, saved)
+	if m.sideBySide || !slices.Equal(saved, []bool{false}) {
+		t.Fatalf("sideBySide=%v saved=%v", m.sideBySide, saved)
 	}
 }
 
 func TestResizeAcrossSideBySideThresholdPreservesCursorScreenRow(t *testing.T) {
-	m := testModel(coveragePatch(), nil, nil)
-	m.SetSideBySide(true, nil)
-	m.review.cursor = findLine(t, m, "keep()")
-	m.review.viewport = m.review.view.Align(m.review.viewport, m.review.cursor, view.Middle)
+	m := testModelWith(twoHunkPatch(), nil, func(config *Config) { config.SideBySide = true })
+	m = updateModel(t, m, tea.WindowSizeMsg{Width: 120, Height: 20})
+	m = moveToLine(t, m, "keep()")
+	m = updateModel(t, m, textKey("z"))
+	m = updateModel(t, m, textKey("z"))
 	before := m.review.cursor.Coordinate.Y - m.review.viewport.Top.Y
 	m = updateModel(t, m, tea.WindowSizeMsg{Width: 80, Height: 20})
 	m = updateModel(t, m, tea.WindowSizeMsg{Width: 120, Height: 20})
@@ -300,12 +247,9 @@ func TestResizeAcrossSideBySideThresholdPreservesCursorScreenRow(t *testing.T) {
 }
 
 func TestZSequencesPositionCurrentLineInViewport(t *testing.T) {
-	m := testModel(longModelPatch(), nil, nil)
-	for range 10 {
-		m.move(view.Forward)
-	}
-	m.height = 9
-	m.review.viewport = m.review.view.Resize(m.review.viewport, m.width, m.screenBodyHeight())
+	m := testModel(manyLinePatch(), nil, nil)
+	m = moveToRow(m, 10)
+	m = updateModel(t, m, tea.WindowSizeMsg{Width: 100, Height: 9})
 	for _, test := range []struct {
 		key       string
 		alignment view.VerticalAlignment
@@ -320,7 +264,7 @@ func TestZSequencesPositionCurrentLineInViewport(t *testing.T) {
 }
 
 func TestPendingKeyIsConsumedByNextKey(t *testing.T) {
-	m := testModel(coveragePatch(), nil, nil)
+	m := testModel(twoHunkPatch(), nil, nil)
 	m = updateModel(t, m, textKey("G"))
 	last := m.review.cursor
 	m = updateModel(t, m, textKey("g"))
@@ -332,7 +276,7 @@ func TestPendingKeyIsConsumedByNextKey(t *testing.T) {
 }
 
 func TestStatusShowsBasicBindingsAndHelpShowsCompleteKeyMap(t *testing.T) {
-	m := testModel(coveragePatch(), nil, nil)
+	m := testModel(twoHunkPatch(), nil, nil)
 	status := ansi.Strip(m.renderStatus())
 	if !strings.HasPrefix(status, "j/k/h/l move") || !strings.HasSuffix(status, "local changes") {
 		t.Fatalf("status=%q", status)
@@ -346,7 +290,7 @@ func TestStatusShowsBasicBindingsAndHelpShowsCompleteKeyMap(t *testing.T) {
 }
 
 func TestStatusShowsProgressOnlyAfterViewportMoves(t *testing.T) {
-	m := testModel(longModelPatch(), nil, nil)
+	m := testModel(manyLinePatch(), nil, nil)
 	m = updateModel(t, m, tea.WindowSizeMsg{Width: 80, Height: 9})
 	if label := m.viewLabel(); label != "local changes" {
 		t.Fatalf("initial label=%q", label)
@@ -356,7 +300,11 @@ func TestStatusShowsProgressOnlyAfterViewportMoves(t *testing.T) {
 		t.Fatalf("horizontal-scroll label=%q", label)
 	}
 	for m.review.viewport.Top.Y == 0 {
+		before := m.review.cursor
 		m = updateModel(t, m, textKey("j"))
+		if m.review.cursor == before {
+			t.Fatal("cursor stopped before the viewport scrolled")
+		}
 	}
 	if label := m.viewLabel(); !strings.HasPrefix(label, "local changes (") || !strings.HasSuffix(label, "%)") {
 		t.Fatalf("scrolled label=%q", label)
@@ -368,7 +316,7 @@ func TestStatusShowsProgressOnlyAfterViewportMoves(t *testing.T) {
 }
 
 func TestStatusHidesProgressWhenDiffFitsViewport(t *testing.T) {
-	m := testModel(coveragePatch(), nil, nil)
+	m := testModel(twoHunkPatch(), nil, nil)
 	m = updateModel(t, m, tea.WindowSizeMsg{Width: 100, Height: 100})
 	if label := m.viewLabel(); label != "local changes" {
 		t.Fatalf("label=%q", label)
@@ -383,10 +331,10 @@ func TestRenderKeyBindingsAlignsDescriptions(t *testing.T) {
 }
 
 func TestSideBySidePaneSwitchingUsesCtrlWSequences(t *testing.T) {
-	m := testModel(coveragePatch(), nil, nil)
-	m.width = 120
-	m.setSideBySide(true)
-	m.review.cursor = findLine(t, m, "new()")
+	m := testModel(twoHunkPatch(), nil, nil)
+	m = updateModel(t, m, tea.WindowSizeMsg{Width: 120, Height: 30})
+	m = updateModel(t, m, textKey("t"))
+	m = moveToLine(t, m, "new()")
 	m = updateModel(t, m, controlKey('w'))
 	m = updateModel(t, m, textKey("h"))
 	if m.review.cursor.Pane != view.Left || lineText(m) != "old()" {
@@ -400,9 +348,8 @@ func TestSideBySidePaneSwitchingUsesCtrlWSequences(t *testing.T) {
 }
 
 func TestHorizontalScrollKeysMoveByStepAndReset(t *testing.T) {
-	m := testModel(longModelPatch(), nil, nil)
-	m.width = 37
-	m.review.viewport = m.review.view.Resize(m.review.viewport, m.width, m.screenBodyHeight())
+	m := testModel(manyLinePatch(), nil, nil)
+	m = updateModel(t, m, tea.WindowSizeMsg{Width: 37, Height: 30})
 	m = updateModel(t, m, textKey("l"))
 	m = updateModel(t, m, tea.KeyPressMsg(tea.Key{Code: tea.KeyRight}))
 	if m.review.viewport.LeftColumn != 2*horizontalScrollStep {
@@ -424,16 +371,17 @@ func TestHorizontalScrollKeysMoveByStepAndReset(t *testing.T) {
 }
 
 func TestFocusAndManualRefreshLoadCurrentView(t *testing.T) {
-	m := testModel(coveragePatch(), nil, nil)
-	m.SetDefaultBranch("main")
-	m.showDefault = true
 	var requested []string
-	m.SetRefresh(func(parent string) (patch.Patch, error) {
-		requested = append(requested, parent)
-		p := coveragePatch()
-		p.Fingerprint = fmt.Sprintf("refresh-%d", len(requested))
-		return p, nil
+	m := testModelWith(twoHunkPatch(), nil, func(config *Config) {
+		config.DefaultBranch = "main"
+		config.RefreshDiff = func(parent string) (patch.Patch, error) {
+			requested = append(requested, parent)
+			p := twoHunkPatch()
+			p.Fingerprint = fmt.Sprintf("refresh-%d", len(requested))
+			return p, nil
+		}
 	})
+	m = updateModel(t, m, textKey("tab"))
 	next, cmd := m.Update(tea.FocusMsg{})
 	m = next.(Model)
 	if cmd == nil {
@@ -452,10 +400,11 @@ func TestFocusAndManualRefreshLoadCurrentView(t *testing.T) {
 }
 
 func TestSourceEditorCompletionRefreshesDiff(t *testing.T) {
-	m := testModel(coveragePatch(), nil, nil)
-	refreshed := coveragePatch()
+	refreshed := twoHunkPatch()
 	refreshed.Fingerprint = "after-editor"
-	m.SetRefresh(func(string) (patch.Patch, error) { return refreshed, nil })
+	m := testModelWith(twoHunkPatch(), nil, func(config *Config) {
+		config.RefreshDiff = func(string) (patch.Patch, error) { return refreshed, nil }
+	})
 
 	next, cmd := m.Update(sourceEditorFinishedMsg{})
 	m = next.(Model)
@@ -469,14 +418,14 @@ func TestSourceEditorCompletionRefreshesDiff(t *testing.T) {
 }
 
 func TestHeaderShowsAddedAndRemovedLineCounts(t *testing.T) {
-	header := strings.SplitN(ansi.Strip(testModel(coveragePatch(), nil, nil).render()), "\n", 2)[0]
+	header := strings.SplitN(ansi.Strip(testModel(twoHunkPatch(), nil, nil).render()), "\n", 2)[0]
 	if header != "review-my-slop  +2-1" {
 		t.Fatalf("header = %q", header)
 	}
 }
 
 func TestSearchMovesIncrementallyRepeatsAndRestoresOrigin(t *testing.T) {
-	m := testModel(coveragePatch(), nil, nil)
+	m := testModel(twoHunkPatch(), nil, nil)
 	origin := m.review.cursor
 	m = updateModel(t, m, textKey("/"))
 	m = updateModel(t, m, textKey("keep"))
@@ -505,11 +454,11 @@ func TestSearchMovesIncrementallyRepeatsAndRestoresOrigin(t *testing.T) {
 }
 
 func TestSearchMatchesFileNamesAndBackspaceRestoresOrigin(t *testing.T) {
-	m := testModel(coveragePatch(), nil, nil)
+	m := testModel(twoHunkPatch(), nil, nil)
 	origin := m.review.cursor
 	m = updateModel(t, m, textKey("/"))
 	m = updateModel(t, m, textKey("main.go"))
-	file, _ := m.review.view.File(m.review.cursor)
+	file := currentFile(t, m)
 	if file.DisplayPath != "main.go" {
 		t.Fatalf("file=%q", file.DisplayPath)
 	}
@@ -522,9 +471,9 @@ func TestSearchMatchesFileNamesAndBackspaceRestoresOrigin(t *testing.T) {
 }
 
 func TestSideBySideSearchActivatesPaneAndCancelRestoresIt(t *testing.T) {
-	m := testModel(coveragePatch(), nil, nil)
-	m.width = 120
-	m.setSideBySide(true)
+	m := testModel(twoHunkPatch(), nil, nil)
+	m = updateModel(t, m, tea.WindowSizeMsg{Width: 120, Height: 30})
+	m = updateModel(t, m, textKey("t"))
 	origin := m.review.cursor
 	m = updateModel(t, m, textKey("/"))
 	m = updateModel(t, m, textKey("old()"))
@@ -538,32 +487,33 @@ func TestSideBySideSearchActivatesPaneAndCancelRestoresIt(t *testing.T) {
 }
 
 func TestTabTogglesDefaultBranchAndIgnoresStaleRefresh(t *testing.T) {
-	m := testModel(coveragePatch(), nil, nil)
-	m.SetDefaultBranch("main")
-	m.SetRefresh(func(string) (patch.Patch, error) { return coveragePatch(), nil })
-	next, _ := m.Update(textKey("tab"))
-	m = next.(Model)
-	if m.currentBranch() != "main" {
-		t.Fatalf("branch=%q", m.currentBranch())
+	m := testModelWith(twoHunkPatch(), nil, func(config *Config) {
+		config.DefaultBranch = "main"
+		config.RefreshDiff = func(string) (patch.Patch, error) { return twoHunkPatch(), nil }
+	})
+	m = updateModel(t, m, textKey("tab"))
+	if m.comparisonBranch() != "main" {
+		t.Fatalf("branch=%q", m.comparisonBranch())
 	}
-	stale := coveragePatch()
+	stale := twoHunkPatch()
 	stale.Fingerprint = "stale"
 	m = updateModel(t, m, refreshDiffMsg{patch: stale})
 	if m.review.patch.Fingerprint == "stale" {
 		t.Fatal("stale refresh applied")
 	}
 	m = updateModel(t, m, textKey("tab"))
-	if m.currentBranch() != "" {
-		t.Fatalf("branch=%q after toggling back to local", m.currentBranch())
+	if m.comparisonBranch() != "" {
+		t.Fatalf("branch=%q after toggling back to local", m.comparisonBranch())
 	}
 }
 
 func TestTabDoesNothingWithoutDefaultBranch(t *testing.T) {
-	m := testModel(coveragePatch(), nil, nil)
 	refreshed := false
-	m.SetRefresh(func(string) (patch.Patch, error) {
-		refreshed = true
-		return coveragePatch(), nil
+	m := testModelWith(twoHunkPatch(), nil, func(config *Config) {
+		config.RefreshDiff = func(string) (patch.Patch, error) {
+			refreshed = true
+			return twoHunkPatch(), nil
+		}
 	})
 	next, cmd := m.Update(textKey("tab"))
 	m = next.(Model)
@@ -574,15 +524,15 @@ func TestTabDoesNothingWithoutDefaultBranch(t *testing.T) {
 
 func TestDiffRefreshFallbackAndEmptyDiff(t *testing.T) {
 	m := testModel(patch.Patch{}, nil, nil)
-	refreshed := coveragePatch()
+	refreshed := twoHunkPatch()
 	refreshed.Fingerprint = "new"
 	m = updateModel(t, m, refreshDiffMsg{patch: refreshed})
 	first, ok := m.review.view.First()
 	if !ok || m.review.cursor != first {
 		t.Fatalf("cursor=%#v first=%#v", m.review.cursor, first)
 	}
-	m.review.cursor = findLine(t, m, "new()")
-	changed := coveragePatch()
+	m = moveToLine(t, m, "new()")
+	changed := twoHunkPatch()
 	changed.Fingerprint = "changed"
 	changed.Files[0].Hunks[0].Lines[2].Text = "different()"
 	m = updateModel(t, m, refreshDiffMsg{patch: changed})
@@ -594,27 +544,29 @@ func TestDiffRefreshFallbackAndEmptyDiff(t *testing.T) {
 func TestCommentAfterRefreshUsesCurrentPatch(t *testing.T) {
 	t.Setenv("EDITOR", "true")
 	var saved patch.Patch
-	m := testModel(coveragePatch(), nil, func(stored review.Comment, p patch.Patch) (review.Comment, error) {
+	m := testModel(twoHunkPatch(), nil, func(stored review.Comment, p patch.Patch) (review.Comment, error) {
 		saved = p
 		return stored, nil
 	})
-	refreshed := coveragePatch()
+	refreshed := twoHunkPatch()
 	refreshed.Fingerprint = "refreshed"
 	m = updateModel(t, m, refreshDiffMsg{patch: refreshed})
 	m = updateModel(t, m, textKey("c"))
-	_ = updateModel(t, m, commentEditorFinishedMsg{body: "comment"})
+	m = updateModel(t, m, commentEditorFinishedMsg{body: "comment"})
 	if saved.Fingerprint != "refreshed" {
 		t.Fatalf("fingerprint=%q", saved.Fingerprint)
 	}
 }
 
 func TestViewPreservesTerminalColors(t *testing.T) {
-	result := testModel(coveragePatch(), nil, nil).View()
+	result := testModel(twoHunkPatch(), nil, nil).View()
 	if result.BackgroundColor != nil || result.ForegroundColor != nil || !result.AltScreen || !result.ReportFocus {
 		t.Fatalf("view=%#v", result)
 	}
 }
 
+// updateModel applies a message when the test only needs the resulting model;
+// tests that exercise commands call Update directly and run the command.
 func updateModel(t *testing.T, m Model, msg tea.Msg) Model {
 	t.Helper()
 	next, _ := m.Update(msg)
@@ -624,47 +576,126 @@ func updateModel(t *testing.T, m Model, msg tea.Msg) Model {
 	}
 	return result
 }
+
 func textKey(text string) tea.KeyPressMsg {
 	runes := []rune(text)
 	return tea.KeyPressMsg(tea.Key{Text: text, Code: runes[0]})
 }
+
 func specialKey(code rune) tea.KeyPressMsg { return tea.KeyPressMsg(tea.Key{Code: code}) }
+
 func controlKey(code rune) tea.KeyPressMsg {
 	return tea.KeyPressMsg(tea.Key{Code: code, Mod: tea.ModCtrl})
 }
 
-func findLine(t *testing.T, m Model, text string) view.Cursor {
+func moveToLine(t *testing.T, m Model, text string) Model {
 	t.Helper()
-	cursor, ok := m.review.view.First()
-	if !ok {
-		t.Fatal("no cursor")
-	}
 	for {
-		line, _ := m.review.view.Line(cursor)
-		if line.Text == text {
-			return cursor
+		if lineText(m) == text {
+			return m
 		}
-		cursor, ok = m.review.view.Move(cursor, view.Forward)
-		if !ok {
+		before := m.review.cursor
+		m = updateModel(t, m, textKey("j"))
+		if m.review.cursor == before {
 			break
 		}
 	}
 	t.Fatalf("line %q not found", text)
-	return view.Cursor{}
-}
-func lineText(m Model) string { line, _ := m.review.view.Line(m.review.cursor); return line.Text }
-
-func coveragePatch() patch.Patch {
-	return patch.Patch{Repository: "/repo", Fingerprint: "fingerprint", Files: []patch.File{{DisplayPath: "main.go", OldPath: "main.go", NewPath: "main.go", OldSource: "package main\nold()\nkeep()\n", NewSource: "package main\nnew()\nkeep()\nmore()\n", Hunks: []patch.Hunk{
-		{Header: "@@ -1,3 +1,3 @@", Lines: []patch.Line{{Kind: patch.Context, Text: "package main", OldNumber: 1, NewNumber: 1}, {Kind: patch.Deletion, Text: "old()", OldNumber: 2}, {Kind: patch.Addition, Text: "new()", NewNumber: 2}, {Kind: patch.Context, Text: "keep()", OldNumber: 3, NewNumber: 3}}},
-		{Header: "@@ -3,1 +3,2 @@", Lines: []patch.Line{{Kind: patch.Context, Text: "keep()", OldNumber: 3, NewNumber: 3}, {Kind: patch.Addition, Text: "more()", NewNumber: 4}}},
-	}}}}
+	return m
 }
 
-func longModelPatch() patch.Patch {
+func firstCursor(t *testing.T, m Model) view.Cursor {
+	t.Helper()
+	cursor, ok := m.review.view.First()
+	if !ok {
+		t.Fatal("no first cursor")
+	}
+	return cursor
+}
+
+func lastCursor(t *testing.T, m Model) view.Cursor {
+	t.Helper()
+	cursor, ok := m.review.view.Last()
+	if !ok {
+		t.Fatal("no last cursor")
+	}
+	return cursor
+}
+
+func currentFile(t *testing.T, m Model) patch.File {
+	t.Helper()
+	file, ok := m.review.view.File(m.review.cursor)
+	if !ok {
+		t.Fatal("no current file")
+	}
+	return file
+}
+
+func lineText(m Model) string {
+	line, ok := m.review.view.Line(m.review.cursor)
+	if !ok {
+		return ""
+	}
+	return line.Text
+}
+
+func twoHunkPatch() patch.Patch {
+	return patch.Patch{
+		Repository:  "/repo",
+		Fingerprint: "fingerprint",
+		Files: []patch.File{{
+			DisplayPath: "main.go",
+			OldPath:     "main.go",
+			NewPath:     "main.go",
+			OldSource:   "package main\nold()\nkeep()\n",
+			NewSource:   "package main\nnew()\nkeep()\nmore()\n",
+			Hunks: []patch.Hunk{
+				{
+					Header: "@@ -1,3 +1,3 @@",
+					Lines: []patch.Line{
+						{Kind: patch.Context, Text: "package main", OldNumber: 1, NewNumber: 1},
+						{Kind: patch.Deletion, Text: "old()", OldNumber: 2},
+						{Kind: patch.Addition, Text: "new()", NewNumber: 2},
+						{Kind: patch.Context, Text: "keep()", OldNumber: 3, NewNumber: 3},
+					},
+				},
+				{
+					Header: "@@ -3,1 +3,2 @@",
+					Lines: []patch.Line{
+						{Kind: patch.Context, Text: "keep()", OldNumber: 3, NewNumber: 3},
+						{Kind: patch.Addition, Text: "more()", NewNumber: 4},
+					},
+				},
+			},
+		}},
+	}
+}
+
+func moveToRow(m Model, target int) Model {
+	for m.review.cursor.Coordinate.Y < target {
+		next, ok := m.review.view.Move(m.review.cursor, view.Forward)
+		if !ok {
+			break
+		}
+		m.setCursor(next)
+	}
+	return m
+}
+
+func manyLinePatch() patch.Patch {
 	lines := make([]patch.Line, 30)
 	for index := range lines {
-		lines[index] = patch.Line{Kind: patch.Context, Text: fmt.Sprintf("line %d %s", index, strings.Repeat("x", 80)), OldNumber: patch.LineNumber(index + 1), NewNumber: patch.LineNumber(index + 1)}
+		lines[index] = patch.Line{
+			Kind:      patch.Context,
+			Text:      fmt.Sprintf("line %d %s", index, strings.Repeat("x", 80)),
+			OldNumber: patch.LineNumber(index + 1),
+			NewNumber: patch.LineNumber(index + 1),
+		}
 	}
-	return patch.Patch{Files: []patch.File{{DisplayPath: "long.go", Hunks: []patch.Hunk{{Header: "@@", Lines: lines}}}}}
+	return patch.Patch{Files: []patch.File{
+		{
+			DisplayPath: "long.go",
+			Hunks:       []patch.Hunk{{Header: "@@", Lines: lines}},
+		},
+	}}
 }

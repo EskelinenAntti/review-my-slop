@@ -1,14 +1,26 @@
 package view
 
-import (
-	"fmt"
-
-	"github.com/eskelinenantti/review-my-slop/internal/patch"
-	"github.com/eskelinenantti/review-my-slop/internal/review"
-)
+import "github.com/eskelinenantti/review-my-slop/internal/patch"
 
 func (v *diffView) BeginSelection(cursor Cursor) Selection {
 	return Selection{First: cursor, Last: cursor}
+}
+
+func isSelected(selection *Selection, cursor Cursor) bool {
+	if selection == nil {
+		return false
+	}
+	first, last := selection.First.Coordinate.Y, selection.Last.Coordinate.Y
+	if first == last && selection.First.Pane != selection.Last.Pane {
+		return cursor.Coordinate.Y == first && (cursor.Pane == selection.First.Pane || cursor.Pane == selection.Last.Pane)
+	}
+	if selection.First.Pane != cursor.Pane {
+		return false
+	}
+	if first > last {
+		first, last = last, first
+	}
+	return cursor.Coordinate.Y >= first && cursor.Coordinate.Y <= last
 }
 
 func (v *diffView) ExtendSelection(selection Selection, cursor Cursor) (Selection, bool) {
@@ -17,7 +29,7 @@ func (v *diffView) ExtendSelection(selection Selection, cursor Cursor) (Selectio
 	}
 	first := v.rows[selection.First.Coordinate.Y]
 	last := v.rows[cursor.Coordinate.Y]
-	if first.file != last.file || first.hunk != last.hunk {
+	if first.fileIndex != last.fileIndex || first.hunkIndex != last.hunkIndex {
 		return selection, false
 	}
 	selection.Last = cursor
@@ -25,6 +37,18 @@ func (v *diffView) ExtendSelection(selection Selection, cursor Cursor) (Selectio
 }
 
 func (v *diffView) Lines(selection Selection) []patch.Line {
+	lines := make([]patch.Line, 0)
+	for _, cursor := range v.selectionCursors(selection) {
+		line, ok := v.Line(cursor)
+		if !ok || (len(lines) > 0 && lines[len(lines)-1] == line) {
+			continue
+		}
+		lines = append(lines, line)
+	}
+	return lines
+}
+
+func (v *diffView) selectionCursors(selection Selection) []Cursor {
 	if _, ok := v.ExtendSelection(selection, selection.Last); !ok {
 		return nil
 	}
@@ -32,99 +56,51 @@ func (v *diffView) Lines(selection Selection) []patch.Line {
 	if first > last {
 		first, last = last, first
 	}
-	lines := make([]patch.Line, 0, last-first+1)
 	if first == last && selection.First.Pane != selection.Last.Pane {
-		current := v.rows[first]
-		indices := []int{v.lineIndex(current, selection.First.Pane), v.lineIndex(current, selection.Last.Pane)}
-		for _, index := range indices {
-			if index >= 0 && (len(lines) == 0 || lines[len(lines)-1] != v.patch.Files[current.file].Hunks[current.hunk].Lines[index]) {
-				lines = append(lines, v.patch.Files[current.file].Hunks[current.hunk].Lines[index])
-			}
-		}
-		return lines
+		return []Cursor{selection.First, selection.Last}
 	}
+	cursors := make([]Cursor, 0, last-first+1)
 	for y := first; y <= last; y++ {
 		pane := selection.First.Pane
 		if y == selection.Last.Coordinate.Y {
 			pane = selection.Last.Pane
 		}
-		if line, ok := v.Line(Cursor{Coordinate: Coordinate{Y: y}, Pane: pane}); ok {
-			lines = append(lines, line)
+		cursor := Cursor{Coordinate: Coordinate{Y: y}, Pane: pane}
+		if v.valid(cursor) {
+			cursors = append(cursors, cursor)
 		}
 	}
-	return lines
-}
-
-func (v *diffView) Anchor(selection Selection) (review.Anchor, error) {
-	lines := v.Lines(selection)
-	if len(lines) == 0 {
-		return review.Anchor{}, fmt.Errorf("select code lines before commenting")
-	}
-	first := v.rows[selection.First.Coordinate.Y]
-	file := v.patch.Files[first.file]
-	hunk := file.Hunks[first.hunk]
-	anchor := review.Anchor{FilePath: file.Path()}
-	start, end := selection.First.Coordinate.Y, selection.Last.Coordinate.Y
-	if start > end {
-		start, end = end, start
-	}
-	for y := start; y <= end; y++ {
-		panes := []Pane{selection.First.Pane}
-		if start == end && selection.First.Pane != selection.Last.Pane {
-			panes = append(panes, selection.Last.Pane)
-		} else if y == selection.Last.Coordinate.Y {
-			panes[0] = selection.Last.Pane
-		}
-		for _, pane := range panes {
-			index := v.lineIndex(v.rows[y], pane)
-			if index < 0 {
-				continue
-			}
-			line := hunk.Lines[index]
-			prefix := " "
-			if line.Kind == patch.Addition {
-				prefix = "+"
-			}
-			if line.Kind == patch.Deletion {
-				prefix = "-"
-			}
-			anchor.QuotedLines = append(anchor.QuotedLines, prefix+line.Text)
-			accumulateRange(&anchor.OldStart, &anchor.OldEnd, int(line.OldNumber))
-			accumulateRange(&anchor.NewStart, &anchor.NewEnd, int(line.NewNumber))
-		}
-	}
-	return anchor, nil
+	return cursors
 }
 
 func (v *diffView) File(cursor Cursor) (patch.File, bool) {
-	if !v.valid(cursor) {
+	current, ok := v.rowAt(cursor)
+	if !ok {
 		return patch.File{}, false
 	}
-	return v.patch.Files[v.rows[cursor.Coordinate.Y].file], true
+	return v.patch.Files[current.fileIndex], true
 }
 
 func (v *diffView) Hunk(cursor Cursor) (patch.Hunk, bool) {
-	if !v.valid(cursor) {
+	current, ok := v.rowAt(cursor)
+	if !ok {
 		return patch.Hunk{}, false
 	}
-	current := v.rows[cursor.Coordinate.Y]
-	return v.patch.Files[current.file].Hunks[current.hunk], true
+	return v.patch.Files[current.fileIndex].Hunks[current.hunkIndex], true
 }
 
 func (v *diffView) Line(cursor Cursor) (patch.Line, bool) {
-	if !v.valid(cursor) {
+	current, ok := v.rowAt(cursor)
+	if !ok {
 		return patch.Line{}, false
 	}
-	current := v.rows[cursor.Coordinate.Y]
-	return v.patch.Files[current.file].Hunks[current.hunk].Lines[v.lineIndex(current, cursor.Pane)], true
+	return v.patch.Files[current.fileIndex].Hunks[current.hunkIndex].Lines[v.lineIndex(current, cursor.Pane)], true
 }
 
 func (v *diffView) FindCursor(file patch.File, hunk patch.Hunk, line patch.Line, nearby Coordinate, pane Pane) (Cursor, bool) {
-	candidates := make([]Cursor, 0)
-	fallbacks := make([]Cursor, 0)
-	nearbyCandidates := make([]Cursor, 0)
-	for y, current := range v.rows {
-		if current.file < 0 || !sameFile(v.patch.Files[current.file], file) || current.hunk < 0 || v.patch.Files[current.file].Hunks[current.hunk].Header != hunk.Header {
+	var sameText, sameKind, anyLine []Cursor
+	for y, row := range v.rows {
+		if !v.rowBelongsToHunk(row, file, hunk) {
 			continue
 		}
 		for _, candidatePane := range []Pane{pane, pane.Other()} {
@@ -132,34 +108,64 @@ func (v *diffView) FindCursor(file patch.File, hunk patch.Hunk, line patch.Line,
 			if !ok {
 				continue
 			}
-			candidateLine, _ := v.Line(candidate)
-			if candidateLine.Kind == line.Kind && candidateLine.OldNumber == line.OldNumber && candidateLine.NewNumber == line.NewNumber {
+			candidateLine, ok := v.Line(candidate)
+			if !ok {
+				continue
+			}
+			if sameLinePosition(candidateLine, line) {
 				return candidate, true
 			}
 			if candidateLine.Kind == line.Kind && candidateLine.Text == line.Text {
-				candidates = append(candidates, candidate)
+				sameText = append(sameText, candidate)
 			}
 			if candidateLine.Kind == line.Kind {
-				fallbacks = append(fallbacks, candidate)
+				sameKind = append(sameKind, candidate)
 			}
-			nearbyCandidates = append(nearbyCandidates, candidate)
+			anyLine = append(anyLine, candidate)
 		}
 	}
-	if len(candidates) > 0 {
-		return closest(candidates, nearby), true
-	}
-	if len(fallbacks) > 0 {
-		return closest(fallbacks, nearby), true
-	}
-	if len(nearbyCandidates) > 0 {
-		return closest(nearbyCandidates, nearby), true
+	for _, matches := range [][]Cursor{sameText, sameKind, anyLine} {
+		if len(matches) > 0 {
+			return closest(matches, nearby), true
+		}
 	}
 	return Cursor{}, false
 }
 
+func (v *diffView) rowBelongsToHunk(current row, file patch.File, hunk patch.Hunk) bool {
+	if current.fileIndex < 0 || current.fileIndex >= len(v.patch.Files) || !sameFile(v.patch.Files[current.fileIndex], file) {
+		return false
+	}
+	if current.hunkIndex < 0 || current.hunkIndex >= len(v.patch.Files[current.fileIndex].Hunks) {
+		return false
+	}
+	return v.patch.Files[current.fileIndex].Hunks[current.hunkIndex].Header == hunk.Header
+}
+
+func (v *diffView) rowAt(cursor Cursor) (row, bool) {
+	if cursor.Coordinate.Y < 0 || cursor.Coordinate.Y >= len(v.rows) {
+		return row{}, false
+	}
+	current := v.rows[cursor.Coordinate.Y]
+	if v.lineIndex(current, cursor.Pane) < 0 {
+		return row{}, false
+	}
+	return current, true
+}
+
+func sameLinePosition(first, second patch.Line) bool {
+	return first.Kind == second.Kind && first.OldNumber == second.OldNumber && first.NewNumber == second.NewNumber
+}
+
 func sameFile(candidate, target patch.File) bool {
-	return candidate.OldPath != "" && candidate.OldPath == target.OldPath ||
-		candidate.NewPath != "" && candidate.NewPath == target.NewPath
+	if candidate.OldPath != "" && candidate.OldPath == target.OldPath {
+		return true
+	}
+	return candidate.NewPath != "" && candidate.NewPath == target.NewPath
+}
+
+func sameFilePath(first, second patch.File) bool {
+	return first.OldPath == second.OldPath && first.NewPath == second.NewPath
 }
 
 func closest(candidates []Cursor, nearby Coordinate) Cursor {
@@ -172,18 +178,6 @@ func closest(candidates []Cursor, nearby Coordinate) Cursor {
 	return best
 }
 
-func accumulateRange(start, end *int, value int) {
-	if value == 0 {
-		return
-	}
-	if *start == 0 || value < *start {
-		*start = value
-	}
-	if value > *end {
-		*end = value
-	}
-}
-
 func abs(value int) int {
 	if value < 0 {
 		return -value
@@ -191,7 +185,7 @@ func abs(value int) int {
 	return value
 }
 
-func highlightedLine(lines []string, number patch.LineNumber, fallback string) string {
+func highlightedSourceLine(lines []string, number patch.LineNumber, fallback string) string {
 	if number <= 0 || int(number) > len(lines) {
 		return fallback
 	}

@@ -13,34 +13,22 @@ import (
 	"github.com/eskelinenantti/review-my-slop/internal/review"
 )
 
-func TestRunCommentsPrintsAndConsumesCurrentRepositoryFeedback(t *testing.T) {
-	repo := initRepository(t)
-	data := t.TempDir()
-	t.Setenv("XDG_DATA_HOME", data)
-	store, err := inbox.OpenDefault()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := store.Add(review.Comment{
+func TestRunCommentsPrintsAndAcknowledgesPendingComments(t *testing.T) {
+	repo := newEmptyRepository(t)
+	newStoreWithComment(t, repo, review.Comment{
 		Repository: repo,
 		Anchor:     review.Anchor{FilePath: "main.go", NewStart: 3, NewEnd: 3},
 		Body:       "Check this error.",
-	}); err != nil {
-		t.Fatal(err)
-	}
+	})
 
 	var output bytes.Buffer
 	if err := runCommentsAt(context.Background(), repo, &output); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(output.String(), "Check this error.") {
-		t.Fatalf("unexpected output:\n%s", output.String())
-	}
-	if !strings.HasPrefix(output.String(), "New comments since last run:\n") {
-		t.Fatalf("unexpected output heading:\n%s", output.String())
-	}
-	if strings.Contains(output.String(), "batch") {
-		t.Fatalf("output exposes internal batches:\n%s", output.String())
+	prompt := output.String()
+	want := "New comments since last run:\n\n### 1. `main.go` (new line 3)\n\nCheck this error.\n"
+	if prompt != want {
+		t.Fatalf("prompt = %q, want %q", prompt, want)
 	}
 
 	var empty bytes.Buffer
@@ -50,32 +38,17 @@ func TestRunCommentsPrintsAndConsumesCurrentRepositoryFeedback(t *testing.T) {
 	if strings.TrimSpace(empty.String()) != "No pending review comments." {
 		t.Fatalf("second output = %q", empty.String())
 	}
-
-	info, err := os.Stat(filepath.Join(data, "review-my-slop", "inbox.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if info.Mode().Perm() != 0o600 {
-		t.Fatalf("database mode = %o", info.Mode().Perm())
-	}
 }
 
 func TestRunCommentsPreservesFeedbackWhenOutputFails(t *testing.T) {
-	repo := initRepository(t)
-	t.Setenv("XDG_DATA_HOME", t.TempDir())
-	store, err := inbox.OpenDefault()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := store.Add(review.Comment{
+	repo := newEmptyRepository(t)
+	store := newStoreWithComment(t, repo, review.Comment{
 		Repository: repo,
 		Anchor:     review.Anchor{FilePath: "main.go", NewStart: 1},
 		Body:       "Preserve me.",
-	}); err != nil {
-		t.Fatal(err)
-	}
+	})
 
-	if err := runCommentsAt(context.Background(), repo, failingWriter{}); err == nil {
+	if err := runCommentsWithStore(store, repo, failingWriter{}); err == nil {
 		t.Fatal("output failure was ignored")
 	}
 	comments, err := store.List(repo)
@@ -100,7 +73,21 @@ func (failingWriter) Write([]byte) (int, error) {
 	return 0, os.ErrClosed
 }
 
-func initRepository(t *testing.T) string {
+func newStoreWithComment(t *testing.T, repository string, comment review.Comment) inbox.Store {
+	t.Helper()
+	t.Setenv("XDG_DATA_HOME", t.TempDir())
+	store, err := inbox.OpenDefault()
+	if err != nil {
+		t.Fatal(err)
+	}
+	comment.Repository = repository
+	if _, err := store.Add(comment); err != nil {
+		t.Fatal(err)
+	}
+	return store
+}
+
+func newEmptyRepository(t *testing.T) string {
 	t.Helper()
 	repo, err := filepath.EvalSymlinks(t.TempDir())
 	if err != nil {

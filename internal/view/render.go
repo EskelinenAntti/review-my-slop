@@ -17,7 +17,7 @@ func (v *diffView) Render(viewport Viewport, cursor Cursor, selection *Selection
 	lines := make([]string, 0, viewport.Height)
 	if v.hasStickyHeader(viewport.Top, viewport.Height) {
 		current := v.rows[viewport.Top.Y]
-		lines = append(lines, v.renderFileRow(v.patch.Files[current.file].DisplayPath, viewport.Width))
+		lines = append(lines, v.renderFileRow(v.patch.Files[current.fileIndex].DisplayPath, viewport.Width))
 	}
 	end := min(len(v.rows), viewport.Top.Y+v.contentHeight(viewport))
 	for y := viewport.Top.Y; y < end; y++ {
@@ -34,8 +34,8 @@ func (v *diffView) Render(viewport Viewport, cursor Cursor, selection *Selection
 	return strings.Join(lines, "\n")
 }
 
-func (v *diffView) renderUnifiedRow(current entry, y int, viewport Viewport, cursor Cursor, selection *Selection) string {
-	width := max(20, viewport.Width)
+func (v *diffView) renderUnifiedRow(current row, y int, viewport Viewport, cursor Cursor, selection *Selection) string {
+	width := max(minimumDiffWidth, viewport.Width)
 	switch current.kind {
 	case fileRow:
 		return v.renderFileRow(current.text, width)
@@ -44,7 +44,7 @@ func (v *diffView) renderUnifiedRow(current entry, y int, viewport Viewport, cur
 	case hunkRow:
 		return hunkStyle.Render(current.text)
 	case lineRow:
-		line := v.patch.Files[current.file].Hunks[current.hunk].Lines[current.rightLine]
+		line := v.patch.Files[current.fileIndex].Hunks[current.hunkIndex].Lines[current.rightIndex]
 		prefix := " "
 		if line.Kind == patch.Addition {
 			prefix = addedStyle.Render("+")
@@ -54,42 +54,35 @@ func (v *diffView) renderUnifiedRow(current entry, y int, viewport Viewport, cur
 		}
 		gutter := fmt.Sprintf("%5s %5s %s ", number(line.OldNumber), number(line.NewNumber), prefix)
 		value := gutter + fitANSIWindow(current.text, viewport.LeftColumn, width-lipgloss.Width(gutter))
-		style := lineStyle(line.Kind, v.dark)
-		strip := false
 		candidate := Cursor{Coordinate: Coordinate{Y: y}, Pane: cursor.Pane}
-		if selected(selection, candidate) {
-			style, strip = selectionRowStyle(v.dark), true
-		}
-		if cursor.Coordinate.Y == y {
-			style, strip = cursorStyle, true
-		}
+		style, strip := v.rowStyle(line.Kind, candidate, cursor, selection)
 		return renderStyledRow(style, value, width, strip)
 	}
 	return ""
 }
 
 func (v *diffView) renderFileRow(path string, width int) string {
-	return fileStyle.Width(max(20, width)).Render(path)
+	return fileStyle.Width(max(minimumDiffWidth, width)).Render(path)
 }
 
-func (v *diffView) renderSplitRow(current entry, y int, viewport Viewport, cursor Cursor, selection *Selection) string {
-	leftWidth := max(20, (viewport.Width-3)/2)
-	rightWidth := max(20, viewport.Width-3-leftWidth)
+func (v *diffView) renderSplitRow(current row, y int, viewport Viewport, cursor Cursor, selection *Selection) string {
+	leftWidth := max(minimumDiffWidth, (viewport.Width-splitDividerWidth)/2)
+	rightWidth := max(minimumDiffWidth, viewport.Width-splitDividerWidth-leftWidth)
 	left := v.renderPane(current, y, Left, leftWidth, viewport.LeftColumn, cursor, selection)
 	right := v.renderPane(current, y, Right, rightWidth, viewport.LeftColumn, cursor, selection)
 	return left + " │ " + right
 }
 
-func (v *diffView) renderPane(current entry, y int, pane Pane, width, offset int, cursor Cursor, selection *Selection) string {
+func (v *diffView) renderPane(current row, y int, pane Pane, width, offset int, cursor Cursor, selection *Selection) string {
 	index := v.lineIndex(current, pane)
 	if index < 0 {
 		return strings.Repeat(" ", width)
 	}
-	line := v.patch.Files[current.file].Hunks[current.hunk].Lines[index]
-	text := current.right
+	line := v.patch.Files[current.fileIndex].Hunks[current.hunkIndex].Lines[index]
+	text := current.rightText
 	numberValue := line.NewNumber
 	if pane == Left {
-		text, numberValue = current.left, line.OldNumber
+		text, numberValue = current.leftText, line.OldNumber
 	}
 	prefix := "  "
 	if line.Kind == patch.Addition {
@@ -100,37 +93,25 @@ func (v *diffView) renderPane(current entry, y int, pane Pane, width, offset int
 	}
 	gutter := fmt.Sprintf("%5s ", number(numberValue))
 	value := gutter + fitANSIWindow(prefix+text, offset, width-lipgloss.Width(gutter))
-	style := lineStyle(line.Kind, v.dark)
-	strip := false
 	candidate := Cursor{Coordinate: Coordinate{Y: y}, Pane: pane}
-	if selected(selection, candidate) {
-		style, strip = selectionRowStyle(v.dark), true
-	}
-	if cursor == candidate {
-		style, strip = cursorStyle, true
-	}
+	style, strip := v.rowStyle(line.Kind, candidate, cursor, selection)
 	return renderStyledRow(style, value, width, strip)
 }
 
-func selected(selection *Selection, cursor Cursor) bool {
-	if selection == nil {
-		return false
+func (v *diffView) rowStyle(kind patch.LineKind, candidate, cursor Cursor, selection *Selection) (lipgloss.Style, bool) {
+	style := lineStyle(kind, v.darkBackground)
+	isSelected := isSelected(selection, candidate)
+	if isSelected {
+		style = selectionRowStyle(v.darkBackground)
 	}
-	first, last := selection.First.Coordinate.Y, selection.Last.Coordinate.Y
-	if first == last && selection.First.Pane != selection.Last.Pane {
-		return cursor.Coordinate.Y == first && (cursor.Pane == selection.First.Pane || cursor.Pane == selection.Last.Pane)
+	if cursor == candidate {
+		return cursorStyle, true
 	}
-	if selection.First.Pane != cursor.Pane {
-		return false
-	}
-	if first > last {
-		first, last = last, first
-	}
-	return cursor.Coordinate.Y >= first && cursor.Coordinate.Y <= last
+	return style, isSelected
 }
 
-func lineStyle(kind patch.LineKind, dark bool) lipgloss.Style {
-	lightDark := lipgloss.LightDark(dark)
+func lineStyle(kind patch.LineKind, darkBackground bool) lipgloss.Style {
+	lightDark := lipgloss.LightDark(darkBackground)
 	switch kind {
 	case patch.Addition:
 		return lipgloss.NewStyle().Background(lightDark(lipgloss.Color("#dafbe1"), lipgloss.Color("#1b3823")))
@@ -141,8 +122,8 @@ func lineStyle(kind patch.LineKind, dark bool) lipgloss.Style {
 	}
 }
 
-func selectionRowStyle(dark bool) lipgloss.Style {
-	return lipgloss.NewStyle().Background(lipgloss.LightDark(dark)(lipgloss.Color("#dbeafe"), lipgloss.Color("#1e3a5f")))
+func selectionRowStyle(darkBackground bool) lipgloss.Style {
+	return lipgloss.NewStyle().Background(lipgloss.LightDark(darkBackground)(lipgloss.Color("#dbeafe"), lipgloss.Color("#1e3a5f")))
 }
 
 func number(value patch.LineNumber) string {
@@ -152,10 +133,12 @@ func number(value patch.LineNumber) string {
 	return strconv.Itoa(int(value))
 }
 
-func renderStyledRow(style lipgloss.Style, value string, width int, stripForeground bool) string {
-	value = filterANSIColors(value, stripForeground)
+func renderStyledRow(style lipgloss.Style, value string, width int, removeForeground bool) string {
+	value = stripANSIColors(value, removeForeground)
 	fitted := fitANSIWindow(value, 0, width)
-	prefix := stylePrefix(style)
+	// Syntax highlighting emits resets that would otherwise remove the row's
+	// selection or cursor style in the middle of a line.
+	prefix := openingStyleSequence(style)
 	if prefix != "" {
 		fitted = strings.ReplaceAll(fitted, "\x1b[0m", "\x1b[0m"+prefix)
 		fitted = strings.ReplaceAll(fitted, "\x1b[m", "\x1b[m"+prefix)
@@ -163,7 +146,23 @@ func renderStyledRow(style lipgloss.Style, value string, width int, stripForegro
 	return style.Render(fitted)
 }
 
-func filterANSIColors(value string, stripForeground bool) string {
+const (
+	minimumDiffWidth     = 20
+	ansiForegroundCode   = 38
+	ansiBackgroundCode   = 48
+	ansiTrueColor        = "2"
+	ansiIndexedColor     = "5"
+	standardForegroundLo = 30
+	standardForegroundHi = 39
+	brightForegroundLo   = 90
+	brightForegroundHi   = 97
+	standardBackgroundLo = 40
+	standardBackgroundHi = 49
+	brightBackgroundLo   = 100
+	brightBackgroundHi   = 107
+)
+
+func stripANSIColors(value string, removeForeground bool) string {
 	return ansiSGRPattern.ReplaceAllStringFunc(value, func(sequence string) string {
 		parameters := sequence[2 : len(sequence)-1]
 		if parameters == "" {
@@ -178,18 +177,9 @@ func filterANSIColors(value string, stripForeground bool) string {
 				continue
 			}
 			switch {
-			case code == 48 || stripForeground && code == 38:
-				if index+1 < len(parts) {
-					mode := parts[index+1]
-					if mode == "2" {
-						index = min(index+4, len(parts)-1)
-					}
-					if mode == "5" {
-						index = min(index+2, len(parts)-1)
-					}
-				}
-			case code >= 40 && code <= 49, code >= 100 && code <= 107,
-				stripForeground && code >= 30 && code <= 39, stripForeground && code >= 90 && code <= 97:
+			case code == ansiBackgroundCode || removeForeground && code == ansiForegroundCode:
+				index = skipColorArguments(parts, index)
+			case isBackgroundColor(code), removeForeground && isForegroundColor(code):
 			default:
 				filtered = append(filtered, parts[index])
 			}
@@ -199,6 +189,32 @@ func filterANSIColors(value string, stripForeground bool) string {
 		}
 		return "\x1b[" + strings.Join(filtered, ";") + "m"
 	})
+}
+
+func skipColorArguments(parts []string, index int) int {
+	if index+1 >= len(parts) {
+		return index
+	}
+	switch parts[index+1] {
+	case ansiTrueColor:
+		return skipColorComponents(index, len(parts), 3)
+	case ansiIndexedColor:
+		return skipColorComponents(index, len(parts), 1)
+	default:
+		return index
+	}
+}
+
+func skipColorComponents(index, partCount, componentCount int) int {
+	return min(index+1+componentCount, partCount-1)
+}
+
+func isBackgroundColor(code int) bool {
+	return code >= standardBackgroundLo && code <= standardBackgroundHi || code >= brightBackgroundLo && code <= brightBackgroundHi
+}
+
+func isForegroundColor(code int) bool {
+	return code >= standardForegroundLo && code <= standardForegroundHi || code >= brightForegroundLo && code <= brightForegroundHi
 }
 
 func fitANSIWindow(value string, offset, width int) string {
@@ -218,7 +234,9 @@ func fitANSIWindow(value string, offset, width int) string {
 
 func expandTabs(value string) string { return strings.ReplaceAll(value, "\t", "    ") }
 
-func stylePrefix(style lipgloss.Style) string {
+func openingStyleSequence(style lipgloss.Style) string {
+	// Rendering a marker is the only stable way to ask lipgloss for the style's
+	// opening ANSI sequence; the marker itself is removed immediately.
 	const marker = "\x00"
 	rendered := style.Render(marker)
 	index := strings.Index(rendered, marker)

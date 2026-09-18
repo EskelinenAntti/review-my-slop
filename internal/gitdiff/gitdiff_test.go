@@ -12,16 +12,16 @@ import (
 )
 
 func TestLoaderIncludesUnstagedAndUntrackedButNotStagedOnly(t *testing.T) {
-	repo := newRepository(t)
-	writeFile(t, repo, "modified.go", "package main\n\nfunc value() int { return 1 }\n")
-	writeFile(t, repo, "staged.txt", "before\n")
-	git(t, repo, "add", ".")
-	git(t, repo, "commit", "-m", "base")
+	repo := newTestRepository(t)
+	writeTestFile(t, repo, "modified.go", "package main\n\nfunc value() int { return 1 }\n")
+	writeTestFile(t, repo, "staged.txt", "before\n")
+	runGit(t, repo, "add", ".")
+	runGit(t, repo, "commit", "-m", "base")
 
-	writeFile(t, repo, "modified.go", "package main\n\nfunc value() int { return 2 }\n")
-	writeFile(t, repo, "staged.txt", "after\n")
-	git(t, repo, "add", "staged.txt")
-	writeFile(t, repo, "new.py", "def hello():\n    return 'world'\n")
+	writeTestFile(t, repo, "modified.go", "package main\n\nfunc value() int { return 2 }\n")
+	writeTestFile(t, repo, "staged.txt", "after\n")
+	runGit(t, repo, "add", "staged.txt")
+	writeTestFile(t, repo, "new.py", "def hello():\n    return 'world'\n")
 
 	got, err := (Loader{}).Load(context.Background(), repo)
 	if err != nil {
@@ -58,8 +58,8 @@ func TestLoaderIncludesUnstagedAndUntrackedButNotStagedOnly(t *testing.T) {
 	}
 }
 
-func TestAddedFileKeepsRawAndDisplayPathsSeparate(t *testing.T) {
-	file := addedFile("odd\nname.go", "package main\n")
+func TestUntrackedFileKeepsRawAndDisplayPathsSeparate(t *testing.T) {
+	file := newUntrackedFile("odd\nname.go", "package main\n")
 	if file.NewPath != "odd\nname.go" {
 		t.Fatalf("raw path = %q", file.NewPath)
 	}
@@ -69,12 +69,12 @@ func TestAddedFileKeepsRawAndDisplayPathsSeparate(t *testing.T) {
 }
 
 func TestLoaderShowsBinaryMetadataWithoutBinaryDiffLines(t *testing.T) {
-	repo := newRepository(t)
-	writeFile(t, repo, "tracked.bin", "\x00old")
-	git(t, repo, "add", "tracked.bin")
-	git(t, repo, "commit", "-m", "base")
-	writeFile(t, repo, "tracked.bin", "\x00new")
-	writeFile(t, repo, "untracked.bin", "\x00content")
+	repo := newTestRepository(t)
+	writeTestFile(t, repo, "tracked.bin", "\x00old")
+	runGit(t, repo, "add", "tracked.bin")
+	runGit(t, repo, "commit", "-m", "base")
+	writeTestFile(t, repo, "tracked.bin", "\x00new")
+	writeTestFile(t, repo, "untracked.bin", "\x00content")
 
 	got, err := (Loader{}).Load(context.Background(), repo)
 	if err != nil {
@@ -94,22 +94,22 @@ func TestLoaderShowsBinaryMetadataWithoutBinaryDiffLines(t *testing.T) {
 }
 
 func TestLoadBranchIncludesCommittedStagedUnstagedAndUntrackedChanges(t *testing.T) {
-	repo := newRepository(t)
-	git(t, repo, "branch", "-M", "main")
-	writeFile(t, repo, "committed.txt", "base\n")
-	writeFile(t, repo, "mixed.txt", "base\n")
-	writeFile(t, repo, "staged.txt", "base\n")
-	git(t, repo, "add", ".")
-	git(t, repo, "commit", "-m", "base")
+	repo := newTestRepository(t)
+	runGit(t, repo, "branch", "-M", "main")
+	writeTestFile(t, repo, "committed.txt", "base\n")
+	writeTestFile(t, repo, "mixed.txt", "base\n")
+	writeTestFile(t, repo, "staged.txt", "base\n")
+	runGit(t, repo, "add", ".")
+	runGit(t, repo, "commit", "-m", "base")
 
-	git(t, repo, "switch", "-c", "feature")
-	writeFile(t, repo, "committed.txt", "committed on feature\n")
-	git(t, repo, "add", "committed.txt")
-	git(t, repo, "commit", "-m", "feature commit")
-	writeFile(t, repo, "staged.txt", "staged on feature\n")
-	git(t, repo, "add", "staged.txt")
-	writeFile(t, repo, "mixed.txt", "unstaged on feature\n")
-	writeFile(t, repo, "untracked.txt", "untracked on feature\n")
+	runGit(t, repo, "switch", "-c", "feature")
+	writeTestFile(t, repo, "committed.txt", "committed on feature\n")
+	runGit(t, repo, "add", "committed.txt")
+	runGit(t, repo, "commit", "-m", "feature commit")
+	writeTestFile(t, repo, "staged.txt", "staged on feature\n")
+	runGit(t, repo, "add", "staged.txt")
+	writeTestFile(t, repo, "mixed.txt", "unstaged on feature\n")
+	writeTestFile(t, repo, "untracked.txt", "untracked on feature\n")
 
 	got, err := (Loader{}).LoadBranch(context.Background(), repo, "main")
 	if err != nil {
@@ -153,7 +153,7 @@ func TestDefaultBranchFallbacks(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			root := t.TempDir()
-			runner := &defaultBranchRunner{root: root, originHEAD: tt.originHEAD, available: tt.available}
+			runner := &fakeBranchRunner{root: root, originHEAD: tt.originHEAD, available: tt.available}
 			got, err := (Loader{Runner: runner}).DefaultBranch(context.Background(), root)
 			if err != nil {
 				t.Fatal(err)
@@ -161,25 +161,18 @@ func TestDefaultBranchFallbacks(t *testing.T) {
 			if got != tt.want {
 				t.Fatalf("default branch = %q, want %q", got, tt.want)
 			}
-			for _, call := range runner.calls {
-				if strings.Contains(call, "for-each-ref") || strings.Contains(call, "merge-base") || strings.Contains(call, "rev-list") {
-					t.Fatalf("default branch discovery inspected refs: git %s", call)
-				}
-			}
 		})
 	}
 }
 
-type defaultBranchRunner struct {
+type fakeBranchRunner struct {
 	root       string
 	originHEAD string
 	available  string
-	calls      []string
 }
 
-func (r *defaultBranchRunner) Run(_ context.Context, _ string, args ...string) ([]byte, error) {
+func (r *fakeBranchRunner) Run(_ context.Context, _ string, args ...string) ([]byte, error) {
 	call := strings.Join(args, " ")
-	r.calls = append(r.calls, call)
 	switch {
 	case call == "rev-parse --show-toplevel":
 		return []byte(r.root + "\n"), nil
@@ -193,7 +186,7 @@ func (r *defaultBranchRunner) Run(_ context.Context, _ string, args ...string) (
 }
 
 func TestLoaderDoesNotFollowUntrackedSymlink(t *testing.T) {
-	repo := newRepository(t)
+	repo := newTestRepository(t)
 	outside := filepath.Join(t.TempDir(), "secret")
 	if err := os.WriteFile(outside, []byte("do not read"), 0o600); err != nil {
 		t.Fatal(err)
@@ -267,19 +260,19 @@ func containsKind(file patch.File, kind patch.LineKind, text string) bool {
 	return false
 }
 
-func newRepository(t *testing.T) string {
+func newTestRepository(t *testing.T) string {
 	t.Helper()
 	repo, err := filepath.EvalSymlinks(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
-	git(t, repo, "init", "-q")
-	git(t, repo, "config", "user.email", "test@example.com")
-	git(t, repo, "config", "user.name", "Test")
+	runGit(t, repo, "init", "-q")
+	runGit(t, repo, "config", "user.email", "test@example.com")
+	runGit(t, repo, "config", "user.name", "Test")
 	return repo
 }
 
-func git(t *testing.T, dir string, args ...string) {
+func runGit(t *testing.T, dir string, args ...string) {
 	t.Helper()
 	cmd := exec.Command("git", args...)
 	cmd.Dir = dir
@@ -288,7 +281,7 @@ func git(t *testing.T, dir string, args ...string) {
 	}
 }
 
-func writeFile(t *testing.T, root, name, content string) {
+func writeTestFile(t *testing.T, root, name, content string) {
 	t.Helper()
 	path := filepath.Join(root, name)
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {

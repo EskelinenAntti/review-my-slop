@@ -16,112 +16,143 @@ const (
 	lineRow
 )
 
-type entry struct {
-	kind              rowKind
-	file, hunk        int
-	leftLine          int
-	rightLine         int
-	text, left, right string
+const (
+	unifiedGutterWidth = 14
+	splitDividerWidth  = 3
+	paneGutterWidth    = 6
+	splitExtraWidth    = 2
+)
+
+type row struct {
+	kind       rowKind
+	fileIndex  int
+	hunkIndex  int
+	leftIndex  int
+	rightIndex int
+	text       string
+	leftText   string
+	rightText  string
 }
 
 type diffView struct {
-	patch patch.Patch
-	rows  []entry
-	split bool
-	dark  bool
+	patch          patch.Patch
+	rows           []row
+	split          bool
+	darkBackground bool
 }
 
-func NewUnifiedView(p patch.Patch, dark bool) View {
-	v := &diffView{patch: p, dark: dark}
-	v.buildUnified()
+func NewUnifiedView(p patch.Patch, darkBackground bool) View {
+	v := &diffView{patch: p, darkBackground: darkBackground}
+	v.buildUnifiedRows()
 	return v
 }
 
-func NewSideBySideView(p patch.Patch, dark bool) View {
-	v := &diffView{patch: p, split: true, dark: dark}
-	v.buildSplit()
+func NewSideBySideView(p patch.Patch, darkBackground bool) View {
+	v := &diffView{patch: p, split: true, darkBackground: darkBackground}
+	v.buildSplitRows()
 	return v
 }
 
-func (v *diffView) buildUnified() {
+func (v *diffView) buildUnifiedRows() {
 	for fileIndex := range v.patch.Files {
-		file := &v.patch.Files[fileIndex]
-		v.rows = append(v.rows, entry{kind: fileRow, file: fileIndex, hunk: -1, leftLine: -1, rightLine: -1, text: file.DisplayPath})
-		for _, metadata := range file.Metadata {
-			v.rows = append(v.rows, entry{kind: metadataRow, file: fileIndex, hunk: -1, leftLine: -1, rightLine: -1, text: metadata})
-		}
-		highlighted := v.highlight(file)
-		for hunkIndex := range file.Hunks {
-			hunk := &file.Hunks[hunkIndex]
-			v.rows = append(v.rows, entry{kind: hunkRow, file: fileIndex, hunk: hunkIndex, leftLine: -1, rightLine: -1, text: hunkHeader(hunk.Header)})
+		v.appendFileRows(fileIndex, func(hunkIndex int, hunk *patch.Hunk, highlighted highlight.FileSources) {
 			for lineIndex, line := range hunk.Lines {
 				text := line.Text
 				if line.Kind == patch.Deletion {
-					text = highlightedLine(highlighted.Old, line.OldNumber, text)
+					text = highlightedSourceLine(highlighted.Old, line.OldNumber, text)
 				} else {
-					text = highlightedLine(highlighted.New, line.NewNumber, text)
+					text = highlightedSourceLine(highlighted.New, line.NewNumber, text)
 				}
-				v.rows = append(v.rows, entry{kind: lineRow, file: fileIndex, hunk: hunkIndex, leftLine: lineIndex, rightLine: lineIndex, text: text})
+				v.rows = append(v.rows, row{kind: lineRow, fileIndex: fileIndex, hunkIndex: hunkIndex, leftIndex: lineIndex, rightIndex: lineIndex, text: text})
 			}
-		}
+		})
 	}
 }
 
-func (v *diffView) buildSplit() {
+func (v *diffView) buildSplitRows() {
 	for fileIndex := range v.patch.Files {
-		file := &v.patch.Files[fileIndex]
-		v.rows = append(v.rows, entry{kind: fileRow, file: fileIndex, hunk: -1, leftLine: -1, rightLine: -1, text: file.DisplayPath})
-		for _, metadata := range file.Metadata {
-			v.rows = append(v.rows, entry{kind: metadataRow, file: fileIndex, hunk: -1, leftLine: -1, rightLine: -1, text: metadata})
-		}
-		highlighted := v.highlight(file)
-		for hunkIndex := range file.Hunks {
-			hunk := &file.Hunks[hunkIndex]
-			v.rows = append(v.rows, entry{kind: hunkRow, file: fileIndex, hunk: hunkIndex, leftLine: -1, rightLine: -1, text: hunkHeader(hunk.Header)})
-			for index := 0; index < len(hunk.Lines); {
-				line := hunk.Lines[index]
-				switch line.Kind {
-				case patch.Context:
-					text := highlightedLine(highlighted.New, line.NewNumber, line.Text)
-					v.rows = append(v.rows, entry{kind: lineRow, file: fileIndex, hunk: hunkIndex, leftLine: index, rightLine: index, left: text, right: text})
-					index++
-				case patch.Addition:
-					text := highlightedLine(highlighted.New, line.NewNumber, line.Text)
-					v.rows = append(v.rows, entry{kind: lineRow, file: fileIndex, hunk: hunkIndex, leftLine: -1, rightLine: index, right: text})
-					index++
-				case patch.Deletion:
-					removedStart := index
-					for index < len(hunk.Lines) && hunk.Lines[index].Kind == patch.Deletion {
-						index++
-					}
-					addedStart, addedEnd := index, index
-					for addedEnd < len(hunk.Lines) && hunk.Lines[addedEnd].Kind == patch.Addition {
-						addedEnd++
-					}
-					count := max(index-removedStart, addedEnd-addedStart)
-					for offset := 0; offset < count; offset++ {
-						current := entry{kind: lineRow, file: fileIndex, hunk: hunkIndex, leftLine: -1, rightLine: -1}
-						if removedStart+offset < index {
-							current.leftLine = removedStart + offset
-							old := hunk.Lines[current.leftLine]
-							current.left = highlightedLine(highlighted.Old, old.OldNumber, old.Text)
-						}
-						if addedStart+offset < addedEnd {
-							current.rightLine = addedStart + offset
-							added := hunk.Lines[current.rightLine]
-							current.right = highlightedLine(highlighted.New, added.NewNumber, added.Text)
-						}
-						v.rows = append(v.rows, current)
-					}
-					index = addedEnd
-				}
-			}
+		v.appendFileRows(fileIndex, func(hunkIndex int, hunk *patch.Hunk, highlighted highlight.FileSources) {
+			v.appendSplitHunk(fileIndex, hunkIndex, hunk, highlighted)
+		})
+	}
+}
+
+func (v *diffView) appendSplitHunk(fileIndex, hunkIndex int, hunk *patch.Hunk, highlighted highlight.FileSources) {
+	for index := 0; index < len(hunk.Lines); {
+		switch hunk.Lines[index].Kind {
+		case patch.Context:
+			v.appendSplitContext(fileIndex, hunkIndex, index, hunk.Lines[index], highlighted)
+			index++
+		case patch.Addition:
+			v.appendSplitAddition(fileIndex, hunkIndex, index, hunk.Lines[index], highlighted)
+			index++
+		case patch.Deletion:
+			index = v.appendSplitChangeBlock(fileIndex, hunkIndex, index, hunk, highlighted)
+		default:
+			index++
 		}
 	}
 }
 
-func (v *diffView) highlight(file *patch.File) highlight.Pair {
-	return highlight.Sources(file.Path(), file.OldSource, file.NewSource, v.dark)
+func (v *diffView) appendSplitContext(fileIndex, hunkIndex, lineIndex int, line patch.Line, highlighted highlight.FileSources) {
+	text := highlightedSourceLine(highlighted.New, line.NewNumber, line.Text)
+	v.rows = append(v.rows, row{
+		kind: lineRow, fileIndex: fileIndex, hunkIndex: hunkIndex,
+		leftIndex: lineIndex, rightIndex: lineIndex, leftText: text, rightText: text,
+	})
+}
+
+func (v *diffView) appendSplitAddition(fileIndex, hunkIndex, lineIndex int, line patch.Line, highlighted highlight.FileSources) {
+	text := highlightedSourceLine(highlighted.New, line.NewNumber, line.Text)
+	v.rows = append(v.rows, row{
+		kind: lineRow, fileIndex: fileIndex, hunkIndex: hunkIndex,
+		leftIndex: -1, rightIndex: lineIndex, rightText: text,
+	})
+}
+
+func (v *diffView) appendSplitChangeBlock(fileIndex, hunkIndex, start int, hunk *patch.Hunk, highlighted highlight.FileSources) int {
+	removedStart := start
+	removedEnd := start
+	for removedEnd < len(hunk.Lines) && hunk.Lines[removedEnd].Kind == patch.Deletion {
+		removedEnd++
+	}
+	addedStart, addedEnd := removedEnd, removedEnd
+	for addedEnd < len(hunk.Lines) && hunk.Lines[addedEnd].Kind == patch.Addition {
+		addedEnd++
+	}
+	for offset := 0; offset < max(removedEnd-removedStart, addedEnd-addedStart); offset++ {
+		current := row{kind: lineRow, fileIndex: fileIndex, hunkIndex: hunkIndex, leftIndex: -1, rightIndex: -1}
+		if removedStart+offset < removedEnd {
+			current.leftIndex = removedStart + offset
+			old := hunk.Lines[current.leftIndex]
+			current.leftText = highlightedSourceLine(highlighted.Old, old.OldNumber, old.Text)
+		}
+		if addedStart+offset < addedEnd {
+			current.rightIndex = addedStart + offset
+			added := hunk.Lines[current.rightIndex]
+			current.rightText = highlightedSourceLine(highlighted.New, added.NewNumber, added.Text)
+		}
+		v.rows = append(v.rows, current)
+	}
+	return addedEnd
+}
+
+func (v *diffView) appendFileRows(fileIndex int, appendHunk func(int, *patch.Hunk, highlight.FileSources)) {
+	file := &v.patch.Files[fileIndex]
+	v.rows = append(v.rows, row{kind: fileRow, fileIndex: fileIndex, hunkIndex: -1, leftIndex: -1, rightIndex: -1, text: file.DisplayPath})
+	for _, metadata := range file.Metadata {
+		v.rows = append(v.rows, row{kind: metadataRow, fileIndex: fileIndex, hunkIndex: -1, leftIndex: -1, rightIndex: -1, text: metadata})
+	}
+	highlighted := v.highlight(file)
+	for hunkIndex := range file.Hunks {
+		hunk := &file.Hunks[hunkIndex]
+		v.rows = append(v.rows, row{kind: hunkRow, fileIndex: fileIndex, hunkIndex: hunkIndex, leftIndex: -1, rightIndex: -1, text: hunkHeader(hunk.Header)})
+		appendHunk(hunkIndex, hunk, highlighted)
+	}
+}
+
+func (v *diffView) highlight(file *patch.File) highlight.FileSources {
+	return highlight.Highlight(file.Path(), file.OldSource, file.NewSource, v.darkBackground)
 }
 
 func hunkHeader(header string) string {

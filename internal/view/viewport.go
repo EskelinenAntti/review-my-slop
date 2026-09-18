@@ -5,6 +5,8 @@ import (
 	"github.com/charmbracelet/x/ansi"
 )
 
+const percentageScale = 100
+
 func (v *diffView) NewViewport(width, height int) Viewport {
 	return v.Resize(Viewport{}, width, height)
 }
@@ -15,13 +17,18 @@ func (v *diffView) Resize(viewport Viewport, width, height int) Viewport {
 }
 
 func (v *diffView) clampViewport(viewport Viewport) Viewport {
-	maxTop := max(0, len(v.rows)-viewport.Height)
-	if v.hasStickyHeader(Coordinate{Y: maxTop}, viewport.Height) {
-		maxTop++
-	}
-	viewport.Top.Y = max(0, min(viewport.Top.Y, maxTop))
+	viewport.Top.Y = max(0, min(viewport.Top.Y, v.maxViewportTop(viewport.Height)))
 	viewport.LeftColumn = max(0, min(viewport.LeftColumn, v.maxHorizontalOffset(viewport.Width)))
 	return viewport
+}
+
+func (v *diffView) maxViewportTop(height int) int {
+	maxTop := max(0, len(v.rows)-height)
+	if v.hasStickyHeader(Coordinate{Y: maxTop}, height) {
+		// Keep one extra row available so the final code line is not hidden.
+		return maxTop + 1
+	}
+	return maxTop
 }
 
 func (v *diffView) hasStickyHeader(top Coordinate, viewportHeight int) bool {
@@ -29,11 +36,14 @@ func (v *diffView) hasStickyHeader(top Coordinate, viewportHeight int) bool {
 }
 
 func (v *diffView) contentHeight(viewport Viewport) int {
-	height := viewport.Height
+	return max(1, viewport.Height-v.stickyHeaderHeight(viewport))
+}
+
+func (v *diffView) stickyHeaderHeight(viewport Viewport) int {
 	if v.hasStickyHeader(viewport.Top, viewport.Height) {
-		height--
+		return 1
 	}
-	return max(1, height)
+	return 0
 }
 
 func (v *diffView) KeepVisible(viewport Viewport, cursor Cursor) Viewport {
@@ -41,7 +51,8 @@ func (v *diffView) KeepVisible(viewport Viewport, cursor Cursor) Viewport {
 		return v.clampViewport(viewport)
 	}
 	viewport = v.clampViewport(viewport)
-	for range 2 {
+	for {
+		top := viewport.Top.Y
 		height := v.contentHeight(viewport)
 		if cursor.Coordinate.Y < viewport.Top.Y {
 			viewport.Top.Y = cursor.Coordinate.Y
@@ -50,21 +61,25 @@ func (v *diffView) KeepVisible(viewport Viewport, cursor Cursor) Viewport {
 			viewport.Top.Y = cursor.Coordinate.Y - height + 1
 		}
 		viewport = v.clampViewport(viewport)
+		if viewport.Top.Y == top {
+			return viewport
+		}
 	}
-	return viewport
 }
 
 func (v *diffView) Align(viewport Viewport, cursor Cursor, alignment VerticalAlignment) Viewport {
-	headerHeight := 0
-	if viewport.Height > 1 {
-		headerHeight = 1
-	}
-	offset := max(0, alignmentOffset(viewport.Height, alignment)-headerHeight)
-	viewport.Top.Y = cursor.Coordinate.Y - offset
-	if !v.hasStickyHeader(viewport.Top, viewport.Height) {
-		viewport.Top.Y = cursor.Coordinate.Y - alignmentOffset(viewport.Height, alignment)
-	}
+	viewport.Top.Y = v.alignedTop(cursor, viewport.Height, alignment)
 	return v.clampViewport(viewport)
+}
+
+func (v *diffView) alignedTop(cursor Cursor, height int, alignment VerticalAlignment) int {
+	offset := alignmentOffset(height, alignment)
+	// A sticky file header consumes the first visible row.
+	withHeader := cursor.Coordinate.Y - max(0, offset-1)
+	if v.hasStickyHeader(Coordinate{Y: withHeader}, height) {
+		return withHeader
+	}
+	return cursor.Coordinate.Y - offset
 }
 
 func alignmentOffset(height int, alignment VerticalAlignment) int {
@@ -101,7 +116,7 @@ func (v *diffView) ViewportProgress(viewport Viewport) int {
 		return 0
 	}
 	bottom := min(len(v.rows), viewport.Top.Y+v.contentHeight(viewport))
-	return bottom * 100 / len(v.rows)
+	return bottom * percentageScale / len(v.rows)
 }
 
 func (v *diffView) nearest(target int, pane Pane, direction Direction, viewport Viewport) (Cursor, bool) {
@@ -120,17 +135,24 @@ func (v *diffView) nearest(target int, pane Pane, direction Direction, viewport 
 }
 
 func (v *diffView) maxHorizontalOffset(width int) int {
-	contentWidth := max(1, width-14)
+	contentWidth := v.horizontalContentWidth(width)
 	extra := 0
 	if v.split {
-		contentWidth, extra = max(1, (width-3)/2-6), 2
+		extra = splitExtraWidth
 	}
 	longest := 0
 	for _, current := range v.rows {
 		if current.kind != lineRow {
 			continue
 		}
-		longest = max(longest, lipgloss.Width(expandTabs(ansi.Strip(current.text+current.left+current.right)))+extra)
+		longest = max(longest, lipgloss.Width(expandTabs(ansi.Strip(current.text+current.leftText+current.rightText)))+extra)
 	}
 	return max(0, longest-contentWidth)
+}
+
+func (v *diffView) horizontalContentWidth(width int) int {
+	if v.split {
+		return max(1, (width-splitDividerWidth)/2-paneGutterWidth)
+	}
+	return max(1, width-unifiedGutterWidth)
 }
