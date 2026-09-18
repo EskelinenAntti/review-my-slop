@@ -2,7 +2,6 @@ package view
 
 import (
 	"github.com/eskelinenantti/review-my-slop/internal/patch"
-	"github.com/eskelinenantti/review-my-slop/internal/review"
 )
 
 type Coordinate struct {
@@ -55,14 +54,16 @@ const (
 	Bottom
 )
 
-type View interface {
+type Navigator interface {
 	First() (Cursor, bool)
 	Last() (Cursor, bool)
 	Move(Cursor, Direction) (Cursor, bool)
 	Search(string, Cursor, Direction) (Cursor, bool)
 	JumpFile(Cursor, Direction) (Cursor, bool)
 	SwitchPane(Cursor, Pane) (Cursor, bool)
+}
 
+type ViewportManager interface {
 	NewViewport(width, height int) Viewport
 	Resize(Viewport, int, int) Viewport
 	KeepVisible(Viewport, Cursor) Viewport
@@ -70,16 +71,30 @@ type View interface {
 	ScrollHorizontal(Viewport, int) Viewport
 	ScrollHalfPage(Viewport, Cursor, Direction) (Viewport, Cursor)
 	ViewportProgress(Viewport) int
+}
 
+type SelectionManager interface {
 	BeginSelection(Cursor) Selection
 	ExtendSelection(Selection, Cursor) (Selection, bool)
 	Lines(Selection) []patch.Line
-	Anchor(Selection) (review.Anchor, error)
+}
 
+type PatchLookup interface {
 	File(Cursor) (patch.File, bool)
 	Hunk(Cursor) (patch.Hunk, bool)
 	Line(Cursor) (patch.Line, bool)
 
 	FindCursor(patch.File, patch.Hunk, patch.Line, Coordinate, Pane) (Cursor, bool)
+}
+
+type Renderer interface {
 	Render(Viewport, Cursor, *Selection) string
+}
+
+type View interface {
+	Navigator
+	ViewportManager
+	SelectionManager
+	PatchLookup
+	Renderer
 }

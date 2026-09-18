@@ -1,26 +1,24 @@
 package highlight
 
 import (
-	"bytes"
-	"io"
 	"strings"
 
 	"github.com/alecthomas/chroma/v2/quick"
 )
 
-type Pair struct {
+type FileSources struct {
 	Old []string
 	New []string
 }
 
-func Sources(filename, oldSource, newSource string, darkBackground bool) Pair {
-	return Pair{
-		Old: render(filename, oldSource, darkBackground),
-		New: render(filename, newSource, darkBackground),
+func Highlight(filename, oldSource, newSource string, darkBackground bool) FileSources {
+	return FileSources{
+		Old: highlightSource(filename, oldSource, darkBackground),
+		New: highlightSource(filename, newSource, darkBackground),
 	}
 }
 
-func render(filename, source string, darkBackground bool) []string {
+func highlightSource(filename, source string, darkBackground bool) []string {
 	if source == "" {
 		return nil
 	}
@@ -28,13 +26,13 @@ func render(filename, source string, darkBackground bool) []string {
 	if darkBackground {
 		theme = "catppuccin-mocha"
 	}
-	var buf bytes.Buffer
-	if err := quick.Highlight(&buf, source, filename, "terminal16m", theme); err != nil {
-		return strings.Split(strings.TrimSuffix(source, "\n"), "\n")
+	var rendered strings.Builder
+	if err := quick.Highlight(&rendered, source, filename, "terminal16m", theme); err != nil {
+		return sourceLines(source)
 	}
-	rendered, err := io.ReadAll(&buf)
-	if err != nil {
-		return strings.Split(strings.TrimSuffix(source, "\n"), "\n")
-	}
-	return strings.Split(strings.TrimSuffix(string(rendered), "\n"), "\n")
+	return sourceLines(rendered.String())
+}
+
+func sourceLines(source string) []string {
+	return strings.Split(strings.TrimSuffix(source, "\n"), "\n")
 }

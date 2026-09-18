@@ -5,72 +5,58 @@ import (
 	"testing"
 )
 
-func TestDirectoriesUseXDGEnvironment(t *testing.T) {
-	root := t.TempDir()
-	stateRoot := filepath.Join(root, "state")
-	dataRoot := filepath.Join(root, "data")
-	t.Setenv("XDG_STATE_HOME", stateRoot)
-	t.Setenv("XDG_DATA_HOME", dataRoot)
-
-	state, err := StateDir()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if want := filepath.Join(stateRoot, appName); state != want {
-		t.Fatalf("state directory = %q, want %q", state, want)
-	}
-
-	data, err := DataDir()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if want := filepath.Join(dataRoot, appName); data != want {
-		t.Fatalf("data directory = %q, want %q", data, want)
-	}
-}
-
-func TestDirectoriesFallBackToHome(t *testing.T) {
+func TestDirectoriesUseAbsoluteXDGPathsAndHomeFallbacks(t *testing.T) {
 	home := t.TempDir()
-	t.Setenv("HOME", home)
-	t.Setenv("XDG_STATE_HOME", "")
-	t.Setenv("XDG_DATA_HOME", "")
+	stateRoot := filepath.Join(home, "state")
+	dataRoot := filepath.Join(home, "data")
+	tests := []struct {
+		name      string
+		stateEnv  string
+		dataEnv   string
+		stateRoot string
+		dataRoot  string
+	}{
+		{
+			name:      "absolute XDG paths",
+			stateEnv:  stateRoot,
+			dataEnv:   dataRoot,
+			stateRoot: stateRoot,
+			dataRoot:  dataRoot,
+		},
+		{
+			name:      "empty XDG paths",
+			stateRoot: filepath.Join(home, stateHomeFallback),
+			dataRoot:  filepath.Join(home, dataHomeFallback),
+		},
+		{
+			name:      "relative XDG paths",
+			stateEnv:  "relative-state",
+			dataEnv:   "relative-data",
+			stateRoot: filepath.Join(home, stateHomeFallback),
+			dataRoot:  filepath.Join(home, dataHomeFallback),
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Setenv("HOME", home)
+			t.Setenv(stateHomeVariable, test.stateEnv)
+			t.Setenv(dataHomeVariable, test.dataEnv)
 
-	state, err := StateDir()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if want := filepath.Join(home, ".local", "state", appName); state != want {
-		t.Fatalf("state directory = %q, want %q", state, want)
-	}
+			state, err := StateDir()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if want := filepath.Join(test.stateRoot, appName); state != want {
+				t.Fatalf("state directory = %q, want %q", state, want)
+			}
 
-	data, err := DataDir()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if want := filepath.Join(home, ".local", "share", appName); data != want {
-		t.Fatalf("data directory = %q, want %q", data, want)
-	}
-}
-
-func TestRelativeXDGDirectoriesAreIgnored(t *testing.T) {
-	home := t.TempDir()
-	t.Setenv("HOME", home)
-	t.Setenv("XDG_STATE_HOME", "relative-state")
-	t.Setenv("XDG_DATA_HOME", "relative-data")
-
-	state, err := StateDir()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if want := filepath.Join(home, ".local", "state", appName); state != want {
-		t.Fatalf("state directory = %q, want %q", state, want)
-	}
-
-	data, err := DataDir()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if want := filepath.Join(home, ".local", "share", appName); data != want {
-		t.Fatalf("data directory = %q, want %q", data, want)
+			data, err := DataDir()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if want := filepath.Join(test.dataRoot, appName); data != want {
+				t.Fatalf("data directory = %q, want %q", data, want)
+			}
+		})
 	}
 }

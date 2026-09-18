@@ -13,7 +13,7 @@ import (
 	"github.com/eskelinenantti/review-my-slop/internal/review"
 )
 
-func TestStoreQueuesByRepositoryAndDeletesExactPeek(t *testing.T) {
+func TestStoreListsAndAcknowledgesByRepository(t *testing.T) {
 	store := Store{Path: filepath.Join(t.TempDir(), "state", "inbox.db")}
 	first := testComment("/repo/a", "first")
 	second := testComment("/repo/b", "other")
@@ -53,6 +53,13 @@ func TestStoreQueuesByRepositoryAndDeletesExactPeek(t *testing.T) {
 	if len(remainingB) != 1 {
 		t.Fatalf("other repository comments = %d, want 1", len(remainingB))
 	}
+}
+
+func TestStoreUsesSecurePermissions(t *testing.T) {
+	store := Store{Path: filepath.Join(t.TempDir(), "state", "inbox.db")}
+	if _, err := store.Add(testComment("/repo", "comment")); err != nil {
+		t.Fatal(err)
+	}
 
 	dirInfo, err := os.Stat(filepath.Dir(store.Path))
 	if err != nil {
@@ -80,20 +87,9 @@ func TestWritePrompt(t *testing.T) {
 	if err := WritePrompt(&out, []review.Comment{comment}); err != nil {
 		t.Fatal(err)
 	}
-	for _, expected := range []string{
-		"New comments since last run:",
-		"`main.go`",
-		"old lines 10-11",
-		"new lines 12-13",
-		"```diff",
-		"Handle the nil case.",
-	} {
-		if !strings.Contains(out.String(), expected) {
-			t.Fatalf("output lacks %q:\n%s", expected, out.String())
-		}
-	}
-	if strings.Contains(out.String(), "batch") {
-		t.Fatalf("output exposes internal batches:\n%s", out.String())
+	want := "New comments since last run:\n\n### 1. `main.go` (old lines 10-11, new lines 12-13)\n\n```diff\n-old()\n+new()\n```\nHandle the nil case.\n"
+	if got := out.String(); got != want {
+		t.Fatalf("output = %q, want %q", got, want)
 	}
 }
 
@@ -105,10 +101,9 @@ func TestWritePromptNumbersMessages(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	for _, expected := range []string{"### 1.", "### 2."} {
-		if !strings.Contains(out.String(), expected) {
-			t.Fatalf("output lacks %q:\n%s", expected, out.String())
-		}
+	want := "New comments since last run:\n\n### 1. `file.go` (new line 1)\n\nFirst.\n\n### 2. `file.go` (new line 1)\n\nSecond.\n"
+	if got := out.String(); got != want {
+		t.Fatalf("output = %q, want %q", got, want)
 	}
 }
 
@@ -193,11 +188,7 @@ func TestDeleteCommentRemovesMessage(t *testing.T) {
 func TestLegacyMessageCanBeReadAndUpdated(t *testing.T) {
 	store := Store{Path: filepath.Join(t.TempDir(), "inbox.db")}
 	legacy := []byte(`{"id":"legacy","repository":"/repo","created_at":"1970-01-01T00:00:01Z","diff_fingerprint":"unused","comment":{"anchor":{"file":"main.go","hunk":"@@","start_row":1,"end_row":2,"new_start":3,"quoted_lines":["+line"]},"body":"old"}}`)
-	if err := store.update(func(bucket *bolt.Bucket) error {
-		return bucket.Put([]byte{0, 0, 0, 1}, legacy)
-	}); err != nil {
-		t.Fatal(err)
-	}
+	seedRawMessage(t, store, legacy)
 
 	comments, err := store.List("/repo")
 	if err != nil {
@@ -222,34 +213,25 @@ func TestLegacyMessageCanBeReadAndUpdated(t *testing.T) {
 func TestSideBySidePreference(t *testing.T) {
 	store := Store{Path: filepath.Join(t.TempDir(), "inbox.db")}
 
-	enabled, err := store.SideBySide()
+	gotEnabled, err := store.SideBySideEnabled()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if enabled {
+	if gotEnabled {
 		t.Fatal("side-by-side defaults to enabled")
 	}
 
-	if err := store.SetSideBySide(true); err != nil {
-		t.Fatal(err)
-	}
-	enabled, err = store.SideBySide()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !enabled {
-		t.Fatal("side-by-side preference was not enabled")
-	}
-
-	if err := store.SetSideBySide(false); err != nil {
-		t.Fatal(err)
-	}
-	enabled, err = store.SideBySide()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if enabled {
-		t.Fatal("side-by-side preference was not disabled")
+	for _, want := range []bool{true, false} {
+		if err := store.SetSideBySide(want); err != nil {
+			t.Fatal(err)
+		}
+		gotEnabled, err = store.SideBySideEnabled()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if gotEnabled != want {
+			t.Fatalf("side-by-side preference = %v, want %v", gotEnabled, want)
+		}
 	}
 }
 
@@ -260,5 +242,27 @@ func testComment(repository, body string) review.Comment {
 		CreatedAt:  time.Unix(1, 0).UTC(),
 		Anchor:     review.Anchor{FilePath: "file.go", NewStart: 1, NewEnd: 1},
 		Body:       body,
+	}
+}
+
+func seedRawMessage(t *testing.T, store Store, value []byte) {
+	t.Helper()
+	directory := filepath.Dir(store.Path)
+	if err := os.MkdirAll(directory, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	db, err := bolt.Open(store.Path, 0o600, &bolt.Options{Timeout: time.Second})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if err := db.Update(func(tx *bolt.Tx) error {
+		bucket, err := tx.CreateBucketIfNotExists([]byte(messagesBucket))
+		if err != nil {
+			return err
+		}
+		return bucket.Put([]byte{0, 0, 0, 1}, value)
+	}); err != nil {
+		t.Fatal(err)
 	}
 }

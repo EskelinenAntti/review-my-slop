@@ -18,12 +18,7 @@ import (
 )
 
 func TestCommandStartsAndQuitsInPTY(t *testing.T) {
-	binary := filepath.Join(t.TempDir(), "review-my-slop")
-	build := exec.Command("go", "build", "-o", binary, ".")
-	build.Dir = "."
-	if output, err := build.CombinedOutput(); err != nil {
-		t.Fatalf("build command: %v\n%s", err, output)
-	}
+	binary := buildBinary(t)
 
 	for _, test := range []struct {
 		name string
@@ -36,6 +31,17 @@ func TestCommandStartsAndQuitsInPTY(t *testing.T) {
 			testCommandStartsAndQuitsInPTY(t, binary, test.args)
 		})
 	}
+}
+
+func buildBinary(t *testing.T) string {
+	t.Helper()
+	binary := filepath.Join(t.TempDir(), "review-my-slop")
+	build := exec.Command("go", "build", "-o", binary, ".")
+	build.Dir = "."
+	if output, err := build.CombinedOutput(); err != nil {
+		t.Fatalf("build command: %v\n%s", err, output)
+	}
+	return binary
 }
 
 func testCommandStartsAndQuitsInPTY(t *testing.T, binary string, args []string) {
@@ -64,18 +70,14 @@ func testCommandStartsAndQuitsInPTY(t *testing.T, binary string, args []string) 
 	}
 	defer terminal.Close()
 
-	var output lockedBuffer
+	var output terminalOutput
 	readDone := make(chan error, 1)
 	go func() {
 		_, readErr := io.Copy(&output, terminal)
 		readDone <- readErr
 	}()
 
-	deadline := time.Now().Add(5 * time.Second)
-	for !strings.Contains(output.String(), "review-my-slop") && time.Now().Before(deadline) {
-		time.Sleep(20 * time.Millisecond)
-	}
-	if !strings.Contains(output.String(), "main.go") {
+	if !waitForOutput(&output, "main.go", 5*time.Second) {
 		t.Fatalf("TUI did not render untracked file:\n%s", output.String())
 	}
 	if _, err := terminal.Write([]byte("q")); err != nil {
@@ -91,21 +93,38 @@ func testCommandStartsAndQuitsInPTY(t *testing.T, binary string, args []string) 
 	}
 }
 
-type lockedBuffer struct {
+type terminalOutput struct {
 	mu     sync.Mutex
 	buffer bytes.Buffer
 }
 
-func (b *lockedBuffer) Write(data []byte) (int, error) {
+func (b *terminalOutput) Write(data []byte) (int, error) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	return b.buffer.Write(data)
 }
 
-func (b *lockedBuffer) String() string {
+func (b *terminalOutput) String() string {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	return b.buffer.String()
+}
+
+func waitForOutput(output *terminalOutput, text string, timeout time.Duration) bool {
+	deadline := time.NewTimer(timeout)
+	defer deadline.Stop()
+	ticker := time.NewTicker(20 * time.Millisecond)
+	defer ticker.Stop()
+	for {
+		if strings.Contains(output.String(), text) {
+			return true
+		}
+		select {
+		case <-ticker.C:
+		case <-deadline.C:
+			return false
+		}
+	}
 }
 
 func runGit(t *testing.T, dir string, args ...string) {

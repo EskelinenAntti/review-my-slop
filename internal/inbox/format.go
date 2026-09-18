@@ -10,49 +10,62 @@ import (
 
 func WritePrompt(w io.Writer, comments []review.Comment) error {
 	if len(comments) == 0 {
-		_, err := fmt.Fprintln(w, "No pending review comments.")
-		return err
+		return writeLine(w, "No pending review comments.")
 	}
-	if _, err := fmt.Fprintln(w, "New comments since last run:"); err != nil {
+	if err := writeLine(w, "New comments since last run:"); err != nil {
 		return err
 	}
 	for index, comment := range comments {
-		a := comment.Anchor
-		if _, err := fmt.Fprintf(w, "\n### %d. `%s` (%s)\n\n", index+1, a.FilePath, describeRange(a)); err != nil {
-			return err
-		}
-		if len(a.QuotedLines) > 0 {
-			if _, err := fmt.Fprintln(w, "```diff"); err != nil {
-				return err
-			}
-			for _, line := range a.QuotedLines {
-				if _, err := fmt.Fprintln(w, line); err != nil {
-					return err
-				}
-			}
-			if _, err := fmt.Fprintln(w, "```"); err != nil {
-				return err
-			}
-		}
-		if _, err := fmt.Fprintln(w, strings.TrimSpace(comment.Body)); err != nil {
+		if err := writeComment(w, index+1, comment); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
+func writeComment(w io.Writer, number int, comment review.Comment) error {
+	anchor := comment.Anchor
+	if _, err := fmt.Fprintf(w, "\n### %d. `%s` (%s)\n\n", number, anchor.FilePath, describeRange(anchor)); err != nil {
+		return err
+	}
+	if err := writeQuotedLines(w, anchor.QuotedLines); err != nil {
+		return err
+	}
+	return writeLine(w, strings.TrimSpace(comment.Body))
+}
+
+func writeQuotedLines(w io.Writer, lines []string) error {
+	if len(lines) == 0 {
+		return nil
+	}
+	if err := writeLine(w, "```diff"); err != nil {
+		return err
+	}
+	for _, line := range lines {
+		if err := writeLine(w, line); err != nil {
+			return err
+		}
+	}
+	return writeLine(w, "```")
+}
+
+func writeLine(w io.Writer, line string) error {
+	_, err := fmt.Fprintln(w, line)
+	return err
+}
+
 func describeRange(anchor review.Anchor) string {
-	var sides []string
+	var ranges []string
 	if anchor.OldStart > 0 {
-		sides = append(sides, lineRange("old", anchor.OldStart, anchor.OldEnd))
+		ranges = append(ranges, lineRange("old", anchor.OldStart, anchor.OldEnd))
 	}
 	if anchor.NewStart > 0 {
-		sides = append(sides, lineRange("new", anchor.NewStart, anchor.NewEnd))
+		ranges = append(ranges, lineRange("new", anchor.NewStart, anchor.NewEnd))
 	}
-	if len(sides) == 0 {
+	if len(ranges) == 0 {
 		return "diff lines"
 	}
-	return strings.Join(sides, ", ")
+	return strings.Join(ranges, ", ")
 }
 
 func lineRange(side string, start, end int) string {

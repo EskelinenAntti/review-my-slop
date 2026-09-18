@@ -8,17 +8,22 @@ import (
 	"github.com/eskelinenantti/review-my-slop/internal/view"
 )
 
+type searchState struct {
+	query []rune
+	term  string
+	from  view.Cursor
+	miss  bool
+}
+
+func (m *Model) cancelSelection() { m.review.selection = nil }
+
 func (m *Model) move(direction view.Direction) {
 	next, ok := m.review.view.Move(m.review.cursor, direction)
 	if !ok {
 		return
 	}
-	if m.review.selection != nil {
-		selection, selectionOK := m.review.view.ExtendSelection(*m.review.selection, next)
-		if !selectionOK {
-			return
-		}
-		m.review.selection = &selection
+	if !m.extendSelection(next) {
+		return
 	}
 	m.setCursor(next)
 }
@@ -30,14 +35,22 @@ func (m *Model) setCursor(cursor view.Cursor) {
 
 func (m *Model) halfPage(direction view.Direction) {
 	viewport, cursor := m.review.view.ScrollHalfPage(m.review.viewport, m.review.cursor, direction)
-	if m.review.selection != nil {
-		selection, ok := m.review.view.ExtendSelection(*m.review.selection, cursor)
-		if !ok {
-			return
-		}
-		m.review.selection = &selection
+	if !m.extendSelection(cursor) {
+		return
 	}
 	m.review.viewport, m.review.cursor = viewport, cursor
+}
+
+func (m *Model) extendSelection(cursor view.Cursor) bool {
+	if m.review.selection == nil {
+		return true
+	}
+	selection, ok := m.review.view.ExtendSelection(*m.review.selection, cursor)
+	if !ok {
+		return false
+	}
+	m.review.selection = &selection
+	return true
 }
 
 func (m *Model) jumpFile(direction view.Direction) {
@@ -56,34 +69,46 @@ func (m *Model) switchPane(pane view.Pane) {
 		return
 	}
 	if m.review.selection != nil {
-		first, firstOK := m.review.view.SwitchPane(m.review.selection.First, pane)
-		last, lastOK := m.review.view.SwitchPane(m.review.selection.Last, pane)
-		if !firstOK || !lastOK {
-			return
-		}
-		selection := m.review.view.BeginSelection(first)
-		selection, ok = m.review.view.ExtendSelection(selection, last)
+		selection, ok := m.switchSelectionPane(*m.review.selection, pane)
 		if !ok {
 			return
 		}
-		m.review.selection = &selection
+		m.review.selection = selection
 	}
 	m.setCursor(cursor)
 }
 
+func (m Model) switchSelectionPane(selection view.Selection, pane view.Pane) (*view.Selection, bool) {
+	first, firstFound := m.review.view.SwitchPane(selection.First, pane)
+	last, lastFound := m.review.view.SwitchPane(selection.Last, pane)
+	if !firstFound || !lastFound {
+		return nil, false
+	}
+	switched := m.review.view.BeginSelection(first)
+	switched, ok := m.review.view.ExtendSelection(switched, last)
+	if !ok {
+		return nil, false
+	}
+	return &switched, true
+}
+
 func (m Model) sideBySideActive() bool {
-	return m.review.sideBySide && m.width >= minimumSideBySideWidth
+	return m.sideBySide && m.width >= minimumSideBySideWidth
 }
 
 func (m *Model) toggleSideBySide() {
-	enabled := !m.review.sideBySide
+	enabled := !m.sideBySide
 	if enabled && m.width < minimumSideBySideWidth {
 		m.err = fmt.Errorf("side-by-side view requires a terminal at least %d columns wide", minimumSideBySideWidth)
 		return
 	}
 	m.setSideBySide(enabled)
-	if m.saveLayout != nil {
-		if err := m.saveLayout(m.review.sideBySide); err != nil {
+	m.saveSideBySidePreference()
+}
+
+func (m *Model) saveSideBySidePreference() {
+	if m.saveSideBySide != nil {
+		if err := m.saveSideBySide(m.sideBySide); err != nil {
 			m.err = fmt.Errorf("save side-by-side preference: %w", err)
 		}
 	}
@@ -91,7 +116,7 @@ func (m *Model) toggleSideBySide() {
 
 func (m *Model) setSideBySide(enabled bool) {
 	wasActive := m.sideBySideActive()
-	m.review.sideBySide = enabled
+	m.sideBySide = enabled
 	if wasActive != m.sideBySideActive() {
 		m.rebuildView(m.review.patch)
 	}
@@ -100,17 +125,9 @@ func (m *Model) setSideBySide(enabled bool) {
 func (m Model) updateSearch(name string, key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	switch name {
 	case "esc":
-		m.setCursor(m.search.from)
-		m.mode = modeBrowse
-		m.search.query = nil
-		m.search.miss = false
+		m.cancelSearch()
 	case "enter":
-		if len(m.search.query) > 0 && !m.search.miss {
-			m.search.term = string(m.search.query)
-		}
-		m.mode = modeBrowse
-		m.search.query = nil
-		m.search.miss = false
+		m.finishSearch()
 	case "backspace":
 		if len(m.search.query) > 0 {
 			m.search.query = m.search.query[:len(m.search.query)-1]
@@ -123,6 +140,22 @@ func (m Model) updateSearch(name string, key tea.KeyPressMsg) (tea.Model, tea.Cm
 		}
 	}
 	return m, nil
+}
+
+func (m *Model) cancelSearch() {
+	m.setCursor(m.search.from)
+	m.mode = modeBrowse
+	m.search.query = nil
+	m.search.miss = false
+}
+
+func (m *Model) finishSearch() {
+	if len(m.search.query) > 0 && !m.search.miss {
+		m.search.term = string(m.search.query)
+	}
+	m.mode = modeBrowse
+	m.search.query = nil
+	m.search.miss = false
 }
 
 func (m *Model) updateIncrementalSearch() {

@@ -49,10 +49,7 @@ type Loader struct {
 }
 
 func (l Loader) Root(ctx context.Context, dir string) (string, error) {
-	if l.Runner == nil {
-		l.Runner = ExecRunner{}
-	}
-	rootBytes, err := l.Runner.Run(ctx, dir, "rev-parse", "--show-toplevel")
+	rootBytes, err := l.runner().Run(ctx, dir, "rev-parse", "--show-toplevel")
 	if err != nil {
 		return "", err
 	}
@@ -64,9 +61,6 @@ func (l Loader) Root(ctx context.Context, dir string) (string, error) {
 }
 
 func (l Loader) Load(ctx context.Context, dir string) (patch.Patch, error) {
-	if l.Runner == nil {
-		l.Runner = ExecRunner{}
-	}
 	root, err := l.Root(ctx, dir)
 	if err != nil {
 		return patch.Patch{}, err
@@ -76,18 +70,15 @@ func (l Loader) Load(ctx context.Context, dir string) (patch.Patch, error) {
 	if err != nil {
 		return patch.Patch{}, err
 	}
-	return l.build(ctx, root, "", raw, readIndex)
+	return l.buildPatch(ctx, root, "", raw)
 }
 
 func (l Loader) LoadBranch(ctx context.Context, dir, branch string) (patch.Patch, error) {
-	if l.Runner == nil {
-		l.Runner = ExecRunner{}
-	}
 	root, err := l.Root(ctx, dir)
 	if err != nil {
 		return patch.Patch{}, err
 	}
-	baseBytes, err := l.Runner.Run(ctx, root, "merge-base", branch, "HEAD")
+	baseBytes, err := l.runner().Run(ctx, root, "merge-base", branch, "HEAD")
 	if err != nil {
 		return patch.Patch{}, fmt.Errorf("find branch point with %s: %w", branch, err)
 	}
@@ -96,21 +87,22 @@ func (l Loader) LoadBranch(ctx context.Context, dir, branch string) (patch.Patch
 	if err != nil {
 		return patch.Patch{}, err
 	}
-	readBase := func(ctx context.Context, runner Runner, root, path string) string {
-		return readRevision(ctx, runner, root, base, path)
-	}
-	return l.build(ctx, root, branch, raw, readBase)
+	return l.buildPatch(ctx, root, branch, raw)
 }
 
 func (l Loader) DefaultBranch(ctx context.Context, dir string) (string, error) {
-	if l.Runner == nil {
-		l.Runner = ExecRunner{}
-	}
 	root, err := l.Root(ctx, dir)
 	if err != nil {
 		return "", err
 	}
 	return l.defaultBranch(ctx, root), nil
+}
+
+func (l Loader) runner() Runner {
+	if l.Runner != nil {
+		return l.Runner
+	}
+	return ExecRunner{}
 }
 
 func (l Loader) diff(ctx context.Context, root string, revisions ...string) ([]byte, error) {
@@ -122,23 +114,30 @@ func (l Loader) diff(ctx context.Context, root string, revisions ...string) ([]b
 	}
 	args = append(args, revisions...)
 	args = append(args, "--")
-	return l.Runner.Run(ctx, root, args...)
+	return l.runner().Run(ctx, root, args...)
 }
 
-type sourceReader func(context.Context, Runner, string, string) string
-
-func (l Loader) build(ctx context.Context, root, base string, raw []byte, readOld sourceReader) (patch.Patch, error) {
-	files, err := parseTracked(ctx, l.Runner, root, raw, readOld)
+func (l Loader) buildPatch(ctx context.Context, root, base string, raw []byte) (patch.Patch, error) {
+	runner := l.runner()
+	tracked, err := l.loadTracked(ctx, runner, root, base, raw)
 	if err != nil {
 		return patch.Patch{}, err
 	}
-	untracked, err := l.loadUntracked(ctx, root)
+	untracked, err := l.loadUntracked(ctx, root, runner)
 	if err != nil {
 		return patch.Patch{}, err
 	}
-	files = append(files, untracked...)
+	files := append(tracked, untracked...)
 	sort.SliceStable(files, func(i, j int) bool { return files[i].DisplayPath < files[j].DisplayPath })
 
+	return patch.Patch{
+		Repository:  root,
+		Fingerprint: fingerprint(base, raw, untracked),
+		Files:       files,
+	}, nil
+}
+
+func fingerprint(base string, raw []byte, untracked []patch.File) string {
 	hash := sha256.New()
 	_, _ = hash.Write([]byte(base))
 	_, _ = hash.Write(raw)
@@ -146,27 +145,23 @@ func (l Loader) build(ctx context.Context, root, base string, raw []byte, readOl
 		_, _ = hash.Write([]byte(file.NewPath))
 		_, _ = hash.Write([]byte(file.NewSource))
 	}
-
-	return patch.Patch{
-		Repository:  root,
-		Fingerprint: hex.EncodeToString(hash.Sum(nil)),
-		Files:       files,
-	}, nil
+	return hex.EncodeToString(hash.Sum(nil))
 }
 
 func (l Loader) defaultBranch(ctx context.Context, root string) string {
-	if out, err := l.Runner.Run(ctx, root, "symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD"); err == nil {
+	runner := l.runner()
+	if out, err := runner.Run(ctx, root, "symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD"); err == nil {
 		return strings.TrimSpace(string(out))
 	}
 	for _, candidate := range []string{"origin/main", "main", "origin/master", "master"} {
-		if _, err := l.Runner.Run(ctx, root, "rev-parse", "--verify", "--quiet", candidate+"^{commit}"); err == nil {
+		if _, err := runner.Run(ctx, root, "rev-parse", "--verify", "--quiet", candidate+"^{commit}"); err == nil {
 			return candidate
 		}
 	}
 	return ""
 }
 
-func parseTracked(ctx context.Context, runner Runner, root string, raw []byte, readOld sourceReader) ([]patch.File, error) {
+func (l Loader) loadTracked(ctx context.Context, runner Runner, root, base string, raw []byte) ([]patch.File, error) {
 	if len(bytes.TrimSpace(raw)) == 0 {
 		return nil, nil
 	}
@@ -176,37 +171,42 @@ func parseTracked(ctx context.Context, runner Runner, root string, raw []byte, r
 	}
 	files := make([]patch.File, 0, len(parsed))
 	for _, fd := range parsed {
-		oldPath := cleanDiffPath(fd.OrigName)
-		newPath := cleanDiffPath(fd.NewName)
-		display := newPath
-		if display == "" || display == "/dev/null" {
-			display = oldPath
-		}
-		file := patch.File{
-			OldPath:     oldPath,
-			NewPath:     newPath,
-			DisplayPath: visibleText(display),
-			Metadata:    visibleStrings(fd.Extended),
-		}
-		file.OldSource = readOld(ctx, runner, root, oldPath)
-		file.NewSource = readWorkingTree(root, newPath)
-		for _, h := range fd.Hunks {
-			lines, parseErr := parseHunkBody(h.OrigStartLine, h.NewStartLine, h.Body)
-			if parseErr != nil {
-				return nil, fmt.Errorf("%s: %w", display, parseErr)
-			}
-			file.Hunks = append(file.Hunks, patch.Hunk{
-				Header: formatHunkHeader(h),
-				Lines:  lines,
-			})
+		file, err := parseTrackedFile(ctx, runner, root, base, fd)
+		if err != nil {
+			return nil, err
 		}
 		files = append(files, file)
 	}
 	return files, nil
 }
 
-func (l Loader) loadUntracked(ctx context.Context, root string) ([]patch.File, error) {
-	out, err := l.Runner.Run(ctx, root, "ls-files", "--others", "--exclude-standard", "-z")
+func parseTrackedFile(ctx context.Context, runner Runner, root, base string, fd *diff.FileDiff) (patch.File, error) {
+	oldPath := cleanDiffPath(fd.OrigName)
+	newPath := cleanDiffPath(fd.NewName)
+	display := newPath
+	if display == "" || display == "/dev/null" {
+		display = oldPath
+	}
+	file := patch.File{
+		OldPath:     oldPath,
+		NewPath:     newPath,
+		DisplayPath: sanitizeText(display),
+		Metadata:    sanitizeTexts(fd.Extended),
+		OldSource:   readGitSource(ctx, runner, root, base, oldPath),
+		NewSource:   readWorkingTree(root, newPath),
+	}
+	for _, h := range fd.Hunks {
+		lines, err := parseHunkBody(h.OrigStartLine, h.NewStartLine, h.Body)
+		if err != nil {
+			return patch.File{}, fmt.Errorf("%s: %w", display, err)
+		}
+		file.Hunks = append(file.Hunks, patch.Hunk{Header: formatHunkHeader(h), Lines: lines})
+	}
+	return file, nil
+}
+
+func (l Loader) loadUntracked(ctx context.Context, root string, runner Runner) ([]patch.File, error) {
+	out, err := runner.Run(ctx, root, "ls-files", "--others", "--exclude-standard", "-z")
 	if err != nil {
 		return nil, err
 	}
@@ -215,50 +215,60 @@ func (l Loader) loadUntracked(ctx context.Context, root string) ([]patch.File, e
 		if len(rawPath) == 0 {
 			continue
 		}
-		path := string(rawPath)
-		display := visibleText(path)
-		full := filepath.Join(root, filepath.FromSlash(path))
-		info, statErr := os.Lstat(full)
-		if statErr != nil {
-			return nil, fmt.Errorf("stat untracked %q: %w", path, statErr)
-		}
-		if info.Mode()&os.ModeSymlink != 0 {
-			target, readErr := os.Readlink(full)
-			if readErr != nil {
-				return nil, fmt.Errorf("read symlink %q: %w", path, readErr)
-			}
-			files = append(files, addedFile(path, visibleText(target)))
-			continue
-		}
-		if !info.Mode().IsRegular() {
-			continue
-		}
-		if info.Size() > maxFileBytes {
-			files = append(files, patch.File{
-				NewPath:     path,
-				DisplayPath: display,
-				Metadata:    []string{"untracked file", "content omitted: file exceeds 2 MiB"},
-			})
-			continue
-		}
-		content, readErr := os.ReadFile(full)
+		file, include, readErr := loadUntrackedFile(root, string(rawPath))
 		if readErr != nil {
-			return nil, fmt.Errorf("read untracked %q: %w", path, readErr)
+			return nil, readErr
 		}
-		if bytes.IndexByte(content, 0) >= 0 {
-			files = append(files, patch.File{
-				NewPath:     path,
-				DisplayPath: display,
-				Metadata:    []string{"untracked binary file"},
-			})
-			continue
+		if include {
+			files = append(files, file)
 		}
-		files = append(files, addedFile(display, visibleSource(string(content))))
 	}
 	return files, nil
 }
 
-func addedFile(path, content string) patch.File {
+func loadUntrackedFile(root, path string) (patch.File, bool, error) {
+	full := filepath.Join(root, filepath.FromSlash(path))
+	info, err := os.Lstat(full)
+	if err != nil {
+		return patch.File{}, false, fmt.Errorf("stat untracked %q: %w", path, err)
+	}
+	if info.Mode()&os.ModeSymlink != 0 {
+		return loadUntrackedSymlink(path, full)
+	}
+	if !info.Mode().IsRegular() {
+		return patch.File{}, false, nil
+	}
+	return loadUntrackedRegular(path, full, info.Size())
+}
+
+func loadUntrackedSymlink(path, full string) (patch.File, bool, error) {
+	target, err := os.Readlink(full)
+	if err != nil {
+		return patch.File{}, false, fmt.Errorf("read symlink %q: %w", path, err)
+	}
+	return newUntrackedFile(path, sanitizeText(target)), true, nil
+}
+
+func loadUntrackedRegular(path, full string, size int64) (patch.File, bool, error) {
+	display := sanitizeText(path)
+	if size > maxFileBytes {
+		return untrackedMetadataFile(path, display, "untracked file", "content omitted: file exceeds 2 MiB"), true, nil
+	}
+	content, err := os.ReadFile(full)
+	if err != nil {
+		return patch.File{}, false, fmt.Errorf("read untracked %q: %w", path, err)
+	}
+	if bytes.IndexByte(content, 0) >= 0 {
+		return untrackedMetadataFile(path, display, "untracked binary file"), true, nil
+	}
+	return newUntrackedFile(path, sanitizeSource(string(content))), true, nil
+}
+
+func untrackedMetadataFile(path, display string, metadata ...string) patch.File {
+	return patch.File{NewPath: path, DisplayPath: display, Metadata: metadata}
+}
+
+func newUntrackedFile(path, content string) patch.File {
 	sourceLines := splitSourceLines(content)
 	lines := make([]patch.Line, 0, len(sourceLines))
 	for i, line := range sourceLines {
@@ -266,7 +276,7 @@ func addedFile(path, content string) patch.File {
 	}
 	return patch.File{
 		NewPath:     path,
-		DisplayPath: visibleText(path),
+		DisplayPath: sanitizeText(path),
 		NewSource:   content,
 		Metadata:    []string{"untracked file"},
 		Hunks: []patch.Hunk{{
@@ -286,8 +296,16 @@ func parseHunkBody(oldLine, newLine int32, body []byte) ([]patch.Line, error) {
 		if len(raw) == 0 {
 			return nil, errors.New("malformed empty diff line")
 		}
-		text := visibleText(string(raw[1:]))
-		switch raw[0] {
+		prefix := raw[0]
+		if prefix == '\\' {
+			if string(raw) != `\ No newline at end of file` {
+				return nil, fmt.Errorf("unexpected diff marker %q", raw)
+			}
+			// This marker belongs to the preceding line.
+			continue
+		}
+		text := sanitizeText(string(raw[1:]))
+		switch prefix {
 		case ' ':
 			lines = append(lines, patch.Line{Kind: patch.Context, Text: text, OldNumber: patch.LineNumber(oldLine), NewNumber: patch.LineNumber(newLine)})
 			oldLine++
@@ -298,35 +316,23 @@ func parseHunkBody(oldLine, newLine int32, body []byte) ([]patch.Line, error) {
 		case '-':
 			lines = append(lines, patch.Line{Kind: patch.Deletion, Text: text, OldNumber: patch.LineNumber(oldLine)})
 			oldLine++
-		case '\\':
-			// "\ No newline at end of file" belongs to the preceding line.
 		default:
-			return nil, fmt.Errorf("unexpected diff prefix %q", raw[0])
+			return nil, fmt.Errorf("unexpected diff prefix %q", prefix)
 		}
 	}
 	return lines, nil
 }
 
-func readIndex(ctx context.Context, runner Runner, root, path string) string {
+func readGitSource(ctx context.Context, runner Runner, root, revision, path string) string {
 	if path == "" || path == "/dev/null" {
 		return ""
 	}
-	out, err := runner.Run(ctx, root, "show", ":"+path)
-	if err != nil || len(out) > maxFileBytes || bytes.IndexByte(out, 0) >= 0 {
-		return ""
+	spec := ":" + path
+	if revision != "" {
+		spec = revision + ":" + path
 	}
-	return visibleSource(string(out))
-}
-
-func readRevision(ctx context.Context, runner Runner, root, revision, path string) string {
-	if path == "" || path == "/dev/null" {
-		return ""
-	}
-	out, err := runner.Run(ctx, root, "show", revision+":"+path)
-	if err != nil || len(out) > maxFileBytes || bytes.IndexByte(out, 0) >= 0 {
-		return ""
-	}
-	return visibleSource(string(out))
+	out, err := runner.Run(ctx, root, "show", spec)
+	return sanitizeSourceBytes(out, err)
 }
 
 func readWorkingTree(root, path string) string {
@@ -339,10 +345,7 @@ func readWorkingTree(root, path string) string {
 		return ""
 	}
 	out, err := os.ReadFile(full)
-	if err != nil || bytes.IndexByte(out, 0) >= 0 {
-		return ""
-	}
-	return visibleSource(string(out))
+	return sanitizeSourceBytes(out, err)
 }
 
 func cleanDiffPath(path string) string {
@@ -363,15 +366,22 @@ func splitSourceLines(content string) []string {
 	return strings.Split(content, "\n")
 }
 
-func visibleStrings(values []string) []string {
+func sanitizeTexts(values []string) []string {
 	result := make([]string, len(values))
 	for index, value := range values {
-		result[index] = visibleText(value)
+		result[index] = sanitizeText(value)
 	}
 	return result
 }
 
-func visibleSource(value string) string {
+func sanitizeSourceBytes(value []byte, err error) string {
+	if err != nil || len(value) > maxFileBytes || bytes.IndexByte(value, 0) >= 0 {
+		return ""
+	}
+	return sanitizeSource(string(value))
+}
+
+func sanitizeSource(value string) string {
 	var result strings.Builder
 	for _, r := range value {
 		switch {
@@ -388,8 +398,8 @@ func visibleSource(value string) string {
 	return result.String()
 }
 
-func visibleText(value string) string {
-	return strings.ReplaceAll(visibleSource(value), "\n", `\n`)
+func sanitizeText(value string) string {
+	return strings.ReplaceAll(sanitizeSource(value), "\n", `\n`)
 }
 
 func formatHunkHeader(h *diff.Hunk) string {

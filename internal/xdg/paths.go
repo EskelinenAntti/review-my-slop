@@ -6,23 +6,32 @@ import (
 	"path/filepath"
 )
 
-const appName = "review-my-slop"
+const (
+	appName           = "review-my-slop"
+	stateHomeVariable = "XDG_STATE_HOME"
+	dataHomeVariable  = "XDG_DATA_HOME"
+	stateHomeFallback = ".local/state"
+	dataHomeFallback  = ".local/share"
+)
 
 func StateDir() (string, error) {
-	return appDir("XDG_STATE_HOME", filepath.Join(".local", "state"))
+	return appDir(stateHomeVariable, stateHomeFallback)
 }
 
 func DataDir() (string, error) {
-	return appDir("XDG_DATA_HOME", filepath.Join(".local", "share"))
+	return appDir(dataHomeVariable, dataHomeFallback)
 }
 
 func appDir(environment, fallback string) (string, error) {
-	if root := os.Getenv(environment); filepath.IsAbs(root) {
-		return filepath.Join(root, appName), nil
+	root := os.Getenv(environment)
+	if !filepath.IsAbs(root) {
+		// XDG base directories are only valid when absolute. Relative or empty
+		// values use the conventional directory below the user's home.
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return "", fmt.Errorf("resolve user home directory: %w", err)
+		}
+		root = filepath.Join(home, fallback)
 	}
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return "", fmt.Errorf("resolve user home directory: %w", err)
-	}
-	return filepath.Join(home, fallback, appName), nil
+	return filepath.Join(root, appName), nil
 }
