@@ -1,5 +1,3 @@
-// Package comments owns review comments, their semantic anchors, and durable
-// inbox operations.
 package comments
 
 import "time"
@@ -14,7 +12,6 @@ type Anchor struct {
 	QuotedLines []string `json:"quoted_lines"`
 }
 
-// Comment is a review message addressed to one repository.
 type Comment struct {
 	ID         string    `json:"id"`
 	Repository string    `json:"repository"`
@@ -36,10 +33,8 @@ type snapshotItem struct {
 	encoded []byte
 }
 
-// Repository returns the repository represented by the snapshot.
 func (s Snapshot) Repository() string { return s.repository }
 
-// Comments returns a copy of the comments in the snapshot.
 func (s Snapshot) Comments() []Comment {
 	comments := make([]Comment, 0, len(s.items))
 	for _, item := range s.items {

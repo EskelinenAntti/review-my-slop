@@ -1,5 +1,3 @@
-// Package git owns repository discovery and the conversion from Git output to
-// the review domain model.
 package git
 
 import (
@@ -22,12 +20,10 @@ import (
 
 const maxFileBytes = 2 << 20
 
-// Runner is the small external-effect boundary used by Loader.
 type Runner interface {
 	Run(context.Context, string, ...string) ([]byte, error)
 }
 
-// ExecRunner runs Git with a non-interactive environment.
 type ExecRunner struct{}
 
 func (ExecRunner) Run(ctx context.Context, dir string, args ...string) ([]byte, error) {
@@ -48,14 +44,10 @@ func (ExecRunner) Run(ctx context.Context, dir string, args ...string) ([]byte, 
 	return nil, fmt.Errorf("git %s: %w", strings.Join(args, " "), err)
 }
 
-// Loader reads local worktree changes and branch comparisons.
 type Loader struct {
 	Runner Runner
 }
 
-// NewLoader returns a loader using runner, or the real Git runner when runner
-// is nil. Keeping this choice in the constructor makes the effect boundary
-// explicit for callers and tests.
 func NewLoader(runner Runner) Loader {
 	if runner == nil {
 		runner = ExecRunner{}
@@ -70,7 +62,6 @@ func (l Loader) runner() Runner {
 	return ExecRunner{}
 }
 
-// Root resolves dir to its repository root.
 func (l Loader) Root(ctx context.Context, dir string) (string, error) {
 	rootBytes, err := l.runner().Run(ctx, dir, "rev-parse", "--show-toplevel")
 	if err != nil {
@@ -120,8 +111,6 @@ func (l Loader) LoadBranch(ctx context.Context, dir, branch string) (domain.Chan
 	return l.build(ctx, root, branch, raw, readBase)
 }
 
-// DefaultBranch finds the configured remote default branch without scanning
-// all refs. The fallback order keeps repositories without origin/HEAD useful.
 func (l Loader) DefaultBranch(ctx context.Context, dir string) (string, error) {
 	root, err := l.Root(ctx, dir)
 	if err != nil {

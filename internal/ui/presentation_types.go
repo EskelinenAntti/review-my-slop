@@ -7,10 +7,8 @@ import (
 	"github.com/eskelinenantti/review-my-slop/internal/diff"
 )
 
-// Coordinate is a row in the current terminal presentation.
 type Coordinate struct{ Y int }
 
-// Pane identifies one side of a side-by-side presentation.
 type Pane uint8
 
 const (
@@ -25,14 +23,11 @@ func (pane Pane) Other() Pane {
 	return Left
 }
 
-// Cursor is presentation state. It is intentionally not stored in the diff
-// domain and must be translated after a layout or content rebuild.
 type Cursor struct {
 	Coordinate Coordinate
 	Pane       Pane
 }
 
-// Viewport is the visible terminal window over presentation rows.
 type Viewport struct {
 	Top        Coordinate
 	LeftColumn int
@@ -40,13 +35,11 @@ type Viewport struct {
 	Height     int
 }
 
-// Selection is a range of presentation cursors within one hunk.
 type Selection struct {
 	First Cursor
 	Last  Cursor
 }
 
-// Direction is a navigation direction.
 type Direction int8
 
 const (
@@ -54,7 +47,6 @@ const (
 	Forward  Direction = 1
 )
 
-// VerticalAlignment controls where a cursor is positioned in the viewport.
 type VerticalAlignment uint8
 
 const (
@@ -92,8 +84,6 @@ type presentation struct {
 	dark    bool
 }
 
-// lineIdentity is the semantic state needed to restore a cursor after a
-// refresh. Coordinate is only a proximity hint for duplicate lines.
 type lineIdentity struct {
 	file   diff.File
 	hunk   diff.Hunk

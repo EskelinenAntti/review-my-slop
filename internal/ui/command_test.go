@@ -1,4 +1,4 @@
-package main
+package ui
 
 import (
 	"bytes"
@@ -14,6 +14,7 @@ import (
 
 func TestRunCommentsPrintsAndConsumesCurrentRepositoryFeedback(t *testing.T) {
 	repo := initRepository(t)
+	t.Chdir(repo)
 	data := t.TempDir()
 	t.Setenv("XDG_DATA_HOME", data)
 	store, err := comments.OpenDefault()
@@ -29,7 +30,7 @@ func TestRunCommentsPrintsAndConsumesCurrentRepositoryFeedback(t *testing.T) {
 	}
 
 	var output bytes.Buffer
-	if err := runCommentsAt(context.Background(), repo, &output); err != nil {
+	if err := Run(context.Background(), []string{"comments"}, &output); err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(output.String(), "Check this error.") {
@@ -43,7 +44,7 @@ func TestRunCommentsPrintsAndConsumesCurrentRepositoryFeedback(t *testing.T) {
 	}
 
 	var empty bytes.Buffer
-	if err := runCommentsAt(context.Background(), repo, &empty); err != nil {
+	if err := Run(context.Background(), []string{"comments"}, &empty); err != nil {
 		t.Fatal(err)
 	}
 	if strings.TrimSpace(empty.String()) != "No pending review comments." {
@@ -61,6 +62,7 @@ func TestRunCommentsPrintsAndConsumesCurrentRepositoryFeedback(t *testing.T) {
 
 func TestRunCommentsPreservesFeedbackWhenOutputFails(t *testing.T) {
 	repo := initRepository(t)
+	t.Chdir(repo)
 	t.Setenv("XDG_DATA_HOME", t.TempDir())
 	store, err := comments.OpenDefault()
 	if err != nil {
@@ -74,20 +76,20 @@ func TestRunCommentsPreservesFeedbackWhenOutputFails(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := runCommentsAt(context.Background(), repo, failingWriter{}); err == nil {
+	if err := Run(context.Background(), []string{"comments"}, failingWriter{}); err == nil {
 		t.Fatal("output failure was ignored")
 	}
-	comments, err := store.List(repo)
+	pending, err := store.List(repo)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(comments) != 1 {
-		t.Fatalf("pending comments = %d, want 1", len(comments))
+	if len(pending) != 1 {
+		t.Fatalf("pending comments = %d, want 1", len(pending))
 	}
 }
 
 func TestRunRejectsUnknownSubcommand(t *testing.T) {
-	err := run(context.Background(), []string{"unknown"}, &bytes.Buffer{})
+	err := Run(context.Background(), []string{"unknown"}, &bytes.Buffer{})
 	if err == nil || !strings.Contains(err.Error(), `unknown subcommand "unknown"`) {
 		t.Fatalf("error = %v", err)
 	}

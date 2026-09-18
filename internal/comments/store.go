@@ -28,17 +28,13 @@ var (
 	disabledValue  = []byte{0}
 )
 
-// Store is a small bbolt-backed inbox. Each operation opens a short-lived
-// database handle, which lets the UI and CLI safely use the same file.
+// Store is a small bbolt-backed inbox.
 type Store struct {
 	path string
 }
 
-// NewStore creates a store at path. The database is opened lazily by an
-// operation so constructing one never creates directories as a side effect.
 func NewStore(path string) Store { return Store{path: path} }
 
-// Path returns the configured database path.
 func (s Store) Path() string { return s.path }
 
 // DefaultPath resolves the XDG data directory and the fresh v2 database name.
@@ -54,7 +50,6 @@ func DefaultPath() (string, error) {
 	return filepath.Join(root, "review-my-slop", databaseName), nil
 }
 
-// OpenDefault returns a store using the current user's XDG data directory.
 func OpenDefault() (Store, error) {
 	path, err := DefaultPath()
 	if err != nil {
@@ -63,7 +58,6 @@ func OpenDefault() (Store, error) {
 	return NewStore(path), nil
 }
 
-// Add stores a new comment and returns the value with its durable identity.
 func (s Store) Add(comment Comment) (Comment, error) {
 	if err := validateComment(comment); err != nil {
 		return Comment{}, err
@@ -97,7 +91,6 @@ func (s Store) Add(comment Comment) (Comment, error) {
 	return comment, err
 }
 
-// List returns pending comments for repository in stable creation order.
 func (s Store) List(repository string) ([]Comment, error) {
 	snapshot, err := s.Snapshot(repository)
 	if err != nil {
@@ -158,7 +151,6 @@ func (s Store) Acknowledge(snapshot Snapshot) error {
 	})
 }
 
-// Update replaces one existing comment in the same repository.
 func (s Store) Update(comment Comment) error {
 	if comment.Repository == "" || comment.ID == "" {
 		return errors.New("repository and comment ID are required")
@@ -189,7 +181,6 @@ func (s Store) Update(comment Comment) error {
 	})
 }
 
-// Delete removes one comment only when its repository and identity match.
 func (s Store) Delete(repository, id string) error {
 	if repository == "" || id == "" {
 		return errors.New("repository and comment ID are required")
@@ -210,7 +201,6 @@ func (s Store) Delete(repository, id string) error {
 	})
 }
 
-// SideBySide reads the saved presentation preference.
 func (s Store) SideBySide() (bool, error) {
 	var enabled bool
 	err := s.viewBucket(settingsBucket, func(bucket *bolt.Bucket) error {
@@ -220,7 +210,6 @@ func (s Store) SideBySide() (bool, error) {
 	return enabled, err
 }
 
-// SetSideBySide saves the presentation preference.
 func (s Store) SetSideBySide(enabled bool) error {
 	value := disabledValue
 	if enabled {

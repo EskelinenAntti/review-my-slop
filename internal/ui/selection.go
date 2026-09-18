@@ -19,9 +19,6 @@ func (p *presentation) ExtendSelection(selection Selection, cursor Cursor) (Sele
 	return selection, true
 }
 
-// selectedLines is the one authoritative traversal used by both the comment
-// anchor and any future selection presentation. It returns semantic diff lines
-// rather than row numbers.
 func (p *presentation) selectedLines(selection Selection) ([]diff.Line, diff.File, bool) {
 	if _, ok := p.ExtendSelection(selection, selection.Last); !ok {
 		return nil, diff.File{}, false

@@ -32,13 +32,13 @@ func (f File) Path() string {
 	return f.OldPath
 }
 
-// Key is the semantic identity of a file across presentation rebuilds.
+// Key is the semantic identity of a file.
 type FileKey struct {
 	OldPath string
 	NewPath string
 }
 
-// Key returns the semantic identity of f. It is not a screen-row index.
+// Key returns the semantic identity of f.
 func (f File) Key() FileKey {
 	return FileKey{OldPath: f.OldPath, NewPath: f.NewPath}
 }

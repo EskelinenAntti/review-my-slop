@@ -6,8 +6,7 @@ import (
 	"strings"
 )
 
-// WritePrompt writes comments in the agent-facing format. It intentionally
-// knows nothing about storage batches or delivery state.
+// WritePrompt writes comments in the agent-facing format.
 func WritePrompt(w io.Writer, comments []Comment) error {
 	if len(comments) == 0 {
 		_, err := fmt.Fprintln(w, "No pending review comments.")

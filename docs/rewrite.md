@@ -132,13 +132,13 @@ The implementation uses these package boundaries:
 
 | Package | Current role |
 |---|---|
-| `internal/ui` | Bubble Tea model, key handling, comments workflow, diff presentation, viewport, selection, rendering, and syntax highlighting |
+| `internal/ui` | Command workflows, Bubble Tea model, key handling, diff presentation, viewport, selection, rendering, and syntax highlighting |
 | `internal/git` | Repository discovery, Git commands, diff parsing, source loading, untracked-file inspection, and fingerprints |
 | `internal/diff` | Raw change-set, file, hunk, and line values plus semantic file identity |
 | `internal/comments` | Anchors, comments, bbolt storage, XDG data resolution, prompt formatting, and conditional delivery acknowledgement |
 | `internal/editor` | XDG state resolution, private drafts, suggestion handling, and external-editor commands |
 
-The command package now only selects the `code`/`comments` workflow, composes these boundaries, and starts Bubble Tea. `internal/patch`, `internal/gitdiff`, `internal/view`, `internal/tui`, `internal/review`, `internal/inbox`, `internal/highlight`, and `internal/xdg` were removed rather than retained as adapters.
+The command package is a process-level wrapper that delegates to `internal/ui.Run`. Command parsing, dependency composition, terminal sizing, and both workflows live in packages. `internal/patch`, `internal/gitdiff`, `internal/view`, `internal/tui`, `internal/review`, `internal/inbox`, `internal/highlight`, and `internal/xdg` were removed rather than retained as adapters.
 
 ### Modeling decisions
 
@@ -157,7 +157,7 @@ Every original production and test file was inspected. The following inventory r
 | Original file or group | Disposition |
 |---|---|
 | `cmd/review-my-slop/main.go` | Reworked as the thin composition root |
-| `cmd/review-my-slop/main_test.go` | Reworked for `comments` and `inbox-v2.db` |
+| `cmd/review-my-slop/main_test.go` | Removed; command behavior tests moved to `internal/ui/command_test.go` |
 | `cmd/review-my-slop/pty_test.go` | Retained; it remains the bounded startup/quit integration test |
 | `internal/patch/types.go` | Removed; modeled by `internal/diff/model.go` |
 | `internal/gitdiff/gitdiff.go` | Removed; Git boundary moved to `internal/git/loader.go` with raw values |

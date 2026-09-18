@@ -9,17 +9,13 @@ import (
 	"github.com/eskelinenantti/review-my-slop/internal/diff"
 )
 
-// SaveCommentFunc persists a comment against the current change set.
 type SaveCommentFunc func(comments.Comment, diff.ChangeSet) (comments.Comment, error)
 
-// DeleteCommentFunc removes a comment after the UI has confirmed the current
-// repository and change set.
 type DeleteCommentFunc func(comments.Comment, diff.ChangeSet) error
 
-// LoadCommentsFunc reads the current repository's pending comments.
 type LoadCommentsFunc func() ([]comments.Comment, error)
 
-// ViewMode describes the comparison intent independently of its branch string.
+// ViewMode selects the comparison shown by the model.
 type ViewMode uint8
 
 const (
@@ -27,17 +23,14 @@ const (
 	BranchChanges
 )
 
-// RefreshTarget is the explicit input to a refresh operation. Branch is used
-// only in BranchChanges mode; it is not an empty-string behavior switch.
+// RefreshTarget identifies the comparison used by a refresh operation.
 type RefreshTarget struct {
 	Mode   ViewMode
 	Branch string
 }
 
-// RefreshDiffFunc loads a fresh change set for a specific comparison intent.
 type RefreshDiffFunc func(RefreshTarget) (diff.ChangeSet, error)
 
-// Dependencies contains the effect boundaries used by the terminal model.
 type Dependencies struct {
 	SaveComment    SaveCommentFunc
 	DeleteComment  DeleteCommentFunc
@@ -46,13 +39,11 @@ type Dependencies struct {
 	SaveSideBySide func(bool) error
 }
 
-// Size is the initial terminal size.
 type Size struct {
 	Width  int
 	Height int
 }
 
-// Options configures all initial interaction state in one value.
 type Options struct {
 	SideBySide    bool
 	Size          Size
@@ -120,8 +111,6 @@ type searchState struct {
 	miss  bool
 }
 
-// Model is the complete terminal interaction state. Domain changes and
-// comment values are kept separately from the presentation's row mapping.
 type Model struct {
 	review        reviewState
 	comments      commentState
@@ -140,8 +129,6 @@ type Model struct {
 	latestRefresh uint64
 }
 
-// New constructs a usable model; no setter sequence is required before it can
-// receive Bubble Tea messages.
 func New(changes diff.ChangeSet, pending []comments.Comment, deps Dependencies, options Options) Model {
 	size := options.Size
 	if size.Width <= 0 || size.Height <= 0 {
