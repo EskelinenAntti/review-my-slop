@@ -9,9 +9,9 @@ import (
 	"github.com/eskelinenantti/review-my-slop/internal/diff"
 )
 
-type SaveCommentFunc func(comments.Comment, diff.ChangeSet) (comments.Comment, error)
+type SaveCommentFunc func(comments.Comment) (comments.Comment, error)
 
-type DeleteCommentFunc func(comments.Comment, diff.ChangeSet) error
+type DeleteCommentFunc func(comments.Comment) error
 
 type LoadCommentsFunc func() ([]comments.Comment, error)
 

@@ -38,15 +38,15 @@ func runCode(ctx context.Context) error {
 		return err
 	}
 
-	store, err := comments.OpenDefault()
+	inbox, err := comments.OpenInbox(loaded.Repository)
 	if err != nil {
 		return err
 	}
-	pending, err := store.List(loaded.Repository)
+	pending, err := inbox.List()
 	if err != nil {
 		return err
 	}
-	sideBySide, err := store.SideBySide()
+	sideBySide, err := inbox.SideBySide()
 	if err != nil {
 		return err
 	}
@@ -54,29 +54,18 @@ func runCode(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	saveComment := func(comment comments.Comment, current diff.ChangeSet) (comments.Comment, error) {
-		comment.Repository = current.Repository
-		if comment.ID != "" {
-			return comment, store.Update(comment)
-		}
-		return store.Add(comment)
-	}
 	size := InitialSize(os.Stdin, os.Stdout)
 	model := New(loaded, pending, Dependencies{
-		SaveComment: saveComment,
-		LoadComments: func() ([]comments.Comment, error) {
-			return store.List(loaded.Repository)
-		},
-		DeleteComment: func(comment comments.Comment, current diff.ChangeSet) error {
-			return store.Delete(current.Repository, comment.ID)
-		},
+		SaveComment:   inbox.Save,
+		LoadComments:  inbox.List,
+		DeleteComment: inbox.Delete,
 		RefreshDiff: func(target RefreshTarget) (diff.ChangeSet, error) {
 			if target.Mode == BranchChanges {
 				return loader.LoadBranch(ctx, current, target.Branch)
 			}
 			return loader.Load(ctx, current)
 		},
-		SaveSideBySide: store.SetSideBySide,
+		SaveSideBySide: inbox.SetSideBySide,
 	}, Options{
 		SideBySide:    sideBySide,
 		Size:          size,
@@ -106,9 +95,9 @@ func runComments(ctx context.Context, output io.Writer) error {
 	if err != nil {
 		return err
 	}
-	store, err := comments.OpenDefault()
+	inbox, err := comments.OpenInbox(root)
 	if err != nil {
 		return err
 	}
-	return store.Deliver(root, output)
+	return inbox.Deliver(output)
 }

@@ -168,6 +168,42 @@ func TestStoreRejectsEmptyAndOversizedComments(t *testing.T) {
 	}
 }
 
+func TestInboxOwnsRepositoryScopedCommentOperations(t *testing.T) {
+	store := NewStore(filepath.Join(t.TempDir(), "inbox-v2.db"))
+	inbox, err := NewInbox(store, "/repo")
+	if err != nil {
+		t.Fatal(err)
+	}
+	saved, err := inbox.Save(Comment{Anchor: Anchor{FilePath: "file.go", NewStart: 1}, Body: "first"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if saved.Repository != "/repo" {
+		t.Fatalf("repository = %q", saved.Repository)
+	}
+	saved.Body = "updated"
+	if _, err := inbox.Save(saved); err != nil {
+		t.Fatal(err)
+	}
+	items, err := inbox.List()
+	if err != nil || len(items) != 1 || items[0].Body != "updated" {
+		t.Fatalf("items=%#v err=%v", items, err)
+	}
+	if err := inbox.Delete(saved); err != nil {
+		t.Fatal(err)
+	}
+	items, err = inbox.List()
+	if err != nil || len(items) != 0 {
+		t.Fatalf("items after delete=%#v err=%v", items, err)
+	}
+}
+
+func TestNewInboxRequiresRepository(t *testing.T) {
+	if _, err := NewInbox(NewStore(filepath.Join(t.TempDir(), "inbox-v2.db")), ""); err == nil {
+		t.Fatal("empty repository was accepted")
+	}
+}
+
 func testComment(repository, body string) Comment {
 	return Comment{ID: body, Repository: repository, CreatedAt: time.Unix(1, 0).UTC(), Anchor: Anchor{FilePath: "file.go", NewStart: 1, NewEnd: 1}, Body: body}
 }

@@ -90,7 +90,7 @@ func (m *Model) finishCommentEdit() {
 	} else {
 		comment = comments.Comment{Anchor: m.comments.editAnchor, Body: body}
 	}
-	saved, err := m.deps.SaveComment(comment, m.review.changes)
+	saved, err := m.deps.SaveComment(comment)
 	if err != nil {
 		m.err = err
 		m.clearCommentEdit()
@@ -116,7 +116,7 @@ func (m *Model) deleteComment(index int) {
 		m.err = fmt.Errorf("comment storage is unavailable")
 		return
 	}
-	if err := m.deps.DeleteComment(m.comments.items[index], m.review.changes); err != nil {
+	if err := m.deps.DeleteComment(m.comments.items[index]); err != nil {
 		m.err = err
 		return
 	}

@@ -72,7 +72,7 @@ func TestBranchRefreshUsesExplicitComparisonMode(t *testing.T) {
 func TestVisualSelectionSavesSemanticAnchor(t *testing.T) {
 	t.Setenv("EDITOR", "true")
 	var saved comments.Comment
-	m := New(testChanges(), nil, Dependencies{SaveComment: func(comment comments.Comment, _ diff.ChangeSet) (comments.Comment, error) {
+	m := New(testChanges(), nil, Dependencies{SaveComment: func(comment comments.Comment) (comments.Comment, error) {
 		saved = comment
 		comment.ID = "new"
 		return comment, nil
@@ -92,7 +92,7 @@ func TestVisualSelectionSavesSemanticAnchor(t *testing.T) {
 
 func TestCommentSaveFailureDoesNotLeaveDraftState(t *testing.T) {
 	t.Setenv("EDITOR", "true")
-	m := New(testChanges(), nil, Dependencies{SaveComment: func(comments.Comment, diff.ChangeSet) (comments.Comment, error) {
+	m := New(testChanges(), nil, Dependencies{SaveComment: func(comments.Comment) (comments.Comment, error) {
 		return comments.Comment{}, fmt.Errorf("storage unavailable")
 	}}, Options{Size: Size{Width: 100, Height: 30}})
 	m = updateModel(t, m, textKey("c"))

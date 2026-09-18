@@ -135,10 +135,10 @@ The implementation uses these package boundaries:
 | `internal/ui` | Command workflows, Bubble Tea model, key handling, diff presentation, viewport, selection, rendering, and syntax highlighting |
 | `internal/git` | Repository discovery, Git commands, diff parsing, source loading, untracked-file inspection, and fingerprints |
 | `internal/diff` | Raw change-set, file, hunk, and line values plus semantic file identity |
-| `internal/comments` | Anchors, comments, bbolt storage, XDG data resolution, prompt formatting, and conditional delivery acknowledgement |
+| `internal/comments` | Anchors, repository-scoped comment operations, bbolt storage, XDG data resolution, prompt formatting, and conditional delivery acknowledgement |
 | `internal/editor` | XDG state resolution, private drafts, suggestion handling, and external-editor commands |
 
-The command package is a process-level wrapper that delegates to `internal/ui.Run`. Command parsing, dependency composition, terminal sizing, and both workflows live in packages. `internal/patch`, `internal/gitdiff`, `internal/view`, `internal/tui`, `internal/review`, `internal/inbox`, `internal/highlight`, and `internal/xdg` were removed rather than retained as adapters.
+The command package is a process-level wrapper that delegates to `internal/ui.Run`. The UI command entry point wires `git.Loader` and a repository-scoped `comments.Inbox` into the model; comment persistence and delivery decisions live in `comments`. Command parsing, terminal sizing, and both workflows live in packages. `internal/patch`, `internal/gitdiff`, `internal/view`, `internal/tui`, `internal/review`, `internal/inbox`, `internal/highlight`, and `internal/xdg` were removed rather than retained as adapters.
 
 ### Modeling decisions
 
@@ -147,7 +147,7 @@ The command package is a process-level wrapper that delegates to `internal/ui.Ru
 - A single semantic selection traversal produces both quoted comment lines and old/new ranges. Selections cannot cross files or hunks.
 - `ui.ViewMode` and `RefreshTarget` represent local versus branch comparison explicitly; no empty string selects behavior.
 - Refresh commands carry a monotonically increasing request identity and target. Results from older requests or another comparison mode are ignored. Comment loads carry the comment revision for the same reason.
-- `comments.Store` writes only the new `inbox-v2.db` format. It does not decode legacy records. `Snapshot` retains each encoded record and `Acknowledge` deletes it only if the bytes are unchanged after successful output.
+- `comments.Inbox` binds comment saving, listing, deletion, preferences, and delivery to one repository. `comments.Store` writes only the new `inbox-v2.db` format. It does not decode legacy records. `Snapshot` retains each encoded record and `Acknowledge` deletes it only if the bytes are unchanged after successful output.
 - Storage transactions remain short-lived and the store keeps repository isolation, 64 KiB comment limits, a 16 MiB pending limit, and 0700/0600 filesystem permissions.
 
 ### Original file inventory and disposition
