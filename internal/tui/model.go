@@ -220,56 +220,21 @@ func (m Model) loadComments() tea.Cmd {
 	}
 }
 
-type cursorIdentity struct {
-	file   patch.File
-	hunk   patch.Hunk
-	line   patch.Line
-	cursor view.Cursor
-	valid  bool
-}
-
-func (m Model) identify(cursor view.Cursor) cursorIdentity {
-	file, fileOK := m.review.view.File(cursor)
-	hunk, hunkOK := m.review.view.Hunk(cursor)
-	line, lineOK := m.review.view.Line(cursor)
-	return cursorIdentity{file: file, hunk: hunk, line: line, cursor: cursor, valid: fileOK && hunkOK && lineOK}
-}
-
 func (m *Model) rebuildView(p patch.Patch) {
-	cursor := m.identify(m.review.cursor)
-	var first, last cursorIdentity
-	if m.review.selection != nil {
-		first, last = m.identify(m.review.selection.First), m.identify(m.review.selection.Last)
+	oldView := m.review.view
+	oldState := view.State{
+		Cursor:    &m.review.cursor,
+		Selection: m.review.selection,
+		Viewport:  m.review.viewport,
 	}
-	rowsAbove := m.review.cursor.Coordinate.Y - m.review.viewport.Top.Y
 	m.review.patch = p
 	m.review.view = m.newReviewView(p)
-	m.review.viewport = m.review.view.NewViewport(m.width, m.screenBodyHeight())
-	if cursor.valid {
-		m.review.cursor, cursor.valid = m.review.view.FindCursor(cursor.file, cursor.hunk, cursor.line, cursor.cursor.Coordinate, cursor.cursor.Pane)
+	state := view.Preserve(oldView, oldState, m.review.view)
+	m.review.viewport = state.Viewport
+	m.review.selection = state.Selection
+	if state.Cursor != nil {
+		m.review.cursor = *state.Cursor
 	}
-	if !cursor.valid {
-		m.review.cursor, _ = m.review.view.First()
-	}
-	m.review.selection = nil
-	if first.valid && last.valid {
-		translatedFirst, firstOK := m.review.view.FindCursor(first.file, first.hunk, first.line, first.cursor.Coordinate, first.cursor.Pane)
-		translatedLast, lastOK := m.review.view.FindCursor(last.file, last.hunk, last.line, last.cursor.Coordinate, last.cursor.Pane)
-		if firstOK && lastOK {
-			selection := view.Selection{First: translatedFirst, Last: translatedLast}
-			if firstHunk, ok := m.review.view.Hunk(translatedFirst); ok {
-				if firstFile, fileOK := m.review.view.File(translatedFirst); fileOK {
-					if lastFile, lastFileOK := m.review.view.File(translatedLast); lastFileOK && samePatchFile(firstFile, lastFile) {
-						if lastHunk, lastOK := m.review.view.Hunk(translatedLast); lastOK && firstHunk.Header == lastHunk.Header {
-							m.review.selection = &selection
-						}
-					}
-				}
-			}
-		}
-	}
-	m.review.viewport.Top.Y = max(0, m.review.cursor.Coordinate.Y-rowsAbove)
-	m.review.viewport = m.review.view.KeepVisible(m.review.viewport, m.review.cursor)
 }
 
 func (m Model) newReviewView(p patch.Patch) view.View {
@@ -277,10 +242,6 @@ func (m Model) newReviewView(p patch.Patch) view.View {
 		return view.NewSideBySideView(p, m.dark)
 	}
 	return view.NewUnifiedView(p, m.dark)
-}
-
-func samePatchFile(first, last patch.File) bool {
-	return first.OldPath == last.OldPath && first.NewPath == last.NewPath
 }
 
 func (m Model) updateKey(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {

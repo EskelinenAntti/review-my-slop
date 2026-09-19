@@ -40,6 +40,14 @@ type Selection struct {
 	Last  Cursor
 }
 
+// State is the cursor, selection, and viewport associated with a View.
+// Cursor and Selection are nil when the View has no selectable line.
+type State struct {
+	Cursor    *Cursor
+	Selection *Selection
+	Viewport  Viewport
+}
+
 type Direction int8
 
 const (
