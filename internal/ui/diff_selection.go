@@ -1,7 +1,6 @@
 package ui
 
 import (
-	"fmt"
 	"github.com/eskelinenantti/review-my-slop/internal/comments"
 
 	"github.com/eskelinenantti/review-my-slop/internal/patch"
@@ -58,42 +57,11 @@ func (v *diffView) Lines(selection Selection) []patch.Line {
 func (v *diffView) Anchor(selection Selection) (comments.Anchor, error) {
 	lines := v.Lines(selection)
 	if len(lines) == 0 {
-		return comments.Anchor{}, fmt.Errorf("select code lines before commenting")
+		return comments.AnchorFor(patch.File{}, nil)
 	}
 	first := v.rows[selection.First.Coordinate.Y]
 	file := v.patch.Files[first.file]
-	hunk := file.Hunks[first.hunk]
-	anchor := comments.Anchor{FilePath: file.Path()}
-	start, end := selection.First.Coordinate.Y, selection.Last.Coordinate.Y
-	if start > end {
-		start, end = end, start
-	}
-	for y := start; y <= end; y++ {
-		panes := []Pane{selection.First.Pane}
-		if start == end && selection.First.Pane != selection.Last.Pane {
-			panes = append(panes, selection.Last.Pane)
-		} else if y == selection.Last.Coordinate.Y {
-			panes[0] = selection.Last.Pane
-		}
-		for _, pane := range panes {
-			index := v.lineIndex(v.rows[y], pane)
-			if index < 0 {
-				continue
-			}
-			line := hunk.Lines[index]
-			prefix := " "
-			if line.Kind == patch.Addition {
-				prefix = "+"
-			}
-			if line.Kind == patch.Deletion {
-				prefix = "-"
-			}
-			anchor.QuotedLines = append(anchor.QuotedLines, prefix+line.Text)
-			accumulateRange(&anchor.OldStart, &anchor.OldEnd, int(line.OldNumber))
-			accumulateRange(&anchor.NewStart, &anchor.NewEnd, int(line.NewNumber))
-		}
-	}
-	return anchor, nil
+	return comments.AnchorFor(file, lines)
 }
 
 func (v *diffView) File(cursor Cursor) (patch.File, bool) {
@@ -170,18 +138,6 @@ func closest(candidates []Cursor, nearby Coordinate) Cursor {
 		}
 	}
 	return best
-}
-
-func accumulateRange(start, end *int, value int) {
-	if value == 0 {
-		return
-	}
-	if *start == 0 || value < *start {
-		*start = value
-	}
-	if value > *end {
-		*end = value
-	}
 }
 
 func abs(value int) int {

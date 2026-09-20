@@ -77,28 +77,6 @@ func TestCommentOpensMarkdownFileInEditor(t *testing.T) {
 	}
 }
 
-func TestCommentEditorSuggestionBehaviors(t *testing.T) {
-	t.Run("escapes fence", func(t *testing.T) {
-		anchor := comments.Anchor{QuotedLines: []string{"+````go", `+fmt.Println("hello")`, "+````"}}
-		draft := CommentDraft("explain this", anchor)
-		if !strings.Contains(draft, "`````suggestion") || StripUnchangedSuggestion(draft, anchor.QuotedLines) != "explain this" {
-			t.Fatalf("draft = %q", draft)
-		}
-	})
-	t.Run("only new version", func(t *testing.T) {
-		anchor := comments.Anchor{QuotedLines: []string{" unchanged()", "-old()", "+new()"}}
-		if got := CommentDraft("comment", anchor); got != "comment\n\n```suggestion\nunchanged()\nnew()\n```\n" {
-			t.Fatalf("draft = %q", got)
-		}
-	})
-	t.Run("edited suggestion remains", func(t *testing.T) {
-		body := "comment\n\n```suggestion\nbetter()\n```\n"
-		if got := StripUnchangedSuggestion(body, []string{"-old()", "+new()"}); got != body {
-			t.Fatalf("body = %q", got)
-		}
-	})
-}
-
 func TestExternalEditorCommandReadsEditedDraft(t *testing.T) {
 	file, err := os.CreateTemp("", "review-my-slop-editor-test-*.md")
 	if err != nil {

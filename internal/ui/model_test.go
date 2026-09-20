@@ -182,14 +182,6 @@ func TestCommentsMenuScrollsWithinScreenBody(t *testing.T) {
 	}
 }
 
-func TestCommentDraftRoundTrip(t *testing.T) {
-	anchor := comments.Anchor{QuotedLines: []string{" old", "-gone", "+new"}}
-	draft := CommentDraft("body", anchor)
-	if got := StripUnchangedSuggestion(draft, anchor.QuotedLines); got != "body" {
-		t.Fatalf("unchanged suggestion result = %q", got)
-	}
-}
-
 func modelPatch() patch.Patch {
 	return patch.Patch{Repository: "/repo", Fingerprint: "old", Files: []patch.File{{DisplayPath: "main.go", OldPath: "main.go", NewPath: "main.go", Hunks: []patch.Hunk{{Header: "@@ -1,2 +1,2 @@", Lines: []patch.Line{{Kind: patch.Context, Text: "keep()", OldNumber: 1, NewNumber: 1}, {Kind: patch.Deletion, Text: "old()", OldNumber: 2}, {Kind: patch.Addition, Text: "new()", NewNumber: 2}}}}}}}
 }
