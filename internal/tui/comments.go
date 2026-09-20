@@ -50,9 +50,12 @@ func (m Model) updateComments(name string) (tea.Model, tea.Cmd) {
 }
 
 func (m *Model) beginComment() (tea.Cmd, error) {
-	selection := m.review.selection
+	selection := m.review.state.Selection
 	if selection == nil {
-		current := m.review.view.BeginSelection(m.review.cursor)
+		if m.review.state.Cursor == nil {
+			return nil, fmt.Errorf("there is no selectable line")
+		}
+		current := m.review.view.BeginSelection(*m.review.state.Cursor)
 		selection = &current
 	}
 	anchor, err := m.review.view.Anchor(*selection)
@@ -132,15 +135,18 @@ func (m *Model) clearCommentEdit() {
 	m.comments.editAnchor = review.Anchor{}
 }
 
-func (m *Model) cancelSelection() { m.review.selection = nil }
+func (m *Model) cancelSelection() { m.review.state.Selection = nil }
 
 func (m Model) openCurrentLine() (tea.Cmd, error) {
 	editorCommand := strings.TrimSpace(os.Getenv("EDITOR"))
 	if editorCommand == "" {
 		return nil, fmt.Errorf("$EDITOR is not set")
 	}
-	file, fileOK := m.review.view.File(m.review.cursor)
-	line, lineOK := m.review.view.Line(m.review.cursor)
+	if m.review.state.Cursor == nil {
+		return nil, fmt.Errorf("select a code line to open in $EDITOR")
+	}
+	file, fileOK := m.review.view.File(*m.review.state.Cursor)
+	line, lineOK := m.review.view.Line(*m.review.state.Cursor)
 	if !fileOK || !lineOK {
 		return nil, fmt.Errorf("select a code line to open in $EDITOR")
 	}

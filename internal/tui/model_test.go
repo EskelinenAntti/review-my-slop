@@ -63,20 +63,20 @@ func TestSideBySideToggleStillSavesPreference(t *testing.T) {
 func TestRefreshTranslatesCursorAndSelection(t *testing.T) {
 	m := testModel(modelPatch(), nil, nil)
 	m.move(1)
-	selection := m.review.view.BeginSelection(m.review.cursor)
-	m.review.selection = &selection
+	selection := m.review.view.BeginSelection(currentCursor(m))
+	m.review.state.Selection = &selection
 	m.move(1)
-	want, _ := m.review.view.Line(m.review.cursor)
+	want, _ := m.review.view.Line(currentCursor(m))
 	refreshed := modelPatch()
 	refreshed.Fingerprint = "new"
 	refreshed.Files[0].Metadata = []string{"new metadata"}
 	m.rebuildView(refreshed)
-	got, ok := m.review.view.Line(m.review.cursor)
+	got, ok := m.review.view.Line(currentCursor(m))
 	if !ok || got != want {
 		t.Fatalf("cursor line = %#v, want %#v", got, want)
 	}
-	if m.review.selection == nil || len(m.review.view.Lines(*m.review.selection)) != 2 {
-		t.Fatalf("selection was not translated: %#v", m.review.selection)
+	if m.review.state.Selection == nil || len(m.review.view.Lines(*m.review.state.Selection)) != 2 {
+		t.Fatalf("selection was not translated: %#v", m.review.state.Selection)
 	}
 }
 
@@ -85,14 +85,14 @@ func TestViewSwitchPreservesSemanticCursor(t *testing.T) {
 	m.width = 120
 	m.move(1)
 	m.move(1)
-	want, _ := m.review.view.Line(m.review.cursor)
-	oldCoordinate := m.review.cursor.Coordinate
+	want, _ := m.review.view.Line(currentCursor(m))
+	oldCoordinate := currentCursor(m).Coordinate
 	m.setSideBySide(true)
-	got, ok := m.review.view.Line(m.review.cursor)
+	got, ok := m.review.view.Line(currentCursor(m))
 	if !ok || got != want {
 		t.Fatalf("cursor line after switch = %#v", got)
 	}
-	if m.review.cursor.Coordinate == oldCoordinate {
+	if currentCursor(m).Coordinate == oldCoordinate {
 		t.Fatal("layout switch reused the old coordinate")
 	}
 }
@@ -115,7 +115,7 @@ func TestCommentSaveUsesPatchAndPreservesAnchor(t *testing.T) {
 func TestRenderingAndKeyBindingsRemainAvailable(t *testing.T) {
 	m := testModel(modelPatch(), nil, nil)
 	m.width, m.height = 80, 10
-	m.review.viewport = m.review.view.Resize(m.review.viewport, m.width, m.screenBodyHeight())
+	m.review.state.Viewport = m.review.view.Resize(m.review.state.Viewport, m.width, m.screenBodyHeight())
 	rendered := m.render()
 	for _, value := range []string{"review-my-slop", "+1-1", "old()", "new()", "local changes"} {
 		if !strings.Contains(rendered, value) {

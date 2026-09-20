@@ -9,6 +9,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/eskelinenantti/review-my-slop/internal/patch"
+	"github.com/eskelinenantti/review-my-slop/internal/view"
 )
 
 func (m Model) View() tea.View {
@@ -39,7 +40,11 @@ func (m Model) render() string {
 		body = make([]string, m.screenBodyHeight())
 		body[min(1, len(body)-1)] = mutedStyle.Render(empty)
 	} else {
-		body = strings.Split(m.review.view.Render(m.review.viewport, m.review.cursor, m.review.selection), "\n")
+		cursor := view.Cursor{}
+		if m.review.state.Cursor != nil {
+			cursor = *m.review.state.Cursor
+		}
+		body = strings.Split(m.review.view.Render(m.review.state.Viewport, cursor, m.review.state.Selection), "\n")
 	}
 	footer := m.renderStatus()
 	if m.err != nil {
@@ -86,7 +91,7 @@ func (m Model) renderStatus() string {
 		if m.search.miss {
 			status += errorStyle.Render("  no matches")
 		}
-	} else if m.review.selection != nil {
+	} else if m.review.state.Selection != nil {
 		status = "visual selection  j/k extend  c comment  Esc cancel"
 	}
 	return m.renderFooter(mutedStyle.Render(status))
@@ -102,8 +107,8 @@ func (m Model) renderFooter(left string) string {
 
 func (m Model) viewLabel() string {
 	progress := ""
-	if m.review.viewport.Top.Y > 0 {
-		progress = fmt.Sprintf(" (%d%%)", m.review.view.ViewportProgress(m.review.viewport))
+	if m.review.state.Viewport.Top.Y > 0 {
+		progress = fmt.Sprintf(" (%d%%)", m.review.view.ViewportProgress(m.review.state.Viewport))
 	}
 	if branch := m.currentBranch(); branch != "" {
 		return "branch changes from " + branch + progress

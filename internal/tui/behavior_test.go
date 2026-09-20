@@ -140,7 +140,7 @@ func TestOpenCurrentLineUsesEditorWithWorkingTreeLocation(t *testing.T) {
 	t.Setenv("EDITOR", "printf")
 	m := testModel(coveragePatch(), nil, nil)
 	m.review.patch.Repository = "/tmp/repo with spaces"
-	m.review.cursor = findLine(t, m, "new()")
+	setCurrentCursor(&m, findLine(t, m, "new()"))
 	cmd, err := m.openCurrentLine()
 	if err != nil || cmd == nil {
 		t.Fatalf("command=%v err=%v", cmd, err)
@@ -243,7 +243,7 @@ func TestSelectionCannotCrossHunk(t *testing.T) {
 	for range 10 {
 		m = updateModel(t, m, textKey("j"))
 	}
-	line, _ := m.review.view.Line(m.review.cursor)
+	line, _ := m.review.view.Line(currentCursor(m))
 	if line.Text == "more()" {
 		t.Fatal("selection crossed hunk")
 	}
@@ -256,14 +256,14 @@ func TestVimSequencesAndLayoutToggle(t *testing.T) {
 	m = updateModel(t, m, tea.WindowSizeMsg{Width: 120, Height: 20})
 	m = updateModel(t, m, textKey("G"))
 	last, _ := m.review.view.Last()
-	if m.review.cursor != last {
-		t.Fatalf("G cursor = %#v", m.review.cursor)
+	if currentCursor(m) != last {
+		t.Fatalf("G cursor = %#v", currentCursor(m))
 	}
 	m = updateModel(t, m, textKey("g"))
 	m = updateModel(t, m, textKey("g"))
 	first, _ := m.review.view.First()
-	if m.review.cursor != first {
-		t.Fatalf("gg cursor = %#v", m.review.cursor)
+	if currentCursor(m) != first {
+		t.Fatalf("gg cursor = %#v", currentCursor(m))
 	}
 	m = updateModel(t, m, textKey("t"))
 	if !m.review.sideBySide || !strings.Contains(m.render(), "│") {
@@ -289,12 +289,12 @@ func TestSavedSideBySideCanBeDisabledInNarrowTerminal(t *testing.T) {
 func TestResizeAcrossSideBySideThresholdPreservesCursorScreenRow(t *testing.T) {
 	m := testModel(coveragePatch(), nil, nil)
 	m.SetSideBySide(true, nil)
-	m.review.cursor = findLine(t, m, "keep()")
-	m.review.viewport = m.review.view.Align(m.review.viewport, m.review.cursor, view.Middle)
-	before := m.review.cursor.Coordinate.Y - m.review.viewport.Top.Y
+	setCurrentCursor(&m, findLine(t, m, "keep()"))
+	m.review.state.Viewport = m.review.view.Align(m.review.state.Viewport, currentCursor(m), view.Middle)
+	before := currentCursor(m).Coordinate.Y - m.review.state.Viewport.Top.Y
 	m = updateModel(t, m, tea.WindowSizeMsg{Width: 80, Height: 20})
 	m = updateModel(t, m, tea.WindowSizeMsg{Width: 120, Height: 20})
-	if got := m.review.cursor.Coordinate.Y - m.review.viewport.Top.Y; got != before {
+	if got := currentCursor(m).Coordinate.Y - m.review.state.Viewport.Top.Y; got != before {
 		t.Fatalf("screen row = %d, want %d", got, before)
 	}
 }
@@ -305,16 +305,16 @@ func TestZSequencesPositionCurrentLineInViewport(t *testing.T) {
 		m.move(view.Forward)
 	}
 	m.height = 9
-	m.review.viewport = m.review.view.Resize(m.review.viewport, m.width, m.screenBodyHeight())
+	m.review.state.Viewport = m.review.view.Resize(m.review.state.Viewport, m.width, m.screenBodyHeight())
 	for _, test := range []struct {
 		key       string
 		alignment view.VerticalAlignment
 	}{{"z", view.Middle}, {"t", view.Top}, {"b", view.Bottom}} {
 		m = updateModel(t, m, textKey("z"))
 		m = updateModel(t, m, textKey(test.key))
-		want := m.review.view.Align(m.review.viewport, m.review.cursor, test.alignment)
-		if m.review.viewport.Top != want.Top {
-			t.Errorf("z%s top=%v want=%v", test.key, m.review.viewport.Top, want.Top)
+		want := m.review.view.Align(m.review.state.Viewport, currentCursor(m), test.alignment)
+		if m.review.state.Viewport.Top != want.Top {
+			t.Errorf("z%s top=%v want=%v", test.key, m.review.state.Viewport.Top, want.Top)
 		}
 	}
 }
@@ -322,12 +322,12 @@ func TestZSequencesPositionCurrentLineInViewport(t *testing.T) {
 func TestPendingKeyIsConsumedByNextKey(t *testing.T) {
 	m := testModel(coveragePatch(), nil, nil)
 	m = updateModel(t, m, textKey("G"))
-	last := m.review.cursor
+	last := currentCursor(m)
 	m = updateModel(t, m, textKey("g"))
 	m = updateModel(t, m, textKey("h"))
 	m = updateModel(t, m, textKey("g"))
-	if m.review.cursor != last || m.pendingKey != "g" {
-		t.Fatalf("cursor=%#v pending=%q", m.review.cursor, m.pendingKey)
+	if currentCursor(m) != last || m.pendingKey != "g" {
+		t.Fatalf("cursor=%#v pending=%q", currentCursor(m), m.pendingKey)
 	}
 }
 
@@ -355,7 +355,7 @@ func TestStatusShowsProgressOnlyAfterViewportMoves(t *testing.T) {
 	if label := m.viewLabel(); label != "local changes" {
 		t.Fatalf("horizontal-scroll label=%q", label)
 	}
-	for m.review.viewport.Top.Y == 0 {
+	for m.review.state.Viewport.Top.Y == 0 {
 		m = updateModel(t, m, textKey("j"))
 	}
 	if label := m.viewLabel(); !strings.HasPrefix(label, "local changes (") || !strings.HasSuffix(label, "%)") {
@@ -386,40 +386,40 @@ func TestSideBySidePaneSwitchingUsesCtrlWSequences(t *testing.T) {
 	m := testModel(coveragePatch(), nil, nil)
 	m.width = 120
 	m.setSideBySide(true)
-	m.review.cursor = findLine(t, m, "new()")
+	setCurrentCursor(&m, findLine(t, m, "new()"))
 	m = updateModel(t, m, controlKey('w'))
 	m = updateModel(t, m, textKey("h"))
-	if m.review.cursor.Pane != view.Left || lineText(m) != "old()" {
-		t.Fatalf("left cursor=%#v line=%q", m.review.cursor, lineText(m))
+	if currentCursor(m).Pane != view.Left || lineText(m) != "old()" {
+		t.Fatalf("left cursor=%#v line=%q", currentCursor(m), lineText(m))
 	}
 	m = updateModel(t, m, controlKey('w'))
 	m = updateModel(t, m, controlKey('w'))
-	if m.review.cursor.Pane != view.Right || lineText(m) != "new()" {
-		t.Fatalf("right cursor=%#v line=%q", m.review.cursor, lineText(m))
+	if currentCursor(m).Pane != view.Right || lineText(m) != "new()" {
+		t.Fatalf("right cursor=%#v line=%q", currentCursor(m), lineText(m))
 	}
 }
 
 func TestHorizontalScrollKeysMoveByStepAndReset(t *testing.T) {
 	m := testModel(longModelPatch(), nil, nil)
 	m.width = 37
-	m.review.viewport = m.review.view.Resize(m.review.viewport, m.width, m.screenBodyHeight())
+	m.review.state.Viewport = m.review.view.Resize(m.review.state.Viewport, m.width, m.screenBodyHeight())
 	m = updateModel(t, m, textKey("l"))
 	m = updateModel(t, m, tea.KeyPressMsg(tea.Key{Code: tea.KeyRight}))
-	if m.review.viewport.LeftColumn != 2*horizontalScrollStep {
-		t.Fatalf("right offset=%d", m.review.viewport.LeftColumn)
+	if m.review.state.Viewport.LeftColumn != 2*horizontalScrollStep {
+		t.Fatalf("right offset=%d", m.review.state.Viewport.LeftColumn)
 	}
 	m = updateModel(t, m, textKey("h"))
 	m = updateModel(t, m, tea.KeyPressMsg(tea.Key{Code: tea.KeyLeft}))
-	if m.review.viewport.LeftColumn != 0 {
-		t.Fatalf("left offset=%d", m.review.viewport.LeftColumn)
+	if m.review.state.Viewport.LeftColumn != 0 {
+		t.Fatalf("left offset=%d", m.review.state.Viewport.LeftColumn)
 	}
 	m = updateModel(t, m, textKey("$"))
-	if m.review.viewport.LeftColumn == 0 {
+	if m.review.state.Viewport.LeftColumn == 0 {
 		t.Fatal("$ did not move to end")
 	}
 	m = updateModel(t, m, textKey("0"))
-	if m.review.viewport.LeftColumn != 0 {
-		t.Fatalf("0 offset=%d", m.review.viewport.LeftColumn)
+	if m.review.state.Viewport.LeftColumn != 0 {
+		t.Fatalf("0 offset=%d", m.review.state.Viewport.LeftColumn)
 	}
 }
 
@@ -477,21 +477,21 @@ func TestHeaderShowsAddedAndRemovedLineCounts(t *testing.T) {
 
 func TestSearchMovesIncrementallyRepeatsAndRestoresOrigin(t *testing.T) {
 	m := testModel(coveragePatch(), nil, nil)
-	origin := m.review.cursor
+	origin := currentCursor(m)
 	m = updateModel(t, m, textKey("/"))
 	m = updateModel(t, m, textKey("keep"))
-	first := m.review.cursor
+	first := currentCursor(m)
 	if m.mode != modeSearch || lineText(m) != "keep()" {
 		t.Fatalf("mode=%v line=%q", m.mode, lineText(m))
 	}
 	m = updateModel(t, m, specialKey(tea.KeyEnter))
 	m = updateModel(t, m, textKey("n"))
-	if m.review.cursor == first || lineText(m) != "keep()" {
-		t.Fatalf("next=%#v", m.review.cursor)
+	if currentCursor(m) == first || lineText(m) != "keep()" {
+		t.Fatalf("next=%#v", currentCursor(m))
 	}
 	m = updateModel(t, m, textKey("N"))
-	if m.review.cursor != first {
-		t.Fatalf("previous=%#v", m.review.cursor)
+	if currentCursor(m) != first {
+		t.Fatalf("previous=%#v", currentCursor(m))
 	}
 	m = updateModel(t, m, textKey("/"))
 	m = updateModel(t, m, textKey("missing"))
@@ -499,25 +499,25 @@ func TestSearchMovesIncrementallyRepeatsAndRestoresOrigin(t *testing.T) {
 		t.Fatal("missing search did not miss")
 	}
 	m = updateModel(t, m, specialKey(tea.KeyEsc))
-	if m.review.cursor != first {
-		t.Fatalf("cancel=%#v origin=%#v", m.review.cursor, origin)
+	if currentCursor(m) != first {
+		t.Fatalf("cancel=%#v origin=%#v", currentCursor(m), origin)
 	}
 }
 
 func TestSearchMatchesFileNamesAndBackspaceRestoresOrigin(t *testing.T) {
 	m := testModel(coveragePatch(), nil, nil)
-	origin := m.review.cursor
+	origin := currentCursor(m)
 	m = updateModel(t, m, textKey("/"))
 	m = updateModel(t, m, textKey("main.go"))
-	file, _ := m.review.view.File(m.review.cursor)
+	file, _ := m.review.view.File(currentCursor(m))
 	if file.DisplayPath != "main.go" {
 		t.Fatalf("file=%q", file.DisplayPath)
 	}
 	for range len("main.go") {
 		m = updateModel(t, m, specialKey(tea.KeyBackspace))
 	}
-	if m.review.cursor != origin || len(m.search.query) != 0 {
-		t.Fatalf("cursor=%#v query=%q", m.review.cursor, m.search.query)
+	if currentCursor(m) != origin || len(m.search.query) != 0 {
+		t.Fatalf("cursor=%#v query=%q", currentCursor(m), m.search.query)
 	}
 }
 
@@ -525,15 +525,15 @@ func TestSideBySideSearchActivatesPaneAndCancelRestoresIt(t *testing.T) {
 	m := testModel(coveragePatch(), nil, nil)
 	m.width = 120
 	m.setSideBySide(true)
-	origin := m.review.cursor
+	origin := currentCursor(m)
 	m = updateModel(t, m, textKey("/"))
 	m = updateModel(t, m, textKey("old()"))
-	if m.review.cursor.Pane != view.Left || lineText(m) != "old()" {
-		t.Fatalf("cursor=%#v line=%q", m.review.cursor, lineText(m))
+	if currentCursor(m).Pane != view.Left || lineText(m) != "old()" {
+		t.Fatalf("cursor=%#v line=%q", currentCursor(m), lineText(m))
 	}
 	m = updateModel(t, m, specialKey(tea.KeyEsc))
-	if m.review.cursor != origin {
-		t.Fatalf("cancel=%#v want=%#v", m.review.cursor, origin)
+	if currentCursor(m) != origin {
+		t.Fatalf("cancel=%#v want=%#v", currentCursor(m), origin)
 	}
 }
 
@@ -578,15 +578,15 @@ func TestDiffRefreshFallbackAndEmptyDiff(t *testing.T) {
 	refreshed.Fingerprint = "new"
 	m = updateModel(t, m, refreshDiffMsg{patch: refreshed})
 	first, ok := m.review.view.First()
-	if !ok || m.review.cursor != first {
-		t.Fatalf("cursor=%#v first=%#v", m.review.cursor, first)
+	if !ok || currentCursor(m) != first {
+		t.Fatalf("cursor=%#v first=%#v", currentCursor(m), first)
 	}
-	m.review.cursor = findLine(t, m, "new()")
+	setCurrentCursor(&m, findLine(t, m, "new()"))
 	changed := coveragePatch()
 	changed.Fingerprint = "changed"
 	changed.Files[0].Hunks[0].Lines[2].Text = "different()"
 	m = updateModel(t, m, refreshDiffMsg{patch: changed})
-	if _, ok := m.review.view.Line(m.review.cursor); !ok {
+	if _, ok := m.review.view.Line(currentCursor(m)); !ok {
 		t.Fatal("refresh fallback lost cursor")
 	}
 }
@@ -652,7 +652,16 @@ func findLine(t *testing.T, m Model, text string) view.Cursor {
 	t.Fatalf("line %q not found", text)
 	return view.Cursor{}
 }
-func lineText(m Model) string { line, _ := m.review.view.Line(m.review.cursor); return line.Text }
+func currentCursor(m Model) view.Cursor {
+	if m.review.state.Cursor == nil {
+		return view.Cursor{}
+	}
+	return *m.review.state.Cursor
+}
+
+func setCurrentCursor(m *Model, cursor view.Cursor) { m.review.state.Cursor = &cursor }
+
+func lineText(m Model) string { line, _ := m.review.view.Line(currentCursor(m)); return line.Text }
 
 func coveragePatch() patch.Patch {
 	return patch.Patch{Repository: "/repo", Fingerprint: "fingerprint", Files: []patch.File{{DisplayPath: "main.go", OldPath: "main.go", NewPath: "main.go", OldSource: "package main\nold()\nkeep()\n", NewSource: "package main\nnew()\nkeep()\nmore()\n", Hunks: []patch.Hunk{
