@@ -8,7 +8,6 @@ import (
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/eskelinenantti/review-my-slop/internal/patch"
-	"github.com/eskelinenantti/review-my-slop/internal/review"
 )
 
 type SaveCommentFunc func(comments.Comment, patch.Patch) (comments.Comment, error)
@@ -16,6 +15,13 @@ type DeleteCommentFunc func(comments.Comment, patch.Patch) error
 type LoadCommentsFunc func() ([]comments.Comment, error)
 type RefreshDiffFunc func(parent string) (patch.Patch, error)
 type SaveSideBySideFunc func(bool) error
+
+type Actions struct {
+	SaveComment   SaveCommentFunc
+	DeleteComment DeleteCommentFunc
+	LoadComments  func(patch.Patch) ([]comments.Comment, error)
+	RefreshPatch  RefreshDiffFunc
+}
 
 type Size struct {
 	Width  int
@@ -127,7 +133,7 @@ func New(p patch.Patch, comments []comments.Comment, save SaveCommentFunc, layou
 	return m
 }
 
-func NewWithReview(actions review.Actions, p patch.Patch, items []comments.Comment, size Size) (Model, error) {
+func NewWithActions(actions Actions, p patch.Patch, items []comments.Comment, size Size) (Model, error) {
 	sideBySide, err := loadLayoutSettings()
 	if err != nil {
 		return Model{}, err
@@ -139,11 +145,9 @@ func NewWithReview(actions review.Actions, p patch.Patch, items []comments.Comme
 	})
 	m.SetDelete(actions.DeleteComment)
 	m.SetLoadComments(func() ([]comments.Comment, error) {
-		return actions.Comments(m.review.patch)
+		return actions.LoadComments(m.review.patch)
 	})
-	m.SetRefresh(func(branch string) (patch.Patch, error) {
-		return actions.Load(branch)
-	})
+	m.SetRefresh(actions.RefreshPatch)
 	return m, nil
 }
 

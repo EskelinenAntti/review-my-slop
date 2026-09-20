@@ -11,7 +11,6 @@ import (
 
 	"github.com/eskelinenantti/review-my-slop/internal/comments"
 	"github.com/eskelinenantti/review-my-slop/internal/patch"
-	"github.com/eskelinenantti/review-my-slop/internal/review"
 	"github.com/eskelinenantti/review-my-slop/internal/ui"
 )
 
@@ -48,21 +47,44 @@ func runCode(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	currentReview := review.New(ctx, current, patch.Loader{}, store)
-	loaded, err := currentReview.Load("")
+	loader := patch.Loader{}
+	loaded, err := loader.Load(ctx, current)
 	if err != nil {
 		return err
 	}
-	pending, err := currentReview.Comments(loaded)
+	pending, err := store.List(loaded.Repository)
 	if err != nil {
 		return err
 	}
-	defaultBranch, err := currentReview.DefaultBranch()
+	defaultBranch, err := loader.DefaultBranch(ctx, current)
 	if err != nil {
 		return err
 	}
 	size := initialTerminalSize()
-	model, err := ui.NewWithReview(currentReview, loaded, pending, size)
+	model, err := ui.NewWithActions(ui.Actions{
+		SaveComment: func(comment comments.Comment, current patch.Patch) (comments.Comment, error) {
+			comment.Repository = current.Repository
+			if comment.ID != "" {
+				if err := store.Update(comment); err != nil {
+					return comments.Comment{}, err
+				}
+				return comment, nil
+			}
+			return store.Add(comment)
+		},
+		DeleteComment: func(comment comments.Comment, current patch.Patch) error {
+			return store.Delete(current.Repository, comment.ID)
+		},
+		LoadComments: func(current patch.Patch) ([]comments.Comment, error) {
+			return store.List(current.Repository)
+		},
+		RefreshPatch: func(branch string) (patch.Patch, error) {
+			if branch == "" {
+				return loader.Load(ctx, current)
+			}
+			return loader.LoadBranch(ctx, current, branch)
+		},
+	}, loaded, pending, size)
 	if err != nil {
 		return err
 	}
@@ -95,14 +117,20 @@ func runCommentsAt(ctx context.Context, current string, output io.Writer) error 
 	if err != nil {
 		return err
 	}
-	currentReview := review.New(ctx, current, patch.Loader{}, store)
-	root, err := currentReview.Repository()
+	root, err := patch.Loader{}.Root(ctx, current)
 	if err != nil {
 		return err
 	}
-	pending, err := currentReview.ExportRepository(output, root)
+	pending, err := store.List(root)
 	if err != nil {
 		return err
 	}
-	return currentReview.AcknowledgeRepository(root, pending)
+	if err := comments.WritePrompt(output, pending); err != nil {
+		return err
+	}
+	ids := make([]string, len(pending))
+	for index, comment := range pending {
+		ids[index] = comment.ID
+	}
+	return store.Acknowledge(root, ids)
 }
