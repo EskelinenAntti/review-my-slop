@@ -75,3 +75,14 @@ func TestNavigateScrollDoesNotMoveCursorOrSelection(t *testing.T) {
 		t.Fatal("horizontal scroll did not change viewport")
 	}
 }
+
+func TestNavigateZeroCommandDoesNothing(t *testing.T) {
+	v := NewUnifiedView(testPatch(), true)
+	first, _ := v.First()
+	state := State{Cursor: &first, Viewport: v.NewViewport(80, 12)}
+
+	next, outcome := Navigate(v, state, Command{})
+	if outcome != NoOutcome || next.Cursor == nil || *next.Cursor != first || next.Viewport != state.Viewport {
+		t.Fatalf("state=%#v outcome=%v", next, outcome)
+	}
+}
