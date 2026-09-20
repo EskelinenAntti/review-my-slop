@@ -64,15 +64,15 @@ func TestSideBySideToggleStillSavesPreference(t *testing.T) {
 func TestRefreshTranslatesCursorAndSelection(t *testing.T) {
 	m := testModel(modelPatch(), nil, nil)
 	m.navigate(view.Move(1))
-	selection := m.review.view.BeginSelection(currentCursor(m))
+	selection := m.review.view.BeginSelection(*m.review.state.Cursor)
 	m.review.state.Selection = &selection
 	m.navigate(view.Move(1))
-	want, _ := m.review.view.Line(currentCursor(m))
+	want, _ := m.review.view.Line(*m.review.state.Cursor)
 	refreshed := modelPatch()
 	refreshed.Fingerprint = "new"
 	refreshed.Files[0].Metadata = []string{"new metadata"}
 	m.rebuildView(refreshed)
-	got, ok := m.review.view.Line(currentCursor(m))
+	got, ok := m.review.view.Line(*m.review.state.Cursor)
 	if !ok || got != want {
 		t.Fatalf("cursor line = %#v, want %#v", got, want)
 	}
@@ -86,14 +86,14 @@ func TestViewSwitchPreservesSemanticCursor(t *testing.T) {
 	m.width = 120
 	m.navigate(view.Move(1))
 	m.navigate(view.Move(1))
-	want, _ := m.review.view.Line(currentCursor(m))
-	oldCoordinate := currentCursor(m).Coordinate
+	want, _ := m.review.view.Line(*m.review.state.Cursor)
+	oldCoordinate := (*m.review.state.Cursor).Coordinate
 	m.setSideBySide(true)
-	got, ok := m.review.view.Line(currentCursor(m))
+	got, ok := m.review.view.Line(*m.review.state.Cursor)
 	if !ok || got != want {
 		t.Fatalf("cursor line after switch = %#v", got)
 	}
-	if currentCursor(m).Coordinate == oldCoordinate {
+	if (*m.review.state.Cursor).Coordinate == oldCoordinate {
 		t.Fatal("layout switch reused the old coordinate")
 	}
 }
