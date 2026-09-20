@@ -12,7 +12,7 @@ type cursorIdentity struct {
 
 // Preserve returns fresh State for next by retaining the meaningful position
 // from state where next contains it.
-func Preserve(old View, state State, next View) State {
+func Preserve(old *view, state State, next *view) State {
 	result := State{Viewport: next.NewViewport(state.Viewport.Width, state.Viewport.Height)}
 	rowsAbove := 0
 	if state.Cursor != nil {
@@ -41,7 +41,7 @@ func Preserve(old View, state State, next View) State {
 	return result
 }
 
-func identify(v View, cursor *Cursor) cursorIdentity {
+func identify(v *view, cursor *Cursor) cursorIdentity {
 	if cursor == nil {
 		return cursorIdentity{}
 	}
@@ -51,7 +51,7 @@ func identify(v View, cursor *Cursor) cursorIdentity {
 	return cursorIdentity{file: file, hunk: hunk, line: line, cursor: *cursor, valid: fileOK && hunkOK && lineOK}
 }
 
-func preserveSelection(old View, selection *Selection, next View) (Selection, bool) {
+func preserveSelection(old *view, selection *Selection, next *view) (Selection, bool) {
 	if selection == nil {
 		return Selection{}, false
 	}

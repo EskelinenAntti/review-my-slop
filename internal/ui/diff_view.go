@@ -23,26 +23,26 @@ type entry struct {
 	text, left, right string
 }
 
-type diffView struct {
+type view struct {
 	patch patch.Patch
 	rows  []entry
 	split bool
 	dark  bool
 }
 
-func NewUnifiedView(p patch.Patch, dark bool) View {
-	v := &diffView{patch: p, dark: dark}
+func NewUnifiedView(p patch.Patch, dark bool) *view {
+	v := &view{patch: p, dark: dark}
 	v.buildUnified()
 	return v
 }
 
-func NewSideBySideView(p patch.Patch, dark bool) View {
-	v := &diffView{patch: p, split: true, dark: dark}
+func NewSideBySideView(p patch.Patch, dark bool) *view {
+	v := &view{patch: p, split: true, dark: dark}
 	v.buildSplit()
 	return v
 }
 
-func (v *diffView) buildUnified() {
+func (v *view) buildUnified() {
 	for fileIndex := range v.patch.Files {
 		file := &v.patch.Files[fileIndex]
 		v.rows = append(v.rows, entry{kind: fileRow, file: fileIndex, hunk: -1, leftLine: -1, rightLine: -1, text: file.DisplayPath})
@@ -66,7 +66,7 @@ func (v *diffView) buildUnified() {
 	}
 }
 
-func (v *diffView) buildSplit() {
+func (v *view) buildSplit() {
 	for fileIndex := range v.patch.Files {
 		file := &v.patch.Files[fileIndex]
 		v.rows = append(v.rows, entry{kind: fileRow, file: fileIndex, hunk: -1, leftLine: -1, rightLine: -1, text: file.DisplayPath})
@@ -119,7 +119,7 @@ func (v *diffView) buildSplit() {
 	}
 }
 
-func (v *diffView) highlight(file *patch.File) Pair {
+func (v *view) highlight(file *patch.File) Pair {
 	return Sources(file.Path(), file.OldSource, file.NewSource, v.dark)
 }
 

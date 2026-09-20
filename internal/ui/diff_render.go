@@ -12,7 +12,7 @@ import (
 	"github.com/eskelinenantti/review-my-slop/internal/patch"
 )
 
-func (v *diffView) Render(viewport Viewport, cursor Cursor, selection *Selection) string {
+func (v *view) Render(viewport Viewport, cursor Cursor, selection *Selection) string {
 	viewport = v.clampViewport(viewport)
 	lines := make([]string, 0, viewport.Height)
 	if v.hasStickyHeader(viewport.Top, viewport.Height) {
@@ -34,7 +34,7 @@ func (v *diffView) Render(viewport Viewport, cursor Cursor, selection *Selection
 	return strings.Join(lines, "\n")
 }
 
-func (v *diffView) renderUnifiedRow(current entry, y int, viewport Viewport, cursor Cursor, selection *Selection) string {
+func (v *view) renderUnifiedRow(current entry, y int, viewport Viewport, cursor Cursor, selection *Selection) string {
 	width := max(20, viewport.Width)
 	switch current.kind {
 	case fileRow:
@@ -68,11 +68,11 @@ func (v *diffView) renderUnifiedRow(current entry, y int, viewport Viewport, cur
 	return ""
 }
 
-func (v *diffView) renderFileRow(path string, width int) string {
+func (v *view) renderFileRow(path string, width int) string {
 	return fileStyle.Width(max(20, width)).Render(path)
 }
 
-func (v *diffView) renderSplitRow(current entry, y int, viewport Viewport, cursor Cursor, selection *Selection) string {
+func (v *view) renderSplitRow(current entry, y int, viewport Viewport, cursor Cursor, selection *Selection) string {
 	leftWidth := max(20, (viewport.Width-3)/2)
 	rightWidth := max(20, viewport.Width-3-leftWidth)
 	left := v.renderPane(current, y, Left, leftWidth, viewport.LeftColumn, cursor, selection)
@@ -80,7 +80,7 @@ func (v *diffView) renderSplitRow(current entry, y int, viewport Viewport, curso
 	return left + " │ " + right
 }
 
-func (v *diffView) renderPane(current entry, y int, pane Pane, width, offset int, cursor Cursor, selection *Selection) string {
+func (v *view) renderPane(current entry, y int, pane Pane, width, offset int, cursor Cursor, selection *Selection) string {
 	index := v.lineIndex(current, pane)
 	if index < 0 {
 		return strings.Repeat(" ", width)

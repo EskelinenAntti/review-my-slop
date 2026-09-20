@@ -5,16 +5,16 @@ import (
 	"github.com/charmbracelet/x/ansi"
 )
 
-func (v *diffView) NewViewport(width, height int) Viewport {
+func (v *view) NewViewport(width, height int) Viewport {
 	return v.Resize(Viewport{}, width, height)
 }
 
-func (v *diffView) Resize(viewport Viewport, width, height int) Viewport {
+func (v *view) Resize(viewport Viewport, width, height int) Viewport {
 	viewport.Width, viewport.Height = max(1, width), max(1, height)
 	return v.clampViewport(viewport)
 }
 
-func (v *diffView) clampViewport(viewport Viewport) Viewport {
+func (v *view) clampViewport(viewport Viewport) Viewport {
 	maxTop := max(0, len(v.rows)-viewport.Height)
 	if v.hasStickyHeader(Coordinate{Y: maxTop}, viewport.Height) {
 		maxTop++
@@ -24,11 +24,11 @@ func (v *diffView) clampViewport(viewport Viewport) Viewport {
 	return viewport
 }
 
-func (v *diffView) hasStickyHeader(top Coordinate, viewportHeight int) bool {
+func (v *view) hasStickyHeader(top Coordinate, viewportHeight int) bool {
 	return viewportHeight > 1 && top.Y >= 0 && top.Y < len(v.rows) && v.rows[top.Y].kind != fileRow
 }
 
-func (v *diffView) contentHeight(viewport Viewport) int {
+func (v *view) contentHeight(viewport Viewport) int {
 	height := viewport.Height
 	if v.hasStickyHeader(viewport.Top, viewport.Height) {
 		height--
@@ -36,7 +36,7 @@ func (v *diffView) contentHeight(viewport Viewport) int {
 	return max(1, height)
 }
 
-func (v *diffView) KeepVisible(viewport Viewport, cursor Cursor) Viewport {
+func (v *view) KeepVisible(viewport Viewport, cursor Cursor) Viewport {
 	if !v.valid(cursor) {
 		return v.clampViewport(viewport)
 	}
@@ -54,7 +54,7 @@ func (v *diffView) KeepVisible(viewport Viewport, cursor Cursor) Viewport {
 	return viewport
 }
 
-func (v *diffView) Align(viewport Viewport, cursor Cursor, alignment VerticalAlignment) Viewport {
+func (v *view) Align(viewport Viewport, cursor Cursor, alignment VerticalAlignment) Viewport {
 	headerHeight := 0
 	if viewport.Height > 1 {
 		headerHeight = 1
@@ -77,12 +77,12 @@ func alignmentOffset(height int, alignment VerticalAlignment) int {
 	return 0
 }
 
-func (v *diffView) ScrollHorizontal(viewport Viewport, columns int) Viewport {
+func (v *view) ScrollHorizontal(viewport Viewport, columns int) Viewport {
 	viewport.LeftColumn += columns
 	return v.clampViewport(viewport)
 }
 
-func (v *diffView) ScrollHalfPage(viewport Viewport, cursor Cursor, direction Direction) (Viewport, Cursor) {
+func (v *view) ScrollHalfPage(viewport Viewport, cursor Cursor, direction Direction) (Viewport, Cursor) {
 	if !v.valid(cursor) {
 		return viewport, cursor
 	}
@@ -96,7 +96,7 @@ func (v *diffView) ScrollHalfPage(viewport Viewport, cursor Cursor, direction Di
 	return viewport, cursor
 }
 
-func (v *diffView) ViewportProgress(viewport Viewport) int {
+func (v *view) ViewportProgress(viewport Viewport) int {
 	if len(v.rows) == 0 {
 		return 0
 	}
@@ -104,7 +104,7 @@ func (v *diffView) ViewportProgress(viewport Viewport) int {
 	return bottom * 100 / len(v.rows)
 }
 
-func (v *diffView) nearest(target int, pane Pane, direction Direction, viewport Viewport) (Cursor, bool) {
+func (v *view) nearest(target int, pane Pane, direction Direction, viewport Viewport) (Cursor, bool) {
 	height := v.contentHeight(viewport)
 	for distance := 0; distance < height; distance++ {
 		for _, y := range []int{target + int(direction)*distance, target - int(direction)*distance} {
@@ -119,7 +119,7 @@ func (v *diffView) nearest(target int, pane Pane, direction Direction, viewport 
 	return Cursor{}, false
 }
 
-func (v *diffView) maxHorizontalOffset(width int) int {
+func (v *view) maxHorizontalOffset(width int) int {
 	contentWidth := max(1, width-14)
 	extra := 0
 	if v.split {

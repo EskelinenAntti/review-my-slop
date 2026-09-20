@@ -17,7 +17,7 @@ func TestSplitPairsUnequalChangeBlocksAndKeepsHunksSeparate(t *testing.T) {
 		{Header: "one", Lines: []patch.Line{{Kind: patch.Deletion, Text: "d1", OldNumber: 1}, {Kind: patch.Deletion, Text: "d2", OldNumber: 2}, {Kind: patch.Addition, Text: "a1", NewNumber: 1}, {Kind: patch.Addition, Text: "a2", NewNumber: 2}, {Kind: patch.Addition, Text: "a3", NewNumber: 3}, {Kind: patch.Context, Text: "c", OldNumber: 3, NewNumber: 4}}},
 		{Header: "two", Lines: []patch.Line{{Kind: patch.Addition, Text: "separate", NewNumber: 5}}},
 	}}}}
-	v := NewSideBySideView(p, true).(*diffView)
+	v := NewSideBySideView(p, true)
 	var code []entry
 	for _, current := range v.rows {
 		if current.kind == lineRow {
@@ -137,7 +137,7 @@ func TestFileHeaderSticksWithoutCoveringDiffRows(t *testing.T) {
 			{Kind: patch.Context, Text: "second one", OldNumber: 1, NewNumber: 1},
 		}}}},
 	}}
-	v := NewUnifiedView(p, true).(*diffView)
+	v := NewUnifiedView(p, true)
 	viewport := v.NewViewport(60, 3)
 	viewport.Top.Y = 3
 
@@ -164,7 +164,7 @@ func TestFileHeaderSticksWithoutCoveringDiffRows(t *testing.T) {
 }
 
 func TestKeepVisibleAccountsForStickyFileHeader(t *testing.T) {
-	v := NewUnifiedView(longPatch(), true).(*diffView)
+	v := NewUnifiedView(longPatch(), true)
 	cursor, _ := v.Last()
 	viewport := v.KeepVisible(v.NewViewport(50, 4), cursor)
 	rendered := ansi.Strip(v.Render(viewport, cursor, nil))
@@ -266,7 +266,7 @@ func TestSyntaxHighlightingSurvivesDiffStyling(t *testing.T) {
 
 func TestRenderedCodeRowsHaveExactTerminalWidth(t *testing.T) {
 	for _, test := range []struct {
-		constructor func(patch.Patch, bool) View
+		constructor func(patch.Patch, bool) *view
 		width       int
 	}{{NewUnifiedView, 37}, {NewSideBySideView, 120}} {
 		v := test.constructor(testPatch(), true)
@@ -294,11 +294,11 @@ func TestRenderStyledRowStripsSyntaxBackgroundColors(t *testing.T) {
 	}
 }
 
-func renderOne(v View, cursor Cursor, width int, selection *Selection) string {
+func renderOne(v *view, cursor Cursor, width int, selection *Selection) string {
 	return renderTarget(v, cursor, cursor, width, selection)
 }
 
-func renderTarget(v View, target, active Cursor, width int, selection *Selection) string {
+func renderTarget(v *view, target, active Cursor, width int, selection *Selection) string {
 	viewport := v.NewViewport(width, 1)
 	viewport.Top = target.Coordinate
 	return v.Render(viewport, active, selection)

@@ -15,7 +15,7 @@ func (m Model) updateComments(name string) (tea.Model, tea.Cmd) {
 	m.err = nil
 	switch name {
 	case "esc", "C", "q":
-		m.mode = modeBrowse
+		m.screen = screenReview
 	case "ctrl+c":
 		m.quitting = true
 		return m, tea.Quit
@@ -74,7 +74,7 @@ func (m *Model) finishCommentEdit() {
 			m.deleteComment(m.comments.editIndex)
 		}
 		m.clearCommentEdit()
-		m.cancelSelection()
+		m.review.cancelSelection()
 		return
 	}
 	if m.save == nil {
@@ -104,7 +104,7 @@ func (m *Model) finishCommentEdit() {
 	m.comments.revision++
 	m.clearCommentEdit()
 	m.err = nil
-	m.cancelSelection()
+	m.review.cancelSelection()
 }
 
 func (m *Model) deleteComment(index int) {
@@ -131,7 +131,7 @@ func (m *Model) clearCommentEdit() {
 	m.comments.editAnchor = comments.Anchor{}
 }
 
-func (m *Model) cancelSelection() { m.review.selection = nil }
+func (r *reviewState) cancelSelection() { r.selection = nil }
 
 func (m Model) openCurrentLine() (tea.Cmd, error) {
 	editorCommand := strings.TrimSpace(os.Getenv("EDITOR"))

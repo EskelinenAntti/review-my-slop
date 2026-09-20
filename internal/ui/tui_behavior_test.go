@@ -133,84 +133,6 @@ func TestOpenCurrentLineRequiresEditor(t *testing.T) {
 	}
 }
 
-func TestCommentsCanBeViewedEditedAndDeleted(t *testing.T) {
-	t.Setenv("EDITOR", "true")
-	items := []comments.Comment{{ID: "one", Body: "old body"}, {ID: "two", Body: "second"}}
-	var persisted, deleted comments.Comment
-	m := testModel(coveragePatch(), items, func(stored comments.Comment, _ patch.Patch) (comments.Comment, error) {
-		persisted = stored
-		return stored, nil
-	})
-	m.SetDelete(func(stored comments.Comment, _ patch.Patch) error { deleted = stored; return nil })
-	m = updateModel(t, m, textKey("C"))
-	if m.mode != modeComments || !strings.Contains(m.render(), "old body") {
-		t.Fatal("comments did not open")
-	}
-	m = updateModel(t, m, specialKey(tea.KeyEnter))
-	m = updateModel(t, m, commentEditorFinishedMsg{body: "edited body"})
-	if persisted.ID != "one" || persisted.Body != "edited body" {
-		t.Fatalf("persisted = %#v", persisted)
-	}
-	m = updateModel(t, m, textKey("D"))
-	if deleted.ID != "one" || len(m.comments.items) != 1 {
-		t.Fatalf("deleted=%#v comments=%#v", deleted, m.comments.items)
-	}
-	m = updateModel(t, m, textKey("q"))
-	if m.mode != modeBrowse || m.quitting {
-		t.Fatalf("mode=%v quitting=%v", m.mode, m.quitting)
-	}
-}
-
-func TestOpeningCommentsReloadsPendingComments(t *testing.T) {
-	m := testModel(coveragePatch(), []comments.Comment{{ID: "read", Body: "already read"}}, nil)
-	m.SetLoadComments(func() ([]comments.Comment, error) { return nil, nil })
-
-	next, cmd := m.Update(textKey("C"))
-	m = next.(Model)
-	if cmd == nil {
-		t.Fatal("opening comments did not request a refresh")
-	}
-	m = updateModel(t, m, cmd())
-	if m.mode != modeComments || len(m.comments.items) != 0 {
-		t.Fatalf("mode=%v comments=%#v", m.mode, m.comments.items)
-	}
-}
-
-func TestCommentReloadFailurePreservesCurrentComments(t *testing.T) {
-	m := testModel(coveragePatch(), []comments.Comment{{ID: "keep", Body: "keep"}}, nil)
-	m.SetLoadComments(func() ([]comments.Comment, error) { return nil, fmt.Errorf("storage unavailable") })
-
-	next, cmd := m.Update(textKey("C"))
-	m = next.(Model)
-	m = updateModel(t, m, cmd())
-	if len(m.comments.items) != 1 || m.err == nil || m.err.Error() != "refresh comments: storage unavailable" {
-		t.Fatalf("comments=%#v error=%v", m.comments.items, m.err)
-	}
-}
-
-func TestEmptyEditedCommentIsDeleted(t *testing.T) {
-	t.Setenv("EDITOR", "true")
-	m := testModel(coveragePatch(), []comments.Comment{{ID: "one", Body: "old"}}, nil)
-	deleted := false
-	m.SetDelete(func(comments.Comment, patch.Patch) error { deleted = true; return nil })
-	m = updateModel(t, m, textKey("C"))
-	m = updateModel(t, m, specialKey(tea.KeyEnter))
-	m = updateModel(t, m, commentEditorFinishedMsg{body: "\n"})
-	if !deleted || len(m.comments.items) != 0 {
-		t.Fatalf("deleted=%v comments=%d", deleted, len(m.comments.items))
-	}
-}
-
-func TestCommentDeleteFailureKeepsCommentAndShowsError(t *testing.T) {
-	m := testModel(coveragePatch(), []comments.Comment{{ID: "one", Body: "keep"}}, nil)
-	m.SetDelete(func(comments.Comment, patch.Patch) error { return fmt.Errorf("delete failed") })
-	m = updateModel(t, m, textKey("C"))
-	m = updateModel(t, m, textKey("D"))
-	if len(m.comments.items) != 1 || !strings.Contains(ansi.Strip(m.renderComments()), "delete failed") {
-		t.Fatalf("comments=%#v render=%q", m.comments.items, m.renderComments())
-	}
-}
-
 func TestSelectionCannotCrossHunk(t *testing.T) {
 	m := testModel(coveragePatch(), nil, nil)
 	m = updateModel(t, m, textKey("v"))
@@ -276,7 +198,7 @@ func TestResizeAcrossSideBySideThresholdPreservesCursorScreenRow(t *testing.T) {
 func TestZSequencesPositionCurrentLineInViewport(t *testing.T) {
 	m := testModel(longModelPatch(), nil, nil)
 	for range 10 {
-		m.move(Forward)
+		m.review.move(Forward)
 	}
 	m.height = 9
 	m.review.viewport = m.review.view.Resize(m.review.viewport, m.width, m.screenBodyHeight())
@@ -300,8 +222,8 @@ func TestPendingKeyIsConsumedByNextKey(t *testing.T) {
 	m = updateModel(t, m, textKey("g"))
 	m = updateModel(t, m, textKey("h"))
 	m = updateModel(t, m, textKey("g"))
-	if m.review.cursor != last || m.pendingKey != "g" {
-		t.Fatalf("cursor=%#v pending=%q", m.review.cursor, m.pendingKey)
+	if m.review.cursor != last || m.review.keys.pending != prefixGo {
+		t.Fatalf("cursor=%#v pending=%v", m.review.cursor, m.review.keys.pending)
 	}
 }
 
@@ -455,8 +377,8 @@ func TestSearchMovesIncrementallyRepeatsAndRestoresOrigin(t *testing.T) {
 	m = updateModel(t, m, textKey("/"))
 	m = updateModel(t, m, textKey("keep"))
 	first := m.review.cursor
-	if m.mode != modeSearch || lineText(m) != "keep()" {
-		t.Fatalf("mode=%v line=%q", m.mode, lineText(m))
+	if !m.review.search.active || lineText(m) != "keep()" {
+		t.Fatalf("search active=%v line=%q", m.review.search.active, lineText(m))
 	}
 	m = updateModel(t, m, specialKey(tea.KeyEnter))
 	m = updateModel(t, m, textKey("n"))
@@ -469,7 +391,7 @@ func TestSearchMovesIncrementallyRepeatsAndRestoresOrigin(t *testing.T) {
 	}
 	m = updateModel(t, m, textKey("/"))
 	m = updateModel(t, m, textKey("missing"))
-	if !m.search.miss {
+	if !m.review.search.miss {
 		t.Fatal("missing search did not miss")
 	}
 	m = updateModel(t, m, specialKey(tea.KeyEsc))
@@ -490,8 +412,8 @@ func TestSearchMatchesFileNamesAndBackspaceRestoresOrigin(t *testing.T) {
 	for range len("main.go") {
 		m = updateModel(t, m, specialKey(tea.KeyBackspace))
 	}
-	if m.review.cursor != origin || len(m.search.query) != 0 {
-		t.Fatalf("cursor=%#v query=%q", m.review.cursor, m.search.query)
+	if m.review.cursor != origin || len(m.review.search.query) != 0 {
+		t.Fatalf("cursor=%#v query=%q", m.review.cursor, m.review.search.query)
 	}
 }
 

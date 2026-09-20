@@ -61,10 +61,10 @@ func TestSideBySideToggleStillSavesPreference(t *testing.T) {
 
 func TestRefreshTranslatesCursorAndSelection(t *testing.T) {
 	m := testModel(modelPatch(), nil, nil)
-	m.move(1)
+	m.review.move(1)
 	selection := m.review.view.BeginSelection(m.review.cursor)
 	m.review.selection = &selection
-	m.move(1)
+	m.review.move(1)
 	want, _ := m.review.view.Line(m.review.cursor)
 	refreshed := modelPatch()
 	refreshed.Fingerprint = "new"
@@ -82,8 +82,8 @@ func TestRefreshTranslatesCursorAndSelection(t *testing.T) {
 func TestViewSwitchPreservesSemanticCursor(t *testing.T) {
 	m := testModel(modelPatch(), nil, nil)
 	m.width = 120
-	m.move(1)
-	m.move(1)
+	m.review.move(1)
+	m.review.move(1)
 	want, _ := m.review.view.Line(m.review.cursor)
 	oldCoordinate := m.review.cursor.Coordinate
 	m.setSideBySide(true)
@@ -121,7 +121,7 @@ func TestRenderingAndKeyBindingsRemainAvailable(t *testing.T) {
 			t.Fatalf("render missing %q: %q", value, rendered)
 		}
 	}
-	m.mode = modeHelp
+	m.screen = screenHelp
 	if !strings.Contains(m.render(), "Ctrl-w h/l/w") {
 		t.Fatal("help lost pane binding")
 	}
@@ -145,16 +145,16 @@ func TestMenuKeyboardHintsStayAtBottom(t *testing.T) {
 	m.width, m.height = 80, 10
 
 	tests := []struct {
-		name string
-		mode mode
-		hint string
+		name   string
+		screen screen
+		hint   string
 	}{
-		{name: "comments", mode: modeComments, hint: "j/k move"},
-		{name: "help", mode: modeHelp, hint: "? or Esc closes help"},
+		{name: "comments", screen: screenComments, hint: "j/k move"},
+		{name: "help", screen: screenHelp, hint: "? or Esc closes help"},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			m.mode = test.mode
+			m.screen = test.screen
 			lines := strings.Split(m.render(), "\n")
 			if got := lines[m.height-2]; !strings.Contains(got, test.hint) {
 				t.Fatalf("line %d = %q, want it to contain %q", m.height-1, got, test.hint)
@@ -170,7 +170,7 @@ func TestCommentsMenuScrollsWithinScreenBody(t *testing.T) {
 	}
 	m := testModel(modelPatch(), items, nil)
 	m.width, m.height = 80, 7
-	m.mode = modeComments
+	m.screen = screenComments
 	m.comments.row = len(items) - 1
 
 	rendered := strings.Split(ansi.Strip(m.render()), "\n")

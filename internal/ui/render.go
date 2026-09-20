@@ -22,10 +22,10 @@ func (m Model) View() tea.View {
 }
 
 func (m Model) render() string {
-	if m.mode == modeHelp {
+	if m.screen == screenHelp {
 		return m.renderHelp()
 	}
-	if m.mode == modeComments {
+	if m.screen == screenComments {
 		return m.renderComments()
 	}
 	added, removed := patchLineCounts(m.review.patch)
@@ -81,9 +81,9 @@ func patchLineCounts(p patch.Patch) (added, removed int) {
 
 func (m Model) renderStatus() string {
 	status := "j/k/h/l move  c comment  ? help  q quit"
-	if m.mode == modeSearch {
-		status = "/" + string(m.search.query) + editorCursorStyle.Render(" ")
-		if m.search.miss {
+	if m.review.search.active {
+		status = "/" + string(m.review.search.query) + editorCursorStyle.Render(" ")
+		if m.review.search.miss {
 			status += errorStyle.Render("  no matches")
 		}
 	} else if m.review.selection != nil {
@@ -146,12 +146,9 @@ func (m Model) renderComments() string {
 }
 
 func (m Model) renderHelp() string {
-	bindings := []keyBinding{{"j/k, arrows", "move"}, {"h/l, left/right", "scroll horizontally"}, {"Ctrl-w h/l/w", "switch side-by-side pane"}, {"0/$", "start/end of lines"}, {"gg/G", "first/last changed line"}, {"zz/zt/zb", "center/top/bottom current line"}, {"Ctrl-d/Ctrl-u", "half-page down/up"}, {"/", "search diff text"}, {"n/N", "next/previous search match"}, {"]f/[f", "next/previous file"}, {"v", "select a line range"}, {"c", "comment on selection/current line"}, {"e", "open current line in $EDITOR"}, {"C", "view comments"}, {"R", "refresh diff"}, {"Tab", "toggle local/branch changes"}, {"t", "toggle unified/side-by-side"}, {"q", "quit"}}
-	body := append([]string{""}, renderKeyBindings(bindings)...)
+	body := append([]string{""}, renderKeyBindings(browseBindings)...)
 	return m.renderScreen(titleStyle.Render("review-my-slop help"), body, mutedStyle.Render("? or Esc closes help"))
 }
-
-type keyBinding struct{ keys, description string }
 
 func renderKeyBindings(bindings []keyBinding) []string {
 	width := 0

@@ -45,13 +45,12 @@ type commentsLoadedMsg struct {
 }
 type sourceEditorFinishedMsg struct{ err error }
 
-type mode uint8
+type screen uint8
 
 const (
-	modeBrowse mode = iota
-	modeComments
-	modeHelp
-	modeSearch
+	screenReview screen = iota
+	screenComments
+	screenHelp
 )
 
 const (
@@ -63,11 +62,13 @@ var DefaultSize = Size{Width: 80, Height: 30}
 
 type reviewState struct {
 	patch      patch.Patch
-	view       View
+	view       *view
 	cursor     Cursor
 	viewport   Viewport
 	selection  *Selection
 	sideBySide bool
+	search     searchState
+	keys       keyDecoder
 }
 
 type commentState struct {
@@ -80,26 +81,25 @@ type commentState struct {
 }
 
 type searchState struct {
-	query []rune
-	term  string
-	from  Cursor
-	miss  bool
+	active bool
+	query  []rune
+	term   string
+	from   Cursor
+	miss   bool
 }
 
 type Model struct {
 	review        reviewState
 	comments      commentState
-	search        searchState
 	width         int
 	height        int
-	mode          mode
+	screen        screen
 	save          SaveCommentFunc
 	delete        DeleteCommentFunc
 	load          LoadCommentsFunc
 	refresh       RefreshDiffFunc
 	err           error
 	quitting      bool
-	pendingKey    string
 	saveLayout    SaveSideBySideFunc
 	defaultBranch string
 	showDefault   bool
@@ -258,7 +258,7 @@ func (m *Model) rebuildView(p patch.Patch) {
 	}
 }
 
-func (m Model) newReviewView(p patch.Patch) View {
+func (m Model) newReviewView(p patch.Patch) *view {
 	if m.sideBySideActive() {
 		return NewSideBySideView(p, m.dark)
 	}
@@ -267,139 +267,116 @@ func (m Model) newReviewView(p patch.Patch) View {
 
 func (m Model) updateKey(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	name := key.String()
-	if m.mode == modeComments {
+	if m.screen == screenComments {
 		return m.updateComments(name)
 	}
-	if m.mode == modeHelp {
+	if m.screen == screenHelp {
 		if name == "esc" || name == "?" || name == "q" {
-			m.mode = modeBrowse
+			m.screen = screenReview
 		}
 		return m, nil
 	}
-	if m.mode == modeSearch {
+	if m.review.search.active {
 		return m.updateSearch(name, key)
 	}
 	m.err = nil
-	pending := m.pendingKey
-	m.pendingKey = ""
-	if pending == "[" || pending == "]" {
-		if pending+name == "]f" {
-			m.jumpFile(Forward)
-		}
-		if pending+name == "[f" {
-			m.jumpFile(Backward)
-		}
-		return m, nil
-	}
-	if pending == "z" {
-		switch name {
-		case "z":
-			m.review.viewport = m.review.view.Align(m.review.viewport, m.review.cursor, Middle)
-		case "t":
-			m.review.viewport = m.review.view.Align(m.review.viewport, m.review.cursor, Top)
-		case "b":
-			m.review.viewport = m.review.view.Align(m.review.viewport, m.review.cursor, Bottom)
-		}
-		return m, nil
-	}
-	if pending == "ctrl+w" {
-		switch name {
-		case "h":
-			m.switchPane(Left)
-		case "l":
-			m.switchPane(Right)
-		case "ctrl+w":
-			m.switchPane(m.review.cursor.Pane.Other())
-		}
-		return m, nil
-	}
-	switch name {
-	case "ctrl+c", "q":
+	return m.execute(m.review.keys.Decode(name))
+}
+
+func (m Model) execute(action command) (tea.Model, tea.Cmd) {
+	switch action {
+	case commandQuit:
 		m.quitting = true
 		return m, tea.Quit
-	case "?":
-		m.mode = modeHelp
-	case "/":
-		m.cancelSelection()
-		m.mode = modeSearch
-		m.search.query = nil
-		m.search.from = m.review.cursor
-		m.search.miss = false
-	case "n":
+	case commandHelp:
+		m.screen = screenHelp
+	case commandSearch:
+		m.review.cancelSelection()
+		m.review.search.active = true
+		m.review.search.query = nil
+		m.review.search.from = m.review.cursor
+		m.review.search.miss = false
+	case commandRepeatSearchForward:
 		m.repeatSearch(Forward)
-	case "N":
+	case commandRepeatSearchBackward:
 		m.repeatSearch(Backward)
-	case "j", "down":
-		m.move(Forward)
-	case "k", "up":
-		m.move(Backward)
-	case "h", "left":
+	case commandMoveForward:
+		m.review.move(Forward)
+	case commandMoveBackward:
+		m.review.move(Backward)
+	case commandScrollLeft:
 		m.review.viewport = m.review.view.ScrollHorizontal(m.review.viewport, -horizontalScrollStep)
-	case "l", "right":
+	case commandScrollRight:
 		m.review.viewport = m.review.view.ScrollHorizontal(m.review.viewport, horizontalScrollStep)
-	case "0":
+	case commandScrollStart:
 		m.review.viewport.LeftColumn = 0
-	case "$":
+	case commandScrollEnd:
 		m.review.viewport = m.review.view.ScrollHorizontal(m.review.viewport, int(^uint(0)>>1))
-	case "ctrl+d":
-		m.halfPage(Forward)
-	case "ctrl+u":
-		m.halfPage(Backward)
-	case "ctrl+w":
-		m.pendingKey = name
-	case "g":
-		if pending == "g" {
-			if cursor, ok := m.review.view.First(); ok {
-				m.setCursor(cursor)
-			}
-		} else {
-			m.pendingKey = "g"
+	case commandHalfPageForward:
+		m.review.halfPage(Forward)
+	case commandHalfPageBackward:
+		m.review.halfPage(Backward)
+	case commandFirstLine:
+		if cursor, ok := m.review.view.First(); ok {
+			m.review.setCursor(cursor)
 		}
-	case "G":
+	case commandLastLine:
 		if cursor, ok := m.review.view.Last(); ok {
-			m.setCursor(cursor)
+			m.review.setCursor(cursor)
 		}
-	case "z":
-		m.pendingKey = "z"
-	case "]", "[":
-		m.pendingKey = name
-	case "v":
+	case commandAlignTop:
+		m.review.viewport = m.review.view.Align(m.review.viewport, m.review.cursor, Top)
+	case commandAlignMiddle:
+		m.review.viewport = m.review.view.Align(m.review.viewport, m.review.cursor, Middle)
+	case commandAlignBottom:
+		m.review.viewport = m.review.view.Align(m.review.viewport, m.review.cursor, Bottom)
+	case commandJumpFileForward:
+		m.review.jumpFile(Forward)
+	case commandJumpFileBackward:
+		m.review.jumpFile(Backward)
+	case commandSwitchLeft:
+		m.review.switchPane(Left, m.sideBySideActive())
+	case commandSwitchRight:
+		m.review.switchPane(Right, m.sideBySideActive())
+	case commandSwitchOther:
+		m.review.switchPane(m.review.cursor.Pane.Other(), m.sideBySideActive())
+	case commandToggleSelection:
 		if m.review.selection == nil {
 			selection := m.review.view.BeginSelection(m.review.cursor)
 			m.review.selection = &selection
 		} else {
-			m.cancelSelection()
+			m.review.cancelSelection()
 		}
-	case "esc":
-		m.cancelSelection()
-	case "c":
+	case commandCancelSelection:
+		m.review.cancelSelection()
+	case commandComment:
 		cmd, err := m.beginComment()
 		if err != nil {
 			m.err = err
 			return m, nil
 		}
 		return m, cmd
-	case "e":
+	case commandOpenSource:
 		cmd, err := m.openCurrentLine()
 		if err != nil {
 			m.err = err
 			return m, nil
 		}
 		return m, cmd
-	case "C":
-		m.mode = modeComments
+	case commandShowComments:
+		m.screen = screenComments
 		m.comments.row = min(m.comments.row, max(0, len(m.comments.items)-1))
 		return m, m.loadComments()
-	case "R":
+	case commandRefresh:
 		return m, m.loadRefresh()
-	case "tab":
+	case commandToggleBranch:
 		if m.defaultBranch == "" {
 			return m, nil
 		}
 		m.showDefault = !m.showDefault
-		m.cancelSelection()
+		m.review.cancelSelection()
 		return m, m.loadRefresh()
-	case "t":
+	case commandToggleLayout:
 		m.toggleSideBySide()
 	}
 	return m, nil

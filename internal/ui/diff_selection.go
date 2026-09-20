@@ -6,11 +6,11 @@ import (
 	"github.com/eskelinenantti/review-my-slop/internal/patch"
 )
 
-func (v *diffView) BeginSelection(cursor Cursor) Selection {
+func (v *view) BeginSelection(cursor Cursor) Selection {
 	return Selection{First: cursor, Last: cursor}
 }
 
-func (v *diffView) ExtendSelection(selection Selection, cursor Cursor) (Selection, bool) {
+func (v *view) ExtendSelection(selection Selection, cursor Cursor) (Selection, bool) {
 	if !v.valid(selection.First) || !v.valid(cursor) {
 		return selection, false
 	}
@@ -23,7 +23,7 @@ func (v *diffView) ExtendSelection(selection Selection, cursor Cursor) (Selectio
 	return selection, true
 }
 
-func (v *diffView) Lines(selection Selection) []patch.Line {
+func (v *view) Lines(selection Selection) []patch.Line {
 	if _, ok := v.ExtendSelection(selection, selection.Last); !ok {
 		return nil
 	}
@@ -54,7 +54,7 @@ func (v *diffView) Lines(selection Selection) []patch.Line {
 	return lines
 }
 
-func (v *diffView) Anchor(selection Selection) (comments.Anchor, error) {
+func (v *view) Anchor(selection Selection) (comments.Anchor, error) {
 	lines := v.Lines(selection)
 	if len(lines) == 0 {
 		return comments.AnchorFor(patch.File{}, nil)
@@ -64,14 +64,14 @@ func (v *diffView) Anchor(selection Selection) (comments.Anchor, error) {
 	return comments.AnchorFor(file, lines)
 }
 
-func (v *diffView) File(cursor Cursor) (patch.File, bool) {
+func (v *view) File(cursor Cursor) (patch.File, bool) {
 	if !v.valid(cursor) {
 		return patch.File{}, false
 	}
 	return v.patch.Files[v.rows[cursor.Coordinate.Y].file], true
 }
 
-func (v *diffView) Hunk(cursor Cursor) (patch.Hunk, bool) {
+func (v *view) Hunk(cursor Cursor) (patch.Hunk, bool) {
 	if !v.valid(cursor) {
 		return patch.Hunk{}, false
 	}
@@ -79,7 +79,7 @@ func (v *diffView) Hunk(cursor Cursor) (patch.Hunk, bool) {
 	return v.patch.Files[current.file].Hunks[current.hunk], true
 }
 
-func (v *diffView) Line(cursor Cursor) (patch.Line, bool) {
+func (v *view) Line(cursor Cursor) (patch.Line, bool) {
 	if !v.valid(cursor) {
 		return patch.Line{}, false
 	}
@@ -87,7 +87,7 @@ func (v *diffView) Line(cursor Cursor) (patch.Line, bool) {
 	return v.patch.Files[current.file].Hunks[current.hunk].Lines[v.lineIndex(current, cursor.Pane)], true
 }
 
-func (v *diffView) FindCursor(file patch.File, hunk patch.Hunk, line patch.Line, nearby Coordinate, pane Pane) (Cursor, bool) {
+func (v *view) FindCursor(file patch.File, hunk patch.Hunk, line patch.Line, nearby Coordinate, pane Pane) (Cursor, bool) {
 	candidates := make([]Cursor, 0)
 	fallbacks := make([]Cursor, 0)
 	nearbyCandidates := make([]Cursor, 0)

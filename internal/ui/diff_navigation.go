@@ -6,11 +6,11 @@ import (
 	"github.com/charmbracelet/x/ansi"
 )
 
-func (v *diffView) valid(cursor Cursor) bool {
+func (v *view) valid(cursor Cursor) bool {
 	return cursor.Coordinate.Y >= 0 && cursor.Coordinate.Y < len(v.rows) && v.lineIndex(v.rows[cursor.Coordinate.Y], cursor.Pane) >= 0
 }
 
-func (v *diffView) lineIndex(current entry, pane Pane) int {
+func (v *view) lineIndex(current entry, pane Pane) int {
 	if current.kind != lineRow {
 		return -1
 	}
@@ -20,26 +20,26 @@ func (v *diffView) lineIndex(current entry, pane Pane) int {
 	return current.leftLine
 }
 
-func (v *diffView) cursorAt(y int, pane Pane) (Cursor, bool) {
+func (v *view) cursorAt(y int, pane Pane) (Cursor, bool) {
 	cursor := Cursor{Coordinate: Coordinate{Y: y}, Pane: pane}
 	return cursor, v.valid(cursor)
 }
 
-func (v *diffView) First() (Cursor, bool) {
+func (v *view) First() (Cursor, bool) {
 	if cursor, ok := v.scan(-1, Right, Forward, false); ok {
 		return cursor, true
 	}
 	return v.scan(-1, Left, Forward, false)
 }
 
-func (v *diffView) Last() (Cursor, bool) {
+func (v *view) Last() (Cursor, bool) {
 	if cursor, ok := v.scan(len(v.rows), Right, Backward, false); ok {
 		return cursor, true
 	}
 	return v.scan(len(v.rows), Left, Backward, false)
 }
 
-func (v *diffView) scan(start int, pane Pane, direction Direction, wrap bool) (Cursor, bool) {
+func (v *view) scan(start int, pane Pane, direction Direction, wrap bool) (Cursor, bool) {
 	if len(v.rows) == 0 {
 		return Cursor{}, false
 	}
@@ -63,14 +63,14 @@ func (v *diffView) scan(start int, pane Pane, direction Direction, wrap bool) (C
 	return Cursor{}, false
 }
 
-func (v *diffView) Move(cursor Cursor, direction Direction) (Cursor, bool) {
+func (v *view) Move(cursor Cursor, direction Direction) (Cursor, bool) {
 	if !v.valid(cursor) {
 		return Cursor{}, false
 	}
 	return v.scan(cursor.Coordinate.Y, cursor.Pane, direction, false)
 }
 
-func (v *diffView) Search(query string, cursor Cursor, direction Direction) (Cursor, bool) {
+func (v *view) Search(query string, cursor Cursor, direction Direction) (Cursor, bool) {
 	if query == "" || !v.valid(cursor) {
 		return Cursor{}, false
 	}
@@ -104,7 +104,7 @@ func (v *diffView) Search(query string, cursor Cursor, direction Direction) (Cur
 	return Cursor{}, false
 }
 
-func (v *diffView) cursorNearRow(y int, pane Pane, direction Direction) (Cursor, bool) {
+func (v *view) cursorNearRow(y int, pane Pane, direction Direction) (Cursor, bool) {
 	for distance := 1; distance <= len(v.rows); distance++ {
 		for _, candidateY := range []int{y + int(direction)*distance, y - int(direction)*distance} {
 			if candidateY < 0 || candidateY >= len(v.rows) {
@@ -126,7 +126,7 @@ func (v *diffView) cursorNearRow(y int, pane Pane, direction Direction) (Cursor,
 	return Cursor{}, false
 }
 
-func (v *diffView) JumpFile(cursor Cursor, direction Direction) (Cursor, bool) {
+func (v *view) JumpFile(cursor Cursor, direction Direction) (Cursor, bool) {
 	if !v.valid(cursor) {
 		return Cursor{}, false
 	}
@@ -145,7 +145,7 @@ func (v *diffView) JumpFile(cursor Cursor, direction Direction) (Cursor, bool) {
 	}
 }
 
-func (v *diffView) SwitchPane(cursor Cursor, pane Pane) (Cursor, bool) {
+func (v *view) SwitchPane(cursor Cursor, pane Pane) (Cursor, bool) {
 	if !v.split || !v.valid(cursor) {
 		return Cursor{}, false
 	}
