@@ -148,7 +148,8 @@ func TestSelectionCannotCrossHunk(t *testing.T) {
 func TestVimSequencesAndLayoutToggle(t *testing.T) {
 	m := testModel(coveragePatch(), nil, nil)
 	var saved []bool
-	m.SetSideBySide(false, func(enabled bool) error { saved = append(saved, enabled); return nil })
+	m.saveLayout = func(enabled bool) error { saved = append(saved, enabled); return nil }
+	m.setSideBySide(false)
 	m = updateModel(t, m, tea.WindowSizeMsg{Width: 120, Height: 20})
 	m = updateModel(t, m, textKey("G"))
 	last, _ := m.review.view.Last()
@@ -174,7 +175,8 @@ func TestVimSequencesAndLayoutToggle(t *testing.T) {
 func TestSavedSideBySideCanBeDisabledInNarrowTerminal(t *testing.T) {
 	m := testModel(coveragePatch(), nil, nil)
 	var saved []bool
-	m.SetSideBySide(true, func(enabled bool) error { saved = append(saved, enabled); return nil })
+	m.saveLayout = func(enabled bool) error { saved = append(saved, enabled); return nil }
+	m.setSideBySide(true)
 	m = updateModel(t, m, tea.WindowSizeMsg{Width: 80, Height: 20})
 	m = updateModel(t, m, textKey("t"))
 	if m.review.sideBySide || !slices.Equal(saved, []bool{false}) {
@@ -184,7 +186,8 @@ func TestSavedSideBySideCanBeDisabledInNarrowTerminal(t *testing.T) {
 
 func TestResizeAcrossSideBySideThresholdPreservesCursorScreenRow(t *testing.T) {
 	m := testModel(coveragePatch(), nil, nil)
-	m.SetSideBySide(true, nil)
+	m.saveLayout = nil
+	m.setSideBySide(true)
 	m.review.cursor = findLine(t, m, "keep()")
 	m.review.viewport = m.review.view.Align(m.review.viewport, m.review.cursor, Middle)
 	before := m.review.cursor.Coordinate.Y - m.review.viewport.Top.Y
@@ -321,15 +324,15 @@ func TestHorizontalScrollKeysMoveByStepAndReset(t *testing.T) {
 
 func TestFocusAndManualRefreshLoadCurrentView(t *testing.T) {
 	m := testModel(coveragePatch(), nil, nil)
-	m.SetDefaultBranch("main")
+	m.defaultBranch = "main"
 	m.showDefault = true
 	var requested []string
-	m.SetRefresh(func(parent string) (patch.Patch, error) {
+	m.refresh = func(parent string) (patch.Patch, error) {
 		requested = append(requested, parent)
 		p := coveragePatch()
 		p.Fingerprint = fmt.Sprintf("refresh-%d", len(requested))
 		return p, nil
-	})
+	}
 	next, cmd := m.Update(tea.FocusMsg{})
 	m = next.(Model)
 	if cmd == nil {
@@ -351,7 +354,7 @@ func TestSourceEditorCompletionRefreshesDiff(t *testing.T) {
 	m := testModel(coveragePatch(), nil, nil)
 	refreshed := coveragePatch()
 	refreshed.Fingerprint = "after-editor"
-	m.SetRefresh(func(string) (patch.Patch, error) { return refreshed, nil })
+	m.refresh = func(string) (patch.Patch, error) { return refreshed, nil }
 
 	next, cmd := m.Update(sourceEditorFinishedMsg{})
 	m = next.(Model)
@@ -435,8 +438,8 @@ func TestSideBySideSearchActivatesPaneAndCancelRestoresIt(t *testing.T) {
 
 func TestTabTogglesDefaultBranchAndIgnoresStaleRefresh(t *testing.T) {
 	m := testModel(coveragePatch(), nil, nil)
-	m.SetDefaultBranch("main")
-	m.SetRefresh(func(string) (patch.Patch, error) { return coveragePatch(), nil })
+	m.defaultBranch = "main"
+	m.refresh = func(string) (patch.Patch, error) { return coveragePatch(), nil }
 	next, _ := m.Update(textKey("tab"))
 	m = next.(Model)
 	if m.currentBranch() != "main" {
@@ -457,10 +460,10 @@ func TestTabTogglesDefaultBranchAndIgnoresStaleRefresh(t *testing.T) {
 func TestTabDoesNothingWithoutDefaultBranch(t *testing.T) {
 	m := testModel(coveragePatch(), nil, nil)
 	refreshed := false
-	m.SetRefresh(func(string) (patch.Patch, error) {
+	m.refresh = func(string) (patch.Patch, error) {
 		refreshed = true
 		return coveragePatch(), nil
-	})
+	}
 	next, cmd := m.Update(textKey("tab"))
 	m = next.(Model)
 	if cmd != nil || refreshed || m.showDefault {

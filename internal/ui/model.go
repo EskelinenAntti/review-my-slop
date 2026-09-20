@@ -21,6 +21,7 @@ type Actions struct {
 	DeleteComment DeleteCommentFunc
 	LoadComments  func(patch.Patch) ([]comments.Comment, error)
 	RefreshPatch  RefreshDiffFunc
+	DefaultBranch string
 }
 
 type Size struct {
@@ -143,26 +144,13 @@ func NewWithActions(actions Actions, p patch.Patch, items []comments.Comment, si
 		SaveSideBySide: saveLayoutSettings,
 		Size:           size,
 	})
-	m.SetDelete(actions.DeleteComment)
-	m.SetLoadComments(func() ([]comments.Comment, error) {
+	m.delete = actions.DeleteComment
+	m.load = func() ([]comments.Comment, error) {
 		return actions.LoadComments(m.review.patch)
-	})
-	m.SetRefresh(actions.RefreshPatch)
-	return m, nil
-}
-
-func (m *Model) SetRefresh(refresh RefreshDiffFunc)    { m.refresh = refresh }
-func (m *Model) SetDelete(delete DeleteCommentFunc)    { m.delete = delete }
-func (m *Model) SetLoadComments(load LoadCommentsFunc) { m.load = load }
-func (m *Model) SetDefaultBranch(branch string) {
-	m.defaultBranch = branch
-	if branch == "" {
-		m.showDefault = false
 	}
-}
-func (m *Model) SetSideBySide(enabled bool, save SaveSideBySideFunc) {
-	m.saveLayout = save
-	m.setSideBySide(enabled)
+	m.refresh = actions.RefreshPatch
+	m.defaultBranch = actions.DefaultBranch
+	return m, nil
 }
 
 func (m Model) Init() tea.Cmd { return func() tea.Msg { return tea.RequestBackgroundColor() } }

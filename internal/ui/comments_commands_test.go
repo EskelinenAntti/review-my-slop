@@ -20,7 +20,7 @@ func TestCommentsCanBeViewedEditedAndDeleted(t *testing.T) {
 		persisted = stored
 		return stored, nil
 	})
-	m.SetDelete(func(stored comments.Comment, _ patch.Patch) error { deleted = stored; return nil })
+	m.delete = func(stored comments.Comment, _ patch.Patch) error { deleted = stored; return nil }
 	m = updateModel(t, m, textKey("C"))
 	if m.screen != screenComments || !strings.Contains(m.render(), "old body") {
 		t.Fatal("comments did not open")
@@ -42,7 +42,7 @@ func TestCommentsCanBeViewedEditedAndDeleted(t *testing.T) {
 
 func TestOpeningCommentsReloadsPendingComments(t *testing.T) {
 	m := testModel(coveragePatch(), []comments.Comment{{ID: "read", Body: "already read"}}, nil)
-	m.SetLoadComments(func() ([]comments.Comment, error) { return nil, nil })
+	m.load = func() ([]comments.Comment, error) { return nil, nil }
 
 	next, cmd := m.Update(textKey("C"))
 	m = next.(Model)
@@ -57,7 +57,7 @@ func TestOpeningCommentsReloadsPendingComments(t *testing.T) {
 
 func TestCommentReloadFailurePreservesCurrentComments(t *testing.T) {
 	m := testModel(coveragePatch(), []comments.Comment{{ID: "keep", Body: "keep"}}, nil)
-	m.SetLoadComments(func() ([]comments.Comment, error) { return nil, fmt.Errorf("storage unavailable") })
+	m.load = func() ([]comments.Comment, error) { return nil, fmt.Errorf("storage unavailable") }
 
 	next, cmd := m.Update(textKey("C"))
 	m = next.(Model)
@@ -71,7 +71,7 @@ func TestEmptyEditedCommentIsDeleted(t *testing.T) {
 	t.Setenv("EDITOR", "true")
 	m := testModel(coveragePatch(), []comments.Comment{{ID: "one", Body: "old"}}, nil)
 	deleted := false
-	m.SetDelete(func(comments.Comment, patch.Patch) error { deleted = true; return nil })
+	m.delete = func(comments.Comment, patch.Patch) error { deleted = true; return nil }
 	m = updateModel(t, m, textKey("C"))
 	m = updateModel(t, m, specialKey(tea.KeyEnter))
 	m = updateModel(t, m, commentEditorFinishedMsg{body: "\n"})
@@ -82,7 +82,7 @@ func TestEmptyEditedCommentIsDeleted(t *testing.T) {
 
 func TestCommentDeleteFailureKeepsCommentAndShowsError(t *testing.T) {
 	m := testModel(coveragePatch(), []comments.Comment{{ID: "one", Body: "keep"}}, nil)
-	m.SetDelete(func(comments.Comment, patch.Patch) error { return fmt.Errorf("delete failed") })
+	m.delete = func(comments.Comment, patch.Patch) error { return fmt.Errorf("delete failed") }
 	m = updateModel(t, m, textKey("C"))
 	m = updateModel(t, m, textKey("D"))
 	if len(m.comments.items) != 1 || !strings.Contains(ansi.Strip(m.renderComments()), "delete failed") {

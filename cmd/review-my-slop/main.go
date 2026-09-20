@@ -84,11 +84,11 @@ func runCode(ctx context.Context) error {
 			}
 			return loader.LoadBranch(ctx, current, branch)
 		},
+		DefaultBranch: defaultBranch,
 	}, loaded, pending, size)
 	if err != nil {
 		return err
 	}
-	model.SetDefaultBranch(defaultBranch)
 	program := tea.NewProgram(model, tea.WithWindowSize(size.Width, size.Height))
 	_, err = program.Run()
 	return err
