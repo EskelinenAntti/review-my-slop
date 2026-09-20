@@ -16,14 +16,6 @@ func (m *Model) navigate(command view.Command) {
 	}
 }
 
-func (m *Model) move(direction view.Direction) { m.navigate(view.Move(direction)) }
-
-func (m *Model) halfPage(direction view.Direction) { m.navigate(view.HalfPage(direction)) }
-
-func (m *Model) jumpFile(direction view.Direction) { m.navigate(view.JumpFile(direction)) }
-
-func (m *Model) switchPane(pane view.Pane) { m.navigate(view.SwitchPane(pane)) }
-
 func (m Model) sideBySideActive() bool {
 	return m.review.sideBySide && m.width >= minimumSideBySideWidth
 }

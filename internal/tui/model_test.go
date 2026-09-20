@@ -12,6 +12,7 @@ import (
 	"github.com/eskelinenantti/review-my-slop/internal/editor"
 	"github.com/eskelinenantti/review-my-slop/internal/patch"
 	"github.com/eskelinenantti/review-my-slop/internal/review"
+	"github.com/eskelinenantti/review-my-slop/internal/view"
 )
 
 func testModel(p patch.Patch, comments []review.Comment, save SaveCommentFunc) Model {
@@ -62,10 +63,10 @@ func TestSideBySideToggleStillSavesPreference(t *testing.T) {
 
 func TestRefreshTranslatesCursorAndSelection(t *testing.T) {
 	m := testModel(modelPatch(), nil, nil)
-	m.move(1)
+	m.navigate(view.Move(1))
 	selection := m.review.view.BeginSelection(currentCursor(m))
 	m.review.state.Selection = &selection
-	m.move(1)
+	m.navigate(view.Move(1))
 	want, _ := m.review.view.Line(currentCursor(m))
 	refreshed := modelPatch()
 	refreshed.Fingerprint = "new"
@@ -83,8 +84,8 @@ func TestRefreshTranslatesCursorAndSelection(t *testing.T) {
 func TestViewSwitchPreservesSemanticCursor(t *testing.T) {
 	m := testModel(modelPatch(), nil, nil)
 	m.width = 120
-	m.move(1)
-	m.move(1)
+	m.navigate(view.Move(1))
+	m.navigate(view.Move(1))
 	want, _ := m.review.view.Line(currentCursor(m))
 	oldCoordinate := currentCursor(m).Coordinate
 	m.setSideBySide(true)

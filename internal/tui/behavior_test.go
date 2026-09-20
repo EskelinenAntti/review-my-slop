@@ -302,7 +302,7 @@ func TestResizeAcrossSideBySideThresholdPreservesCursorScreenRow(t *testing.T) {
 func TestZSequencesPositionCurrentLineInViewport(t *testing.T) {
 	m := testModel(longModelPatch(), nil, nil)
 	for range 10 {
-		m.move(view.Forward)
+		m.navigate(view.Move(view.Forward))
 	}
 	m.height = 9
 	m.review.state.Viewport = m.review.view.Resize(m.review.state.Viewport, m.width, m.screenBodyHeight())

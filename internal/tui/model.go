@@ -253,10 +253,10 @@ func (m Model) updateKey(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	m.pendingKey = ""
 	if pending == "[" || pending == "]" {
 		if pending+name == "]f" {
-			m.jumpFile(view.Forward)
+			m.navigate(view.JumpFile(view.Forward))
 		}
 		if pending+name == "[f" {
-			m.jumpFile(view.Backward)
+			m.navigate(view.JumpFile(view.Backward))
 		}
 		return m, nil
 	}
@@ -274,9 +274,9 @@ func (m Model) updateKey(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	if pending == "ctrl+w" {
 		switch name {
 		case "h":
-			m.switchPane(view.Left)
+			m.navigate(view.SwitchPane(view.Left))
 		case "l":
-			m.switchPane(view.Right)
+			m.navigate(view.SwitchPane(view.Right))
 		case "ctrl+w":
 			if m.review.state.Cursor != nil {
 				m.navigate(view.SwitchPane(m.review.state.Cursor.Pane.Other()))
@@ -306,9 +306,9 @@ func (m Model) updateKey(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	case "N":
 		m.repeatSearch(view.Backward)
 	case "j", "down":
-		m.move(view.Forward)
+		m.navigate(view.Move(view.Forward))
 	case "k", "up":
-		m.move(view.Backward)
+		m.navigate(view.Move(view.Backward))
 	case "h", "left":
 		m.navigate(view.ScrollColumns(-horizontalScrollStep))
 	case "l", "right":
@@ -318,9 +318,9 @@ func (m Model) updateKey(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	case "$":
 		m.navigate(view.ScrollToEnd())
 	case "ctrl+d":
-		m.halfPage(view.Forward)
+		m.navigate(view.HalfPage(view.Forward))
 	case "ctrl+u":
-		m.halfPage(view.Backward)
+		m.navigate(view.HalfPage(view.Backward))
 	case "ctrl+w":
 		m.pendingKey = name
 	case "g":
