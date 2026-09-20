@@ -1,21 +1,25 @@
 # review-my-slop
 
-review-my-slop presents Git changes for interactive review and collects review comments.
+review-my-slop supports interactive review of a Patch and collection of its Comments.
 
 ## Language
 
 **Patch**:
-The Git change set being reviewed.
+The Git change set being reviewed, including the repository it originates from.
 _Avoid_: Diff, change set
 
-**View**:
-The rendered presentation of a Patch, in unified or side-by-side form.
-_Avoid_: Rendered view, diff screen
+**Patch range**:
+A contiguous part of a Patch selected as the subject of review feedback.
+_Avoid_: UI selection, screen range
 
-**View state**:
-The cursor, selection, and viewport associated with a View; an empty View state has no active cursor or selection.
-_Avoid_: Reading state
+**Review**:
+The assessment of a Patch, expressed through its Comments.
+_Avoid_: Session
 
-**Preserving**:
-Replacing a View while retaining cursor context, valid selection, and relative viewport placement when possible.
-_Avoid_: Rebinding
+**Comment**:
+A piece of review feedback attached to a location in a Patch.
+_Avoid_: Message, note
+
+**Anchor**:
+The location and quoted context in a Patch to which a Comment is attached.
+_Avoid_: Location, selection

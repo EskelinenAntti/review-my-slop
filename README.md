@@ -19,7 +19,7 @@ coding projects, from start to finish.
 changes, attaching comments to exact lines or ranges, and handing that feedback
 back to the agent with one command.
 
-## The workflow
+## The review loop
 
 1. Prompt the agent to make the initial change.
 2. Review that slop by running `review-my-slop code` in the repository.
