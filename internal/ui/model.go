@@ -267,16 +267,15 @@ func (m Model) newReviewView(p patch.Patch) View {
 
 func (m Model) updateKey(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	name := key.String()
-	if m.mode == modeComments {
+	switch m.mode {
+	case modeComments:
 		return m.updateComments(name)
-	}
-	if m.mode == modeHelp {
+	case modeHelp:
 		if name == "esc" || name == "?" || name == "q" {
 			m.mode = modeBrowse
 		}
 		return m, nil
-	}
-	if m.mode == modeSearch {
+	case modeSearch:
 		return m.updateSearch(name, key)
 	}
 	m.err = nil
