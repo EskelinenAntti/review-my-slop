@@ -82,10 +82,10 @@ func (v *diffView) Anchor(selection Selection) (comments.Anchor, error) {
 			}
 			line := hunk.Lines[index]
 			prefix := " "
-			if line.Kind == patch.Addition {
+			switch line.Kind {
+			case patch.Addition:
 				prefix = "+"
-			}
-			if line.Kind == patch.Deletion {
+			case patch.Deletion:
 				prefix = "-"
 			}
 			anchor.QuotedLines = append(anchor.QuotedLines, prefix+line.Text)

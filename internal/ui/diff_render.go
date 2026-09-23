@@ -46,10 +46,10 @@ func (v *diffView) renderUnifiedRow(current entry, y int, viewport Viewport, cur
 	case lineRow:
 		line := v.patch.Files[current.file].Hunks[current.hunk].Lines[current.rightLine]
 		prefix := " "
-		if line.Kind == patch.Addition {
+		switch line.Kind {
+		case patch.Addition:
 			prefix = addedStyle.Render("+")
-		}
-		if line.Kind == patch.Deletion {
+		case patch.Deletion:
 			prefix = removedStyle.Render("-")
 		}
 		gutter := fmt.Sprintf("%5s %5s %s ", number(line.OldNumber), number(line.NewNumber), prefix)
@@ -92,10 +92,10 @@ func (v *diffView) renderPane(current entry, y int, pane Pane, width, offset int
 		text, numberValue = current.left, line.OldNumber
 	}
 	prefix := "  "
-	if line.Kind == patch.Addition {
+	switch line.Kind {
+	case patch.Addition:
 		prefix = addedStyle.Render("+") + " "
-	}
-	if line.Kind == patch.Deletion {
+	case patch.Deletion:
 		prefix = removedStyle.Render("-") + " "
 	}
 	gutter := fmt.Sprintf("%5s ", number(numberValue))
