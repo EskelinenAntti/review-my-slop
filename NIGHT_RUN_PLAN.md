@@ -14,8 +14,9 @@ The score counts every Go AST node in non-test files under `cmd/` and
 
 ## Working rules
 
-1. Keep behavior stable. Do not remove, weaken, or rewrite tests merely to
-   make a cleanup easier.
+1. Keep behavior stable. Existing tests are immutable: do not edit, remove,
+   weaken, or rewrite them. Add narrowly targeted tests when they establish
+   the current behavior before a simplification.
 2. Do not change `scripts/ast_size.go` or redefine the metric during the run.
 3. Prefer deleting dead code, collapsing duplication, removing needless
    indirection, and making one concept have one clear home.
@@ -24,6 +25,8 @@ The score counts every Go AST node in non-test files under `cmd/` and
    move code around.
 5. Make focused changes. If a refactor touches multiple concepts, split it
    into independently reviewable commits.
+6. Commit every verified change on the current `chore/ast-size-metric` branch
+   only. Do not create, switch to, merge, rebase, or push any branch.
 
 ## Loop
 
@@ -35,10 +38,14 @@ The score counts every Go AST node in non-test files under `cmd/` and
 5. Run `go test -race ./...`, `go vet ./...`, and `make ast-size`.
 6. Keep the change only when all checks pass and the score falls, or when it
    establishes a clearly necessary prerequisite for a later reduction.
-7. Commit each verified cleanup with its AST-score delta in the commit body.
+7. Commit each verified cleanup on `chore/ast-size-metric`, with its AST-score
+   delta in the commit body.
 
-## Completion report
+## Finish
 
-Report the initial and final AST scores, the absolute and percentage change,
-the checks run, and a short list of the concepts simplified. Call out any
-remaining high-value cleanup candidates rather than making speculative changes.
+Continue the loop until the codebase has reached the best behavior-preserving
+simplification that can be justified from the code and its tests. Do not stop
+after identifying follow-up work: implement it, verify it, and commit it.
+
+At the end, report the initial and final AST scores, the absolute and
+percentage change, the checks run, and the concepts simplified.
