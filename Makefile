@@ -1,4 +1,4 @@
-.PHONY: build test check
+.PHONY: build test check ast-size
 
 build:
 	go build ./cmd/review-my-slop
@@ -9,3 +9,6 @@ test:
 check:
 	go vet ./...
 	staticcheck ./...
+
+ast-size:
+	@go run ./scripts/ast_size.go
