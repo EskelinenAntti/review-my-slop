@@ -67,10 +67,10 @@ func patchLineCounts(p patch.Patch) (added, removed int) {
 	for _, file := range p.Files {
 		for _, hunk := range file.Hunks {
 			for _, line := range hunk.Lines {
-				if line.Kind == patch.Addition {
+				switch line.Kind {
+				case patch.Addition:
 					added++
-				}
-				if line.Kind == patch.Deletion {
+				case patch.Deletion:
 					removed++
 				}
 			}
