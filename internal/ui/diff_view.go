@@ -45,10 +45,7 @@ func NewSideBySideView(p patch.Patch, dark bool) View {
 func (v *diffView) buildUnified() {
 	for fileIndex := range v.patch.Files {
 		file := &v.patch.Files[fileIndex]
-		v.rows = append(v.rows, entry{kind: fileRow, file: fileIndex, hunk: -1, leftLine: -1, rightLine: -1, text: file.DisplayPath})
-		for _, metadata := range file.Metadata {
-			v.rows = append(v.rows, entry{kind: metadataRow, file: fileIndex, hunk: -1, leftLine: -1, rightLine: -1, text: metadata})
-		}
+		v.appendFileHeader(fileIndex, file)
 		highlighted := v.highlight(file)
 		for hunkIndex := range file.Hunks {
 			hunk := &file.Hunks[hunkIndex]
@@ -69,10 +66,7 @@ func (v *diffView) buildUnified() {
 func (v *diffView) buildSplit() {
 	for fileIndex := range v.patch.Files {
 		file := &v.patch.Files[fileIndex]
-		v.rows = append(v.rows, entry{kind: fileRow, file: fileIndex, hunk: -1, leftLine: -1, rightLine: -1, text: file.DisplayPath})
-		for _, metadata := range file.Metadata {
-			v.rows = append(v.rows, entry{kind: metadataRow, file: fileIndex, hunk: -1, leftLine: -1, rightLine: -1, text: metadata})
-		}
+		v.appendFileHeader(fileIndex, file)
 		highlighted := v.highlight(file)
 		for hunkIndex := range file.Hunks {
 			hunk := &file.Hunks[hunkIndex]
@@ -116,6 +110,13 @@ func (v *diffView) buildSplit() {
 				}
 			}
 		}
+	}
+}
+
+func (v *diffView) appendFileHeader(fileIndex int, file *patch.File) {
+	v.rows = append(v.rows, entry{kind: fileRow, file: fileIndex, hunk: -1, leftLine: -1, rightLine: -1, text: file.DisplayPath})
+	for _, metadata := range file.Metadata {
+		v.rows = append(v.rows, entry{kind: metadataRow, file: fileIndex, hunk: -1, leftLine: -1, rightLine: -1, text: metadata})
 	}
 }
 
