@@ -68,10 +68,10 @@ func (v *diffView) Align(viewport Viewport, cursor Cursor, alignment VerticalAli
 }
 
 func alignmentOffset(height int, alignment VerticalAlignment) int {
-	if alignment == Middle {
+	switch alignment {
+	case Middle:
 		return height / 2
-	}
-	if alignment == Bottom {
+	case Bottom:
 		return height - 1
 	}
 	return 0
