@@ -51,14 +51,7 @@ func CommentDraft(body string, anchor comments.Anchor) string {
 		draft.WriteByte('\n')
 	}
 	draft.WriteByte('\n')
-	fence := contextFence(lines)
-	draft.WriteString(fence)
-	draft.WriteString("suggestion\n")
-	for _, line := range lines {
-		draft.WriteString(line)
-		draft.WriteByte('\n')
-	}
-	draft.WriteString(fence)
+	draft.WriteString(suggestionBlock(lines))
 	draft.WriteByte('\n')
 	return draft.String()
 }
@@ -68,20 +61,12 @@ func StripUnchangedSuggestion(body string, quoted []string) string {
 		return body
 	}
 	lines := suggestionLines(quoted)
-	fence := contextFence(lines)
-	var suggestion strings.Builder
-	suggestion.WriteString(fence)
-	suggestion.WriteString("suggestion\n")
-	for _, line := range lines {
-		suggestion.WriteString(line)
-		suggestion.WriteByte('\n')
-	}
-	suggestion.WriteString(fence)
-	start := strings.Index(body, suggestion.String())
+	suggestion := suggestionBlock(lines)
+	start := strings.Index(body, suggestion)
 	if start < 0 {
 		return body
 	}
-	end := start + suggestion.Len()
+	end := start + len(suggestion)
 	before := strings.TrimRight(body[:start], "\n")
 	after := body[end:]
 	if strings.TrimSpace(after) == "" {
@@ -122,6 +107,19 @@ func contextFence(lines []string) string {
 		}
 	}
 	return strings.Repeat("`", max(3, longest+1))
+}
+
+func suggestionBlock(lines []string) string {
+	fence := contextFence(lines)
+	var suggestion strings.Builder
+	suggestion.WriteString(fence)
+	suggestion.WriteString("suggestion\n")
+	for _, line := range lines {
+		suggestion.WriteString(line)
+		suggestion.WriteByte('\n')
+	}
+	suggestion.WriteString(fence)
+	return suggestion.String()
 }
 
 func shellQuote(value string) string {
