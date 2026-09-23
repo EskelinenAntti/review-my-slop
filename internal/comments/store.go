@@ -210,17 +210,13 @@ func decodeComment(data []byte) (Comment, error) {
 }
 
 func (s Store) update(fn func(*bolt.Bucket) error) error {
-	return s.updateBucket(messagesBucket, fn)
-}
-
-func (s Store) updateBucket(name []byte, fn func(*bolt.Bucket) error) error {
 	db, err := s.open()
 	if err != nil {
 		return err
 	}
 	defer db.Close()
 	return db.Update(func(tx *bolt.Tx) error {
-		bucket, err := tx.CreateBucketIfNotExists(name)
+		bucket, err := tx.CreateBucketIfNotExists(messagesBucket)
 		if err != nil {
 			return err
 		}
@@ -229,10 +225,6 @@ func (s Store) updateBucket(name []byte, fn func(*bolt.Bucket) error) error {
 }
 
 func (s Store) view(fn func(*bolt.Bucket) error) error {
-	return s.viewBucket(messagesBucket, fn)
-}
-
-func (s Store) viewBucket(name []byte, fn func(*bolt.Bucket) error) error {
 	db, err := s.open()
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
@@ -242,7 +234,7 @@ func (s Store) viewBucket(name []byte, fn func(*bolt.Bucket) error) error {
 	}
 	defer db.Close()
 	return db.View(func(tx *bolt.Tx) error {
-		bucket := tx.Bucket(name)
+		bucket := tx.Bucket(messagesBucket)
 		if bucket == nil {
 			return nil
 		}
