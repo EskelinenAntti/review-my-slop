@@ -98,11 +98,7 @@ func (r Review) ExportRepository(w io.Writer, repository string) ([]comments.Com
 }
 
 func (r Review) Acknowledge(p patch.Patch, pending []comments.Comment) error {
-	ids := make([]string, len(pending))
-	for index, comment := range pending {
-		ids[index] = comment.ID
-	}
-	return r.comments.Acknowledge(p.Repository, ids)
+	return r.AcknowledgeRepository(p.Repository, pending)
 }
 
 func (r Review) AcknowledgeRepository(repository string, pending []comments.Comment) error {
