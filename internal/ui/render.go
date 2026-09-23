@@ -22,10 +22,10 @@ func (m Model) View() tea.View {
 }
 
 func (m Model) render() string {
-	if m.mode == modeHelp {
+	switch m.mode {
+	case modeHelp:
 		return m.renderHelp()
-	}
-	if m.mode == modeComments {
+	case modeComments:
 		return m.renderComments()
 	}
 	added, removed := patchLineCounts(m.review.patch)
