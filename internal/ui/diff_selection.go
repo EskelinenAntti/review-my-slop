@@ -96,7 +96,11 @@ func (v *diffView) Line(cursor Cursor) (patch.Line, bool) {
 func (v *diffView) FindCursor(file patch.File, hunk patch.Hunk, line patch.Line, nearby int, pane Pane) (Cursor, bool) {
 	matches := [3][]Cursor{}
 	for y, current := range v.rows {
-		if current.file < 0 || !sameFile(v.patch.Files[current.file], file) || current.hunk < 0 || v.patch.Files[current.file].Hunks[current.hunk].Header != hunk.Header {
+		if current.file < 0 {
+			continue
+		}
+		candidateFile := v.patch.Files[current.file]
+		if !sameFile(candidateFile, file) || current.hunk < 0 || candidateFile.Hunks[current.hunk].Header != hunk.Header {
 			continue
 		}
 		for _, candidatePane := range []Pane{pane, Right - pane} {

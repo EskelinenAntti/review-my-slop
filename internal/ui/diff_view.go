@@ -30,7 +30,7 @@ type diffView struct {
 	dark  bool
 }
 
-func newDiffView(p patch.Patch, dark, split bool) View {
+func newDiffView(p patch.Patch, dark, split bool) *diffView {
 	v := &diffView{patch: p, split: split, dark: dark}
 	v.build()
 	return v
@@ -93,7 +93,7 @@ func (v *diffView) appendSplitLines(fileIndex, hunkIndex int, hunk patch.Hunk, h
 			addedEnd++
 		}
 		count := max(index-removedStart, addedEnd-addedStart)
-		for offset := 0; offset < count; offset++ {
+		for offset := range count {
 			leftLine, rightLine := -1, -1
 			left, right := "", ""
 			if removedStart+offset < index {

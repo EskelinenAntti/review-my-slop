@@ -14,6 +14,30 @@ func (v *diffView) ViewportProgress(viewport Viewport) int {
 	return bottom * 100 / len(v.rows)
 }
 
+func (v *diffView) ScrollHalfPage(viewport Viewport, cursor Cursor, direction Direction) (Viewport, Cursor) {
+	if !v.valid(cursor) {
+		return viewport, cursor
+	}
+	distance := int(direction) * max(1, viewport.Height/2)
+	viewport.Top += distance
+	viewport = v.clampViewport(viewport)
+	target := min(len(v.rows)-1, max(0, cursor.Coordinate+distance))
+	height := v.contentHeight(viewport)
+	top := viewport.Top
+	for distance := 0; distance < height; distance++ {
+		offset := int(direction) * distance
+		for _, y := range []int{target + offset, target - offset} {
+			if y < top || y >= top+height || y >= len(v.rows) {
+				continue
+			}
+			if candidate, ok := v.cursorAt(y, cursor.Pane); ok {
+				return viewport, candidate
+			}
+		}
+	}
+	return viewport, cursor
+}
+
 func (v *diffView) ScrollHorizontal(viewport Viewport, columns int) Viewport {
 	viewport.LeftColumn += columns
 	return v.clampViewport(viewport)
@@ -37,30 +61,6 @@ func (v *diffView) Last() (Cursor, bool) {
 		return cursor, true
 	}
 	return v.scan(len(v.rows), Left, Backward, false)
-}
-
-func (v *diffView) ScrollHalfPage(viewport Viewport, cursor Cursor, direction Direction) (Viewport, Cursor) {
-	if !v.valid(cursor) {
-		return viewport, cursor
-	}
-	distance := int(direction) * max(1, viewport.Height/2)
-	viewport.Top += distance
-	viewport = v.clampViewport(viewport)
-	target := min(len(v.rows)-1, max(0, cursor.Coordinate+distance))
-	height := v.contentHeight(viewport)
-	top := viewport.Top
-	for distance := 0; distance < height; distance++ {
-		offset := int(direction) * distance
-		for _, y := range []int{target + offset, target - offset} {
-			if y < top || y >= top+height || y >= len(v.rows) {
-				continue
-			}
-			if candidate, ok := v.cursorAt(y, cursor.Pane); ok {
-				return viewport, candidate
-			}
-		}
-	}
-	return viewport, cursor
 }
 
 func (v *diffView) Align(viewport Viewport, cursor Cursor, alignment VerticalAlignment) Viewport {

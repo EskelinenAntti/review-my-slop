@@ -73,12 +73,8 @@ func (m Model) render() string {
 
 func (m Model) renderScreen(header string, body []string, footer string) string {
 	height := m.screenBodyHeight()
-	if len(body) > height {
-		body = body[:height]
-	}
-	for len(body) < height {
-		body = append(body, "")
-	}
+	body = append(body, make([]string, max(0, height-len(body)))...)
+	body = body[:height]
 	lines := []string{header}
 	lines = append(lines, body...)
 	lines = append(lines, footer, "")

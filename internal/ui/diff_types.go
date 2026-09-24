@@ -46,6 +46,3 @@ const (
 	Middle
 	Bottom
 )
-
-// View is the repository's concrete diff view.
-type View = *diffView

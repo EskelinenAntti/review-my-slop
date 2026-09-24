@@ -58,29 +58,28 @@ func (l *Loader) Root(ctx context.Context, dir string) (string, error) {
 }
 
 func (l *Loader) Load(ctx context.Context, dir string) (Patch, error) {
-	root, err := l.Root(ctx, dir)
-	if err != nil {
-		return Patch{}, err
-	}
-
-	raw, err := l.diff(ctx, root)
-	if err != nil {
-		return Patch{}, err
-	}
-	return l.build(ctx, root, "", raw)
+	return l.load(ctx, dir, "", false)
 }
 
 func (l *Loader) LoadBranch(ctx context.Context, dir, branch string) (Patch, error) {
+	return l.load(ctx, dir, branch, true)
+}
+
+func (l *Loader) load(ctx context.Context, dir, branch string, compare bool) (Patch, error) {
 	root, err := l.Root(ctx, dir)
 	if err != nil {
 		return Patch{}, err
 	}
-	baseBytes, err := l.Runner(ctx, root, "merge-base", branch, "HEAD")
-	if err != nil {
-		return Patch{}, fmt.Errorf("find branch point with %s: %w", branch, err)
+	var revisions []string
+	if compare {
+		baseBytes, err := l.Runner(ctx, root, "merge-base", branch, "HEAD")
+		if err != nil {
+			return Patch{}, fmt.Errorf("find branch point with %s: %w", branch, err)
+		}
+		base := strings.TrimSpace(string(baseBytes))
+		revisions = []string{base}
 	}
-	base := strings.TrimSpace(string(baseBytes))
-	raw, err := l.diff(ctx, root, base)
+	raw, err := l.diff(ctx, root, revisions...)
 	if err != nil {
 		return Patch{}, err
 	}
@@ -159,7 +158,7 @@ func parseTracked(ctx context.Context, runner Runner, root string, raw []byte, b
 		oldPath := cleanDiffPath(fd.OrigName)
 		newPath := cleanDiffPath(fd.NewName)
 		display := newPath
-		if display == "" || display == "/dev/null" {
+		if display == "" {
 			display = oldPath
 		}
 		metadata := make([]string, len(fd.Extended))
@@ -172,12 +171,12 @@ func parseTracked(ctx context.Context, runner Runner, root string, raw []byte, b
 			DisplayPath: visibleText(display),
 			Metadata:    metadata,
 		}
-		if oldPath != "" && oldPath != "/dev/null" {
+		if oldPath != "" {
 			if out, readErr := runner(ctx, root, "show", base+":"+oldPath); readErr == nil && len(out) <= maxFileBytes && bytes.IndexByte(out, 0) < 0 {
 				file.OldSource = visibleSource(string(out))
 			}
 		}
-		if newPath != "" && newPath != "/dev/null" {
+		if newPath != "" {
 			full := filepath.Join(root, filepath.FromSlash(newPath))
 			if info, statErr := os.Lstat(full); statErr == nil && info.Mode().IsRegular() && info.Size() <= maxFileBytes {
 				if out, readErr := os.ReadFile(full); readErr == nil && bytes.IndexByte(out, 0) < 0 {
@@ -251,13 +250,11 @@ func (l Loader) loadUntracked(ctx context.Context, root string) ([]File, error) 
 
 func addedFile(path, content string) File {
 	source := strings.TrimSuffix(content, "\n")
-	var sourceLines []string
-	if source != "" {
-		sourceLines = strings.Split(source, "\n")
-	}
 	lines := []Line{}
-	for i, line := range sourceLines {
-		lines = append(lines, Line{Kind: Addition, Text: line, NewNumber: LineNumber(i + 1)})
+	if source != "" {
+		for i, line := range strings.Split(source, "\n") {
+			lines = append(lines, Line{Kind: Addition, Text: line, NewNumber: LineNumber(i + 1)})
+		}
 	}
 	return File{
 		NewPath:     path,
@@ -275,10 +272,10 @@ func parseHunkBody(oldLine, newLine int32, body []byte) ([]Line, error) {
 	rawLines := bytes.Split(body, []byte("\n"))
 	lines := []Line{}
 	for i, raw := range rawLines {
-		if i == len(rawLines)-1 && len(raw) == 0 {
-			continue
-		}
 		if len(raw) == 0 {
+			if i == len(rawLines)-1 {
+				continue
+			}
 			return nil, errors.New("malformed empty diff line")
 		}
 		line := Line{Text: visibleText(string(raw[1:]))}

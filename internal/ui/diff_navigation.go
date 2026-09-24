@@ -39,7 +39,7 @@ func (v *diffView) scan(start int, pane Pane, direction Direction, wrap bool) (C
 	}
 	last := len(rows) - 1
 	y := start
-	for count := 0; count <= last; count++ {
+	for range last + 1 {
 		y += int(direction)
 		if y < 0 || y > last {
 			if !wrap {
@@ -66,7 +66,7 @@ func (v *diffView) Search(query string, cursor Cursor, direction Direction) (Cur
 	query = strings.ToLower(query)
 	y := cursor.Coordinate
 	pane := cursor.Pane
-	for count := 0; count < len(rows)-1; count++ {
+	for range len(rows) - 1 {
 		y += int(direction)
 		if y < 0 {
 			y = len(rows) - 1
@@ -89,7 +89,7 @@ func (v *diffView) Search(query string, cursor Cursor, direction Direction) (Cur
 			for distance := 1; distance <= len(rows); distance++ {
 				offset := int(direction) * distance
 				for _, candidateY := range []int{y + offset, y - offset} {
-					if candidateY < 0 || candidateY >= len(rows) || rows[candidateY].file != rows[y].file {
+					if candidateY < 0 || candidateY >= len(rows) || rows[candidateY].file != current.file {
 						continue
 					}
 					if candidate, ok := v.cursorAt(candidateY, pane); ok {

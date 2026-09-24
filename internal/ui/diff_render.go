@@ -115,10 +115,7 @@ func selected(selection *Selection, cursor Cursor) bool {
 	if firstCursor.Pane != cursor.Pane {
 		return false
 	}
-	if first > last {
-		first, last = last, first
-	}
-	return cursor.Coordinate >= first && cursor.Coordinate <= last
+	return cursor.Coordinate >= min(first, last) && cursor.Coordinate <= max(first, last)
 }
 
 func lineStyle(kind patch.LineKind, dark bool) lipgloss.Style {
@@ -131,10 +128,6 @@ func lineStyle(kind patch.LineKind, dark bool) lipgloss.Style {
 	default:
 		return contextStyle
 	}
-}
-
-func selectionRowStyle(dark bool) lipgloss.Style {
-	return lipgloss.NewStyle().Background(lipgloss.LightDark(dark)(lipgloss.Color("#dbeafe"), lipgloss.Color("#1e3a5f")))
 }
 
 func number(value patch.LineNumber) string {
@@ -150,10 +143,10 @@ func renderStyledRow(style lipgloss.Style, value string, width int, stripForegro
 	const marker = "\x00"
 	rendered := style.Render(marker)
 	index := strings.Index(rendered, marker)
-	prefix := ""
-	if index >= 0 {
-		prefix = rendered[:index]
+	if index < 0 {
+		index = 0
 	}
+	prefix := rendered[:index]
 	fitted = strings.ReplaceAll(fitted, "\x1b[0m", "\x1b[0m"+prefix)
 	fitted = strings.ReplaceAll(fitted, "\x1b[m", "\x1b[m"+prefix)
 	return style.Render(fitted)
@@ -167,7 +160,6 @@ func filterANSIColors(value string, stripForeground bool) string {
 		}
 		parts := strings.Split(parameters, ";")
 		filtered := []string{}
-		last := len(parts) - 1
 		for index := 0; index < len(parts); index++ {
 			code, err := strconv.Atoi(parts[index])
 			if err != nil {
@@ -179,9 +171,9 @@ func filterANSIColors(value string, stripForeground bool) string {
 				if index+1 < len(parts) {
 					mode := parts[index+1]
 					if mode == "2" {
-						index = min(index+4, last)
+						index += 4
 					} else if mode == "5" {
-						index = min(index+2, last)
+						index += 2
 					}
 				}
 			case code >= 40 && code <= 49, code >= 100 && code <= 107,
@@ -220,3 +212,7 @@ var (
 	removedStyle   = lipgloss.NewStyle().Foreground(lipgloss.Red)
 	cursorStyle    = lipgloss.NewStyle().Reverse(true)
 )
+
+func selectionRowStyle(dark bool) lipgloss.Style {
+	return lipgloss.NewStyle().Background(lipgloss.LightDark(dark)(lipgloss.Color("#dbeafe"), lipgloss.Color("#1e3a5f")))
+}

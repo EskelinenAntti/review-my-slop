@@ -51,7 +51,7 @@ var DefaultSize = Size{80, 30}
 
 type reviewState struct {
 	patch      patch.Patch
-	view       View
+	view       *diffView
 	cursor     Cursor
 	viewport   Viewport
 	selection  *Selection
@@ -262,27 +262,20 @@ func (m Model) updateKey(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	if pending == "z" {
-		var alignment VerticalAlignment
+		height := review.viewport.Height
+		alignmentOffset := 0
 		switch name {
 		case "z":
-			alignment = Middle
+			alignmentOffset = height / 2
 		case "t":
 		case "b":
-			alignment = Bottom
+			alignmentOffset = height - 1
 		default:
 			return m, nil
 		}
-		height := review.viewport.Height
 		headerHeight := 0
 		if height > 1 {
 			headerHeight = 1
-		}
-		alignmentOffset := 0
-		switch alignment {
-		case Middle:
-			alignmentOffset = height / 2
-		case Bottom:
-			alignmentOffset = height - 1
 		}
 		offset := max(0, alignmentOffset-headerHeight)
 		review.viewport.Top = cursor.Coordinate - offset
@@ -324,11 +317,12 @@ func (m Model) updateKey(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		m.move(Forward)
 	case "k", "up":
 		m.move(Backward)
-	case "h", "left":
-		review.viewport.LeftColumn -= horizontalScrollStep
-		review.viewport = view.clampViewport(review.viewport)
-	case "l", "right":
-		review.viewport.LeftColumn += horizontalScrollStep
+	case "h", "left", "l", "right":
+		delta := horizontalScrollStep
+		if name == "h" || name == "left" {
+			delta = -delta
+		}
+		review.viewport.LeftColumn += delta
 		review.viewport = view.clampViewport(review.viewport)
 	case "0":
 		review.viewport.LeftColumn = 0
@@ -350,9 +344,11 @@ func (m Model) updateKey(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			m.pendingKey = "g"
 		}
 	case "G":
-		if cursor, ok := view.scan(len(view.rows), Right, Backward, false); ok {
-			m.setCursor(cursor)
-		} else if cursor, ok := view.scan(len(view.rows), Left, Backward, false); ok {
+		cursor, ok := view.scan(len(view.rows), Right, Backward, false)
+		if !ok {
+			cursor, ok = view.scan(len(view.rows), Left, Backward, false)
+		}
+		if ok {
 			m.setCursor(cursor)
 		}
 	case "z":
@@ -413,4 +409,5 @@ func (m Model) currentBranch() string {
 	}
 	return m.defaultBranch
 }
+
 func (m Model) screenBodyHeight() int { return max(1, m.height-3) }

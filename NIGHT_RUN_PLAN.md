@@ -7,6 +7,7 @@ Reduce the production AST-size score without changing the program's behavior.
 ```text
 Baseline: 18,519 AST nodes
 Command:  make ast-size
+Stretch target: 13,889 AST nodes or fewer (25% reduction)
 ```
 
 The score counts every Go AST node in non-test files under `cmd/` and

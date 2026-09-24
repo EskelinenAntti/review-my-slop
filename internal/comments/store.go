@@ -54,7 +54,7 @@ func (s Store) Add(comment Comment) (Comment, error) {
 		return Comment{}, fmt.Errorf("encode comment: %w", err)
 	}
 	key := []byte(comment.ID)
-	err = s.update(func(bucket *bolt.Bucket) error {
+	err = s.transact(true, func(bucket *bolt.Bucket) error {
 		var pending int
 		cursor := bucket.Cursor()
 		for _, value := cursor.First(); value != nil; _, value = cursor.Next() {
@@ -73,7 +73,7 @@ func (s Store) Add(comment Comment) (Comment, error) {
 
 func (s Store) List(repository string) ([]Comment, error) {
 	var comments []Comment
-	err := s.view(func(bucket *bolt.Bucket) error {
+	err := s.transact(false, func(bucket *bolt.Bucket) error {
 		return bucket.ForEach(func(_, value []byte) error {
 			comment, err := decodeComment(value)
 			if err != nil {
@@ -100,7 +100,7 @@ func (s Store) Update(comment Comment) error {
 		return fmt.Errorf("encode comment: %w", err)
 	}
 	key := []byte(comment.ID)
-	return s.update(func(bucket *bolt.Bucket) error {
+	return s.transact(true, func(bucket *bolt.Bucket) error {
 		oldKey, err := findComment(bucket, comment.Repository, comment.ID)
 		if err != nil {
 			return err
@@ -118,7 +118,7 @@ func (s Store) Delete(repository, id string) error {
 	if repository == "" || id == "" {
 		return errors.New("repository and comment ID are required")
 	}
-	return s.update(func(bucket *bolt.Bucket) error {
+	return s.transact(true, func(bucket *bolt.Bucket) error {
 		key, err := findComment(bucket, repository, id)
 		if err != nil {
 			return err
@@ -131,7 +131,7 @@ func (s Store) Acknowledge(repository string, ids []string) error {
 	if len(ids) == 0 {
 		return nil
 	}
-	return s.update(func(bucket *bolt.Bucket) error {
+	return s.transact(true, func(bucket *bolt.Bucket) error {
 		var keys [][]byte
 		if err := bucket.ForEach(func(key, value []byte) error {
 			comment, err := decodeComment(value)
@@ -192,33 +192,28 @@ func decodeComment(data []byte) (Comment, error) {
 	return stored.Comment, nil
 }
 
-func (s Store) update(fn func(*bolt.Bucket) error) error {
+func (s Store) transact(write bool, fn func(*bolt.Bucket) error) error {
 	db, err := s.open()
 	if err != nil {
-		return err
-	}
-	defer db.Close()
-	return db.Update(func(tx *bolt.Tx) error {
-		bucket, err := tx.CreateBucketIfNotExists(messagesBucket)
-		if err != nil {
-			return err
-		}
-		return fn(bucket)
-	})
-}
-
-func (s Store) view(fn func(*bolt.Bucket) error) error {
-	db, err := s.open()
-	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
+		if !write && errors.Is(err, os.ErrNotExist) {
 			return nil
 		}
 		return err
 	}
 	defer db.Close()
-	return db.View(func(tx *bolt.Tx) error {
+	transaction := db.View
+	if write {
+		transaction = db.Update
+	}
+	return transaction(func(tx *bolt.Tx) error {
 		bucket := tx.Bucket(messagesBucket)
-		if bucket == nil {
+		if write {
+			var err error
+			bucket, err = tx.CreateBucketIfNotExists(messagesBucket)
+			if err != nil {
+				return err
+			}
+		} else if bucket == nil {
 			return nil
 		}
 		return fn(bucket)
