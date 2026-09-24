@@ -158,7 +158,7 @@ func parseTracked(ctx context.Context, runner Runner, root string, raw []byte, b
 	if err != nil {
 		return nil, fmt.Errorf("parse git diff: %w", err)
 	}
-	files := make([]File, 0, len(parsed))
+	files := []File{}
 	for _, fd := range parsed {
 		oldPath := cleanDiffPath(fd.OrigName)
 		newPath := cleanDiffPath(fd.NewName)
@@ -214,38 +214,30 @@ func (l Loader) loadUntracked(ctx context.Context, root string) ([]File, error) 
 		if statErr != nil {
 			return nil, fmt.Errorf("stat untracked %q: %w", path, statErr)
 		}
-		if info.Mode()&os.ModeSymlink != 0 {
+		mode := info.Mode()
+		file := File{NewPath: path, DisplayPath: display}
+		if mode&os.ModeSymlink != 0 {
 			target, readErr := os.Readlink(full)
 			if readErr != nil {
 				return nil, fmt.Errorf("read symlink %q: %w", path, readErr)
 			}
-			files = append(files, addedFile(path, visibleText(target)))
+			file = addedFile(path, visibleText(target))
+		} else if !mode.IsRegular() {
 			continue
+		} else if info.Size() > maxFileBytes {
+			file.Metadata = []string{"untracked file", "content omitted: file exceeds 2 MiB"}
+		} else {
+			content, readErr := os.ReadFile(full)
+			if readErr != nil {
+				return nil, fmt.Errorf("read untracked %q: %w", path, readErr)
+			}
+			if bytes.IndexByte(content, 0) >= 0 {
+				file.Metadata = []string{"untracked binary file"}
+			} else {
+				file = addedFile(display, visibleSource(string(content)))
+			}
 		}
-		if !info.Mode().IsRegular() {
-			continue
-		}
-		if info.Size() > maxFileBytes {
-			files = append(files, File{
-				NewPath:     path,
-				DisplayPath: display,
-				Metadata:    []string{"untracked file", "content omitted: file exceeds 2 MiB"},
-			})
-			continue
-		}
-		content, readErr := os.ReadFile(full)
-		if readErr != nil {
-			return nil, fmt.Errorf("read untracked %q: %w", path, readErr)
-		}
-		if bytes.IndexByte(content, 0) >= 0 {
-			files = append(files, File{
-				NewPath:     path,
-				DisplayPath: display,
-				Metadata:    []string{"untracked binary file"},
-			})
-			continue
-		}
-		files = append(files, addedFile(display, visibleSource(string(content))))
+		files = append(files, file)
 	}
 	return files, nil
 }
@@ -256,7 +248,7 @@ func addedFile(path, content string) File {
 	if source != "" {
 		sourceLines = strings.Split(source, "\n")
 	}
-	lines := make([]Line, 0, len(sourceLines))
+	lines := []Line{}
 	for i, line := range sourceLines {
 		lines = append(lines, Line{Kind: Addition, Text: line, NewNumber: LineNumber(i + 1)})
 	}
@@ -274,7 +266,7 @@ func addedFile(path, content string) File {
 
 func parseHunkBody(oldLine, newLine int32, body []byte) ([]Line, error) {
 	rawLines := bytes.Split(body, []byte("\n"))
-	lines := make([]Line, 0, len(rawLines))
+	lines := []Line{}
 	for i, raw := range rawLines {
 		if i == len(rawLines)-1 && len(raw) == 0 {
 			continue
@@ -336,9 +328,7 @@ func readWorkingTree(root, path string) string {
 }
 
 func cleanDiffPath(path string) string {
-	path = strings.TrimSpace(path)
-	path = strings.TrimPrefix(path, "a/")
-	path = strings.TrimPrefix(path, "b/")
+	path = strings.TrimPrefix(strings.TrimPrefix(strings.TrimSpace(path), "a/"), "b/")
 	if path == "/dev/null" {
 		return ""
 	}

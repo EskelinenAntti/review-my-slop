@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
@@ -125,7 +126,7 @@ func (m *Model) deleteComment(index int) {
 		m.err = err
 		return
 	}
-	state.items = append(state.items[:index], state.items[index+1:]...)
+	state.items = slices.Delete(state.items, index, index+1)
 	state.row = min(state.row, max(0, len(state.items)-1))
 	state.revision++
 	m.err = nil
@@ -164,7 +165,7 @@ func (m Model) openCurrentLine() (tea.Cmd, error) {
 		path = filepath.Join(review.patch.Repository, filepath.FromSlash(path))
 	}
 	return tea.ExecProcess(SourceCommand(editorCommand, path, int(number)), func(err error) tea.Msg {
-		return sourceEditorFinishedMsg{err: err}
+		return sourceEditorFinishedMsg{err}
 	}), nil
 }
 
@@ -180,6 +181,6 @@ func (m Model) openCommentEditor() (tea.Cmd, error) {
 	}
 	return tea.ExecProcess(CommentCommand(editorCommand, path), func(editorErr error) tea.Msg {
 		body, err := ReadCommentFile(path, state.editAnchor, editorErr)
-		return commentEditorFinishedMsg{body: body, err: err}
+		return commentEditorFinishedMsg{body, err}
 	}), nil
 }

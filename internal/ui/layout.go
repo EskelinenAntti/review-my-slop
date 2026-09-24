@@ -36,15 +36,16 @@ func saveLayoutSettings(enabled bool) error {
 	if err != nil {
 		return err
 	}
-	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+	directory := filepath.Dir(path)
+	if err := os.MkdirAll(directory, 0o700); err != nil {
 		return fmt.Errorf("create UI settings directory: %w", err)
 	}
-	data, err := json.Marshal(layoutSettings{SideBySide: enabled})
+	data, err := json.Marshal(layoutSettings{enabled})
 	if err != nil {
 		return fmt.Errorf("encode UI settings: %w", err)
 	}
 	data = append(data, '\n')
-	temporary, err := os.CreateTemp(filepath.Dir(path), "ui-*.tmp")
+	temporary, err := os.CreateTemp(directory, "ui-*.tmp")
 	if err != nil {
 		return fmt.Errorf("create UI settings file: %w", err)
 	}

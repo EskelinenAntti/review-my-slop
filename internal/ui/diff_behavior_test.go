@@ -117,7 +117,7 @@ func TestSplitVerticalMovementAndHalfPageUseVisualRows(t *testing.T) {
 	viewport = v.KeepVisible(viewport, cursor)
 	originalTop := viewport.Top
 	viewport, moved := v.ScrollHalfPage(viewport, cursor, Forward)
-	if viewport.Top.Y <= originalTop.Y || moved.Coordinate.Y <= cursor.Coordinate.Y {
+	if viewport.Top <= originalTop || moved.Coordinate <= cursor.Coordinate {
 		t.Fatalf("viewport=%#v cursor=%#v", viewport, moved)
 	}
 	viewport, moved = v.ScrollHalfPage(viewport, moved, Backward)
@@ -139,7 +139,7 @@ func TestFileHeaderSticksWithoutCoveringDiffRows(t *testing.T) {
 	}}
 	v := NewUnifiedView(p, true)
 	viewport := v.NewViewport(60, 3)
-	viewport.Top.Y = 3
+	viewport.Top = 3
 
 	rendered := strings.Split(ansi.Strip(v.Render(viewport, Cursor{}, nil)), "\n")
 	if len(rendered) != viewport.Height || !strings.Contains(rendered[0], "first.go") {
@@ -150,13 +150,13 @@ func TestFileHeaderSticksWithoutCoveringDiffRows(t *testing.T) {
 	}
 
 	secondFileRow := 5
-	viewport.Top.Y = secondFileRow
+	viewport.Top = secondFileRow
 	rendered = strings.Split(ansi.Strip(v.Render(viewport, Cursor{}, nil)), "\n")
 	if strings.Count(strings.Join(rendered, "\n"), "second.go") != 1 {
 		t.Fatalf("file header was duplicated at its natural position: %#v", rendered)
 	}
 
-	viewport.Top.Y = secondFileRow + 1
+	viewport.Top = secondFileRow + 1
 	rendered = strings.Split(ansi.Strip(v.Render(viewport, Cursor{}, nil)), "\n")
 	if !strings.Contains(rendered[0], "second.go") {
 		t.Fatalf("sticky header did not change with the file: %#v", rendered)
@@ -169,7 +169,7 @@ func TestKeepVisibleAccountsForStickyFileHeader(t *testing.T) {
 	viewport := v.KeepVisible(v.NewViewport(50, 4), cursor)
 	rendered := ansi.Strip(v.Render(viewport, cursor, nil))
 	line, _ := v.Line(cursor)
-	if cursor.Coordinate.Y >= viewport.Top.Y+v.contentHeight(viewport) || !strings.Contains(rendered, strconv.Itoa(int(line.NewNumber))) {
+	if cursor.Coordinate >= viewport.Top+v.contentHeight(viewport) || !strings.Contains(rendered, strconv.Itoa(int(line.NewNumber))) {
 		t.Fatalf("last cursor row is hidden by sticky header: viewport=%#v render=%q", viewport, rendered)
 	}
 }

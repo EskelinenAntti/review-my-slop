@@ -45,15 +45,11 @@ func CommentDraft(body string, anchor comments.Anchor) string {
 		return body
 	}
 	lines := suggestionLines(anchor.QuotedLines)
-	var draft strings.Builder
-	draft.WriteString(body)
+	separator := "\n"
 	if body != "" && !strings.HasSuffix(body, "\n") {
-		draft.WriteByte('\n')
+		separator = "\n\n"
 	}
-	draft.WriteByte('\n')
-	draft.WriteString(suggestionBlock(lines))
-	draft.WriteByte('\n')
-	return draft.String()
+	return body + separator + suggestionBlock(lines) + "\n"
 }
 
 func StripUnchangedSuggestion(body string, quoted []string) string {
@@ -84,7 +80,7 @@ func SourceCommand(editor, path string, line int) *exec.Cmd {
 }
 
 func suggestionLines(quoted []string) []string {
-	lines := make([]string, 0, len(quoted))
+	lines := []string{}
 	for _, line := range quoted {
 		if line != "" && line[0] != '-' {
 			lines = append(lines, line[1:])
@@ -111,15 +107,11 @@ func contextFence(lines []string) string {
 
 func suggestionBlock(lines []string) string {
 	fence := contextFence(lines)
-	var suggestion strings.Builder
-	suggestion.WriteString(fence)
-	suggestion.WriteString("suggestion\n")
-	for _, line := range lines {
-		suggestion.WriteString(line)
-		suggestion.WriteByte('\n')
+	suggestion := fence + "suggestion\n" + strings.Join(lines, "\n")
+	if len(lines) > 0 {
+		suggestion += "\n"
 	}
-	suggestion.WriteString(fence)
-	return suggestion.String()
+	return suggestion + fence
 }
 
 func shellQuote(value string) string {

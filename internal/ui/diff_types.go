@@ -1,9 +1,5 @@
 package ui
 
-type Coordinate struct {
-	Y int
-}
-
 type Pane uint8
 
 const (
@@ -19,12 +15,12 @@ func (pane Pane) Other() Pane {
 }
 
 type Cursor struct {
-	Coordinate Coordinate
+	Coordinate int
 	Pane       Pane
 }
 
 type Viewport struct {
-	Top        Coordinate
+	Top        int
 	LeftColumn int
 	Width      int
 	Height     int

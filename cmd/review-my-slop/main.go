@@ -33,7 +33,11 @@ func run(ctx context.Context, args []string, output io.Writer) error {
 	case "code":
 		return runCode(ctx)
 	case "comments":
-		return runComments(ctx, output)
+		current, err := os.Getwd()
+		if err != nil {
+			return err
+		}
+		return runCommentsAt(ctx, current, output)
 	default:
 		return fmt.Errorf("unknown subcommand %q; usage: review-my-slop [code|comments]", args[0])
 	}
@@ -48,12 +52,12 @@ func runCode(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	currentReview := review.New(ctx, current, patch.Loader{}, store)
-	loaded, err := currentReview.Load("")
+	currentReview := review.Review{Patches: patch.Loader{}, Store: store}
+	loaded, err := currentReview.Patches.Load(ctx, current)
 	if err != nil {
 		return err
 	}
-	pending, err := currentReview.Comments(loaded)
+	pending, err := currentReview.Store.List(loaded.Repository)
 	if err != nil {
 		return err
 	}
@@ -62,7 +66,7 @@ func runCode(ctx context.Context) error {
 		return err
 	}
 	size := initialTerminalSize()
-	model, err := ui.NewWithReview(currentReview, loaded, pending, size, defaultBranch)
+	model, err := ui.NewWithReview(currentReview, ctx, current, loaded, pending, size, defaultBranch)
 	if err != nil {
 		return err
 	}
@@ -72,21 +76,12 @@ func runCode(ctx context.Context) error {
 }
 
 func initialTerminalSize() ui.Size {
-	if width, height, err := term.GetSize(os.Stdin.Fd()); err == nil {
-		return ui.Size{Width: width, Height: height}
-	}
-	if width, height, err := term.GetSize(os.Stdout.Fd()); err == nil {
-		return ui.Size{Width: width, Height: height}
+	for _, fd := range []uintptr{os.Stdin.Fd(), os.Stdout.Fd()} {
+		if width, height, err := term.GetSize(fd); err == nil {
+			return ui.Size{Width: width, Height: height}
+		}
 	}
 	return ui.DefaultSize
-}
-
-func runComments(ctx context.Context, output io.Writer) error {
-	current, err := os.Getwd()
-	if err != nil {
-		return err
-	}
-	return runCommentsAt(ctx, current, output)
 }
 
 func runCommentsAt(ctx context.Context, current string, output io.Writer) error {

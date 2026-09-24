@@ -1,46 +1,27 @@
 package review
 
 import (
-	"context"
-
 	"github.com/eskelinenantti/review-my-slop/internal/comments"
 	"github.com/eskelinenantti/review-my-slop/internal/patch"
 )
 
 // Review coordinates the patch and comments that make up one review.
 type Review struct {
-	context   context.Context
-	directory string
-	patches   patch.Loader
-	comments  comments.Store
-}
-
-func New(ctx context.Context, directory string, patches patch.Loader, comments comments.Store) Review {
-	return Review{context: ctx, directory: directory, patches: patches, comments: comments}
-}
-
-func (r Review) Load(branch string) (patch.Patch, error) {
-	if branch == "" {
-		return r.patches.Load(r.context, r.directory)
-	}
-	return r.patches.LoadBranch(r.context, r.directory, branch)
-}
-
-func (r Review) Comments(p patch.Patch) ([]comments.Comment, error) {
-	return r.comments.List(p.Repository)
+	Patches patch.Loader
+	Store   comments.Store
 }
 
 func (r Review) SaveComment(comment comments.Comment, p patch.Patch) (comments.Comment, error) {
 	comment.Repository = p.Repository
-	if comment.ID != "" {
-		if err := r.comments.Update(comment); err != nil {
-			return comments.Comment{}, err
-		}
-		return comment, nil
+	if comment.ID == "" {
+		return r.Store.Add(comment)
 	}
-	return r.comments.Add(comment)
+	if err := r.Store.Update(comment); err != nil {
+		return comments.Comment{}, err
+	}
+	return comment, nil
 }
 
 func (r Review) DeleteComment(comment comments.Comment, p patch.Patch) error {
-	return r.comments.Delete(p.Repository, comment.ID)
+	return r.Store.Delete(p.Repository, comment.ID)
 }

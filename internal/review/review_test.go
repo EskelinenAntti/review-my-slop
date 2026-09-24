@@ -2,7 +2,6 @@ package review
 
 import (
 	"bytes"
-	"context"
 	"path/filepath"
 	"testing"
 
@@ -12,7 +11,7 @@ import (
 
 func TestSaveCommentAddsRepositoryContext(t *testing.T) {
 	store := comments.Store{Path: filepath.Join(t.TempDir(), "comments.db")}
-	currentReview := New(context.Background(), "/work", patch.Loader{}, store)
+	currentReview := Review{Patches: patch.Loader{}, Store: store}
 	p := patch.Patch{Repository: "/repo"}
 
 	saved, err := currentReview.SaveComment(comments.Comment{Body: "check this"}, p)

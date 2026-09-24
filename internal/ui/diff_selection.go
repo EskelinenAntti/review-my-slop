@@ -8,15 +8,15 @@ import (
 )
 
 func (v *diffView) BeginSelection(cursor Cursor) Selection {
-	return Selection{First: cursor, Last: cursor}
+	return Selection{cursor, cursor}
 }
 
 func (v *diffView) ExtendSelection(selection Selection, cursor Cursor) (Selection, bool) {
 	if !v.valid(selection.First) || !v.valid(cursor) {
 		return selection, false
 	}
-	first := v.rows[selection.First.Coordinate.Y]
-	last := v.rows[cursor.Coordinate.Y]
+	first := v.rows[selection.First.Coordinate]
+	last := v.rows[cursor.Coordinate]
 	if first.file != last.file || first.hunk != last.hunk {
 		return selection, false
 	}
@@ -25,7 +25,7 @@ func (v *diffView) ExtendSelection(selection Selection, cursor Cursor) (Selectio
 }
 
 func (v *diffView) Lines(selection Selection) []patch.Line {
-	first, last := selection.First.Coordinate.Y, selection.Last.Coordinate.Y
+	first, last := selection.First.Coordinate, selection.Last.Coordinate
 	return v.selectedLines(selection, first == last && selection.First.Pane != selection.Last.Pane)
 }
 
@@ -56,20 +56,20 @@ func (v *diffView) selectedLines(selection Selection, deduplicate bool) []patch.
 	if _, ok := v.ExtendSelection(selection, lastCursor); !ok {
 		return nil
 	}
-	first, last := firstCursor.Coordinate.Y, lastCursor.Coordinate.Y
+	first, last := firstCursor.Coordinate, lastCursor.Coordinate
 	if first > last {
 		first, last = last, first
 	}
-	lines := make([]patch.Line, 0, last-first+1)
+	var lines []patch.Line
 	for y := first; y <= last; y++ {
 		panes := []Pane{firstCursor.Pane}
 		if first == last && firstCursor.Pane != lastCursor.Pane {
 			panes = append(panes, lastCursor.Pane)
-		} else if y == lastCursor.Coordinate.Y {
+		} else if y == lastCursor.Coordinate {
 			panes[0] = lastCursor.Pane
 		}
 		for _, pane := range panes {
-			line, ok := v.Line(Cursor{Coordinate: Coordinate{Y: y}, Pane: pane})
+			line, ok := v.Line(Cursor{y, pane})
 			if !ok || deduplicate && len(lines) > 0 && lines[len(lines)-1] == line {
 				continue
 			}
@@ -83,14 +83,14 @@ func (v *diffView) File(cursor Cursor) (patch.File, bool) {
 	if !v.valid(cursor) {
 		return patch.File{}, false
 	}
-	return v.patch.Files[v.rows[cursor.Coordinate.Y].file], true
+	return v.patch.Files[v.rows[cursor.Coordinate].file], true
 }
 
 func (v *diffView) Hunk(cursor Cursor) (patch.Hunk, bool) {
 	if !v.valid(cursor) {
 		return patch.Hunk{}, false
 	}
-	current := v.rows[cursor.Coordinate.Y]
+	current := v.rows[cursor.Coordinate]
 	return v.patch.Files[current.file].Hunks[current.hunk], true
 }
 
@@ -98,11 +98,11 @@ func (v *diffView) Line(cursor Cursor) (patch.Line, bool) {
 	if !v.valid(cursor) {
 		return patch.Line{}, false
 	}
-	current := v.rows[cursor.Coordinate.Y]
+	current := v.rows[cursor.Coordinate]
 	return v.patch.Files[current.file].Hunks[current.hunk].Lines[v.lineIndex(current, cursor.Pane)], true
 }
 
-func (v *diffView) FindCursor(file patch.File, hunk patch.Hunk, line patch.Line, nearby Coordinate, pane Pane) (Cursor, bool) {
+func (v *diffView) FindCursor(file patch.File, hunk patch.Hunk, line patch.Line, nearby int, pane Pane) (Cursor, bool) {
 	matches := [3][]Cursor{}
 	for y, current := range v.rows {
 		if current.file < 0 || !sameFile(v.patch.Files[current.file], file) || current.hunk < 0 || v.patch.Files[current.file].Hunks[current.hunk].Header != hunk.Header {
@@ -114,12 +114,11 @@ func (v *diffView) FindCursor(file patch.File, hunk patch.Hunk, line patch.Line,
 				continue
 			}
 			candidateLine, _ := v.Line(candidate)
-			sameKind := candidateLine.Kind == line.Kind
-			if sameKind && candidateLine.OldNumber == line.OldNumber && candidateLine.NewNumber == line.NewNumber {
-				return candidate, true
-			}
 			match := 0
-			if sameKind {
+			if candidateLine.Kind == line.Kind {
+				if candidateLine.OldNumber == line.OldNumber && candidateLine.NewNumber == line.NewNumber {
+					return candidate, true
+				}
 				match = 1
 				if candidateLine.Text == line.Text {
 					match = 2
@@ -141,10 +140,10 @@ func sameFile(candidate, target patch.File) bool {
 		candidate.NewPath != "" && candidate.NewPath == target.NewPath
 }
 
-func closest(candidates []Cursor, nearby Coordinate) Cursor {
+func closest(candidates []Cursor, nearby int) Cursor {
 	best := candidates[0]
 	for _, candidate := range candidates[1:] {
-		if abs(candidate.Coordinate.Y-nearby.Y) < abs(best.Coordinate.Y-nearby.Y) {
+		if abs(candidate.Coordinate-nearby) < abs(best.Coordinate-nearby) {
 			best = candidate
 		}
 	}

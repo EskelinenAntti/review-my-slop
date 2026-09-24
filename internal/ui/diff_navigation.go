@@ -7,7 +7,7 @@ import (
 )
 
 func (v *diffView) valid(cursor Cursor) bool {
-	return cursor.Coordinate.Y >= 0 && cursor.Coordinate.Y < len(v.rows) && v.lineIndex(v.rows[cursor.Coordinate.Y], cursor.Pane) >= 0
+	return cursor.Coordinate >= 0 && cursor.Coordinate < len(v.rows) && v.lineIndex(v.rows[cursor.Coordinate], cursor.Pane) >= 0
 }
 
 func (v *diffView) lineIndex(current entry, pane Pane) int {
@@ -21,7 +21,7 @@ func (v *diffView) lineIndex(current entry, pane Pane) int {
 }
 
 func (v *diffView) cursorAt(y int, pane Pane) (Cursor, bool) {
-	cursor := Cursor{Coordinate: Coordinate{Y: y}, Pane: pane}
+	cursor := Cursor{y, pane}
 	return cursor, v.valid(cursor)
 }
 
@@ -44,15 +44,16 @@ func (v *diffView) scan(start int, pane Pane, direction Direction, wrap bool) (C
 	if len(rows) == 0 {
 		return Cursor{}, false
 	}
+	last := len(rows) - 1
 	y := start
-	for count := 0; count < len(rows); count++ {
+	for count := 0; count <= last; count++ {
 		y += int(direction)
-		if y < 0 || y >= len(rows) {
+		if y < 0 || y > last {
 			if !wrap {
 				return Cursor{}, false
 			}
 			if y < 0 {
-				y = len(rows) - 1
+				y = last
 			} else {
 				y = 0
 			}
@@ -68,7 +69,7 @@ func (v *diffView) Move(cursor Cursor, direction Direction) (Cursor, bool) {
 	if !v.valid(cursor) {
 		return Cursor{}, false
 	}
-	return v.scan(cursor.Coordinate.Y, cursor.Pane, direction, false)
+	return v.scan(cursor.Coordinate, cursor.Pane, direction, false)
 }
 
 func (v *diffView) Search(query string, cursor Cursor, direction Direction) (Cursor, bool) {
@@ -77,7 +78,7 @@ func (v *diffView) Search(query string, cursor Cursor, direction Direction) (Cur
 	}
 	rows, split := v.rows, v.split
 	query = strings.ToLower(query)
-	y := cursor.Coordinate.Y
+	y := cursor.Coordinate
 	pane := cursor.Pane
 	for count := 0; count < len(rows)-1; count++ {
 		y += int(direction)
@@ -136,7 +137,7 @@ func (v *diffView) JumpFile(cursor Cursor, direction Direction) (Cursor, bool) {
 		return Cursor{}, false
 	}
 	file, _ := v.File(cursor)
-	y := cursor.Coordinate.Y
+	y := cursor.Coordinate
 	for {
 		next, ok := v.scan(y, cursor.Pane, direction, false)
 		if !ok {
@@ -146,13 +147,13 @@ func (v *diffView) JumpFile(cursor Cursor, direction Direction) (Cursor, bool) {
 		if nextFile.OldPath != file.OldPath || nextFile.NewPath != file.NewPath {
 			return next, true
 		}
-		y = next.Coordinate.Y
+		y = next.Coordinate
 	}
 }
 
 func (v *diffView) SwitchPane(cursor Cursor, pane Pane) (Cursor, bool) {
 	rows := v.rows
-	cursorY := cursor.Coordinate.Y
+	cursorY := cursor.Coordinate
 	if !v.split || !v.valid(cursor) {
 		return Cursor{}, false
 	}

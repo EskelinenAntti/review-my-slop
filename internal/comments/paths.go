@@ -8,10 +8,6 @@ import (
 
 const appName = "review-my-slop"
 
-func DataDir() (string, error) {
-	return appDir("XDG_DATA_HOME", filepath.Join(".local", "share"))
-}
-
 func appDir(environment, fallback string) (string, error) {
 	if root := os.Getenv(environment); filepath.IsAbs(root) {
 		return filepath.Join(root, appName), nil

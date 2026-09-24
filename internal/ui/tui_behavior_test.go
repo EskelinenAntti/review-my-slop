@@ -289,10 +289,10 @@ func TestResizeAcrossSideBySideThresholdPreservesCursorScreenRow(t *testing.T) {
 	m.setSideBySide(true)
 	m.review.cursor = findLine(t, m, "keep()")
 	m.review.viewport = m.review.view.Align(m.review.viewport, m.review.cursor, Middle)
-	before := m.review.cursor.Coordinate.Y - m.review.viewport.Top.Y
+	before := m.review.cursor.Coordinate - m.review.viewport.Top
 	m = updateModel(t, m, tea.WindowSizeMsg{Width: 80, Height: 20})
 	m = updateModel(t, m, tea.WindowSizeMsg{Width: 120, Height: 20})
-	if got := m.review.cursor.Coordinate.Y - m.review.viewport.Top.Y; got != before {
+	if got := m.review.cursor.Coordinate - m.review.viewport.Top; got != before {
 		t.Fatalf("screen row = %d, want %d", got, before)
 	}
 }
@@ -353,7 +353,7 @@ func TestStatusShowsProgressOnlyAfterViewportMoves(t *testing.T) {
 	if label := m.viewLabel(); label != "local changes" {
 		t.Fatalf("horizontal-scroll label=%q", label)
 	}
-	for m.review.viewport.Top.Y == 0 {
+	for m.review.viewport.Top == 0 {
 		m = updateModel(t, m, textKey("j"))
 	}
 	if label := m.viewLabel(); !strings.HasPrefix(label, "local changes (") || !strings.HasSuffix(label, "%)") {

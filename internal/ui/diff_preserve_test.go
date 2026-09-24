@@ -40,7 +40,7 @@ func TestPreserveTranslatesCursorSelectionAndViewport(t *testing.T) {
 	if !firstOK || !lastOK || firstLine.Text != "before" || lastLine.Text != "added one" {
 		t.Fatalf("selection endpoints = %#v, %#v", firstLine, lastLine)
 	}
-	if got, want := preserved.Cursor.Coordinate.Y-preserved.Viewport.Top.Y, cursor.Coordinate.Y-viewport.Top.Y; got != want {
+	if got, want := preserved.Cursor.Coordinate-preserved.Viewport.Top, cursor.Coordinate-viewport.Top; got != want {
 		t.Fatalf("screen row = %d, want %d", got, want)
 	}
 }

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"time"
 
 	bolt "go.etcd.io/bbolt"
@@ -23,20 +24,12 @@ type Store struct {
 	Path string
 }
 
-func DefaultPath() (string, error) {
-	data, err := DataDir()
-	if err != nil {
-		return "", err
-	}
-	return filepath.Join(data, "comments.db"), nil
-}
-
 func OpenDefault() (Store, error) {
-	path, err := DefaultPath()
+	data, err := appDir("XDG_DATA_HOME", filepath.Join(".local", "share"))
 	if err != nil {
 		return Store{}, err
 	}
-	return Store{Path: path}, nil
+	return Store{filepath.Join(data, "comments.db")}, nil
 }
 
 func (s Store) Add(comment Comment) (Comment, error) {
@@ -134,10 +127,6 @@ func (s Store) Acknowledge(repository string, ids []string) error {
 	if len(ids) == 0 {
 		return nil
 	}
-	wanted := make(map[string]struct{}, len(ids))
-	for _, id := range ids {
-		wanted[id] = struct{}{}
-	}
 	return s.update(func(bucket *bolt.Bucket) error {
 		var keys [][]byte
 		if err := bucket.ForEach(func(key, value []byte) error {
@@ -145,10 +134,8 @@ func (s Store) Acknowledge(repository string, ids []string) error {
 			if err != nil {
 				return err
 			}
-			if comment.Repository == repository {
-				if _, ok := wanted[comment.ID]; ok {
-					keys = append(keys, append([]byte(nil), key...))
-				}
+			if comment.Repository == repository && slices.Contains(ids, comment.ID) {
+				keys = append(keys, bytes.Clone(key))
 			}
 			return nil
 		}); err != nil {
@@ -181,7 +168,7 @@ func findComment(bucket *bolt.Bucket, repository, id string) ([]byte, error) {
 			return nil, err
 		}
 		if comment.Repository == repository && comment.ID == id {
-			return append([]byte(nil), key...), nil
+			return bytes.Clone(key), nil
 		}
 	}
 	return nil, errors.New("comment is no longer in the comments")
@@ -189,23 +176,16 @@ func findComment(bucket *bolt.Bucket, repository, id string) ([]byte, error) {
 
 func decodeComment(data []byte) (Comment, error) {
 	var stored struct {
-		ID         string    `json:"id"`
-		Repository string    `json:"repository"`
-		CreatedAt  time.Time `json:"created_at"`
-		Anchor     Anchor    `json:"anchor"`
-		Body       string    `json:"body"`
-		Comment    *struct {
-			Anchor Anchor `json:"anchor"`
-			Body   string `json:"body"`
-		} `json:"comment"`
+		Comment
+		Legacy *Comment `json:"comment"`
 	}
 	if err := json.Unmarshal(data, &stored); err != nil {
 		return Comment{}, fmt.Errorf("decode comment: %w", err)
 	}
-	if stored.Comment != nil {
-		stored.Anchor, stored.Body = stored.Comment.Anchor, stored.Comment.Body
+	if stored.Legacy != nil {
+		stored.Anchor, stored.Body = stored.Legacy.Anchor, stored.Legacy.Body
 	}
-	return Comment{ID: stored.ID, Repository: stored.Repository, CreatedAt: stored.CreatedAt, Anchor: stored.Anchor, Body: stored.Body}, nil
+	return stored.Comment, nil
 }
 
 func (s Store) update(fn func(*bolt.Bucket) error) error {

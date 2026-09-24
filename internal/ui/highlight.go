@@ -14,10 +14,7 @@ type Pair struct {
 }
 
 func Sources(filename, oldSource, newSource string, darkBackground bool) Pair {
-	return Pair{
-		Old: render(filename, oldSource, darkBackground),
-		New: render(filename, newSource, darkBackground),
-	}
+	return Pair{render(filename, oldSource, darkBackground), render(filename, newSource, darkBackground)}
 }
 
 func render(filename, source string, darkBackground bool) []string {

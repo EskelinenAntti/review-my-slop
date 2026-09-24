@@ -57,8 +57,7 @@ func (m Model) renderScreen(header string, body []string, footer string) string 
 	for len(body) < height {
 		body = append(body, "")
 	}
-	lines := make([]string, 0, height+3)
-	lines = append(lines, header)
+	lines := []string{header}
 	lines = append(lines, body...)
 	lines = append(lines, footer, "")
 	return strings.Join(lines, "\n")
@@ -105,7 +104,7 @@ func (m Model) renderFooter(left string) string {
 func (m Model) viewLabel() string {
 	review := &m.review
 	progress := ""
-	if review.viewport.Top.Y > 0 {
+	if review.viewport.Top > 0 {
 		progress = fmt.Sprintf(" (%d%%)", review.view.ViewportProgress(review.viewport))
 	}
 	if branch := m.currentBranch(); branch != "" {
@@ -119,11 +118,11 @@ func (m Model) renderComments() string {
 	header := titleStyle.Render("comments") + "  " + mutedStyle.Render(fmt.Sprintf("%d pending", len(state.items)))
 	height := m.screenBodyHeight()
 	width := max(20, m.width)
-	body := make([]string, 0, height)
+	body := make([]string, height)
 	if len(state.items) == 0 {
-		body = make([]string, height)
 		body[min(1, height-1)] = mutedStyle.Render("No pending comments.")
 	} else {
+		body = body[:0]
 		start := min(max(0, state.row-height+1), max(0, len(state.items)-height))
 		end := min(len(state.items), start+height)
 		for index := start; index < end; index++ {
@@ -134,10 +133,12 @@ func (m Model) renderComments() string {
 			}
 			anchor := comment.Anchor
 			location := anchor.FilePath
-			if anchor.NewStart > 0 {
-				location += fmt.Sprintf(":%d", anchor.NewStart)
-			} else if anchor.OldStart > 0 {
-				location += fmt.Sprintf(":%d", anchor.OldStart)
+			lineNumber := anchor.NewStart
+			if lineNumber == 0 {
+				lineNumber = anchor.OldStart
+			}
+			if lineNumber > 0 {
+				location += fmt.Sprintf(":%d", lineNumber)
 			}
 			commentBody := strings.ReplaceAll(strings.TrimSpace(comment.Body), "\n", " ")
 			line := ansi.Truncate(fmt.Sprintf("%s%s  %s", prefix, location, commentBody), width, "")
@@ -152,7 +153,7 @@ func (m Model) renderComments() string {
 }
 
 func (m Model) renderHelp() string {
-	bindings := make([]keyBinding, 0, 18)
+	bindings := []keyBinding{}
 	for _, line := range strings.Split(helpText, "\n") {
 		keys, description, _ := strings.Cut(line, "\t")
 		bindings = append(bindings, keyBinding{keys, description})
@@ -187,7 +188,7 @@ func renderKeyBindings(bindings []keyBinding) []string {
 	for _, binding := range bindings {
 		width = max(width, lipgloss.Width(binding.keys))
 	}
-	lines := make([]string, 0, len(bindings))
+	lines := []string{}
 	for _, binding := range bindings {
 		lines = append(lines, binding.keys+strings.Repeat(" ", width-lipgloss.Width(binding.keys))+"  "+binding.description)
 	}

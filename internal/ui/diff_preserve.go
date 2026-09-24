@@ -17,7 +17,7 @@ func Preserve(old View, state State, next View) State {
 	result := State{Viewport: next.NewViewport(viewport.Width, viewport.Height)}
 	rowsAbove := 0
 	if oldCursor != nil {
-		rowsAbove = oldCursor.Coordinate.Y - viewport.Top.Y
+		rowsAbove = oldCursor.Coordinate - viewport.Top
 	}
 
 	cursor := identify(old, oldCursor)
@@ -36,7 +36,7 @@ func Preserve(old View, state State, next View) State {
 		result.Selection = &selection
 	}
 	if result.Cursor != nil {
-		result.Viewport.Top.Y = max(0, result.Cursor.Coordinate.Y-rowsAbove)
+		result.Viewport.Top = max(0, result.Cursor.Coordinate-rowsAbove)
 		result.Viewport = next.KeepVisible(result.Viewport, *result.Cursor)
 	}
 	return result
@@ -49,7 +49,7 @@ func identify(v View, cursor *Cursor) cursorIdentity {
 	file, fileOK := v.File(*cursor)
 	hunk, hunkOK := v.Hunk(*cursor)
 	line, lineOK := v.Line(*cursor)
-	return cursorIdentity{file: file, hunk: hunk, line: line, cursor: *cursor, valid: fileOK && hunkOK && lineOK}
+	return cursorIdentity{file, hunk, line, *cursor, fileOK && hunkOK && lineOK}
 }
 
 func preserveSelection(old View, selection *Selection, next View) (Selection, bool) {

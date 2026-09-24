@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/eskelinenantti/review-my-slop/internal/comments"
@@ -59,7 +60,7 @@ const (
 	minimumSideBySideWidth = 100
 )
 
-var DefaultSize = Size{Width: 80, Height: 30}
+var DefaultSize = Size{80, 30}
 
 type reviewState struct {
 	patch      patch.Patch
@@ -128,22 +129,23 @@ func New(p patch.Patch, comments []comments.Comment, save SaveCommentFunc, layou
 	return m
 }
 
-func NewWithReview(actions review.Review, p patch.Patch, items []comments.Comment, size Size, defaultBranch string) (Model, error) {
+func NewWithReview(actions review.Review, ctx context.Context, directory string, p patch.Patch, items []comments.Comment, size Size, defaultBranch string) (Model, error) {
 	sideBySide, err := loadLayoutSettings()
 	if err != nil {
 		return Model{}, err
 	}
 	m := New(p, items, actions.SaveComment, InitialLayout{
-		SideBySide:     sideBySide,
-		SaveSideBySide: saveLayoutSettings,
-		Size:           size,
+		sideBySide, saveLayoutSettings, size,
 	})
 	m.delete = actions.DeleteComment
 	m.load = func() ([]comments.Comment, error) {
-		return actions.Comments(m.review.patch)
+		return actions.Store.List(m.review.patch.Repository)
 	}
 	m.refresh = func(branch string) (patch.Patch, error) {
-		return actions.Load(branch)
+		if branch == "" {
+			return actions.Patches.Load(ctx, directory)
+		}
+		return actions.Patches.LoadBranch(ctx, directory, branch)
 	}
 	m.defaultBranch = defaultBranch
 	return m, nil
@@ -217,7 +219,7 @@ func (m Model) loadRefresh() tea.Cmd {
 		return nil
 	}
 	branch := m.currentBranch()
-	return func() tea.Msg { p, err := m.refresh(branch); return refreshDiffMsg{patch: p, branch: branch, err: err} }
+	return func() tea.Msg { p, err := m.refresh(branch); return refreshDiffMsg{p, branch, err} }
 }
 
 func (m Model) loadComments() tea.Cmd {
@@ -227,7 +229,7 @@ func (m Model) loadComments() tea.Cmd {
 	revision := m.comments.revision
 	return func() tea.Msg {
 		comments, err := m.load()
-		return commentsLoadedMsg{comments: comments, revision: revision, err: err}
+		return commentsLoadedMsg{comments, revision, err}
 	}
 }
 
@@ -250,10 +252,7 @@ func (m *Model) rebuildView(p patch.Patch) {
 }
 
 func (m Model) newReviewView(p patch.Patch) View {
-	if m.sideBySideActive() {
-		return NewSideBySideView(p, m.dark)
-	}
-	return NewUnifiedView(p, m.dark)
+	return newDiffView(p, m.dark, m.sideBySideActive())
 }
 
 func (m Model) updateKey(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
@@ -261,6 +260,8 @@ func (m Model) updateKey(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	review := &m.review
 	comments := &m.comments
 	search := &m.search
+	cursor := review.cursor
+	view := review.view
 	switch m.mode {
 	case modeComments:
 		return m.updateComments(name)
@@ -288,11 +289,11 @@ func (m Model) updateKey(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	if pending == "z" {
 		switch name {
 		case "z":
-			review.viewport = review.view.Align(review.viewport, review.cursor, Middle)
+			review.viewport = view.Align(review.viewport, cursor, Middle)
 		case "t":
-			review.viewport = review.view.Align(review.viewport, review.cursor, Top)
+			review.viewport = view.Align(review.viewport, cursor, Top)
 		case "b":
-			review.viewport = review.view.Align(review.viewport, review.cursor, Bottom)
+			review.viewport = view.Align(review.viewport, cursor, Bottom)
 		}
 		return m, nil
 	}
@@ -303,21 +304,22 @@ func (m Model) updateKey(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		case "l":
 			m.switchPane(Right)
 		case "ctrl+w":
-			m.switchPane(review.cursor.Pane.Other())
+			m.switchPane(cursor.Pane.Other())
 		}
 		return m, nil
 	}
+	var cmd tea.Cmd
 	switch name {
 	case "ctrl+c", "q":
 		m.quitting = true
-		return m, tea.Quit
+		cmd = tea.Quit
 	case "?":
 		m.mode = modeHelp
 	case "/":
 		m.cancelSelection()
 		m.mode = modeSearch
 		search.query = nil
-		search.from = review.cursor
+		search.from = cursor
 		search.miss = false
 	case "n":
 		m.repeatSearch(Forward)
@@ -328,13 +330,13 @@ func (m Model) updateKey(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	case "k", "up":
 		m.move(Backward)
 	case "h", "left":
-		review.viewport = review.view.ScrollHorizontal(review.viewport, -horizontalScrollStep)
+		review.viewport = view.ScrollHorizontal(review.viewport, -horizontalScrollStep)
 	case "l", "right":
-		review.viewport = review.view.ScrollHorizontal(review.viewport, horizontalScrollStep)
+		review.viewport = view.ScrollHorizontal(review.viewport, horizontalScrollStep)
 	case "0":
 		review.viewport.LeftColumn = 0
 	case "$":
-		review.viewport = review.view.ScrollHorizontal(review.viewport, int(^uint(0)>>1))
+		review.viewport = view.ScrollHorizontal(review.viewport, int(^uint(0)>>1))
 	case "ctrl+d":
 		m.halfPage(Forward)
 	case "ctrl+u":
@@ -343,14 +345,14 @@ func (m Model) updateKey(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		m.pendingKey = name
 	case "g":
 		if pending == "g" {
-			if cursor, ok := review.view.First(); ok {
+			if cursor, ok := view.First(); ok {
 				m.setCursor(cursor)
 			}
 		} else {
 			m.pendingKey = "g"
 		}
 	case "G":
-		if cursor, ok := review.view.Last(); ok {
+		if cursor, ok := view.Last(); ok {
 			m.setCursor(cursor)
 		}
 	case "z":
@@ -359,7 +361,7 @@ func (m Model) updateKey(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		m.pendingKey = name
 	case "v":
 		if review.selection == nil {
-			selection := review.view.BeginSelection(review.cursor)
+			selection := view.BeginSelection(cursor)
 			review.selection = &selection
 		} else {
 			m.cancelSelection()
@@ -367,36 +369,36 @@ func (m Model) updateKey(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	case "esc":
 		m.cancelSelection()
 	case "c":
-		cmd, err := m.beginComment()
+		var err error
+		cmd, err = m.beginComment()
 		if err != nil {
 			m.err = err
-			return m, nil
+			cmd = nil
 		}
-		return m, cmd
 	case "e":
-		cmd, err := m.openCurrentLine()
+		var err error
+		cmd, err = m.openCurrentLine()
 		if err != nil {
 			m.err = err
-			return m, nil
+			cmd = nil
 		}
-		return m, cmd
 	case "C":
 		m.mode = modeComments
 		comments.row = min(comments.row, max(0, len(comments.items)-1))
-		return m, m.loadComments()
+		cmd = m.loadComments()
 	case "R":
-		return m, m.loadRefresh()
+		cmd = m.loadRefresh()
 	case "tab":
 		if m.defaultBranch == "" {
-			return m, nil
+			break
 		}
 		m.showDefault = !m.showDefault
 		m.cancelSelection()
-		return m, m.loadRefresh()
+		cmd = m.loadRefresh()
 	case "t":
 		m.toggleSideBySide()
 	}
-	return m, nil
+	return m, cmd
 }
 
 func (m Model) currentBranch() string {

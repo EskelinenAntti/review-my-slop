@@ -51,21 +51,22 @@ func (m *Model) jumpFile(direction Direction) {
 
 func (m *Model) switchPane(pane Pane) {
 	review := &m.review
+	view := review.view
 	if !m.sideBySideActive() {
 		return
 	}
-	cursor, ok := review.view.SwitchPane(review.cursor, pane)
+	cursor, ok := view.SwitchPane(review.cursor, pane)
 	if !ok {
 		return
 	}
 	if review.selection != nil {
-		first, firstOK := review.view.SwitchPane(review.selection.First, pane)
-		last, lastOK := review.view.SwitchPane(review.selection.Last, pane)
+		first, firstOK := view.SwitchPane(review.selection.First, pane)
+		last, lastOK := view.SwitchPane(review.selection.Last, pane)
 		if !firstOK || !lastOK {
 			return
 		}
-		selection := review.view.BeginSelection(first)
-		selection, ok = review.view.ExtendSelection(selection, last)
+		selection := view.BeginSelection(first)
+		selection, ok = view.ExtendSelection(selection, last)
 		if !ok {
 			return
 		}

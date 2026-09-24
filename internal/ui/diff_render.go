@@ -14,13 +14,14 @@ import (
 
 func (v *diffView) Render(viewport Viewport, cursor Cursor, selection *Selection) string {
 	viewport = v.clampViewport(viewport)
-	lines := make([]string, 0, viewport.Height)
+	top := viewport.Top
+	lines := []string{}
 	if v.hasStickyHeader(viewport.Top, viewport.Height) {
-		current := v.rows[viewport.Top.Y]
+		current := v.rows[top]
 		lines = append(lines, v.renderFileRow(v.patch.Files[current.file].DisplayPath, viewport.Width))
 	}
-	end := min(len(v.rows), viewport.Top.Y+v.contentHeight(viewport))
-	for y := viewport.Top.Y; y < end; y++ {
+	end := min(len(v.rows), top+v.contentHeight(viewport))
+	for y := top; y < end; y++ {
 		current := v.rows[y]
 		if v.split && current.kind == lineRow {
 			lines = append(lines, v.renderSplitRow(current, y, viewport, cursor, selection))
@@ -56,12 +57,11 @@ func (v *diffView) renderUnifiedRow(current entry, y int, viewport Viewport, cur
 		value := gutter + fitANSIWindow(current.text, viewport.LeftColumn, width-lipgloss.Width(gutter))
 		style := lineStyle(line.Kind, v.dark)
 		strip := false
-		candidate := Cursor{Coordinate: Coordinate{Y: y}, Pane: cursor.Pane}
-		if selected(selection, candidate) {
-			style, strip = selectionRowStyle(v.dark), true
-		}
-		if cursor.Coordinate.Y == y {
+		candidate := Cursor{y, cursor.Pane}
+		if cursor.Coordinate == y {
 			style, strip = cursorStyle, true
+		} else if selected(selection, candidate) {
+			style, strip = selectionRowStyle(v.dark), true
 		}
 		return renderStyledRow(style, value, width, strip)
 	}
@@ -102,12 +102,11 @@ func (v *diffView) renderPane(current entry, y int, pane Pane, width, offset int
 	value := gutter + fitANSIWindow(prefix+text, offset, width-lipgloss.Width(gutter))
 	style := lineStyle(line.Kind, v.dark)
 	strip := false
-	candidate := Cursor{Coordinate: Coordinate{Y: y}, Pane: pane}
-	if selected(selection, candidate) {
-		style, strip = selectionRowStyle(v.dark), true
-	}
+	candidate := Cursor{y, pane}
 	if cursor == candidate {
 		style, strip = cursorStyle, true
+	} else if selected(selection, candidate) {
+		style, strip = selectionRowStyle(v.dark), true
 	}
 	return renderStyledRow(style, value, width, strip)
 }
@@ -117,9 +116,9 @@ func selected(selection *Selection, cursor Cursor) bool {
 		return false
 	}
 	firstCursor, lastCursor := selection.First, selection.Last
-	first, last := firstCursor.Coordinate.Y, lastCursor.Coordinate.Y
+	first, last := firstCursor.Coordinate, lastCursor.Coordinate
 	if first == last && firstCursor.Pane != lastCursor.Pane {
-		return cursor.Coordinate.Y == first && (cursor.Pane == firstCursor.Pane || cursor.Pane == lastCursor.Pane)
+		return cursor.Coordinate == first && (cursor.Pane == firstCursor.Pane || cursor.Pane == lastCursor.Pane)
 	}
 	if firstCursor.Pane != cursor.Pane {
 		return false
@@ -127,7 +126,7 @@ func selected(selection *Selection, cursor Cursor) bool {
 	if first > last {
 		first, last = last, first
 	}
-	return cursor.Coordinate.Y >= first && cursor.Coordinate.Y <= last
+	return cursor.Coordinate >= first && cursor.Coordinate <= last
 }
 
 func lineStyle(kind patch.LineKind, dark bool) lipgloss.Style {
@@ -157,10 +156,8 @@ func renderStyledRow(style lipgloss.Style, value string, width int, stripForegro
 	value = filterANSIColors(value, stripForeground)
 	fitted := fitANSIWindow(value, 0, width)
 	prefix := stylePrefix(style)
-	if prefix != "" {
-		fitted = strings.ReplaceAll(fitted, "\x1b[0m", "\x1b[0m"+prefix)
-		fitted = strings.ReplaceAll(fitted, "\x1b[m", "\x1b[m"+prefix)
-	}
+	fitted = strings.ReplaceAll(fitted, "\x1b[0m", "\x1b[0m"+prefix)
+	fitted = strings.ReplaceAll(fitted, "\x1b[m", "\x1b[m"+prefix)
 	return style.Render(fitted)
 }
 
@@ -171,7 +168,7 @@ func filterANSIColors(value string, stripForeground bool) string {
 			return sequence
 		}
 		parts := strings.Split(parameters, ";")
-		filtered := make([]string, 0, len(parts))
+		filtered := []string{}
 		last := len(parts) - 1
 		for index := 0; index < len(parts); index++ {
 			code, err := strconv.Atoi(parts[index])
@@ -185,8 +182,7 @@ func filterANSIColors(value string, stripForeground bool) string {
 					mode := parts[index+1]
 					if mode == "2" {
 						index = min(index+4, last)
-					}
-					if mode == "5" {
+					} else if mode == "5" {
 						index = min(index+2, last)
 					}
 				}
@@ -212,9 +208,7 @@ func fitANSIWindow(value string, offset, width int) string {
 		value = ansi.TruncateLeft(value, offset, "")
 	}
 	value = ansi.Truncate(value, width, "")
-	if padding := width - lipgloss.Width(value); padding > 0 {
-		value += strings.Repeat(" ", padding)
-	}
+	value += strings.Repeat(" ", max(0, width-lipgloss.Width(value)))
 	return value
 }
 
