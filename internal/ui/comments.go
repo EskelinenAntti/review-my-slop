@@ -137,9 +137,7 @@ func (m *Model) deleteComment(index int) {
 }
 
 func (m *Model) clearCommentEdit() {
-	m.comments.body = ""
-	m.comments.editIndex = -1
-	m.comments.editAnchor = comments.Anchor{}
+	m.comments.body, m.comments.editIndex, m.comments.editAnchor = "", -1, comments.Anchor{}
 }
 
 func (m Model) openCurrentLine() (tea.Cmd, error) {

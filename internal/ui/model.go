@@ -307,9 +307,7 @@ func (m Model) updateKey(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	case "/":
 		review.selection = nil
 		m.mode = modeSearch
-		search.query = nil
-		search.from = cursor
-		search.miss = false
+		search.query, search.from, search.miss = nil, cursor, false
 	case "n":
 		m.repeatSearch(Forward)
 	case "N":

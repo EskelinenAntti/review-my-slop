@@ -153,8 +153,7 @@ func parseTracked(ctx context.Context, runner Runner, root string, raw []byte, b
 	}
 	files := []File{}
 	for _, fd := range parsed {
-		oldPath := cleanDiffPath(fd.OrigName)
-		newPath := cleanDiffPath(fd.NewName)
+		oldPath, newPath := cleanDiffPath(fd.OrigName), cleanDiffPath(fd.NewName)
 		display := newPath
 		if display == "" {
 			display = oldPath
@@ -220,17 +219,18 @@ func (l Loader) loadUntracked(ctx context.Context, root string) ([]File, error) 
 		}
 		mode := info.Mode()
 		file := File{NewPath: path, DisplayPath: display}
-		if mode&os.ModeSymlink != 0 {
+		switch {
+		case mode&os.ModeSymlink != 0:
 			target, readErr := os.Readlink(full)
 			if readErr != nil {
 				return nil, fmt.Errorf("read symlink %q: %w", path, readErr)
 			}
 			file = addedFile(path, visibleText(target))
-		} else if !mode.IsRegular() {
+		case !mode.IsRegular():
 			continue
-		} else if info.Size() > maxFileBytes {
+		case info.Size() > maxFileBytes:
 			file.Metadata = []string{"untracked file", "content omitted: file exceeds 2 MiB"}
-		} else {
+		default:
 			content, readErr := os.ReadFile(full)
 			if readErr != nil {
 				return nil, fmt.Errorf("read untracked %q: %w", path, readErr)

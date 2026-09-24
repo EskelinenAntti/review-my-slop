@@ -79,8 +79,7 @@ func (v *diffView) renderPane(current entry, y int, pane Pane, width, offset int
 		return strings.Repeat(" ", width)
 	}
 	line := v.patch.Files[current.file].Hunks[current.hunk].Lines[index]
-	text := current.right
-	numberValue := line.NewNumber
+	text, numberValue := current.right, line.NewNumber
 	if pane == Left {
 		text, numberValue = current.left, line.OldNumber
 	}

@@ -96,8 +96,7 @@ func appendSplitLines(rows []entry, fileIndex, hunkIndex int, hunk patch.Hunk, h
 		}
 		count := max(index-removedStart, addedEnd-addedStart)
 		for offset := range count {
-			leftLine, rightLine := -1, -1
-			left, right := "", ""
+			leftLine, rightLine, left, right := -1, -1, "", ""
 			if removedStart+offset < index {
 				leftLine = removedStart + offset
 				old := lines[leftLine]
