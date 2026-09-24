@@ -25,6 +25,33 @@ func (v *diffView) ExtendSelection(selection Selection, cursor Cursor) (Selectio
 }
 
 func (v *diffView) Lines(selection Selection) []patch.Line {
+	first, last := selection.First.Coordinate.Y, selection.Last.Coordinate.Y
+	return v.selectedLines(selection, first == last && selection.First.Pane != selection.Last.Pane)
+}
+
+func (v *diffView) Anchor(selection Selection) (comments.Anchor, error) {
+	lines := v.selectedLines(selection, false)
+	if len(lines) == 0 {
+		return comments.Anchor{}, fmt.Errorf("select code lines before commenting")
+	}
+	file, _ := v.File(selection.First)
+	anchor := comments.Anchor{FilePath: file.Path()}
+	for _, line := range lines {
+		prefix := " "
+		switch line.Kind {
+		case patch.Addition:
+			prefix = "+"
+		case patch.Deletion:
+			prefix = "-"
+		}
+		anchor.QuotedLines = append(anchor.QuotedLines, prefix+line.Text)
+		accumulateRange(&anchor.OldStart, &anchor.OldEnd, int(line.OldNumber))
+		accumulateRange(&anchor.NewStart, &anchor.NewEnd, int(line.NewNumber))
+	}
+	return anchor, nil
+}
+
+func (v *diffView) selectedLines(selection Selection, deduplicate bool) []patch.Line {
 	if _, ok := v.ExtendSelection(selection, selection.Last); !ok {
 		return nil
 	}
@@ -33,67 +60,22 @@ func (v *diffView) Lines(selection Selection) []patch.Line {
 		first, last = last, first
 	}
 	lines := make([]patch.Line, 0, last-first+1)
-	if first == last && selection.First.Pane != selection.Last.Pane {
-		current := v.rows[first]
-		indices := []int{v.lineIndex(current, selection.First.Pane), v.lineIndex(current, selection.Last.Pane)}
-		for _, index := range indices {
-			if index >= 0 && (len(lines) == 0 || lines[len(lines)-1] != v.patch.Files[current.file].Hunks[current.hunk].Lines[index]) {
-				lines = append(lines, v.patch.Files[current.file].Hunks[current.hunk].Lines[index])
-			}
-		}
-		return lines
-	}
 	for y := first; y <= last; y++ {
-		pane := selection.First.Pane
-		if y == selection.Last.Coordinate.Y {
-			pane = selection.Last.Pane
-		}
-		if line, ok := v.Line(Cursor{Coordinate: Coordinate{Y: y}, Pane: pane}); ok {
-			lines = append(lines, line)
-		}
-	}
-	return lines
-}
-
-func (v *diffView) Anchor(selection Selection) (comments.Anchor, error) {
-	lines := v.Lines(selection)
-	if len(lines) == 0 {
-		return comments.Anchor{}, fmt.Errorf("select code lines before commenting")
-	}
-	first := v.rows[selection.First.Coordinate.Y]
-	file := v.patch.Files[first.file]
-	hunk := file.Hunks[first.hunk]
-	anchor := comments.Anchor{FilePath: file.Path()}
-	start, end := selection.First.Coordinate.Y, selection.Last.Coordinate.Y
-	if start > end {
-		start, end = end, start
-	}
-	for y := start; y <= end; y++ {
 		panes := []Pane{selection.First.Pane}
-		if start == end && selection.First.Pane != selection.Last.Pane {
+		if first == last && selection.First.Pane != selection.Last.Pane {
 			panes = append(panes, selection.Last.Pane)
 		} else if y == selection.Last.Coordinate.Y {
 			panes[0] = selection.Last.Pane
 		}
 		for _, pane := range panes {
-			index := v.lineIndex(v.rows[y], pane)
-			if index < 0 {
+			line, ok := v.Line(Cursor{Coordinate: Coordinate{Y: y}, Pane: pane})
+			if !ok || deduplicate && len(lines) > 0 && lines[len(lines)-1] == line {
 				continue
 			}
-			line := hunk.Lines[index]
-			prefix := " "
-			switch line.Kind {
-			case patch.Addition:
-				prefix = "+"
-			case patch.Deletion:
-				prefix = "-"
-			}
-			anchor.QuotedLines = append(anchor.QuotedLines, prefix+line.Text)
-			accumulateRange(&anchor.OldStart, &anchor.OldEnd, int(line.OldNumber))
-			accumulateRange(&anchor.NewStart, &anchor.NewEnd, int(line.NewNumber))
+			lines = append(lines, line)
 		}
 	}
-	return anchor, nil
+	return lines
 }
 
 func (v *diffView) File(cursor Cursor) (patch.File, bool) {
