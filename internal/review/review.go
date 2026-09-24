@@ -20,19 +20,11 @@ func New(ctx context.Context, directory string, patches patch.Loader, comments c
 	return Review{context: ctx, directory: directory, patches: patches, comments: comments}
 }
 
-func (r Review) Repository() (string, error) {
-	return r.patches.Root(r.context, r.directory)
-}
-
 func (r Review) Load(branch string) (patch.Patch, error) {
 	if branch == "" {
 		return r.patches.Load(r.context, r.directory)
 	}
 	return r.patches.LoadBranch(r.context, r.directory, branch)
-}
-
-func (r Review) DefaultBranch() (string, error) {
-	return r.patches.DefaultBranch(r.context, r.directory)
 }
 
 func (r Review) Comments(p patch.Patch) ([]comments.Comment, error) {

@@ -57,7 +57,7 @@ func runCode(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	defaultBranch, err := currentReview.DefaultBranch()
+	defaultBranch, err := (&patch.Loader{}).DefaultBranch(ctx, current)
 	if err != nil {
 		return err
 	}
@@ -95,7 +95,7 @@ func runCommentsAt(ctx context.Context, current string, output io.Writer) error 
 		return err
 	}
 	currentReview := review.New(ctx, current, patch.Loader{}, store)
-	root, err := currentReview.Repository()
+	root, err := (&patch.Loader{}).Root(ctx, current)
 	if err != nil {
 		return err
 	}
