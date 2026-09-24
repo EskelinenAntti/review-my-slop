@@ -39,17 +39,18 @@ func (v *diffView) contentHeight(viewport Viewport) int {
 }
 
 func (v *diffView) KeepVisible(viewport Viewport, cursor Cursor) Viewport {
+	cursorY := cursor.Coordinate.Y
 	if !v.valid(cursor) {
 		return v.clampViewport(viewport)
 	}
 	viewport = v.clampViewport(viewport)
 	for range 2 {
 		height := v.contentHeight(viewport)
-		if cursor.Coordinate.Y < viewport.Top.Y {
-			viewport.Top.Y = cursor.Coordinate.Y
+		if cursorY < viewport.Top.Y {
+			viewport.Top.Y = cursorY
 		}
-		if cursor.Coordinate.Y >= viewport.Top.Y+height {
-			viewport.Top.Y = cursor.Coordinate.Y - height + 1
+		if cursorY >= viewport.Top.Y+height {
+			viewport.Top.Y = cursorY - height + 1
 		}
 		viewport = v.clampViewport(viewport)
 	}
@@ -99,11 +100,12 @@ func (v *diffView) ScrollHalfPage(viewport Viewport, cursor Cursor, direction Di
 }
 
 func (v *diffView) ViewportProgress(viewport Viewport) int {
-	if len(v.rows) == 0 {
+	rows := v.rows
+	if len(rows) == 0 {
 		return 0
 	}
-	bottom := min(len(v.rows), viewport.Top.Y+v.contentHeight(viewport))
-	return bottom * 100 / len(v.rows)
+	bottom := min(len(rows), viewport.Top.Y+v.contentHeight(viewport))
+	return bottom * 100 / len(rows)
 }
 
 func (v *diffView) nearest(target int, pane Pane, direction Direction, viewport Viewport) (Cursor, bool) {

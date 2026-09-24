@@ -56,6 +56,7 @@ func (s Store) Add(comment Comment) (Comment, error) {
 	if err != nil {
 		return Comment{}, fmt.Errorf("encode comment: %w", err)
 	}
+	key := []byte(comment.ID)
 	err = s.update(func(bucket *bolt.Bucket) error {
 		var pending int
 		cursor := bucket.Cursor()
@@ -65,10 +66,10 @@ func (s Store) Add(comment Comment) (Comment, error) {
 		if pending+len(data) > maxPendingBytes {
 			return fmt.Errorf("pending feedback exceeds %d bytes", maxPendingBytes)
 		}
-		if bucket.Get([]byte(comment.ID)) != nil {
+		if bucket.Get(key) != nil {
 			return errors.New("comment ID already exists")
 		}
-		return bucket.Put([]byte(comment.ID), data)
+		return bucket.Put(key, data)
 	})
 	return comment, err
 }
@@ -101,17 +102,18 @@ func (s Store) Update(comment Comment) error {
 	if err != nil {
 		return fmt.Errorf("encode comment: %w", err)
 	}
+	key := []byte(comment.ID)
 	return s.update(func(bucket *bolt.Bucket) error {
 		oldKey, err := findComment(bucket, comment.Repository, comment.ID)
 		if err != nil {
 			return err
 		}
-		if !bytes.Equal(oldKey, []byte(comment.ID)) {
+		if !bytes.Equal(oldKey, key) {
 			if err := bucket.Delete(oldKey); err != nil {
 				return err
 			}
 		}
-		return bucket.Put([]byte(comment.ID), data)
+		return bucket.Put(key, data)
 	})
 }
 
@@ -240,20 +242,22 @@ func (s Store) view(fn func(*bolt.Bucket) error) error {
 }
 
 func (s Store) open() (*bolt.DB, error) {
-	if s.Path == "" {
+	path := s.Path
+	if path == "" {
 		return nil, errors.New("comments path is empty")
 	}
-	if err := os.MkdirAll(filepath.Dir(s.Path), 0o700); err != nil {
+	directory := filepath.Dir(path)
+	if err := os.MkdirAll(directory, 0o700); err != nil {
 		return nil, fmt.Errorf("create comments directory: %w", err)
 	}
-	if err := os.Chmod(filepath.Dir(s.Path), 0o700); err != nil {
+	if err := os.Chmod(directory, 0o700); err != nil {
 		return nil, fmt.Errorf("secure comments directory: %w", err)
 	}
-	db, err := bolt.Open(s.Path, 0o600, &bolt.Options{Timeout: 2 * time.Second})
+	db, err := bolt.Open(path, 0o600, &bolt.Options{Timeout: 2 * time.Second})
 	if err != nil {
 		return nil, fmt.Errorf("open comments: %w", err)
 	}
-	if err := os.Chmod(s.Path, 0o600); err != nil {
+	if err := os.Chmod(path, 0o600); err != nil {
 		db.Close()
 		return nil, fmt.Errorf("secure comments database: %w", err)
 	}

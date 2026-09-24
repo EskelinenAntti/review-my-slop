@@ -13,13 +13,14 @@ type cursorIdentity struct {
 // Preserve returns fresh State for next by retaining the meaningful position
 // from state where next contains it.
 func Preserve(old View, state State, next View) State {
-	result := State{Viewport: next.NewViewport(state.Viewport.Width, state.Viewport.Height)}
+	viewport, oldCursor := state.Viewport, state.Cursor
+	result := State{Viewport: next.NewViewport(viewport.Width, viewport.Height)}
 	rowsAbove := 0
-	if state.Cursor != nil {
-		rowsAbove = state.Cursor.Coordinate.Y - state.Viewport.Top.Y
+	if oldCursor != nil {
+		rowsAbove = oldCursor.Coordinate.Y - viewport.Top.Y
 	}
 
-	cursor := identify(old, state.Cursor)
+	cursor := identify(old, oldCursor)
 	if cursor.valid {
 		if translated, ok := next.FindCursor(cursor.file, cursor.hunk, cursor.line, cursor.cursor.Coordinate, cursor.cursor.Pane); ok {
 			result.Cursor = &translated

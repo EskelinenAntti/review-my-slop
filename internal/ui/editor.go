@@ -80,7 +80,7 @@ func CommentCommand(editor, path string) *exec.Cmd {
 }
 
 func SourceCommand(editor, path string, line int) *exec.Cmd {
-	return exec.Command("sh", "-c", editor+" +"+strconv.Itoa(line)+" "+shellQuote(path))
+	return CommentCommand(editor+" +"+strconv.Itoa(line), path)
 }
 
 func suggestionLines(quoted []string) []string {

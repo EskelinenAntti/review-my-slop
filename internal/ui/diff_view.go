@@ -72,9 +72,10 @@ func (v *diffView) build() {
 }
 
 func (v *diffView) appendSplitLines(fileIndex, hunkIndex int, hunk *patch.Hunk, highlighted Pair) {
+	lines := hunk.Lines
 	base := entry{kind: lineRow, file: fileIndex, hunk: hunkIndex, leftLine: -1, rightLine: -1}
-	for index := 0; index < len(hunk.Lines); {
-		line := hunk.Lines[index]
+	for index := 0; index < len(lines); {
+		line := lines[index]
 		switch line.Kind {
 		case patch.Context, patch.Addition:
 			text := highlightedLine(highlighted.New, line.NewNumber, line.Text)
@@ -87,11 +88,11 @@ func (v *diffView) appendSplitLines(fileIndex, hunkIndex int, hunk *patch.Hunk, 
 			index++
 		case patch.Deletion:
 			removedStart := index
-			for index < len(hunk.Lines) && hunk.Lines[index].Kind == patch.Deletion {
+			for index < len(lines) && lines[index].Kind == patch.Deletion {
 				index++
 			}
 			addedStart, addedEnd := index, index
-			for addedEnd < len(hunk.Lines) && hunk.Lines[addedEnd].Kind == patch.Addition {
+			for addedEnd < len(lines) && lines[addedEnd].Kind == patch.Addition {
 				addedEnd++
 			}
 			count := max(index-removedStart, addedEnd-addedStart)
@@ -99,12 +100,12 @@ func (v *diffView) appendSplitLines(fileIndex, hunkIndex int, hunk *patch.Hunk, 
 				current := base
 				if removedStart+offset < index {
 					current.leftLine = removedStart + offset
-					old := hunk.Lines[current.leftLine]
+					old := lines[current.leftLine]
 					current.left = highlightedLine(highlighted.Old, old.OldNumber, old.Text)
 				}
 				if addedStart+offset < addedEnd {
 					current.rightLine = addedStart + offset
-					added := hunk.Lines[current.rightLine]
+					added := lines[current.rightLine]
 					current.right = highlightedLine(highlighted.New, added.NewNumber, added.Text)
 				}
 				v.rows = append(v.rows, current)

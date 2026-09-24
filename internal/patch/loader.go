@@ -251,10 +251,10 @@ func (l Loader) loadUntracked(ctx context.Context, root string) ([]File, error) 
 }
 
 func addedFile(path, content string) File {
-	content = strings.TrimSuffix(content, "\n")
+	source := strings.TrimSuffix(content, "\n")
 	var sourceLines []string
-	if content != "" {
-		sourceLines = strings.Split(content, "\n")
+	if source != "" {
+		sourceLines = strings.Split(source, "\n")
 	}
 	lines := make([]Line, 0, len(sourceLines))
 	for i, line := range sourceLines {

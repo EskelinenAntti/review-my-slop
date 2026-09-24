@@ -116,11 +116,12 @@ func selected(selection *Selection, cursor Cursor) bool {
 	if selection == nil {
 		return false
 	}
-	first, last := selection.First.Coordinate.Y, selection.Last.Coordinate.Y
-	if first == last && selection.First.Pane != selection.Last.Pane {
-		return cursor.Coordinate.Y == first && (cursor.Pane == selection.First.Pane || cursor.Pane == selection.Last.Pane)
+	firstCursor, lastCursor := selection.First, selection.Last
+	first, last := firstCursor.Coordinate.Y, lastCursor.Coordinate.Y
+	if first == last && firstCursor.Pane != lastCursor.Pane {
+		return cursor.Coordinate.Y == first && (cursor.Pane == firstCursor.Pane || cursor.Pane == lastCursor.Pane)
 	}
-	if selection.First.Pane != cursor.Pane {
+	if firstCursor.Pane != cursor.Pane {
 		return false
 	}
 	if first > last {
@@ -171,6 +172,7 @@ func filterANSIColors(value string, stripForeground bool) string {
 		}
 		parts := strings.Split(parameters, ";")
 		filtered := make([]string, 0, len(parts))
+		last := len(parts) - 1
 		for index := 0; index < len(parts); index++ {
 			code, err := strconv.Atoi(parts[index])
 			if err != nil {
@@ -182,10 +184,10 @@ func filterANSIColors(value string, stripForeground bool) string {
 				if index+1 < len(parts) {
 					mode := parts[index+1]
 					if mode == "2" {
-						index = min(index+4, len(parts)-1)
+						index = min(index+4, last)
 					}
 					if mode == "5" {
-						index = min(index+2, len(parts)-1)
+						index = min(index+2, last)
 					}
 				}
 			case code >= 40 && code <= 49, code >= 100 && code <= 107,

@@ -22,16 +22,17 @@ func (m Model) View() tea.View {
 }
 
 func (m Model) render() string {
+	review := &m.review
 	switch m.mode {
 	case modeHelp:
 		return m.renderHelp()
 	case modeComments:
 		return m.renderComments()
 	}
-	added, removed := patchLineCounts(m.review.patch)
+	added, removed := patchLineCounts(review.patch)
 	header := titleStyle.Render("review-my-slop") + "  " + mutedStyle.Render(fmt.Sprintf("+%d-%d", added, removed))
 	var body []string
-	if len(m.review.patch.Files) == 0 {
+	if len(review.patch.Files) == 0 {
 		empty := "No unstaged or untracked changes."
 		if m.currentBranch() != "" {
 			empty = "No branch or worktree changes."
@@ -39,7 +40,7 @@ func (m Model) render() string {
 		body = make([]string, m.screenBodyHeight())
 		body[min(1, len(body)-1)] = mutedStyle.Render(empty)
 	} else {
-		body = strings.Split(m.review.view.Render(m.review.viewport, m.review.cursor, m.review.selection), "\n")
+		body = strings.Split(review.view.Render(review.viewport, review.cursor, review.selection), "\n")
 	}
 	footer := m.renderStatus()
 	if m.err != nil {
@@ -80,10 +81,11 @@ func patchLineCounts(p patch.Patch) (added, removed int) {
 }
 
 func (m Model) renderStatus() string {
+	search := &m.search
 	status := "j/k/h/l move  c comment  ? help  q quit"
 	if m.mode == modeSearch {
-		status = "/" + string(m.search.query) + editorCursorStyle.Render(" ")
-		if m.search.miss {
+		status = "/" + string(search.query) + editorCursorStyle.Render(" ")
+		if search.miss {
 			status += errorStyle.Render("  no matches")
 		}
 	} else if m.review.selection != nil {
@@ -101,9 +103,10 @@ func (m Model) renderFooter(left string) string {
 }
 
 func (m Model) viewLabel() string {
+	review := &m.review
 	progress := ""
-	if m.review.viewport.Top.Y > 0 {
-		progress = fmt.Sprintf(" (%d%%)", m.review.view.ViewportProgress(m.review.viewport))
+	if review.viewport.Top.Y > 0 {
+		progress = fmt.Sprintf(" (%d%%)", review.view.ViewportProgress(review.viewport))
 	}
 	if branch := m.currentBranch(); branch != "" {
 		return "branch changes from " + branch + progress
@@ -112,19 +115,21 @@ func (m Model) viewLabel() string {
 }
 
 func (m Model) renderComments() string {
-	header := titleStyle.Render("comments") + "  " + mutedStyle.Render(fmt.Sprintf("%d pending", len(m.comments.items)))
+	state := &m.comments
+	header := titleStyle.Render("comments") + "  " + mutedStyle.Render(fmt.Sprintf("%d pending", len(state.items)))
 	height := m.screenBodyHeight()
+	width := max(20, m.width)
 	body := make([]string, 0, height)
-	if len(m.comments.items) == 0 {
+	if len(state.items) == 0 {
 		body = make([]string, height)
 		body[min(1, height-1)] = mutedStyle.Render("No pending comments.")
 	} else {
-		start := min(max(0, m.comments.row-height+1), max(0, len(m.comments.items)-height))
-		end := min(len(m.comments.items), start+height)
+		start := min(max(0, state.row-height+1), max(0, len(state.items)-height))
+		end := min(len(state.items), start+height)
 		for index := start; index < end; index++ {
-			comment := m.comments.items[index]
+			comment := state.items[index]
 			prefix, style := "  ", screenContextStyle
-			if index == m.comments.row {
+			if index == state.row {
 				prefix, style = "> ", screenCursorStyle
 			}
 			location := comment.Anchor.FilePath
@@ -134,8 +139,8 @@ func (m Model) renderComments() string {
 				location += fmt.Sprintf(":%d", comment.Anchor.OldStart)
 			}
 			commentBody := strings.ReplaceAll(strings.TrimSpace(comment.Body), "\n", " ")
-			line := ansi.Truncate(fmt.Sprintf("%s%s  %s", prefix, location, commentBody), max(20, m.width), "")
-			body = append(body, style.Width(max(20, m.width)).Render(line))
+			line := ansi.Truncate(fmt.Sprintf("%s%s  %s", prefix, location, commentBody), width, "")
+			body = append(body, style.Width(width).Render(line))
 		}
 	}
 	footer := mutedStyle.Render("j/k move  Enter/e edit  D delete  Esc/q return")
@@ -146,12 +151,35 @@ func (m Model) renderComments() string {
 }
 
 func (m Model) renderHelp() string {
-	bindings := []keyBinding{{"j/k, arrows", "move"}, {"h/l, left/right", "scroll horizontally"}, {"Ctrl-w h/l/w", "switch side-by-side pane"}, {"0/$", "start/end of lines"}, {"gg/G", "first/last changed line"}, {"zz/zt/zb", "center/top/bottom current line"}, {"Ctrl-d/Ctrl-u", "half-page down/up"}, {"/", "search diff text"}, {"n/N", "next/previous search match"}, {"]f/[f", "next/previous file"}, {"v", "select a line range"}, {"c", "comment on selection/current line"}, {"e", "open current line in $EDITOR"}, {"C", "view comments"}, {"R", "refresh diff"}, {"Tab", "toggle local/branch changes"}, {"t", "toggle unified/side-by-side"}, {"q", "quit"}}
+	bindings := make([]keyBinding, 0, 18)
+	for _, line := range strings.Split(helpText, "\n") {
+		keys, description, _ := strings.Cut(line, "\t")
+		bindings = append(bindings, keyBinding{keys, description})
+	}
 	body := append([]string{""}, renderKeyBindings(bindings)...)
 	return m.renderScreen(titleStyle.Render("review-my-slop help"), body, mutedStyle.Render("? or Esc closes help"))
 }
 
 type keyBinding struct{ keys, description string }
+
+const helpText = `j/k, arrows	move
+h/l, left/right	scroll horizontally
+Ctrl-w h/l/w	switch side-by-side pane
+0/$	start/end of lines
+gg/G	first/last changed line
+zz/zt/zb	center/top/bottom current line
+Ctrl-d/Ctrl-u	half-page down/up
+/	search diff text
+n/N	next/previous search match
+]f/[f	next/previous file
+v	select a line range
+c	comment on selection/current line
+e	open current line in $EDITOR
+C	view comments
+R	refresh diff
+Tab	toggle local/branch changes
+t	toggle unified/side-by-side
+q	quit`
 
 func renderKeyBindings(bindings []keyBinding) []string {
 	width := 0

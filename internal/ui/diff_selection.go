@@ -52,20 +52,21 @@ func (v *diffView) Anchor(selection Selection) (comments.Anchor, error) {
 }
 
 func (v *diffView) selectedLines(selection Selection, deduplicate bool) []patch.Line {
-	if _, ok := v.ExtendSelection(selection, selection.Last); !ok {
+	firstCursor, lastCursor := selection.First, selection.Last
+	if _, ok := v.ExtendSelection(selection, lastCursor); !ok {
 		return nil
 	}
-	first, last := selection.First.Coordinate.Y, selection.Last.Coordinate.Y
+	first, last := firstCursor.Coordinate.Y, lastCursor.Coordinate.Y
 	if first > last {
 		first, last = last, first
 	}
 	lines := make([]patch.Line, 0, last-first+1)
 	for y := first; y <= last; y++ {
-		panes := []Pane{selection.First.Pane}
-		if first == last && selection.First.Pane != selection.Last.Pane {
-			panes = append(panes, selection.Last.Pane)
-		} else if y == selection.Last.Coordinate.Y {
-			panes[0] = selection.Last.Pane
+		panes := []Pane{firstCursor.Pane}
+		if first == last && firstCursor.Pane != lastCursor.Pane {
+			panes = append(panes, lastCursor.Pane)
+		} else if y == lastCursor.Coordinate.Y {
+			panes[0] = lastCursor.Pane
 		}
 		for _, pane := range panes {
 			line, ok := v.Line(Cursor{Coordinate: Coordinate{Y: y}, Pane: pane})
