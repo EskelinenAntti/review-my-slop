@@ -21,23 +21,25 @@ func Preserve(old *diffView, state State, next *diffView) State {
 	}
 
 	cursor := identify(old, oldCursor)
+	var translated *Cursor
 	if cursor.valid {
-		if translated, ok := next.FindCursor(cursor.file, cursor.hunk, cursor.line, cursor.cursor.Coordinate, cursor.cursor.Pane); ok {
-			result.Cursor = &translated
+		if candidate, ok := next.FindCursor(cursor.file, cursor.hunk, cursor.line, cursor.cursor.Coordinate, cursor.cursor.Pane); ok {
+			translated = &candidate
 		}
 	}
-	if result.Cursor == nil {
+	if translated == nil {
 		if first, ok := next.First(); ok {
-			result.Cursor = &first
+			translated = &first
 		}
 	}
 
 	if selection, ok := preserveSelection(old, state.Selection, next); ok {
 		result.Selection = &selection
 	}
-	if result.Cursor != nil {
-		result.Viewport.Top = max(0, result.Cursor.Coordinate-rowsAbove)
-		result.Viewport = next.KeepVisible(result.Viewport, *result.Cursor)
+	result.Cursor = translated
+	if translated != nil {
+		result.Viewport.Top = max(0, translated.Coordinate-rowsAbove)
+		result.Viewport = next.KeepVisible(result.Viewport, *translated)
 	}
 	return result
 }

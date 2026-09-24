@@ -14,15 +14,16 @@ import (
 
 func (v *diffView) Render(viewport Viewport, cursor Cursor, selection *Selection) string {
 	viewport = v.clampViewport(viewport)
+	rows := v.rows
 	top := viewport.Top
 	lines := []string{}
 	if v.hasStickyHeader(viewport.Top, viewport.Height) {
-		current := v.rows[top]
+		current := rows[top]
 		lines = append(lines, fileStyle.Width(max(20, viewport.Width)).Render(v.patch.Files[current.file].DisplayPath))
 	}
-	end := min(len(v.rows), top+v.contentHeight(viewport))
+	end := min(len(rows), top+v.contentHeight(viewport))
 	for y := top; y < end; y++ {
-		current := v.rows[y]
+		current := rows[y]
 		if v.split && current.kind == lineRow {
 			leftWidth := max(20, (viewport.Width-3)/2)
 			rightWidth := max(20, viewport.Width-3-leftWidth)
@@ -41,13 +42,14 @@ func (v *diffView) Render(viewport Viewport, cursor Cursor, selection *Selection
 
 func (v *diffView) renderUnifiedRow(current entry, y int, viewport Viewport, cursor Cursor, selection *Selection) string {
 	width := max(20, viewport.Width)
+	text := current.text
 	switch current.kind {
 	case fileRow:
-		return fileStyle.Width(width).Render(current.text)
+		return fileStyle.Width(width).Render(text)
 	case metadataRow:
-		return metadataStyle.Render("  " + current.text)
+		return metadataStyle.Render("  " + text)
 	case hunkRow:
-		return hunkStyle.Render(current.text)
+		return hunkStyle.Render(text)
 	case lineRow:
 		line := v.patch.Files[current.file].Hunks[current.hunk].Lines[current.rightLine]
 		prefix := " "
@@ -58,13 +60,12 @@ func (v *diffView) renderUnifiedRow(current entry, y int, viewport Viewport, cur
 			prefix = removedStyle.Render("-")
 		}
 		gutter := fmt.Sprintf("%5s %5s %s ", number(line.OldNumber), number(line.NewNumber), prefix)
-		value := gutter + fitANSIWindow(current.text, viewport.LeftColumn, width-lipgloss.Width(gutter))
+		value := gutter + fitANSIWindow(text, viewport.LeftColumn, width-lipgloss.Width(gutter))
 		style := lineStyle(line.Kind, v.dark)
 		strip := false
-		candidate := Cursor{y, cursor.Pane}
 		if cursor.Coordinate == y {
 			style, strip = cursorStyle, true
-		} else if selected(selection, candidate) {
+		} else if selected(selection, Cursor{y, cursor.Pane}) {
 			style, strip = selectionRowStyle(v.dark), true
 		}
 		return renderStyledRow(style, value, width, strip)
@@ -94,10 +95,9 @@ func (v *diffView) renderPane(current entry, y int, pane Pane, width, offset int
 	value := gutter + fitANSIWindow(prefix+text, offset, width-lipgloss.Width(gutter))
 	style := lineStyle(line.Kind, v.dark)
 	strip := false
-	candidate := Cursor{y, pane}
-	if cursor == candidate {
+	if cursor == (Cursor{y, pane}) {
 		style, strip = cursorStyle, true
-	} else if selected(selection, candidate) {
+	} else if selected(selection, Cursor{y, pane}) {
 		style, strip = selectionRowStyle(v.dark), true
 	}
 	return renderStyledRow(style, value, width, strip)
@@ -142,11 +142,10 @@ func renderStyledRow(style lipgloss.Style, value string, width int, stripForegro
 	fitted := fitANSIWindow(value, 0, width)
 	const marker = "\x00"
 	rendered := style.Render(marker)
-	index := strings.Index(rendered, marker)
-	if index < 0 {
-		index = 0
+	prefix, _, found := strings.Cut(rendered, marker)
+	if !found {
+		prefix = ""
 	}
-	prefix := rendered[:index]
 	fitted = strings.ReplaceAll(fitted, "\x1b[0m", "\x1b[0m"+prefix)
 	fitted = strings.ReplaceAll(fitted, "\x1b[m", "\x1b[m"+prefix)
 	return style.Render(fitted)
@@ -160,7 +159,7 @@ func filterANSIColors(value string, stripForeground bool) string {
 		}
 		parts := strings.Split(parameters, ";")
 		filtered := []string{}
-		for index := 0; index < len(parts); index++ {
+		for index := range parts {
 			code, err := strconv.Atoi(parts[index])
 			if err != nil {
 				filtered = append(filtered, parts[index])

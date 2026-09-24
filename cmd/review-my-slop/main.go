@@ -60,7 +60,7 @@ func runCode(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	defaultBranch, err := (&patch.Loader{}).DefaultBranch(ctx, current)
+	defaultBranch, err := loader.DefaultBranch(ctx, current)
 	if err != nil {
 		return err
 	}

@@ -52,13 +52,11 @@ func StripUnchangedSuggestion(body string, quoted []string) string {
 	}
 	lines := suggestionLines(quoted)
 	suggestion := suggestionBlock(lines)
-	start := strings.Index(body, suggestion)
-	if start < 0 {
+	before, after, found := strings.Cut(body, suggestion)
+	if !found {
 		return body
 	}
-	end := start + len(suggestion)
-	before := strings.TrimRight(body[:start], "\n")
-	after := body[end:]
+	before = strings.TrimRight(before, "\n")
 	if strings.TrimSpace(after) == "" {
 		return before
 	}

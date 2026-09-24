@@ -59,13 +59,14 @@ func (v *diffView) selectedLines(selection Selection, deduplicate bool) []patch.
 	if first > last {
 		first, last = last, first
 	}
+	firstPane, lastPane := firstCursor.Pane, lastCursor.Pane
 	var lines []patch.Line
 	for y := first; y <= last; y++ {
-		panes := []Pane{firstCursor.Pane}
-		if first == last && firstCursor.Pane != lastCursor.Pane {
-			panes = append(panes, lastCursor.Pane)
+		panes := []Pane{firstPane}
+		if first == last && firstPane != lastPane {
+			panes = append(panes, lastPane)
 		} else if y == lastCursor.Coordinate {
-			panes[0] = lastCursor.Pane
+			panes[0] = lastPane
 		}
 		for _, pane := range panes {
 			line, ok := v.Line(Cursor{y, pane})

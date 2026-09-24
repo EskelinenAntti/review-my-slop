@@ -43,7 +43,7 @@ func (m *Model) halfPage(direction Direction) {
 		height := view.contentHeight(viewport)
 		top := viewport.Top
 	search:
-		for distance := 0; distance < height; distance++ {
+		for distance := range height {
 			offset := int(direction) * distance
 			for _, y := range []int{target + offset, target - offset} {
 				if y < top || y >= top+height || y >= len(view.rows) {
@@ -67,8 +67,8 @@ func (m *Model) halfPage(direction Direction) {
 }
 
 func (m *Model) jumpFile(direction Direction) {
-	m.cancelSelection()
 	review := &m.review
+	review.selection = nil
 	view := review.view
 	if !view.valid(review.cursor) {
 		return
@@ -98,9 +98,10 @@ func (m *Model) switchPane(pane Pane) {
 	if !ok {
 		return
 	}
-	if review.selection != nil {
-		first, firstOK := view.SwitchPane(review.selection.First, pane)
-		last, lastOK := view.SwitchPane(review.selection.Last, pane)
+	currentSelection := review.selection
+	if currentSelection != nil {
+		first, firstOK := view.SwitchPane(currentSelection.First, pane)
+		last, lastOK := view.SwitchPane(currentSelection.Last, pane)
 		if !firstOK || !lastOK {
 			return
 		}

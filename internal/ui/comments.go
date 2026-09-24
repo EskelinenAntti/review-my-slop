@@ -16,6 +16,7 @@ import (
 
 func (m Model) updateComments(name string) (tea.Model, tea.Cmd) {
 	state := &m.comments
+	items := state.items
 	m.err = nil
 	switch name {
 	case "esc", "C", "q":
@@ -24,7 +25,7 @@ func (m Model) updateComments(name string) (tea.Model, tea.Cmd) {
 		m.quitting = true
 		return m, tea.Quit
 	case "j", "down":
-		if state.row < len(state.items)-1 {
+		if state.row < len(items)-1 {
 			state.row++
 		}
 	case "k", "up":
@@ -32,10 +33,10 @@ func (m Model) updateComments(name string) (tea.Model, tea.Cmd) {
 			state.row--
 		}
 	case "enter", "e":
-		if len(state.items) > 0 {
+		if len(items) > 0 {
 			state.editIndex = state.row
-			state.body = state.items[state.editIndex].Body
-			state.editAnchor = state.items[state.editIndex].Anchor
+			state.body = items[state.editIndex].Body
+			state.editAnchor = items[state.editIndex].Anchor
 			cmd, err := m.openCommentEditor()
 			if err != nil {
 				m.err = err
@@ -45,7 +46,7 @@ func (m Model) updateComments(name string) (tea.Model, tea.Cmd) {
 			return m, cmd
 		}
 	case "D":
-		if len(state.items) > 0 {
+		if len(items) > 0 {
 			m.deleteComment(state.row)
 		}
 	}
@@ -76,13 +77,14 @@ func (m *Model) beginComment() (tea.Cmd, error) {
 func (m *Model) finishCommentEdit() {
 	state := &m.comments
 	body := strings.TrimSpace(state.body)
-	editing := state.editIndex >= 0
+	index := state.editIndex
+	editing := index >= 0
 	if body == "" {
 		if editing {
-			m.deleteComment(state.editIndex)
+			m.deleteComment(index)
 		}
 		m.clearCommentEdit()
-		m.cancelSelection()
+		m.review.selection = nil
 		return
 	}
 	if m.save == nil {
@@ -92,7 +94,7 @@ func (m *Model) finishCommentEdit() {
 	}
 	var comment comments.Comment
 	if editing {
-		comment = state.items[state.editIndex]
+		comment = state.items[index]
 		comment.Body = body
 	} else {
 		comment = comments.Comment{Anchor: state.editAnchor, Body: body}
@@ -104,7 +106,7 @@ func (m *Model) finishCommentEdit() {
 		return
 	}
 	if editing {
-		state.items[state.editIndex] = saved
+		state.items[index] = saved
 	} else {
 		state.items = append(state.items, saved)
 		state.row = len(state.items) - 1
@@ -112,7 +114,7 @@ func (m *Model) finishCommentEdit() {
 	state.revision++
 	m.clearCommentEdit()
 	m.err = nil
-	m.cancelSelection()
+	m.review.selection = nil
 }
 
 func (m *Model) deleteComment(index int) {
@@ -139,8 +141,6 @@ func (m *Model) clearCommentEdit() {
 	m.comments.editIndex = -1
 	m.comments.editAnchor = comments.Anchor{}
 }
-
-func (m *Model) cancelSelection() { m.review.selection = nil }
 
 func (m Model) openCurrentLine() (tea.Cmd, error) {
 	review := &m.review

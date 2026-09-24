@@ -66,12 +66,13 @@ func (v *diffView) Search(query string, cursor Cursor, direction Direction) (Cur
 	query = strings.ToLower(query)
 	y := cursor.Coordinate
 	pane := cursor.Pane
-	for range len(rows) - 1 {
+	last := len(rows) - 1
+	for range last {
 		y += int(direction)
 		if y < 0 {
 			y = len(rows) - 1
 		}
-		if y >= len(rows) {
+		if y > last {
 			y = 0
 		}
 		current := rows[y]
@@ -86,10 +87,11 @@ func (v *diffView) Search(query string, cursor Cursor, direction Direction) (Cur
 			}
 		}
 		if current.kind != lineRow && strings.Contains(strings.ToLower(ansi.Strip(current.text)), query) {
-			for distance := 1; distance <= len(rows); distance++ {
+			for distance := range last + 1 {
+				distance++
 				offset := int(direction) * distance
 				for _, candidateY := range []int{y + offset, y - offset} {
-					if candidateY < 0 || candidateY >= len(rows) || rows[candidateY].file != current.file {
+					if candidateY < 0 || candidateY > last || rows[candidateY].file != current.file {
 						continue
 					}
 					if candidate, ok := v.cursorAt(candidateY, pane); ok {

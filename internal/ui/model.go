@@ -129,7 +129,7 @@ func NewWithReview(loader patch.Loader, store comments.Store, ctx context.Contex
 		return store.Delete(p.Repository, comment.ID)
 	}
 	m.load = func() ([]comments.Comment, error) {
-		return store.List(m.review.patch.Repository)
+		return store.List(review.patch.Repository)
 	}
 	m.refresh = func(branch string) (patch.Patch, error) {
 		if branch == "" {
@@ -237,6 +237,7 @@ func (m Model) updateKey(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	search := &m.search
 	cursor := review.cursor
 	view := review.view
+	viewport := &review.viewport
 	switch m.mode {
 	case modeComments:
 		return m.updateComments(name)
@@ -262,7 +263,7 @@ func (m Model) updateKey(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	if pending == "z" {
-		height := review.viewport.Height
+		height := viewport.Height
 		alignmentOffset := 0
 		switch name {
 		case "z":
@@ -278,11 +279,11 @@ func (m Model) updateKey(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			headerHeight = 1
 		}
 		offset := max(0, alignmentOffset-headerHeight)
-		review.viewport.Top = cursor.Coordinate - offset
-		if !view.hasStickyHeader(review.viewport.Top, height) {
-			review.viewport.Top = cursor.Coordinate - alignmentOffset
+		viewport.Top = cursor.Coordinate - offset
+		if !view.hasStickyHeader(viewport.Top, height) {
+			viewport.Top = cursor.Coordinate - alignmentOffset
 		}
-		review.viewport = view.clampViewport(review.viewport)
+		*viewport = view.clampViewport(*viewport)
 		return m, nil
 	}
 	if pending == "ctrl+w" {
@@ -304,7 +305,7 @@ func (m Model) updateKey(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	case "?":
 		m.mode = modeHelp
 	case "/":
-		m.cancelSelection()
+		review.selection = nil
 		m.mode = modeSearch
 		search.query = nil
 		search.from = cursor
@@ -322,13 +323,13 @@ func (m Model) updateKey(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		if name == "h" || name == "left" {
 			delta = -delta
 		}
-		review.viewport.LeftColumn += delta
-		review.viewport = view.clampViewport(review.viewport)
+		viewport.LeftColumn += delta
+		*viewport = view.clampViewport(*viewport)
 	case "0":
-		review.viewport.LeftColumn = 0
+		viewport.LeftColumn = 0
 	case "$":
-		review.viewport.LeftColumn += int(^uint(0) >> 1)
-		review.viewport = view.clampViewport(review.viewport)
+		viewport.LeftColumn += int(^uint(0) >> 1)
+		*viewport = view.clampViewport(*viewport)
 	case "ctrl+d":
 		m.halfPage(Forward)
 	case "ctrl+u":
@@ -344,9 +345,10 @@ func (m Model) updateKey(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			m.pendingKey = "g"
 		}
 	case "G":
-		cursor, ok := view.scan(len(view.rows), Right, Backward, false)
+		last := len(view.rows)
+		cursor, ok := view.scan(last, Right, Backward, false)
 		if !ok {
-			cursor, ok = view.scan(len(view.rows), Left, Backward, false)
+			cursor, ok = view.scan(last, Left, Backward, false)
 		}
 		if ok {
 			m.setCursor(cursor)
@@ -360,10 +362,10 @@ func (m Model) updateKey(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			selection := view.BeginSelection(cursor)
 			review.selection = &selection
 		} else {
-			m.cancelSelection()
+			review.selection = nil
 		}
 	case "esc":
-		m.cancelSelection()
+		review.selection = nil
 	case "c":
 		var err error
 		cmd, err = m.beginComment()
@@ -395,7 +397,7 @@ func (m Model) updateKey(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			break
 		}
 		m.showDefault = !m.showDefault
-		m.cancelSelection()
+		review.selection = nil
 		cmd = m.loadRefresh()
 	case "t":
 		m.toggleSideBySide()

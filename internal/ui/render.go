@@ -61,7 +61,7 @@ func (m Model) render() string {
 		if search.miss {
 			status += errorStyle.Render("  no matches")
 		}
-	} else if m.review.selection != nil {
+	} else if review.selection != nil {
 		status = "visual selection  j/k extend  c comment  Esc cancel"
 	}
 	footer := m.renderFooter(mutedStyle.Render(status))
@@ -83,12 +83,13 @@ func (m Model) renderScreen(header string, body []string, footer string) string 
 
 func (m Model) renderFooter(left string) string {
 	review := &m.review
+	viewport := review.viewport
 	progress := ""
-	if review.viewport.Top > 0 {
+	if viewport.Top > 0 {
 		rows := review.view.rows
 		progressValue := 0
 		if len(rows) > 0 {
-			bottom := min(len(rows), review.viewport.Top+review.view.contentHeight(review.viewport))
+			bottom := min(len(rows), viewport.Top+review.view.contentHeight(viewport))
 			progressValue = bottom * 100 / len(rows)
 		}
 		progress = fmt.Sprintf(" (%d%%)", progressValue)
@@ -106,18 +107,18 @@ func (m Model) renderFooter(left string) string {
 
 func (m Model) renderComments() string {
 	state := &m.comments
-	header := titleStyle.Render("comments") + "  " + mutedStyle.Render(fmt.Sprintf("%d pending", len(state.items)))
+	items := state.items
+	header := titleStyle.Render("comments") + "  " + mutedStyle.Render(fmt.Sprintf("%d pending", len(items)))
 	height := m.screenBodyHeight()
 	width := max(20, m.width)
 	body := make([]string, height)
-	if len(state.items) == 0 {
+	if len(items) == 0 {
 		body[min(1, height-1)] = mutedStyle.Render("No pending comments.")
 	} else {
 		body = body[:0]
-		start := min(max(0, state.row-height+1), max(0, len(state.items)-height))
-		end := min(len(state.items), start+height)
-		for index := start; index < end; index++ {
-			comment := state.items[index]
+		start := min(max(0, state.row-height+1), max(0, len(items)-height))
+		for index, comment := range items[start:min(len(items), start+height)] {
+			index += start
 			prefix, style := "  ", screenContextStyle
 			if index == state.row {
 				prefix, style = "> ", screenCursorStyle
@@ -145,12 +146,11 @@ func (m Model) renderComments() string {
 
 func (m Model) renderHelp() string {
 	bindings := []keyBinding{}
+	width := 0
 	for _, line := range strings.Split(helpText, "\n") {
 		keys, description, _ := strings.Cut(line, "\t")
-		bindings = append(bindings, keyBinding{keys, description})
-	}
-	width := 0
-	for _, binding := range bindings {
+		binding := keyBinding{keys, description}
+		bindings = append(bindings, binding)
 		width = max(width, lipgloss.Width(binding.keys))
 	}
 	body := []string{""}
