@@ -14,18 +14,22 @@ The score counts every Go AST node in non-test files under `cmd/` and
 
 ## Working rules
 
-1. Keep behavior stable. Existing tests are immutable: do not edit, remove,
-   weaken, or rewrite them. Add narrowly targeted tests when they establish
-   the current behavior before a simplification.
-2. Do not change `scripts/ast_size.go` or redefine the metric during the run.
-3. Prefer deleting dead code, collapsing duplication, removing needless
+1. Keep behavior stable. Tests may be edited when an internal refactor changes
+   an implementation detail, but do not remove or weaken behavioral assertions.
+   Add focused regression tests whenever they make the preserved behavior
+   explicit.
+2. Package boundaries may change when that removes needless indirection or
+   duplication. Keep public behavior and externally observable APIs stable
+   unless the change is strictly internal to this repository.
+3. Do not change `scripts/ast_size.go` or redefine the metric during the run.
+4. Prefer deleting dead code, collapsing duplication, removing needless
    indirection, and making one concept have one clear home.
-4. Preserve helpful names. Do not trade understandable intermediate values
+5. Preserve helpful names. Do not trade understandable intermediate values
    for dense expressions, or create small poorly named wrapper functions to
    move code around.
-5. Make focused changes. If a refactor touches multiple concepts, split it
+6. Make focused changes. If a refactor touches multiple concepts, split it
    into independently reviewable commits.
-6. Commit every verified change on the current `chore/ast-size-metric` branch
+7. Commit every verified change on the current `chore/ast-size-metric` branch
    only. Do not create, switch to, merge, rebase, or push any branch.
 
 ## Loop
