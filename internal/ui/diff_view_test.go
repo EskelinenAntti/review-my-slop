@@ -141,7 +141,7 @@ func TestViewportAlignmentResizeAndScrolling(t *testing.T) {
 	}
 	viewport = v.Align(viewport, cursor, Middle)
 	headerHeight := 0
-	if v.(*diffView).hasStickyHeader(viewport.Top, viewport.Height) {
+	if v.hasStickyHeader(viewport.Top, viewport.Height) {
 		headerHeight = 1
 	}
 	if headerHeight+cursor.Coordinate.Y-viewport.Top.Y != viewport.Height/2 {

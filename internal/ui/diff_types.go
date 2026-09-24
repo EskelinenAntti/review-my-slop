@@ -1,10 +1,5 @@
 package ui
 
-import (
-	"github.com/eskelinenantti/review-my-slop/internal/comments"
-	"github.com/eskelinenantti/review-my-slop/internal/patch"
-)
-
 type Coordinate struct {
 	Y int
 }
@@ -63,31 +58,5 @@ const (
 	Bottom
 )
 
-type View interface {
-	First() (Cursor, bool)
-	Last() (Cursor, bool)
-	Move(Cursor, Direction) (Cursor, bool)
-	Search(string, Cursor, Direction) (Cursor, bool)
-	JumpFile(Cursor, Direction) (Cursor, bool)
-	SwitchPane(Cursor, Pane) (Cursor, bool)
-
-	NewViewport(width, height int) Viewport
-	Resize(Viewport, int, int) Viewport
-	KeepVisible(Viewport, Cursor) Viewport
-	Align(Viewport, Cursor, VerticalAlignment) Viewport
-	ScrollHorizontal(Viewport, int) Viewport
-	ScrollHalfPage(Viewport, Cursor, Direction) (Viewport, Cursor)
-	ViewportProgress(Viewport) int
-
-	BeginSelection(Cursor) Selection
-	ExtendSelection(Selection, Cursor) (Selection, bool)
-	Lines(Selection) []patch.Line
-	Anchor(Selection) (comments.Anchor, error)
-
-	File(Cursor) (patch.File, bool)
-	Hunk(Cursor) (patch.Hunk, bool)
-	Line(Cursor) (patch.Line, bool)
-
-	FindCursor(patch.File, patch.Hunk, patch.Line, Coordinate, Pane) (Cursor, bool)
-	Render(Viewport, Cursor, *Selection) string
-}
+// View is the repository's concrete diff view.
+type View = *diffView
