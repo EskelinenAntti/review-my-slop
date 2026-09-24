@@ -62,11 +62,10 @@ func runCode(ctx context.Context) error {
 		return err
 	}
 	size := initialTerminalSize()
-	model, err := ui.NewWithReview(currentReview, loaded, pending, size)
+	model, err := ui.NewWithReview(currentReview, loaded, pending, size, defaultBranch)
 	if err != nil {
 		return err
 	}
-	model.SetDefaultBranch(defaultBranch)
 	program := tea.NewProgram(model, tea.WithWindowSize(size.Width, size.Height))
 	_, err = program.Run()
 	return err

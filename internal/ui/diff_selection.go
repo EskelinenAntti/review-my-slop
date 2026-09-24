@@ -114,11 +114,12 @@ func (v *diffView) FindCursor(file patch.File, hunk patch.Hunk, line patch.Line,
 				continue
 			}
 			candidateLine, _ := v.Line(candidate)
-			if candidateLine.Kind == line.Kind && candidateLine.OldNumber == line.OldNumber && candidateLine.NewNumber == line.NewNumber {
+			sameKind := candidateLine.Kind == line.Kind
+			if sameKind && candidateLine.OldNumber == line.OldNumber && candidateLine.NewNumber == line.NewNumber {
 				return candidate, true
 			}
 			match := 0
-			if candidateLine.Kind == line.Kind {
+			if sameKind {
 				match = 1
 				if candidateLine.Text == line.Text {
 					match = 2

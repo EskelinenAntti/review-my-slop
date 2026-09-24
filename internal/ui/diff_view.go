@@ -30,6 +30,10 @@ type diffView struct {
 	dark  bool
 }
 
+func newEntry(kind rowKind, file, hunk, leftLine, rightLine int, text, left, right string) entry {
+	return entry{kind, file, hunk, leftLine, rightLine, text, left, right}
+}
+
 func NewUnifiedView(p patch.Patch, dark bool) View {
 	v := &diffView{patch: p, dark: dark}
 	v.build()
@@ -53,7 +57,7 @@ func (v *diffView) build() {
 			if !strings.HasPrefix(header, "@@") {
 				header = "@@ " + header
 			}
-			v.rows = append(v.rows, entry{kind: hunkRow, file: fileIndex, hunk: hunkIndex, leftLine: -1, rightLine: -1, text: header})
+			v.rows = append(v.rows, newEntry(hunkRow, fileIndex, hunkIndex, -1, -1, header, "", ""))
 			if v.split {
 				v.appendSplitLines(fileIndex, hunkIndex, hunk, highlighted)
 				continue
@@ -65,7 +69,7 @@ func (v *diffView) build() {
 				} else {
 					text = highlightedLine(highlighted.New, line.NewNumber, text)
 				}
-				v.rows = append(v.rows, entry{kind: lineRow, file: fileIndex, hunk: hunkIndex, leftLine: lineIndex, rightLine: lineIndex, text: text})
+				v.rows = append(v.rows, newEntry(lineRow, fileIndex, hunkIndex, lineIndex, lineIndex, text, "", ""))
 			}
 		}
 	}
@@ -73,7 +77,7 @@ func (v *diffView) build() {
 
 func (v *diffView) appendSplitLines(fileIndex, hunkIndex int, hunk *patch.Hunk, highlighted Pair) {
 	lines := hunk.Lines
-	base := entry{kind: lineRow, file: fileIndex, hunk: hunkIndex, leftLine: -1, rightLine: -1}
+	base := newEntry(lineRow, fileIndex, hunkIndex, -1, -1, "", "", "")
 	for index := 0; index < len(lines); {
 		line := lines[index]
 		switch line.Kind {
@@ -116,8 +120,8 @@ func (v *diffView) appendSplitLines(fileIndex, hunkIndex int, hunk *patch.Hunk, 
 }
 
 func (v *diffView) appendFileHeader(fileIndex int, file *patch.File) {
-	v.rows = append(v.rows, entry{kind: fileRow, file: fileIndex, hunk: -1, leftLine: -1, rightLine: -1, text: file.DisplayPath})
+	v.rows = append(v.rows, newEntry(fileRow, fileIndex, -1, -1, -1, file.DisplayPath, "", ""))
 	for _, metadata := range file.Metadata {
-		v.rows = append(v.rows, entry{kind: metadataRow, file: fileIndex, hunk: -1, leftLine: -1, rightLine: -1, text: metadata})
+		v.rows = append(v.rows, newEntry(metadataRow, fileIndex, -1, -1, -1, metadata, "", ""))
 	}
 }

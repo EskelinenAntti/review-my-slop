@@ -78,6 +78,7 @@ func (v *diffView) Search(query string, cursor Cursor, direction Direction) (Cur
 	rows, split := v.rows, v.split
 	query = strings.ToLower(query)
 	y := cursor.Coordinate.Y
+	pane := cursor.Pane
 	for count := 0; count < len(rows)-1; count++ {
 		y += int(direction)
 		if y < 0 {
@@ -87,9 +88,9 @@ func (v *diffView) Search(query string, cursor Cursor, direction Direction) (Cur
 			y = 0
 		}
 		current := rows[y]
-		for _, pane := range []Pane{cursor.Pane, cursor.Pane.Other()} {
-			candidate, ok := v.cursorAt(y, pane)
-			if !ok || !split && pane != cursor.Pane {
+		for _, candidatePane := range []Pane{pane, pane.Other()} {
+			candidate, ok := v.cursorAt(y, candidatePane)
+			if !ok || !split && candidatePane != pane {
 				continue
 			}
 			line, _ := v.Line(candidate)
@@ -98,7 +99,7 @@ func (v *diffView) Search(query string, cursor Cursor, direction Direction) (Cur
 			}
 		}
 		if current.kind != lineRow && strings.Contains(strings.ToLower(ansi.Strip(current.text)), query) {
-			if candidate, ok := v.cursorNearRow(y, cursor.Pane, direction); ok {
+			if candidate, ok := v.cursorNearRow(y, pane, direction); ok {
 				return candidate, true
 			}
 		}
@@ -109,7 +110,8 @@ func (v *diffView) Search(query string, cursor Cursor, direction Direction) (Cur
 func (v *diffView) cursorNearRow(y int, pane Pane, direction Direction) (Cursor, bool) {
 	rows, split := v.rows, v.split
 	for distance := 1; distance <= len(rows); distance++ {
-		for _, candidateY := range []int{y + int(direction)*distance, y - int(direction)*distance} {
+		offset := int(direction) * distance
+		for _, candidateY := range []int{y + offset, y - offset} {
 			if candidateY < 0 || candidateY >= len(rows) {
 				continue
 			}

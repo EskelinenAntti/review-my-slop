@@ -132,11 +132,12 @@ func (m Model) renderComments() string {
 			if index == state.row {
 				prefix, style = "> ", screenCursorStyle
 			}
-			location := comment.Anchor.FilePath
-			if comment.Anchor.NewStart > 0 {
-				location += fmt.Sprintf(":%d", comment.Anchor.NewStart)
-			} else if comment.Anchor.OldStart > 0 {
-				location += fmt.Sprintf(":%d", comment.Anchor.OldStart)
+			anchor := comment.Anchor
+			location := anchor.FilePath
+			if anchor.NewStart > 0 {
+				location += fmt.Sprintf(":%d", anchor.NewStart)
+			} else if anchor.OldStart > 0 {
+				location += fmt.Sprintf(":%d", anchor.OldStart)
 			}
 			commentBody := strings.ReplaceAll(strings.TrimSpace(comment.Body), "\n", " ")
 			line := ansi.Truncate(fmt.Sprintf("%s%s  %s", prefix, location, commentBody), width, "")

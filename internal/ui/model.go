@@ -128,7 +128,7 @@ func New(p patch.Patch, comments []comments.Comment, save SaveCommentFunc, layou
 	return m
 }
 
-func NewWithReview(actions review.Review, p patch.Patch, items []comments.Comment, size Size) (Model, error) {
+func NewWithReview(actions review.Review, p patch.Patch, items []comments.Comment, size Size, defaultBranch string) (Model, error) {
 	sideBySide, err := loadLayoutSettings()
 	if err != nil {
 		return Model{}, err
@@ -138,28 +138,15 @@ func NewWithReview(actions review.Review, p patch.Patch, items []comments.Commen
 		SaveSideBySide: saveLayoutSettings,
 		Size:           size,
 	})
-	m.SetDelete(actions.DeleteComment)
-	m.SetLoadComments(func() ([]comments.Comment, error) {
+	m.delete = actions.DeleteComment
+	m.load = func() ([]comments.Comment, error) {
 		return actions.Comments(m.review.patch)
-	})
-	m.SetRefresh(func(branch string) (patch.Patch, error) {
-		return actions.Load(branch)
-	})
-	return m, nil
-}
-
-func (m *Model) SetRefresh(refresh RefreshDiffFunc)    { m.refresh = refresh }
-func (m *Model) SetDelete(delete DeleteCommentFunc)    { m.delete = delete }
-func (m *Model) SetLoadComments(load LoadCommentsFunc) { m.load = load }
-func (m *Model) SetDefaultBranch(branch string) {
-	m.defaultBranch = branch
-	if branch == "" {
-		m.showDefault = false
 	}
-}
-func (m *Model) SetSideBySide(enabled bool, save SaveSideBySideFunc) {
-	m.saveLayout = save
-	m.setSideBySide(enabled)
+	m.refresh = func(branch string) (patch.Patch, error) {
+		return actions.Load(branch)
+	}
+	m.defaultBranch = defaultBranch
+	return m, nil
 }
 
 func (m Model) Init() tea.Cmd { return func() tea.Msg { return tea.RequestBackgroundColor() } }

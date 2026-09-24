@@ -27,7 +27,8 @@ func (v *diffView) clampViewport(viewport Viewport) Viewport {
 }
 
 func (v *diffView) hasStickyHeader(top Coordinate, viewportHeight int) bool {
-	return viewportHeight > 1 && top.Y >= 0 && top.Y < len(v.rows) && v.rows[top.Y].kind != fileRow
+	y := top.Y
+	return viewportHeight > 1 && y >= 0 && y < len(v.rows) && v.rows[y].kind != fileRow
 }
 
 func (v *diffView) contentHeight(viewport Viewport) int {
@@ -46,12 +47,14 @@ func (v *diffView) KeepVisible(viewport Viewport, cursor Cursor) Viewport {
 	viewport = v.clampViewport(viewport)
 	for range 2 {
 		height := v.contentHeight(viewport)
-		if cursorY < viewport.Top.Y {
-			viewport.Top.Y = cursorY
+		top := viewport.Top.Y
+		if cursorY < top {
+			top = cursorY
 		}
-		if cursorY >= viewport.Top.Y+height {
-			viewport.Top.Y = cursorY - height + 1
+		if cursorY >= top+height {
+			top = cursorY - height + 1
 		}
+		viewport.Top.Y = top
 		viewport = v.clampViewport(viewport)
 	}
 	return viewport
@@ -110,9 +113,11 @@ func (v *diffView) ViewportProgress(viewport Viewport) int {
 
 func (v *diffView) nearest(target int, pane Pane, direction Direction, viewport Viewport) (Cursor, bool) {
 	height := v.contentHeight(viewport)
+	top := viewport.Top.Y
 	for distance := 0; distance < height; distance++ {
-		for _, y := range []int{target + int(direction)*distance, target - int(direction)*distance} {
-			if y < viewport.Top.Y || y >= viewport.Top.Y+height || y >= len(v.rows) {
+		offset := int(direction) * distance
+		for _, y := range []int{target + offset, target - offset} {
+			if y < top || y >= top+height || y >= len(v.rows) {
 				continue
 			}
 			if cursor, ok := v.cursorAt(y, pane); ok {
