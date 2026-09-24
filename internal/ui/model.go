@@ -338,9 +338,9 @@ func (m Model) updateKey(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		}
 	case "G":
 		last := len(view.rows)
-		cursor, ok := view.scan(last, Right, Backward, false)
+		cursor, ok := view.scan(last, Right, Backward)
 		if !ok {
-			cursor, ok = view.scan(last, Left, Backward, false)
+			cursor, ok = view.scan(last, Left, Backward)
 		}
 		if ok {
 			m.setCursor(cursor)

@@ -26,25 +26,18 @@ func (v *diffView) cursorAt(y int, pane Pane) (Cursor, bool) {
 }
 
 func (v *diffView) First() (Cursor, bool) {
-	if cursor, ok := v.scan(-1, Right, Forward, false); ok {
+	if cursor, ok := v.scan(-1, Right, Forward); ok {
 		return cursor, true
 	}
-	return v.scan(-1, Left, Forward, false)
+	return v.scan(-1, Left, Forward)
 }
 
-func (v *diffView) scan(start int, pane Pane, direction Direction, wrap bool) (Cursor, bool) {
+func (v *diffView) scan(start int, pane Pane, direction Direction) (Cursor, bool) {
 	last, y := len(v.rows)-1, start
 	for range last + 1 {
 		y += int(direction)
 		if y < 0 || y > last {
-			if !wrap {
-				return Cursor{}, false
-			}
-			if y < 0 {
-				y = last
-			} else {
-				y = 0
-			}
+			return Cursor{}, false
 		}
 		if cursor, ok := v.cursorAt(y, pane); ok {
 			return cursor, true

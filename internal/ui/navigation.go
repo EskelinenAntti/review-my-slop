@@ -11,7 +11,7 @@ func (m *Model) move(direction Direction) {
 	if !review.view.valid(review.cursor) {
 		return
 	}
-	next, ok := review.view.scan(review.cursor.Coordinate, review.cursor.Pane, direction, false)
+	next, ok := review.view.scan(review.cursor.Coordinate, review.cursor.Pane, direction)
 	if !ok {
 		return
 	}
@@ -74,7 +74,7 @@ func (m *Model) jumpFile(direction Direction) {
 	}
 	fileIndex, y := view.rows[review.cursor.Coordinate].file, review.cursor.Coordinate
 	for {
-		cursor, ok := view.scan(y, review.cursor.Pane, direction, false)
+		cursor, ok := view.scan(y, review.cursor.Pane, direction)
 		if !ok {
 			return
 		}

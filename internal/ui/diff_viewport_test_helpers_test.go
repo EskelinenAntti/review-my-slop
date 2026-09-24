@@ -57,10 +57,10 @@ func (v *diffView) Lines(selection Selection) []patch.Line {
 }
 
 func (v *diffView) Last() (Cursor, bool) {
-	if cursor, ok := v.scan(len(v.rows), Right, Backward, false); ok {
+	if cursor, ok := v.scan(len(v.rows), Right, Backward); ok {
 		return cursor, true
 	}
-	return v.scan(len(v.rows), Left, Backward, false)
+	return v.scan(len(v.rows), Left, Backward)
 }
 
 func (v *diffView) Align(viewport Viewport, cursor Cursor, alignment VerticalAlignment) Viewport {
@@ -91,7 +91,7 @@ func (v *diffView) JumpFile(cursor Cursor, direction Direction) (Cursor, bool) {
 	file, _ := v.File(cursor)
 	y := cursor.Coordinate
 	for {
-		next, ok := v.scan(y, cursor.Pane, direction, false)
+		next, ok := v.scan(y, cursor.Pane, direction)
 		if !ok {
 			return Cursor{}, false
 		}
@@ -107,5 +107,5 @@ func (v *diffView) Move(cursor Cursor, direction Direction) (Cursor, bool) {
 	if !v.valid(cursor) {
 		return Cursor{}, false
 	}
-	return v.scan(cursor.Coordinate, cursor.Pane, direction, false)
+	return v.scan(cursor.Coordinate, cursor.Pane, direction)
 }
