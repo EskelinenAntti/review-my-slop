@@ -74,7 +74,8 @@ func (v *diffView) build() {
 
 func appendSplitLines(rows []entry, fileIndex, hunkIndex int, hunk patch.Hunk, highlighted Pair) []entry {
 	lines := hunk.Lines
-	for index := 0; index < len(lines); {
+	last := len(lines)
+	for index := 0; index < last; {
 		line := lines[index]
 		if line.Kind != patch.Deletion {
 			text := highlightedLine(highlighted.New, line.NewNumber, line.Text)
@@ -87,11 +88,11 @@ func appendSplitLines(rows []entry, fileIndex, hunkIndex int, hunk patch.Hunk, h
 			continue
 		}
 		removedStart := index
-		for index < len(lines) && lines[index].Kind == patch.Deletion {
+		for index < last && lines[index].Kind == patch.Deletion {
 			index++
 		}
 		addedStart, addedEnd := index, index
-		for addedEnd < len(lines) && lines[addedEnd].Kind == patch.Addition {
+		for addedEnd < last && lines[addedEnd].Kind == patch.Addition {
 			addedEnd++
 		}
 		count := max(index-removedStart, addedEnd-addedStart)
