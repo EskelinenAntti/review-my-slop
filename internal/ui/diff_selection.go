@@ -7,10 +7,6 @@ import (
 	"github.com/eskelinenantti/review-my-slop/internal/patch"
 )
 
-func (v *diffView) BeginSelection(cursor Cursor) Selection {
-	return Selection{cursor, cursor}
-}
-
 func (v *diffView) ExtendSelection(selection Selection, cursor Cursor) (Selection, bool) {
 	if !v.valid(selection.First) || !v.valid(cursor) {
 		return selection, false
@@ -95,7 +91,7 @@ func (v *diffView) Line(cursor Cursor) (patch.Line, bool) {
 }
 
 func (v *diffView) FindCursor(file patch.File, hunk patch.Hunk, line patch.Line, nearby int, pane Pane) (Cursor, bool) {
-	matches := [3][]Cursor{}
+	var matches [3][]Cursor
 	for y, current := range v.rows {
 		if current.file < 0 {
 			continue

@@ -14,8 +14,7 @@ import (
 
 func (v *diffView) Render(viewport Viewport, cursor Cursor, selection *Selection) string {
 	viewport = v.clampViewport(viewport)
-	rows := v.rows
-	top := viewport.Top
+	rows, top := v.rows, viewport.Top
 	lines := []string{}
 	if v.hasStickyHeader(viewport.Top, viewport.Height) {
 		current := rows[top]
@@ -41,8 +40,7 @@ func (v *diffView) Render(viewport Viewport, cursor Cursor, selection *Selection
 }
 
 func (v *diffView) renderUnifiedRow(current entry, y int, viewport Viewport, cursor Cursor, selection *Selection) string {
-	width := max(20, viewport.Width)
-	text := current.text
+	width, text := max(20, viewport.Width), current.text
 	switch current.kind {
 	case fileRow:
 		return fileStyle.Width(width).Render(text)
@@ -61,8 +59,7 @@ func (v *diffView) renderUnifiedRow(current entry, y int, viewport Viewport, cur
 		}
 		gutter := fmt.Sprintf("%5s %5s %s ", number(line.OldNumber), number(line.NewNumber), prefix)
 		value := gutter + fitANSIWindow(text, viewport.LeftColumn, width-lipgloss.Width(gutter))
-		style := lineStyle(line.Kind, v.dark)
-		strip := false
+		style, strip := lineStyle(line.Kind, v.dark), false
 		if cursor.Coordinate == y {
 			style, strip = cursorStyle, true
 		} else if selected(selection, Cursor{y, cursor.Pane}) {
@@ -83,17 +80,17 @@ func (v *diffView) renderPane(current entry, y int, pane Pane, width, offset int
 	if pane == Left {
 		text, numberValue = current.left, line.OldNumber
 	}
-	prefix := "  "
+	prefix := " "
 	switch line.Kind {
 	case patch.Addition:
-		prefix = addedStyle.Render("+") + " "
+		prefix = addedStyle.Render("+")
 	case patch.Deletion:
-		prefix = removedStyle.Render("-") + " "
+		prefix = removedStyle.Render("-")
 	}
+	prefix += " "
 	gutter := fmt.Sprintf("%5s ", number(numberValue))
 	value := gutter + fitANSIWindow(prefix+text, offset, width-lipgloss.Width(gutter))
-	style := lineStyle(line.Kind, v.dark)
-	strip := false
+	style, strip := lineStyle(line.Kind, v.dark), false
 	if cursor == (Cursor{y, pane}) {
 		style, strip = cursorStyle, true
 	} else if selected(selection, Cursor{y, pane}) {
@@ -158,8 +155,7 @@ func filterANSIColors(value string, stripForeground bool) string {
 		}
 		parts := strings.Split(parameters, ";")
 		filtered := []string{}
-		for index := range parts {
-			part := parts[index]
+		for index, part := range parts {
 			code, err := strconv.Atoi(part)
 			if err != nil {
 				filtered = append(filtered, part)

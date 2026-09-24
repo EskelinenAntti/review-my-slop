@@ -211,14 +211,12 @@ func (l Loader) loadUntracked(ctx context.Context, root string) ([]File, error) 
 			continue
 		}
 		path := string(rawPath)
-		display := visibleText(path)
 		full := filepath.Join(root, filepath.FromSlash(path))
 		info, statErr := os.Lstat(full)
 		if statErr != nil {
 			return nil, fmt.Errorf("stat untracked %q: %w", path, statErr)
 		}
-		mode := info.Mode()
-		file := File{NewPath: path, DisplayPath: display}
+		mode, file := info.Mode(), File{NewPath: path, DisplayPath: visibleText(path)}
 		switch {
 		case mode&os.ModeSymlink != 0:
 			target, readErr := os.Readlink(full)
@@ -238,7 +236,7 @@ func (l Loader) loadUntracked(ctx context.Context, root string) ([]File, error) 
 			if bytes.IndexByte(content, 0) >= 0 {
 				file.Metadata = []string{"untracked binary file"}
 			} else {
-				file = addedFile(display, visibleSource(string(content)))
+				file = addedFile(file.DisplayPath, visibleSource(string(content)))
 			}
 		}
 		files = append(files, file)
@@ -279,17 +277,14 @@ func parseHunkBody(oldLine, newLine int32, body []byte) ([]Line, error) {
 		line := Line{Text: visibleText(string(raw[1:]))}
 		switch raw[0] {
 		case ' ':
-			line.Kind = Context
-			line.OldNumber, line.NewNumber = LineNumber(oldLine), LineNumber(newLine)
+			line.Kind, line.OldNumber, line.NewNumber = Context, LineNumber(oldLine), LineNumber(newLine)
 			oldLine++
 			newLine++
 		case '+':
-			line.Kind = Addition
-			line.NewNumber = LineNumber(newLine)
+			line.Kind, line.NewNumber = Addition, LineNumber(newLine)
 			newLine++
 		case '-':
-			line.Kind = Deletion
-			line.OldNumber = LineNumber(oldLine)
+			line.Kind, line.OldNumber = Deletion, LineNumber(oldLine)
 			oldLine++
 		case '\\':
 			// "\ No newline at end of file" belongs to the preceding line.

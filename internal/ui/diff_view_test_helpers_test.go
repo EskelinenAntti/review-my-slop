@@ -11,3 +11,7 @@ func NewUnifiedView(p patch.Patch, dark bool) View {
 func NewSideBySideView(p patch.Patch, dark bool) View {
 	return newDiffView(p, dark, true)
 }
+
+func (v *diffView) BeginSelection(cursor Cursor) Selection {
+	return Selection{cursor, cursor}
+}

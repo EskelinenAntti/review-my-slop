@@ -144,8 +144,7 @@ func NewWithReview(loader patch.Loader, store comments.Store, ctx context.Contex
 func (m Model) Init() tea.Cmd { return func() tea.Msg { return tea.RequestBackgroundColor() } }
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	review := &m.review
-	comments := &m.comments
+	review, comments := &m.review, &m.comments
 	switch msg := msg.(type) {
 	case tea.BackgroundColorMsg:
 		if dark := msg.IsDark(); dark != m.dark {
@@ -170,22 +169,20 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.finishCommentEdit()
 		}
 	case commentsLoadedMsg:
-		if msg.revision != comments.revision {
-			break
-		}
-		if msg.err != nil {
-			m.err = fmt.Errorf("refresh comments: %w", msg.err)
-		} else {
-			comments.items = msg.comments
-			comments.row = min(comments.row, max(0, len(comments.items)-1))
-			m.err = nil
+		if msg.revision == comments.revision {
+			if msg.err != nil {
+				m.err = fmt.Errorf("refresh comments: %w", msg.err)
+			} else {
+				comments.items = msg.comments
+				comments.row = min(comments.row, max(0, len(comments.items)-1))
+				m.err = nil
+			}
 		}
 	case sourceEditorFinishedMsg:
-		if msg.err != nil {
-			m.err = fmt.Errorf("editor: %w", msg.err)
-			break
+		if msg.err == nil {
+			return m, m.loadRefresh()
 		}
-		return m, m.loadRefresh()
+		m.err = fmt.Errorf("editor: %w", msg.err)
 	case tea.FocusMsg:
 		return m, m.loadRefresh()
 	case refreshDiffMsg:
@@ -232,11 +229,8 @@ func (m *Model) rebuildView(p patch.Patch) {
 
 func (m Model) updateKey(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	name := key.String()
-	review := &m.review
-	comments := &m.comments
-	search := &m.search
-	cursor := review.cursor
-	view := review.view
+	review, comments, search := &m.review, &m.comments, &m.search
+	cursor, view := review.cursor, review.view
 	viewport := &review.viewport
 	switch m.mode {
 	case modeComments:
@@ -357,7 +351,7 @@ func (m Model) updateKey(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		m.pendingKey = name
 	case "v":
 		if review.selection == nil {
-			selection := view.BeginSelection(cursor)
+			selection := Selection{cursor, cursor}
 			review.selection = &selection
 		} else {
 			review.selection = nil
@@ -365,17 +359,9 @@ func (m Model) updateKey(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	case "esc":
 		review.selection = nil
 	case "c":
-		var err error
-		cmd, err = m.beginComment()
-		if err != nil {
-			m.err = err
-		}
+		cmd, m.err = m.beginComment()
 	case "e":
-		var err error
-		cmd, err = m.openCurrentLine()
-		if err != nil {
-			m.err = err
-		}
+		cmd, m.err = m.openCurrentLine()
 	case "C":
 		m.mode = modeComments
 		comments.row = min(comments.row, max(0, len(comments.items)-1))
@@ -389,12 +375,11 @@ func (m Model) updateKey(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	case "R":
 		cmd = m.loadRefresh()
 	case "tab":
-		if m.defaultBranch == "" {
-			break
+		if m.defaultBranch != "" {
+			m.showDefault = !m.showDefault
+			review.selection = nil
+			cmd = m.loadRefresh()
 		}
-		m.showDefault = !m.showDefault
-		review.selection = nil
-		cmd = m.loadRefresh()
 	case "t":
 		m.toggleSideBySide()
 	}

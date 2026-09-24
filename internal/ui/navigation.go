@@ -40,8 +40,7 @@ func (m *Model) halfPage(direction Direction) {
 		viewport.Top += distance
 		viewport = view.clampViewport(viewport)
 		target := min(len(view.rows)-1, max(0, cursor.Coordinate+distance))
-		height := view.contentHeight(viewport)
-		top := viewport.Top
+		height, top := view.contentHeight(viewport), viewport.Top
 	search:
 		for distance := range height {
 			offset := int(direction) * distance
@@ -73,14 +72,13 @@ func (m *Model) jumpFile(direction Direction) {
 	if !view.valid(review.cursor) {
 		return
 	}
-	file := view.patch.Files[view.rows[review.cursor.Coordinate].file]
-	for y := review.cursor.Coordinate; ; {
+	fileIndex, y := view.rows[review.cursor.Coordinate].file, review.cursor.Coordinate
+	for {
 		cursor, ok := view.scan(y, review.cursor.Pane, direction, false)
 		if !ok {
 			return
 		}
-		nextFile := view.patch.Files[view.rows[cursor.Coordinate].file]
-		if nextFile.OldPath != file.OldPath || nextFile.NewPath != file.NewPath {
+		if view.rows[cursor.Coordinate].file != fileIndex {
 			m.setCursor(cursor)
 			return
 		}
@@ -91,21 +89,22 @@ func (m *Model) jumpFile(direction Direction) {
 func (m *Model) switchPane(pane Pane) {
 	review := &m.review
 	view := review.view
+	switchPane := view.SwitchPane
 	if !m.sideBySideActive() {
 		return
 	}
-	cursor, ok := view.SwitchPane(review.cursor, pane)
+	cursor, ok := switchPane(review.cursor, pane)
 	if !ok {
 		return
 	}
 	currentSelection := review.selection
 	if currentSelection != nil {
-		first, firstOK := view.SwitchPane(currentSelection.First, pane)
-		last, lastOK := view.SwitchPane(currentSelection.Last, pane)
+		first, firstOK := switchPane(currentSelection.First, pane)
+		last, lastOK := switchPane(currentSelection.Last, pane)
 		if !firstOK || !lastOK {
 			return
 		}
-		selection := view.BeginSelection(first)
+		selection := Selection{first, first}
 		selection, ok = view.ExtendSelection(selection, last)
 		if !ok {
 			return
@@ -169,8 +168,7 @@ func (m Model) updateSearch(name string, key tea.KeyPressMsg) (tea.Model, tea.Cm
 }
 
 func (m *Model) updateIncrementalSearch() {
-	search := &m.search
-	review := &m.review
+	search, review := &m.search, &m.review
 	if len(search.query) == 0 {
 		m.setCursor(search.from)
 		search.miss = false
@@ -184,8 +182,7 @@ func (m *Model) updateIncrementalSearch() {
 }
 
 func (m *Model) repeatSearch(direction Direction) {
-	search := &m.search
-	review := &m.review
+	search, review := &m.search, &m.review
 	if search.term == "" {
 		return
 	}

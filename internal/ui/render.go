@@ -23,6 +23,7 @@ func (m Model) View() tea.View {
 
 func (m Model) render() string {
 	review := &m.review
+	files := review.patch.Files
 	switch m.mode {
 	case modeHelp:
 		return m.renderHelp()
@@ -30,7 +31,7 @@ func (m Model) render() string {
 		return m.renderComments()
 	}
 	var added, removed int
-	for _, file := range review.patch.Files {
+	for _, file := range files {
 		for _, hunk := range file.Hunks {
 			for _, line := range hunk.Lines {
 				switch line.Kind {
@@ -44,7 +45,7 @@ func (m Model) render() string {
 	}
 	header := titleStyle.Render("review-my-slop") + "  " + mutedStyle.Render(fmt.Sprintf("+%d-%d", added, removed))
 	var body []string
-	if len(review.patch.Files) == 0 {
+	if len(files) == 0 {
 		empty := "No unstaged or untracked changes."
 		if m.currentBranch() != "" {
 			empty = "No branch or worktree changes."
@@ -73,10 +74,8 @@ func (m Model) render() string {
 
 func (m Model) renderScreen(header string, body []string, footer string) string {
 	height := m.screenBodyHeight()
-	body = append(body, make([]string, max(0, height-len(body)))...)
-	body = body[:height]
-	lines := []string{header}
-	lines = append(lines, body...)
+	body = append(body, make([]string, max(0, height-len(body)))...)[:height]
+	lines := append([]string{header}, body...)
 	lines = append(lines, footer, "")
 	return strings.Join(lines, "\n")
 }
@@ -109,13 +108,12 @@ func (m Model) renderComments() string {
 	state := &m.comments
 	items := state.items
 	header := titleStyle.Render("comments") + "  " + mutedStyle.Render(fmt.Sprintf("%d pending", len(items)))
-	height := m.screenBodyHeight()
-	width := max(20, m.width)
+	height, width := m.screenBodyHeight(), max(20, m.width)
 	body := make([]string, height)
 	if len(items) == 0 {
 		body[min(1, height-1)] = mutedStyle.Render("No pending comments.")
 	} else {
-		body = body[:0]
+		body = nil
 		start := min(max(0, state.row-height+1), max(0, len(items)-height))
 		for index, comment := range items[start:min(len(items), start+height)] {
 			index += start
@@ -145,8 +143,7 @@ func (m Model) renderComments() string {
 }
 
 func (m Model) renderHelp() string {
-	bindings := []keyBinding{}
-	width := 0
+	bindings, width := []keyBinding{}, 0
 	for _, line := range strings.Split(helpText, "\n") {
 		keys, description, _ := strings.Cut(line, "\t")
 		binding := keyBinding{keys, description}

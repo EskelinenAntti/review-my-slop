@@ -54,11 +54,10 @@ func (m Model) updateComments(name string) (tea.Model, tea.Cmd) {
 }
 
 func (m *Model) beginComment() (tea.Cmd, error) {
-	review := &m.review
-	state := &m.comments
+	review, state := &m.review, &m.comments
 	selection := review.selection
 	if selection == nil {
-		current := review.view.BeginSelection(review.cursor)
+		current := Selection{review.cursor, review.cursor}
 		selection = &current
 	}
 	anchor, err := review.view.Anchor(*selection)
