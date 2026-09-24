@@ -69,8 +69,9 @@ func (m *Model) beginComment() (tea.Cmd, error) {
 
 func (m *Model) finishCommentEdit() {
 	body := strings.TrimSpace(m.comments.body)
+	editing := m.comments.editIndex >= 0
 	if body == "" {
-		if m.comments.editIndex >= 0 {
+		if editing {
 			m.deleteComment(m.comments.editIndex)
 		}
 		m.clearCommentEdit()
@@ -83,7 +84,7 @@ func (m *Model) finishCommentEdit() {
 		return
 	}
 	var comment comments.Comment
-	if m.comments.editIndex >= 0 {
+	if editing {
 		comment = m.comments.items[m.comments.editIndex]
 		comment.Body = body
 	} else {
@@ -95,7 +96,7 @@ func (m *Model) finishCommentEdit() {
 		m.clearCommentEdit()
 		return
 	}
-	if m.comments.editIndex >= 0 {
+	if editing {
 		m.comments.items[m.comments.editIndex] = saved
 	} else {
 		m.comments.items = append(m.comments.items, saved)
