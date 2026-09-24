@@ -23,9 +23,7 @@ func WritePrompt(w io.Writer, comments []Comment) error {
 			return err
 		}
 		if len(a.QuotedLines) > 0 {
-			lines := append([]string{"```diff"}, a.QuotedLines...)
-			lines = append(lines, "```")
-			for _, line := range lines {
+			for _, line := range append(append([]string{"```diff"}, a.QuotedLines...), "```") {
 				if err := println(line); err != nil {
 					return err
 				}

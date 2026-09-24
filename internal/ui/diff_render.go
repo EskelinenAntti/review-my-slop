@@ -160,9 +160,10 @@ func filterANSIColors(value string, stripForeground bool) string {
 		parts := strings.Split(parameters, ";")
 		filtered := []string{}
 		for index := range parts {
-			code, err := strconv.Atoi(parts[index])
+			part := parts[index]
+			code, err := strconv.Atoi(part)
 			if err != nil {
-				filtered = append(filtered, parts[index])
+				filtered = append(filtered, part)
 				continue
 			}
 			switch {
@@ -178,7 +179,7 @@ func filterANSIColors(value string, stripForeground bool) string {
 			case code >= 40 && code <= 49, code >= 100 && code <= 107,
 				stripForeground && code >= 30 && code <= 39, stripForeground && code >= 90 && code <= 97:
 			default:
-				filtered = append(filtered, parts[index])
+				filtered = append(filtered, part)
 			}
 		}
 		if len(filtered) == 0 {
