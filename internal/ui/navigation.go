@@ -8,21 +8,18 @@ import (
 
 func (m *Model) move(direction Direction) {
 	review := &m.review
-	if !review.view.valid(review.cursor) {
-		return
-	}
-	next, ok := review.view.scan(review.cursor.Coordinate, review.cursor.Pane, direction)
-	if !ok {
-		return
-	}
-	if review.selection != nil {
-		selection, selectionOK := review.view.ExtendSelection(*review.selection, next)
-		if !selectionOK {
-			return
+	if review.view.valid(review.cursor) {
+		if next, ok := review.view.scan(review.cursor.Coordinate, review.cursor.Pane, direction); ok {
+			if review.selection != nil {
+				selection, selectionOK := review.view.ExtendSelection(*review.selection, next)
+				if !selectionOK {
+					return
+				}
+				review.selection = &selection
+			}
+			m.setCursor(next)
 		}
-		review.selection = &selection
 	}
-	m.setCursor(next)
 }
 
 func (m *Model) setCursor(cursor Cursor) {
@@ -45,12 +42,11 @@ func (m *Model) halfPage(direction Direction) {
 		for distance := range height {
 			offset := int(direction) * distance
 			for _, y := range []int{target + offset, target - offset} {
-				if y < top || y >= top+height || y >= len(view.rows) {
-					continue
-				}
-				if candidate, ok := view.cursorAt(y, cursor.Pane); ok {
-					cursor = candidate
-					break search
+				if y >= top && y < top+height && y < len(view.rows) {
+					if candidate, ok := view.cursorAt(y, cursor.Pane); ok {
+						cursor = candidate
+						break search
+					}
 				}
 			}
 		}
@@ -69,20 +65,19 @@ func (m *Model) jumpFile(direction Direction) {
 	review := &m.review
 	review.selection = nil
 	view := review.view
-	if !view.valid(review.cursor) {
-		return
-	}
-	fileIndex, y := view.rows[review.cursor.Coordinate].file, review.cursor.Coordinate
-	for {
-		cursor, ok := view.scan(y, review.cursor.Pane, direction)
-		if !ok {
-			return
+	if view.valid(review.cursor) {
+		fileIndex, y := view.rows[review.cursor.Coordinate].file, review.cursor.Coordinate
+		for {
+			cursor, ok := view.scan(y, review.cursor.Pane, direction)
+			if !ok {
+				return
+			}
+			if view.rows[cursor.Coordinate].file != fileIndex {
+				m.setCursor(cursor)
+				return
+			}
+			y = cursor.Coordinate
 		}
-		if view.rows[cursor.Coordinate].file != fileIndex {
-			m.setCursor(cursor)
-			return
-		}
-		y = cursor.Coordinate
 	}
 }
 
@@ -90,28 +85,24 @@ func (m *Model) switchPane(pane Pane) {
 	review := &m.review
 	view := review.view
 	switchPane := view.SwitchPane
-	if !m.sideBySideActive() {
-		return
-	}
-	cursor, ok := switchPane(review.cursor, pane)
-	if !ok {
-		return
-	}
-	currentSelection := review.selection
-	if currentSelection != nil {
-		first, firstOK := switchPane(currentSelection.First, pane)
-		last, lastOK := switchPane(currentSelection.Last, pane)
-		if !firstOK || !lastOK {
-			return
+	if m.sideBySideActive() {
+		if cursor, ok := switchPane(review.cursor, pane); ok {
+			currentSelection := review.selection
+			if currentSelection != nil {
+				first, firstOK := switchPane(currentSelection.First, pane)
+				last, lastOK := switchPane(currentSelection.Last, pane)
+				if !firstOK || !lastOK {
+					return
+				}
+				selection, ok := view.ExtendSelection(Selection{first, first}, last)
+				if !ok {
+					return
+				}
+				review.selection = &selection
+			}
+			m.setCursor(cursor)
 		}
-		selection := Selection{first, first}
-		selection, ok = view.ExtendSelection(selection, last)
-		if !ok {
-			return
-		}
-		review.selection = &selection
 	}
-	m.setCursor(cursor)
 }
 
 func (m Model) sideBySideActive() bool {
@@ -125,20 +116,15 @@ func (m *Model) toggleSideBySide() {
 		m.err = fmt.Errorf("side-by-side view requires a terminal at least %d columns wide", minimumSideBySideWidth)
 		return
 	}
-	m.setSideBySide(enabled)
-	if m.saveLayout != nil {
-		if err := m.saveLayout(review.sideBySide); err != nil {
-			m.err = fmt.Errorf("save side-by-side preference: %w", err)
-		}
-	}
-}
-
-func (m *Model) setSideBySide(enabled bool) {
-	review := &m.review
 	wasActive := m.sideBySideActive()
 	review.sideBySide = enabled
 	if wasActive != m.sideBySideActive() {
 		m.rebuildView(review.patch)
+	}
+	if m.saveLayout != nil {
+		if err := m.saveLayout(review.sideBySide); err != nil {
+			m.err = fmt.Errorf("save side-by-side preference: %w", err)
+		}
 	}
 }
 
@@ -183,13 +169,12 @@ func (m *Model) updateIncrementalSearch() {
 
 func (m *Model) repeatSearch(direction Direction) {
 	search, review := &m.search, &m.review
-	if search.term == "" {
-		return
+	if search.term != "" {
+		match, ok := review.view.Search(search.term, review.cursor, direction)
+		if !ok {
+			m.err = fmt.Errorf("no matches for %q", search.term)
+			return
+		}
+		m.setCursor(match)
 	}
-	match, ok := review.view.Search(search.term, review.cursor, direction)
-	if !ok {
-		m.err = fmt.Errorf("no matches for %q", search.term)
-		return
-	}
-	m.setCursor(match)
 }

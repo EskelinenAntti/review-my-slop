@@ -206,7 +206,6 @@ func (s Store) transact(write bool, fn func(*bolt.Bucket) error) error {
 	return transaction(func(tx *bolt.Tx) error {
 		bucket := tx.Bucket(messagesBucket)
 		if write {
-			var err error
 			bucket, err = tx.CreateBucketIfNotExists(messagesBucket)
 			if err != nil {
 				return err

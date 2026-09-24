@@ -18,7 +18,12 @@ import (
 
 const maxFileBytes = 2 << 20
 
-type Runner func(ctx context.Context, dir string, args ...string) ([]byte, error)
+type (
+	Runner func(context.Context, string, ...string) ([]byte, error)
+	Loader struct {
+		Runner Runner
+	}
+)
 
 func runGit(ctx context.Context, dir string, args ...string) ([]byte, error) {
 	cmd := exec.CommandContext(ctx, "git", args...)
@@ -36,10 +41,6 @@ func runGit(ctx context.Context, dir string, args ...string) ([]byte, error) {
 		return nil, fmt.Errorf("git %s: %s", strings.Join(args, " "), strings.TrimSpace(string(exitErr.Stderr)))
 	}
 	return nil, fmt.Errorf("git %s: %w", strings.Join(args, " "), err)
-}
-
-type Loader struct {
-	Runner Runner
 }
 
 func (l *Loader) Root(ctx context.Context, dir string) (string, error) {
@@ -124,11 +125,7 @@ func (l Loader) build(ctx context.Context, root, base string, raw []byte) (Patch
 		hash.Write(append([]byte(file.NewPath), []byte(file.NewSource)...))
 	}
 
-	return Patch{
-		Repository:  root,
-		Fingerprint: hex.EncodeToString(hash.Sum(nil)),
-		Files:       files,
-	}, nil
+	return Patch{root, hex.EncodeToString(hash.Sum(nil)), files}, nil
 }
 
 func (l Loader) defaultBranch(ctx context.Context, root string) string {
@@ -162,22 +159,17 @@ func parseTracked(ctx context.Context, runner Runner, root string, raw []byte, b
 		for index, value := range fd.Extended {
 			metadata[index] = visibleText(value)
 		}
-		file := File{
-			OldPath:     oldPath,
-			NewPath:     newPath,
-			DisplayPath: visibleText(display),
-			Metadata:    metadata,
-		}
+		file := File{oldPath, newPath, visibleText(display), "", "", metadata, nil}
 		if oldPath != "" {
-			if out, readErr := runner(ctx, root, "show", base+":"+oldPath); readErr == nil && len(out) <= maxFileBytes && bytes.IndexByte(out, 0) < 0 {
-				file.OldSource = visibleSource(string(out))
+			if out, readErr := runner(ctx, root, "show", base+":"+oldPath); readErr == nil {
+				file.OldSource = visibleSourceBytes(out)
 			}
 		}
 		if newPath != "" {
 			full := filepath.Join(root, filepath.FromSlash(newPath))
 			if info, statErr := os.Lstat(full); statErr == nil && info.Mode().IsRegular() && info.Size() <= maxFileBytes {
-				if out, readErr := os.ReadFile(full); readErr == nil && bytes.IndexByte(out, 0) < 0 {
-					file.NewSource = visibleSource(string(out))
+				if out, readErr := os.ReadFile(full); readErr == nil {
+					file.NewSource = visibleSourceBytes(out)
 				}
 			}
 		}
@@ -190,10 +182,7 @@ func parseTracked(ctx context.Context, runner Runner, root string, raw []byte, b
 			if h.Section != "" {
 				header += " " + h.Section
 			}
-			file.Hunks = append(file.Hunks, Hunk{
-				Header: header,
-				Lines:  lines,
-			})
+			file.Hunks = append(file.Hunks, Hunk{header, lines})
 		}
 		files = append(files, file)
 	}
@@ -252,16 +241,7 @@ func addedFile(path, content string) File {
 			lines = append(lines, Line{Kind: Addition, Text: line, NewNumber: LineNumber(i + 1)})
 		}
 	}
-	return File{
-		NewPath:     path,
-		DisplayPath: visibleText(path),
-		NewSource:   content,
-		Metadata:    []string{"untracked file"},
-		Hunks: []Hunk{{
-			Header: fmt.Sprintf("@@ -0,0 +1,%d @@", len(lines)),
-			Lines:  lines,
-		}},
-	}
+	return File{"", path, visibleText(path), "", content, []string{"untracked file"}, []Hunk{{fmt.Sprintf("@@ -0,0 +1,%d @@", len(lines)), lines}}}
 }
 
 func parseHunkBody(oldLine, newLine int32, body []byte) ([]Line, error) {
@@ -320,6 +300,13 @@ func visibleSource(value string) string {
 		}
 	}
 	return result.String()
+}
+
+func visibleSourceBytes(value []byte) string {
+	if len(value) > maxFileBytes || bytes.IndexByte(value, 0) >= 0 {
+		return ""
+	}
+	return visibleSource(string(value))
 }
 
 func visibleText(value string) string {

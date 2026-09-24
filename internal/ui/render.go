@@ -1,3 +1,5 @@
+// Package ui contains the terminal client for review. It owns layout, cursor
+// state, rendering, and the user's external-editor interaction.
 package ui
 
 import (
@@ -75,8 +77,7 @@ func (m Model) render() string {
 func (m Model) renderScreen(header string, body []string, footer string) string {
 	height := m.screenBodyHeight()
 	body = append(body, make([]string, max(0, height-len(body)))...)[:height]
-	lines := append([]string{header}, body...)
-	return strings.Join(append(lines, footer, ""), "\n")
+	return strings.Join(append(append([]string{header}, body...), footer, ""), "\n")
 }
 
 func (m Model) renderFooter(left string) string {
@@ -127,9 +128,13 @@ func (m Model) renderComments() string {
 			if lineNumber > 0 {
 				location += fmt.Sprintf(":%d", lineNumber)
 			}
-			commentBody := strings.ReplaceAll(strings.TrimSpace(comment.Body), "\n", " ")
-			line := ansi.Truncate(fmt.Sprintf("%s%s  %s", prefix, location, commentBody), width, "")
-			body = append(body, style.Width(width).Render(line))
+			body = append(body, style.Width(width).Render(
+				ansi.Truncate(
+					fmt.Sprintf("%s%s  %s", prefix, location, strings.ReplaceAll(strings.TrimSpace(comment.Body), "\n", " ")),
+					width,
+					"",
+				),
+			))
 		}
 	}
 	footer := mutedStyle.Render("j/k move  Enter/e edit  D delete  Esc/q return")

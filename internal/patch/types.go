@@ -1,36 +1,29 @@
+// Package patch represents and loads the repository change set being reviewed.
+// Repository and Git details stay behind this package's loading API.
 package patch
 
-type Patch struct {
-	Repository  string
-	Fingerprint string
-	Files       []File
-}
-
-type File struct {
-	OldPath     string
-	NewPath     string
-	DisplayPath string
-	OldSource   string
-	NewSource   string
-	Metadata    []string
-	Hunks       []Hunk
-}
-
-type Hunk struct {
-	Header string
-	Lines  []Line
-}
-
-type Line struct {
-	Kind      LineKind
-	Text      string
-	OldNumber LineNumber
-	NewNumber LineNumber
-}
-
-type LineNumber int
-
-type LineKind uint8
+type (
+	Patch struct {
+		Repository, Fingerprint string
+		Files                   []File
+	}
+	File struct {
+		OldPath, NewPath, DisplayPath, OldSource, NewSource string
+		Metadata                                            []string
+		Hunks                                               []Hunk
+	}
+	Hunk struct {
+		Header string
+		Lines  []Line
+	}
+	Line struct {
+		Kind                 LineKind
+		Text                 string
+		OldNumber, NewNumber LineNumber
+	}
+	LineNumber int
+	LineKind   uint8
+)
 
 const (
 	Context LineKind = iota

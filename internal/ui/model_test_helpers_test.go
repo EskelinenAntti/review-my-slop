@@ -34,3 +34,12 @@ func New(p patch.Patch, items []comments.Comment, save SaveCommentFunc, layout I
 	review.cursor, _ = review.view.First()
 	return m
 }
+
+func (m *Model) setSideBySide(enabled bool) {
+	review := &m.review
+	wasActive := m.sideBySideActive()
+	review.sideBySide = enabled
+	if wasActive != m.sideBySideActive() {
+		m.rebuildView(review.patch)
+	}
+}

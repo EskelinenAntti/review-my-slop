@@ -11,88 +11,80 @@ import (
 	"github.com/eskelinenantti/review-my-slop/internal/patch"
 )
 
-type Size struct {
-	Width  int
-	Height int
-}
-
-type refreshDiffMsg struct {
-	patch  patch.Patch
-	branch string
-	err    error
-}
-
-type commentEditorFinishedMsg struct {
-	body string
-	err  error
-}
-type commentsLoadedMsg struct {
-	comments []comments.Comment
-	revision uint64
-	err      error
-}
-type sourceEditorFinishedMsg struct{ err error }
-
-type mode uint8
+type (
+	Size struct {
+		Width, Height int
+	}
+	refreshDiffMsg struct {
+		patch  patch.Patch
+		branch string
+		err    error
+	}
+	commentEditorFinishedMsg struct {
+		body string
+		err  error
+	}
+	commentsLoadedMsg struct {
+		comments []comments.Comment
+		revision uint64
+		err      error
+	}
+	sourceEditorFinishedMsg struct{ err error }
+	mode                    uint8
+)
 
 const (
 	modeBrowse mode = iota
 	modeComments
 	modeHelp
 	modeSearch
-)
 
-const (
+	// Layout constants are explicit so the mode iota remains independent.
 	horizontalScrollStep   = 4
 	minimumSideBySideWidth = 100
 )
 
 var DefaultSize = Size{80, 30}
 
-type reviewState struct {
-	patch      patch.Patch
-	view       *diffView
-	cursor     Cursor
-	viewport   Viewport
-	selection  *Selection
-	sideBySide bool
-}
-
-type commentState struct {
-	items      []comments.Comment
-	row        int
-	body       string
-	editIndex  int
-	editAnchor comments.Anchor
-	revision   uint64
-}
-
-type searchState struct {
-	query []rune
-	term  string
-	from  Cursor
-	miss  bool
-}
-
-type Model struct {
-	review        reviewState
-	comments      commentState
-	search        searchState
-	width         int
-	height        int
-	mode          mode
-	save          func(comments.Comment, patch.Patch) (comments.Comment, error)
-	delete        func(comments.Comment, patch.Patch) error
-	load          func() ([]comments.Comment, error)
-	refresh       func(string) (patch.Patch, error)
-	err           error
-	quitting      bool
-	pendingKey    string
-	saveLayout    func(bool) error
-	defaultBranch string
-	showDefault   bool
-	dark          bool
-}
+type (
+	reviewState struct {
+		patch      patch.Patch
+		view       *diffView
+		cursor     Cursor
+		viewport   Viewport
+		selection  *Selection
+		sideBySide bool
+	}
+	commentState struct {
+		items          []comments.Comment
+		row, editIndex int
+		body           string
+		editAnchor     comments.Anchor
+		revision       uint64
+	}
+	searchState struct {
+		query []rune
+		term  string
+		from  Cursor
+		miss  bool
+	}
+	Model struct {
+		review                      reviewState
+		comments                    commentState
+		search                      searchState
+		width, height               int
+		mode                        mode
+		save                        func(comments.Comment, patch.Patch) (comments.Comment, error)
+		delete                      func(comments.Comment, patch.Patch) error
+		load                        func() ([]comments.Comment, error)
+		refresh                     func(string) (patch.Patch, error)
+		err                         error
+		pendingKey                  string
+		saveLayout                  func(bool) error
+		defaultBranch               string
+		quitting, showDefault, dark bool
+	}
+)
 
 func NewWithReview(loader patch.Loader, store comments.Store, ctx context.Context, directory string, p patch.Patch, items []comments.Comment, size Size, defaultBranch string) (Model, error) {
 	sideBySide, err := loadLayoutSettings()
@@ -103,7 +95,7 @@ func NewWithReview(loader patch.Loader, store comments.Store, ctx context.Contex
 		size = DefaultSize
 	}
 	m := Model{
-		review:   reviewState{patch: p},
+		review:   reviewState{patch: p, sideBySide: sideBySide},
 		comments: commentState{items: items, editIndex: -1},
 		width:    size.Width,
 		height:   size.Height,
@@ -117,11 +109,11 @@ func NewWithReview(loader patch.Loader, store comments.Store, ctx context.Contex
 			}
 			return comment, nil
 		},
-		saveLayout: saveLayoutSettings,
-		dark:       true,
+		saveLayout:    saveLayoutSettings,
+		defaultBranch: defaultBranch,
+		dark:          true,
 	}
 	review := &m.review
-	review.sideBySide = sideBySide
 	review.view = newDiffView(p, m.dark, m.sideBySideActive())
 	review.viewport = review.view.Resize(Viewport{}, m.width, m.screenBodyHeight())
 	review.cursor, _ = review.view.First()
@@ -137,11 +129,10 @@ func NewWithReview(loader patch.Loader, store comments.Store, ctx context.Contex
 		}
 		return loader.LoadBranch(ctx, directory, branch)
 	}
-	m.defaultBranch = defaultBranch
 	return m, nil
 }
 
-func (m Model) Init() tea.Cmd { return func() tea.Msg { return tea.RequestBackgroundColor() } }
+func (Model) Init() tea.Cmd { return func() tea.Msg { return tea.RequestBackgroundColor() } }
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	review, comments := &m.review, &m.comments
@@ -212,14 +203,9 @@ func (m Model) loadRefresh() tea.Cmd {
 func (m *Model) rebuildView(p patch.Patch) {
 	review := &m.review
 	oldView := review.view
-	oldState := State{
-		Cursor:    &review.cursor,
-		Selection: review.selection,
-		Viewport:  review.viewport,
-	}
 	review.patch = p
 	review.view = newDiffView(p, m.dark, m.sideBySideActive())
-	state := Preserve(oldView, oldState, review.view)
+	state := Preserve(oldView, State{&review.cursor, review.selection, review.viewport}, review.view)
 	review.viewport = state.Viewport
 	review.selection = state.Selection
 	if state.Cursor != nil {
@@ -230,8 +216,7 @@ func (m *Model) rebuildView(p patch.Patch) {
 func (m Model) updateKey(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	name := key.String()
 	review, comments, search := &m.review, &m.comments, &m.search
-	cursor, view := review.cursor, review.view
-	viewport := &review.viewport
+	cursor, view, viewport := review.cursor, review.view, &review.viewport
 	switch m.mode {
 	case modeComments:
 		return m.updateComments(name)
@@ -257,8 +242,7 @@ func (m Model) updateKey(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	if pending == "z" {
-		height := viewport.Height
-		alignmentOffset := 0
+		height, alignmentOffset := viewport.Height, 0
 		switch name {
 		case "z":
 			alignmentOffset = height / 2
@@ -294,8 +278,7 @@ func (m Model) updateKey(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	var cmd tea.Cmd
 	switch name {
 	case "ctrl+c", "q":
-		m.quitting = true
-		cmd = tea.Quit
+		m.quitting, cmd = true, tea.Quit
 	case "?":
 		m.mode = modeHelp
 	case "/":
@@ -351,8 +334,7 @@ func (m Model) updateKey(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		m.pendingKey = name
 	case "v":
 		if review.selection == nil {
-			selection := Selection{cursor, cursor}
-			review.selection = &selection
+			review.selection = &Selection{cursor, cursor}
 		} else {
 			review.selection = nil
 		}
@@ -387,10 +369,10 @@ func (m Model) updateKey(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) currentBranch() string {
-	if !m.showDefault {
-		return ""
+	if m.showDefault {
+		return m.defaultBranch
 	}
-	return m.defaultBranch
+	return ""
 }
 
 func (m Model) screenBodyHeight() int { return max(1, m.height-3) }

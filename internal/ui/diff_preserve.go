@@ -45,30 +45,27 @@ func Preserve(old *diffView, state State, next *diffView) State {
 }
 
 func identify(v *diffView, cursor *Cursor) cursorIdentity {
-	if cursor == nil || !v.valid(*cursor) {
-		return cursorIdentity{}
+	if cursor != nil && v.valid(*cursor) {
+		current := v.rows[cursor.Coordinate]
+		file := v.patch.Files[current.file]
+		hunk := file.Hunks[current.hunk]
+		line := hunk.Lines[v.lineIndex(current, cursor.Pane)]
+		return cursorIdentity{file, hunk, line, *cursor, true}
 	}
-	current := v.rows[cursor.Coordinate]
-	file := v.patch.Files[current.file]
-	hunk := file.Hunks[current.hunk]
-	line := hunk.Lines[v.lineIndex(current, cursor.Pane)]
-	return cursorIdentity{file, hunk, line, *cursor, true}
+	return cursorIdentity{}
 }
 
 func preserveSelection(old *diffView, selection *Selection, next *diffView) (Selection, bool) {
 	if selection == nil {
 		return Selection{}, false
 	}
-	first := identify(old, &selection.First)
-	last := identify(old, &selection.Last)
-	if !first.valid || !last.valid {
-		return Selection{}, false
+	first, last := identify(old, &selection.First), identify(old, &selection.Last)
+	if first.valid && last.valid {
+		translatedFirst, firstOK := next.FindCursor(first.file, first.hunk, first.line, first.cursor.Coordinate, first.cursor.Pane)
+		translatedLast, lastOK := next.FindCursor(last.file, last.hunk, last.line, last.cursor.Coordinate, last.cursor.Pane)
+		if firstOK && lastOK && sameFile(first.file, last.file) && first.hunk.Header == last.hunk.Header {
+			return next.ExtendSelection(Selection{translatedFirst, translatedFirst}, translatedLast)
+		}
 	}
-	translatedFirst, firstOK := next.FindCursor(first.file, first.hunk, first.line, first.cursor.Coordinate, first.cursor.Pane)
-	translatedLast, lastOK := next.FindCursor(last.file, last.hunk, last.line, last.cursor.Coordinate, last.cursor.Pane)
-	if !firstOK || !lastOK || !sameFile(first.file, last.file) || first.hunk.Header != last.hunk.Header {
-		return Selection{}, false
-	}
-	translated := Selection{translatedFirst, translatedFirst}
-	return next.ExtendSelection(translated, translatedLast)
+	return Selection{}, false
 }

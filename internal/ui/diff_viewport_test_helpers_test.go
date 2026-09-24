@@ -2,6 +2,14 @@ package ui
 
 import "github.com/eskelinenantti/review-my-slop/internal/patch"
 
+type VerticalAlignment uint8
+
+const (
+	Top VerticalAlignment = iota
+	Middle
+	Bottom
+)
+
 func (v *diffView) NewViewport(width, height int) Viewport {
 	return v.Resize(Viewport{}, width, height)
 }

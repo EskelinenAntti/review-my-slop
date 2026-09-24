@@ -15,20 +15,19 @@ const (
 	lineRow
 )
 
-type entry struct {
-	kind              rowKind
-	file, hunk        int
-	leftLine          int
-	rightLine         int
-	text, left, right string
-}
-
-type diffView struct {
-	patch patch.Patch
-	rows  []entry
-	split bool
-	dark  bool
-}
+type (
+	entry struct {
+		kind                rowKind
+		file, hunk          int
+		leftLine, rightLine int
+		text, left, right   string
+	}
+	diffView struct {
+		patch       patch.Patch
+		rows        []entry
+		split, dark bool
+	}
+)
 
 func newDiffView(p patch.Patch, dark, split bool) *diffView {
 	v := &diffView{patch: p, split: split, dark: dark}
@@ -59,12 +58,11 @@ func (v *diffView) build() {
 				continue
 			}
 			for lineIndex, line := range hunk.Lines {
-				text := line.Text
+				lines, number := highlighted.New, line.NewNumber
 				if line.Kind == patch.Deletion {
-					text = highlightedLine(highlighted.Old, line.OldNumber, text)
-				} else {
-					text = highlightedLine(highlighted.New, line.NewNumber, text)
+					lines, number = highlighted.Old, line.OldNumber
 				}
+				text := highlightedLine(lines, number, line.Text)
 				rows = append(rows, entry{lineRow, fileIndex, hunkIndex, lineIndex, lineIndex, text, "", ""})
 			}
 		}
@@ -91,11 +89,11 @@ func appendSplitLines(rows []entry, fileIndex, hunkIndex int, hunk patch.Hunk, h
 		for index < last && lines[index].Kind == patch.Deletion {
 			index++
 		}
-		addedStart, addedEnd := index, index
+		addedEnd := index
 		for addedEnd < last && lines[addedEnd].Kind == patch.Addition {
 			addedEnd++
 		}
-		count := max(index-removedStart, addedEnd-addedStart)
+		count := max(index-removedStart, addedEnd-index)
 		for offset := range count {
 			leftLine, rightLine, left, right := -1, -1, "", ""
 			if removedStart+offset < index {
@@ -103,8 +101,8 @@ func appendSplitLines(rows []entry, fileIndex, hunkIndex int, hunk patch.Hunk, h
 				old := lines[leftLine]
 				left = highlightedLine(highlighted.Old, old.OldNumber, old.Text)
 			}
-			if addedStart+offset < addedEnd {
-				rightLine = addedStart + offset
+			if index+offset < addedEnd {
+				rightLine = index + offset
 				added := lines[rightLine]
 				right = highlightedLine(highlighted.New, added.NewNumber, added.Text)
 			}

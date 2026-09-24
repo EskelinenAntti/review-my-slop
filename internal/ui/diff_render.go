@@ -20,8 +20,7 @@ func (v *diffView) Render(viewport Viewport, cursor Cursor, selection *Selection
 		current := rows[top]
 		lines = append(lines, fileStyle.Width(max(20, viewport.Width)).Render(v.patch.Files[current.file].DisplayPath))
 	}
-	end := min(len(rows), top+v.contentHeight(viewport))
-	for y := top; y < end; y++ {
+	for y := top; y < min(len(rows), top+v.contentHeight(viewport)); y++ {
 		current := rows[y]
 		if v.split && current.kind == lineRow {
 			leftWidth := max(20, (viewport.Width-3)/2)
@@ -33,7 +32,8 @@ func (v *diffView) Render(viewport Viewport, cursor Cursor, selection *Selection
 			lines = append(lines, v.renderUnifiedRow(current, y, viewport, cursor, selection))
 		}
 	}
-	for len(lines) < viewport.Height {
+	// Integer range skips padding automatically when the viewport is full.
+	for range viewport.Height - len(lines) {
 		lines = append(lines, "")
 	}
 	return strings.Join(lines, "\n")
@@ -50,22 +50,20 @@ func (v *diffView) renderUnifiedRow(current entry, y int, viewport Viewport, cur
 		return hunkStyle.Render(text)
 	case lineRow:
 		line := v.patch.Files[current.file].Hunks[current.hunk].Lines[current.rightLine]
-		prefix := " "
-		switch line.Kind {
-		case patch.Addition:
-			prefix = addedStyle.Render("+")
-		case patch.Deletion:
-			prefix = removedStyle.Render("-")
-		}
+		prefix := linePrefix(line.Kind)
 		gutter := fmt.Sprintf("%5s %5s %s ", number(line.OldNumber), number(line.NewNumber), prefix)
-		value := gutter + fitANSIWindow(text, viewport.LeftColumn, width-lipgloss.Width(gutter))
 		style, strip := lineStyle(line.Kind, v.dark), false
 		if cursor.Coordinate == y {
 			style, strip = cursorStyle, true
 		} else if selected(selection, Cursor{y, cursor.Pane}) {
 			style, strip = selectionRowStyle(v.dark), true
 		}
-		return renderStyledRow(style, value, width, strip)
+		return renderStyledRow(
+			style,
+			gutter+fitANSIWindow(text, viewport.LeftColumn, width-lipgloss.Width(gutter)),
+			width,
+			strip,
+		)
 	}
 	return ""
 }
@@ -80,23 +78,20 @@ func (v *diffView) renderPane(current entry, y int, pane Pane, width, offset int
 	if pane == Left {
 		text, numberValue = current.left, line.OldNumber
 	}
-	prefix := " "
-	switch line.Kind {
-	case patch.Addition:
-		prefix = addedStyle.Render("+")
-	case patch.Deletion:
-		prefix = removedStyle.Render("-")
-	}
-	prefix += " "
+	prefix := linePrefix(line.Kind) + " "
 	gutter := fmt.Sprintf("%5s ", number(numberValue))
-	value := gutter + fitANSIWindow(prefix+text, offset, width-lipgloss.Width(gutter))
 	style, strip := lineStyle(line.Kind, v.dark), false
 	if cursor == (Cursor{y, pane}) {
 		style, strip = cursorStyle, true
 	} else if selected(selection, Cursor{y, pane}) {
 		style, strip = selectionRowStyle(v.dark), true
 	}
-	return renderStyledRow(style, value, width, strip)
+	return renderStyledRow(
+		style,
+		gutter+fitANSIWindow(prefix+text, offset, width-lipgloss.Width(gutter)),
+		width,
+		strip,
+	)
 }
 
 func selected(selection *Selection, cursor Cursor) bool {
@@ -108,10 +103,8 @@ func selected(selection *Selection, cursor Cursor) bool {
 	if first == last && firstCursor.Pane != lastCursor.Pane {
 		return cursor.Coordinate == first && (cursor.Pane == firstCursor.Pane || cursor.Pane == lastCursor.Pane)
 	}
-	if firstCursor.Pane != cursor.Pane {
-		return false
-	}
-	return cursor.Coordinate >= min(first, last) && cursor.Coordinate <= max(first, last)
+	return firstCursor.Pane == cursor.Pane &&
+		cursor.Coordinate >= min(first, last) && cursor.Coordinate <= max(first, last)
 }
 
 func lineStyle(kind patch.LineKind, dark bool) lipgloss.Style {
@@ -121,9 +114,8 @@ func lineStyle(kind patch.LineKind, dark bool) lipgloss.Style {
 		return lipgloss.NewStyle().Background(lightDark(lipgloss.Color("#dafbe1"), lipgloss.Color("#1b3823")))
 	case patch.Deletion:
 		return lipgloss.NewStyle().Background(lightDark(lipgloss.Color("#ffebe9"), lipgloss.Color("#402222")))
-	default:
-		return contextStyle
 	}
+	return contextStyle
 }
 
 func number(value patch.LineNumber) string {
@@ -133,12 +125,21 @@ func number(value patch.LineNumber) string {
 	return strconv.Itoa(int(value))
 }
 
+func linePrefix(kind patch.LineKind) string {
+	switch kind {
+	case patch.Addition:
+		return addedStyle.Render("+")
+	case patch.Deletion:
+		return removedStyle.Render("-")
+	}
+	return " "
+}
+
 func renderStyledRow(style lipgloss.Style, value string, width int, stripForeground bool) string {
 	value = filterANSIColors(value, stripForeground)
 	fitted := fitANSIWindow(value, 0, width)
 	const marker = "\x00"
-	rendered := style.Render(marker)
-	prefix, _, found := strings.Cut(rendered, marker)
+	prefix, _, found := strings.Cut(style.Render(marker), marker)
 	if !found {
 		prefix = ""
 	}

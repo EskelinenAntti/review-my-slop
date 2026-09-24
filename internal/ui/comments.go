@@ -55,8 +55,7 @@ func (m *Model) beginComment() (tea.Cmd, error) {
 	review, state := &m.review, &m.comments
 	selection := review.selection
 	if selection == nil {
-		current := Selection{review.cursor, review.cursor}
-		selection = &current
+		selection = &Selection{review.cursor, review.cursor}
 	}
 	anchor, err := review.view.Anchor(*selection)
 	if err != nil {
@@ -87,12 +86,10 @@ func (m *Model) finishCommentEdit() {
 		m.clearCommentEdit()
 		return
 	}
-	var comment comments.Comment
+	comment := comments.Comment{Anchor: state.editAnchor, Body: body}
 	if editing {
 		comment = state.items[index]
 		comment.Body = body
-	} else {
-		comment = comments.Comment{Anchor: state.editAnchor, Body: body}
 	}
 	saved, err := m.save(comment, m.review.patch)
 	if err != nil {
@@ -143,25 +140,25 @@ func (m Model) openCurrentLine() (tea.Cmd, error) {
 	}
 	file, fileOK := review.view.File(review.cursor)
 	line, lineOK := review.view.Line(review.cursor)
-	if !fileOK || !lineOK {
-		return nil, fmt.Errorf("select a code line to open in $EDITOR")
+	if fileOK && lineOK {
+		path, number := file.NewPath, line.NewNumber
+		if path == "" || path == "/dev/null" {
+			path = file.OldPath
+		}
+		if number == 0 {
+			number = line.OldNumber
+		}
+		if path == "" || path == "/dev/null" || number < 1 {
+			return nil, fmt.Errorf("current line has no editable working-tree location")
+		}
+		if !filepath.IsAbs(path) {
+			path = filepath.Join(review.patch.Repository, filepath.FromSlash(path))
+		}
+		return tea.ExecProcess(exec.Command("sh", "-c", editorCommand+" +"+strconv.Itoa(int(number))+" '"+strings.ReplaceAll(path, "'", "'\"'\"'")+"'"), func(err error) tea.Msg {
+			return sourceEditorFinishedMsg{err}
+		}), nil
 	}
-	path, number := file.NewPath, line.NewNumber
-	if path == "" || path == "/dev/null" {
-		path = file.OldPath
-	}
-	if number == 0 {
-		number = line.OldNumber
-	}
-	if path == "" || path == "/dev/null" || number < 1 {
-		return nil, fmt.Errorf("current line has no editable working-tree location")
-	}
-	if !filepath.IsAbs(path) {
-		path = filepath.Join(review.patch.Repository, filepath.FromSlash(path))
-	}
-	return tea.ExecProcess(exec.Command("sh", "-c", editorCommand+" +"+strconv.Itoa(int(number))+" '"+strings.ReplaceAll(path, "'", "'\"'\"'")+"'"), func(err error) tea.Msg {
-		return sourceEditorFinishedMsg{err}
-	}), nil
+	return nil, fmt.Errorf("select a code line to open in $EDITOR")
 }
 
 func (m Model) openCommentEditor() (tea.Cmd, error) {

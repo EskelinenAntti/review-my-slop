@@ -1,48 +1,32 @@
 package ui
 
-type Pane uint8
+type (
+	Pane   uint8
+	Cursor struct {
+		Coordinate int
+		Pane       Pane
+	}
+	Viewport struct {
+		Top, LeftColumn, Width, Height int
+	}
+	Selection struct {
+		First, Last Cursor
+	}
+	// State is the cursor, selection, and viewport associated with a View.
+	// Cursor and Selection are nil when the View has no selectable line.
+	State struct {
+		Cursor    *Cursor
+		Selection *Selection
+		Viewport  Viewport
+	}
+	Direction int8
+)
 
 const (
+	// Pane values identify the left and right side of a split diff.
 	Left Pane = iota
 	Right
-)
-
-type Cursor struct {
-	Coordinate int
-	Pane       Pane
-}
-
-type Viewport struct {
-	Top        int
-	LeftColumn int
-	Width      int
-	Height     int
-}
-
-type Selection struct {
-	First Cursor
-	Last  Cursor
-}
-
-// State is the cursor, selection, and viewport associated with a View.
-// Cursor and Selection are nil when the View has no selectable line.
-type State struct {
-	Cursor    *Cursor
-	Selection *Selection
-	Viewport  Viewport
-}
-
-type Direction int8
-
-const (
+	// Direction values are used for navigation steps.
 	Backward Direction = -1
 	Forward  Direction = 1
-)
-
-type VerticalAlignment uint8
-
-const (
-	Top VerticalAlignment = iota
-	Middle
-	Bottom
 )

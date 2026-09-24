@@ -8,16 +8,14 @@ import (
 )
 
 func (v *diffView) ExtendSelection(selection Selection, cursor Cursor) (Selection, bool) {
-	if !v.valid(selection.First) || !v.valid(cursor) {
-		return selection, false
+	if v.valid(selection.First) && v.valid(cursor) {
+		first, last := v.rows[selection.First.Coordinate], v.rows[cursor.Coordinate]
+		if first.file == last.file && first.hunk == last.hunk {
+			selection.Last = cursor
+			return selection, true
+		}
 	}
-	first := v.rows[selection.First.Coordinate]
-	last := v.rows[cursor.Coordinate]
-	if first.file != last.file || first.hunk != last.hunk {
-		return selection, false
-	}
-	selection.Last = cursor
-	return selection, true
+	return selection, false
 }
 
 func (v *diffView) Anchor(selection Selection) (comments.Anchor, error) {
@@ -65,29 +63,27 @@ func (v *diffView) selectedLines(selection Selection) []patch.Line {
 			panes[0] = lastPane
 		}
 		for _, pane := range panes {
-			line, ok := v.Line(Cursor{y, pane})
-			if !ok {
-				continue
+			if line, ok := v.Line(Cursor{y, pane}); ok {
+				lines = append(lines, line)
 			}
-			lines = append(lines, line)
 		}
 	}
 	return lines
 }
 
 func (v *diffView) File(cursor Cursor) (patch.File, bool) {
-	if !v.valid(cursor) {
-		return patch.File{}, false
+	if v.valid(cursor) {
+		return v.patch.Files[v.rows[cursor.Coordinate].file], true
 	}
-	return v.patch.Files[v.rows[cursor.Coordinate].file], true
+	return patch.File{}, false
 }
 
 func (v *diffView) Line(cursor Cursor) (patch.Line, bool) {
-	if !v.valid(cursor) {
-		return patch.Line{}, false
+	if v.valid(cursor) {
+		current := v.rows[cursor.Coordinate]
+		return v.patch.Files[current.file].Hunks[current.hunk].Lines[v.lineIndex(current, cursor.Pane)], true
 	}
-	current := v.rows[cursor.Coordinate]
-	return v.patch.Files[current.file].Hunks[current.hunk].Lines[v.lineIndex(current, cursor.Pane)], true
+	return patch.Line{}, false
 }
 
 func (v *diffView) FindCursor(file patch.File, hunk patch.Hunk, line patch.Line, nearby int, pane Pane) (Cursor, bool) {
@@ -95,26 +91,23 @@ func (v *diffView) FindCursor(file patch.File, hunk patch.Hunk, line patch.Line,
 	// build assigns every row a valid file index.
 	for y, current := range v.rows {
 		candidateFile := v.patch.Files[current.file]
-		if !sameFile(candidateFile, file) || current.hunk < 0 || candidateFile.Hunks[current.hunk].Header != hunk.Header {
-			continue
-		}
-		for _, candidatePane := range []Pane{pane, Right - pane} {
-			candidate, ok := v.cursorAt(y, candidatePane)
-			if !ok {
-				continue
-			}
-			candidateLine, _ := v.Line(candidate)
-			match := 0
-			if candidateLine.Kind == line.Kind {
-				if candidateLine.OldNumber == line.OldNumber && candidateLine.NewNumber == line.NewNumber {
-					return candidate, true
-				}
-				match = 1
-				if candidateLine.Text == line.Text {
-					match = 2
+		if sameFile(candidateFile, file) && current.hunk >= 0 && candidateFile.Hunks[current.hunk].Header == hunk.Header {
+			for _, candidatePane := range []Pane{pane, Right - pane} {
+				if candidate, ok := v.cursorAt(y, candidatePane); ok {
+					candidateLine, _ := v.Line(candidate)
+					match := 0
+					if candidateLine.Kind == line.Kind {
+						if candidateLine.OldNumber == line.OldNumber && candidateLine.NewNumber == line.NewNumber {
+							return candidate, true
+						}
+						match = 1
+						if candidateLine.Text == line.Text {
+							match = 2
+						}
+					}
+					matches[match] = append(matches[match], candidate)
 				}
 			}
-			matches[match] = append(matches[match], candidate)
 		}
 	}
 	for match := len(matches) - 1; match >= 0; match-- {

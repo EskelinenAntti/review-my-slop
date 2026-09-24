@@ -24,10 +24,9 @@ func (v *diffView) clampViewport(viewport Viewport) Viewport {
 	}
 	longest := 0
 	for _, current := range v.rows {
-		if current.kind != lineRow {
-			continue
+		if current.kind == lineRow {
+			longest = max(longest, lipgloss.Width(strings.ReplaceAll(ansi.Strip(current.text+current.left+current.right), "\t", "    "))+extra)
 		}
-		longest = max(longest, lipgloss.Width(strings.ReplaceAll(ansi.Strip(current.text+current.left+current.right), "\t", "    "))+extra)
 	}
 	viewport.LeftColumn = max(0, min(viewport.LeftColumn, max(0, longest-contentWidth)))
 	return viewport
@@ -47,20 +46,20 @@ func (v *diffView) contentHeight(viewport Viewport) int {
 
 func (v *diffView) KeepVisible(viewport Viewport, cursor Cursor) Viewport {
 	cursorY := cursor.Coordinate
-	if !v.valid(cursor) {
-		return v.clampViewport(viewport)
-	}
-	viewport = v.clampViewport(viewport)
-	for range 2 {
-		height, top := v.contentHeight(viewport), viewport.Top
-		if cursorY < top {
-			top = cursorY
-		}
-		if cursorY >= top+height {
-			top = cursorY - height + 1
-		}
-		viewport.Top = top
+	if v.valid(cursor) {
 		viewport = v.clampViewport(viewport)
+		for range 2 {
+			height, top := v.contentHeight(viewport), viewport.Top
+			if cursorY < top {
+				top = cursorY
+			}
+			if cursorY >= top+height {
+				top = cursorY - height + 1
+			}
+			viewport.Top = top
+			viewport = v.clampViewport(viewport)
+		}
+		return viewport
 	}
-	return viewport
+	return v.clampViewport(viewport)
 }

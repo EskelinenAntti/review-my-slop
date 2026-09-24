@@ -13,8 +13,7 @@ func CreateCommentFile(body string, anchor comments.Anchor) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("create comment file: %w", err)
 	}
-	path := file.Name()
-	draft := body
+	path, draft := file.Name(), body
 	if len(anchor.QuotedLines) > 0 {
 		separator := "\n"
 		if body != "" && !strings.HasSuffix(body, "\n") {
@@ -53,14 +52,14 @@ func StripUnchangedSuggestion(body string, quoted []string) string {
 	lines := suggestionLines(quoted)
 	suggestion := suggestionBlock(lines)
 	before, after, found := strings.Cut(body, suggestion)
-	if !found {
-		return body
+	if found {
+		before = strings.TrimRight(before, "\n")
+		if strings.TrimSpace(after) == "" {
+			return before
+		}
+		return before + "\n" + strings.TrimLeft(after, "\n")
 	}
-	before = strings.TrimRight(before, "\n")
-	if strings.TrimSpace(after) == "" {
-		return before
-	}
-	return before + "\n" + strings.TrimLeft(after, "\n")
+	return body
 }
 
 func suggestionLines(quoted []string) []string {
