@@ -97,8 +97,7 @@ func (m Model) renderFooter(left string) string {
 	if branch := m.currentBranch(); branch != "" {
 		label = "branch changes from " + branch
 	}
-	right := mutedStyle.Render(label + progress)
-	width := max(20, m.width)
+	right, width := mutedStyle.Render(label+progress), max(20, m.width)
 	rightWidth := lipgloss.Width(right)
 	left = ansi.Truncate(left, max(0, width-rightWidth-1), "")
 	return left + strings.Repeat(" ", max(1, width-lipgloss.Width(left)-rightWidth)) + right
@@ -122,8 +121,7 @@ func (m Model) renderComments() string {
 				prefix, style = "> ", screenCursorStyle
 			}
 			anchor := comment.Anchor
-			location := anchor.FilePath
-			lineNumber := anchor.NewStart
+			location, lineNumber := anchor.FilePath, anchor.NewStart
 			if lineNumber == 0 {
 				lineNumber = anchor.OldStart
 			}
@@ -146,9 +144,8 @@ func (m Model) renderHelp() string {
 	bindings, width := []keyBinding{}, 0
 	for _, line := range strings.Split(helpText, "\n") {
 		keys, description, _ := strings.Cut(line, "\t")
-		binding := keyBinding{keys, description}
-		bindings = append(bindings, binding)
-		width = max(width, lipgloss.Width(binding.keys))
+		bindings = append(bindings, keyBinding{keys, description})
+		width = max(width, lipgloss.Width(keys))
 	}
 	body := []string{""}
 	for _, binding := range bindings {
