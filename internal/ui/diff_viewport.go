@@ -18,8 +18,7 @@ func (v *diffView) clampViewport(viewport Viewport) Viewport {
 		maxTop++
 	}
 	viewport.Top = max(0, min(viewport.Top, maxTop))
-	contentWidth := max(1, viewport.Width-14)
-	extra := 0
+	contentWidth, extra := max(1, viewport.Width-14), 0
 	if v.split {
 		contentWidth, extra = max(1, (viewport.Width-3)/2-6), 2
 	}
@@ -53,8 +52,7 @@ func (v *diffView) KeepVisible(viewport Viewport, cursor Cursor) Viewport {
 	}
 	viewport = v.clampViewport(viewport)
 	for range 2 {
-		height := v.contentHeight(viewport)
-		top := viewport.Top
+		height, top := v.contentHeight(viewport), viewport.Top
 		if cursorY < top {
 			top = cursorY
 		}

@@ -105,8 +105,7 @@ func (v *diffView) Search(query string, cursor Cursor, direction Direction) (Cur
 }
 
 func (v *diffView) SwitchPane(cursor Cursor, pane Pane) (Cursor, bool) {
-	rows, cursorAt := v.rows, v.cursorAt
-	cursorY := cursor.Coordinate
+	rows, cursorAt, cursorY := v.rows, v.cursorAt, cursor.Coordinate
 	if !v.split || !v.valid(cursor) {
 		return Cursor{}, false
 	}

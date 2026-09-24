@@ -76,8 +76,7 @@ func (m Model) renderScreen(header string, body []string, footer string) string 
 	height := m.screenBodyHeight()
 	body = append(body, make([]string, max(0, height-len(body)))...)[:height]
 	lines := append([]string{header}, body...)
-	lines = append(lines, footer, "")
-	return strings.Join(lines, "\n")
+	return strings.Join(append(lines, footer, ""), "\n")
 }
 
 func (m Model) renderFooter(left string) string {

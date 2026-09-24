@@ -153,8 +153,7 @@ func filterANSIColors(value string, stripForeground bool) string {
 		if parameters == "" {
 			return sequence
 		}
-		parts := strings.Split(parameters, ";")
-		filtered := []string{}
+		parts, filtered := strings.Split(parameters, ";"), []string{}
 		for index, part := range parts {
 			code, err := strconv.Atoi(part)
 			if err != nil {
