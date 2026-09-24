@@ -369,14 +369,12 @@ func (m Model) updateKey(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		cmd, err = m.beginComment()
 		if err != nil {
 			m.err = err
-			cmd = nil
 		}
 	case "e":
 		var err error
 		cmd, err = m.openCurrentLine()
 		if err != nil {
 			m.err = err
-			cmd = nil
 		}
 	case "C":
 		m.mode = modeComments

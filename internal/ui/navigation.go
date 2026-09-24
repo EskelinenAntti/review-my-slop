@@ -146,18 +146,14 @@ func (m *Model) setSideBySide(enabled bool) {
 func (m Model) updateSearch(name string, key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	search := &m.search
 	switch name {
-	case "esc":
-		m.setCursor(search.from)
-		m.mode = modeBrowse
-		search.query = nil
-		search.miss = false
-	case "enter":
-		if len(search.query) > 0 && !search.miss {
+	case "esc", "enter":
+		if name == "esc" {
+			m.setCursor(search.from)
+		} else if len(search.query) > 0 && !search.miss {
 			search.term = string(search.query)
 		}
 		m.mode = modeBrowse
-		search.query = nil
-		search.miss = false
+		search.query, search.miss = nil, false
 	case "backspace":
 		if len(search.query) > 0 {
 			search.query = search.query[:len(search.query)-1]
