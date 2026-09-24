@@ -34,9 +34,6 @@ func (v *diffView) First() (Cursor, bool) {
 
 func (v *diffView) scan(start int, pane Pane, direction Direction, wrap bool) (Cursor, bool) {
 	rows := v.rows
-	if len(rows) == 0 {
-		return Cursor{}, false
-	}
 	last := len(rows) - 1
 	y := start
 	for range last + 1 {
