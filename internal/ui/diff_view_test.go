@@ -136,15 +136,15 @@ func TestViewportAlignmentResizeAndScrolling(t *testing.T) {
 	}
 	viewport := v.NewViewport(30, 5)
 	viewport = v.KeepVisible(viewport, cursor)
-	if cursor.Coordinate.Y < viewport.Top.Y || cursor.Coordinate.Y >= viewport.Top.Y+viewport.Height {
+	if cursor.Coordinate < viewport.Top || cursor.Coordinate >= viewport.Top+viewport.Height {
 		t.Fatalf("cursor not visible: %#v %#v", cursor, viewport)
 	}
 	viewport = v.Align(viewport, cursor, Middle)
 	headerHeight := 0
-	if v.(*diffView).hasStickyHeader(viewport.Top, viewport.Height) {
+	if v.hasStickyHeader(viewport.Top, viewport.Height) {
 		headerHeight = 1
 	}
-	if headerHeight+cursor.Coordinate.Y-viewport.Top.Y != viewport.Height/2 {
+	if headerHeight+cursor.Coordinate-viewport.Top != viewport.Height/2 {
 		t.Fatalf("middle alignment = %#v", viewport)
 	}
 	viewport = v.ScrollHorizontal(viewport, 4)
@@ -157,7 +157,7 @@ func TestViewportAlignmentResizeAndScrolling(t *testing.T) {
 	}
 	before := cursor
 	viewport, cursor = v.ScrollHalfPage(viewport, cursor, Forward)
-	if cursor.Coordinate.Y < before.Coordinate.Y {
+	if cursor.Coordinate < before.Coordinate {
 		t.Fatalf("half page moved backward: %#v -> %#v", before, cursor)
 	}
 }

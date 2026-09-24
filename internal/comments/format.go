@@ -7,11 +7,14 @@ import (
 )
 
 func WritePrompt(w io.Writer, comments []Comment) error {
-	if len(comments) == 0 {
-		_, err := fmt.Fprintln(w, "No pending review comments.")
+	println := func(values ...any) error {
+		_, err := fmt.Fprintln(w, values...)
 		return err
 	}
-	if _, err := fmt.Fprintln(w, "New comments since last run:"); err != nil {
+	if len(comments) == 0 {
+		return println("No pending review comments.")
+	}
+	if err := println("New comments since last run:"); err != nil {
 		return err
 	}
 	for index, comment := range comments {
@@ -20,19 +23,13 @@ func WritePrompt(w io.Writer, comments []Comment) error {
 			return err
 		}
 		if len(a.QuotedLines) > 0 {
-			if _, err := fmt.Fprintln(w, "```diff"); err != nil {
-				return err
-			}
-			for _, line := range a.QuotedLines {
-				if _, err := fmt.Fprintln(w, line); err != nil {
+			for _, line := range append(append([]string{"```diff"}, a.QuotedLines...), "```") {
+				if err := println(line); err != nil {
 					return err
 				}
 			}
-			if _, err := fmt.Fprintln(w, "```"); err != nil {
-				return err
-			}
 		}
-		if _, err := fmt.Fprintln(w, strings.TrimSpace(comment.Body)); err != nil {
+		if err := println(strings.TrimSpace(comment.Body)); err != nil {
 			return err
 		}
 	}

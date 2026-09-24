@@ -11,7 +11,6 @@ import (
 
 	"github.com/eskelinenantti/review-my-slop/internal/comments"
 	"github.com/eskelinenantti/review-my-slop/internal/patch"
-	"github.com/eskelinenantti/review-my-slop/internal/review"
 	"github.com/eskelinenantti/review-my-slop/internal/ui"
 )
 
@@ -33,7 +32,11 @@ func run(ctx context.Context, args []string, output io.Writer) error {
 	case "code":
 		return runCode(ctx)
 	case "comments":
-		return runComments(ctx, output)
+		current, err := os.Getwd()
+		if err != nil {
+			return err
+		}
+		return runCommentsAt(ctx, current, output)
 	default:
 		return fmt.Errorf("unknown subcommand %q; usage: review-my-slop [code|comments]", args[0])
 	}
@@ -48,46 +51,33 @@ func runCode(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	currentReview := review.New(ctx, current, patch.Loader{}, store)
-	loaded, err := currentReview.Load("")
+	loader := patch.Loader{}
+	loaded, err := loader.Load(ctx, current)
 	if err != nil {
 		return err
 	}
-	pending, err := currentReview.Comments(loaded)
+	pending, err := store.List(loaded.Repository)
 	if err != nil {
 		return err
 	}
-	defaultBranch, err := currentReview.DefaultBranch()
+	defaultBranch, err := loader.DefaultBranch(ctx, current)
 	if err != nil {
 		return err
 	}
-	size := initialTerminalSize()
-	model, err := ui.NewWithReview(currentReview, loaded, pending, size)
+	size := ui.DefaultSize
+	for _, fd := range []uintptr{os.Stdin.Fd(), os.Stdout.Fd()} {
+		if width, height, err := term.GetSize(fd); err == nil {
+			size = ui.Size{Width: width, Height: height}
+			break
+		}
+	}
+	model, err := ui.NewWithReview(loader, store, ctx, current, loaded, pending, size, defaultBranch)
 	if err != nil {
 		return err
 	}
-	model.SetDefaultBranch(defaultBranch)
 	program := tea.NewProgram(model, tea.WithWindowSize(size.Width, size.Height))
 	_, err = program.Run()
 	return err
-}
-
-func initialTerminalSize() ui.Size {
-	if width, height, err := term.GetSize(os.Stdin.Fd()); err == nil {
-		return ui.Size{Width: width, Height: height}
-	}
-	if width, height, err := term.GetSize(os.Stdout.Fd()); err == nil {
-		return ui.Size{Width: width, Height: height}
-	}
-	return ui.DefaultSize
-}
-
-func runComments(ctx context.Context, output io.Writer) error {
-	current, err := os.Getwd()
-	if err != nil {
-		return err
-	}
-	return runCommentsAt(ctx, current, output)
 }
 
 func runCommentsAt(ctx context.Context, current string, output io.Writer) error {
@@ -95,14 +85,20 @@ func runCommentsAt(ctx context.Context, current string, output io.Writer) error 
 	if err != nil {
 		return err
 	}
-	currentReview := review.New(ctx, current, patch.Loader{}, store)
-	root, err := currentReview.Repository()
+	root, err := (&patch.Loader{}).Root(ctx, current)
 	if err != nil {
 		return err
 	}
-	pending, err := currentReview.ExportRepository(output, root)
+	pending, err := store.List(root)
 	if err != nil {
 		return err
 	}
-	return currentReview.AcknowledgeRepository(root, pending)
+	if err := comments.WritePrompt(output, pending); err != nil {
+		return err
+	}
+	ids := make([]string, len(pending))
+	for index, comment := range pending {
+		ids[index] = comment.ID
+	}
+	return store.Acknowledge(root, ids)
 }

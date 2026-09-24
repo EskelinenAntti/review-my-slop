@@ -3,15 +3,18 @@ package ui
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"slices"
+	"strconv"
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
-
-	"github.com/eskelinenantti/review-my-slop/internal/comments"
 )
 
-func (m Model) updateComments(name string) (tea.Model, tea.Cmd) {
+func (m Model) updateComments(name string) (tea.Model, uiCommand) {
+	state := &m.comments
+	items := state.items
 	m.err = nil
 	switch name {
 	case "esc", "C", "q":
@@ -20,18 +23,18 @@ func (m Model) updateComments(name string) (tea.Model, tea.Cmd) {
 		m.quitting = true
 		return m, tea.Quit
 	case "j", "down":
-		if m.comments.row < len(m.comments.items)-1 {
-			m.comments.row++
+		if state.row < len(items)-1 {
+			state.row++
 		}
 	case "k", "up":
-		if m.comments.row > 0 {
-			m.comments.row--
+		if state.row > 0 {
+			state.row--
 		}
 	case "enter", "e":
-		if len(m.comments.items) > 0 {
-			m.comments.editIndex = m.comments.row
-			m.comments.body = m.comments.items[m.comments.editIndex].Body
-			m.comments.editAnchor = m.comments.items[m.comments.editIndex].Anchor
+		if len(items) > 0 {
+			state.editIndex = state.row
+			state.body = items[state.editIndex].Body
+			state.editAnchor = items[state.editIndex].Anchor
 			cmd, err := m.openCommentEditor()
 			if err != nil {
 				m.err = err
@@ -41,24 +44,22 @@ func (m Model) updateComments(name string) (tea.Model, tea.Cmd) {
 			return m, cmd
 		}
 	case "D":
-		if len(m.comments.items) > 0 {
-			m.deleteComment(m.comments.row)
-		}
+		m.deleteComment(state.row)
 	}
 	return m, nil
 }
 
-func (m *Model) beginComment() (tea.Cmd, error) {
-	selection := m.review.selection
+func (m *Model) beginComment() (uiCommand, error) {
+	review, state := &m.review, &m.comments
+	selection := review.selection
 	if selection == nil {
-		current := m.review.view.BeginSelection(m.review.cursor)
-		selection = &current
+		selection = &Selection{review.cursor, review.cursor}
 	}
-	anchor, err := m.review.view.Anchor(*selection)
+	anchor, err := review.view.Anchor(*selection)
 	if err != nil {
 		return nil, err
 	}
-	m.comments.body, m.comments.editIndex, m.comments.editAnchor = "", -1, anchor
+	state.body, state.editIndex, state.editAnchor = "", -1, anchor
 	cmd, err := m.openCommentEditor()
 	if err != nil {
 		m.clearCommentEdit()
@@ -68,13 +69,14 @@ func (m *Model) beginComment() (tea.Cmd, error) {
 }
 
 func (m *Model) finishCommentEdit() {
-	body := strings.TrimSpace(m.comments.body)
+	state := &m.comments
+	body := strings.TrimSpace(state.body)
+	index := state.editIndex
+	editing := index >= 0
 	if body == "" {
-		if m.comments.editIndex >= 0 {
-			m.deleteComment(m.comments.editIndex)
-		}
+		m.deleteComment(index)
 		m.clearCommentEdit()
-		m.cancelSelection()
+		m.review.selection = nil
 		return
 	}
 	if m.save == nil {
@@ -82,12 +84,10 @@ func (m *Model) finishCommentEdit() {
 		m.clearCommentEdit()
 		return
 	}
-	var comment comments.Comment
-	if m.comments.editIndex >= 0 {
-		comment = m.comments.items[m.comments.editIndex]
+	comment := reviewComment{Anchor: state.editAnchor, Body: body}
+	if editing {
+		comment = state.items[index]
 		comment.Body = body
-	} else {
-		comment = comments.Comment{Anchor: m.comments.editAnchor, Body: body}
 	}
 	saved, err := m.save(comment, m.review.patch)
 	if err != nil {
@@ -95,83 +95,82 @@ func (m *Model) finishCommentEdit() {
 		m.clearCommentEdit()
 		return
 	}
-	if m.comments.editIndex >= 0 {
-		m.comments.items[m.comments.editIndex] = saved
+	if editing {
+		state.items[index] = saved
 	} else {
-		m.comments.items = append(m.comments.items, saved)
-		m.comments.row = len(m.comments.items) - 1
+		state.items = append(state.items, saved)
+		state.row = len(state.items) - 1
 	}
-	m.comments.revision++
+	state.revision++
 	m.clearCommentEdit()
 	m.err = nil
-	m.cancelSelection()
+	m.review.selection = nil
 }
 
 func (m *Model) deleteComment(index int) {
-	if index < 0 || index >= len(m.comments.items) {
+	state := &m.comments
+	if index < 0 || index >= len(state.items) {
 		return
 	}
 	if m.delete == nil {
 		m.err = fmt.Errorf("comment storage is unavailable")
 		return
 	}
-	if err := m.delete(m.comments.items[index], m.review.patch); err != nil {
+	if err := m.delete(state.items[index], m.review.patch); err != nil {
 		m.err = err
 		return
 	}
-	m.comments.items = append(m.comments.items[:index], m.comments.items[index+1:]...)
-	m.comments.row = min(m.comments.row, max(0, len(m.comments.items)-1))
-	m.comments.revision++
+	state.items = slices.Delete(state.items, index, index+1)
+	state.row = min(state.row, max(0, len(state.items)-1))
+	state.revision++
 	m.err = nil
 }
 
 func (m *Model) clearCommentEdit() {
-	m.comments.body = ""
-	m.comments.editIndex = -1
-	m.comments.editAnchor = comments.Anchor{}
+	m.comments.body, m.comments.editIndex, m.comments.editAnchor = "", -1, reviewAnchor{}
 }
 
-func (m *Model) cancelSelection() { m.review.selection = nil }
-
-func (m Model) openCurrentLine() (tea.Cmd, error) {
+func (m Model) openCurrentLine() (uiCommand, error) {
+	review := &m.review
 	editorCommand := strings.TrimSpace(os.Getenv("EDITOR"))
 	if editorCommand == "" {
 		return nil, fmt.Errorf("$EDITOR is not set")
 	}
-	file, fileOK := m.review.view.File(m.review.cursor)
-	line, lineOK := m.review.view.Line(m.review.cursor)
-	if !fileOK || !lineOK {
-		return nil, fmt.Errorf("select a code line to open in $EDITOR")
+	file, fileOK := review.view.File(review.cursor)
+	line, lineOK := review.view.Line(review.cursor)
+	if fileOK && lineOK {
+		path, number := file.NewPath, line.NewNumber
+		if path == "" || path == "/dev/null" {
+			path = file.OldPath
+		}
+		if number == 0 {
+			number = line.OldNumber
+		}
+		if path == "" || path == "/dev/null" || number < 1 {
+			return nil, fmt.Errorf("current line has no editable working-tree location")
+		}
+		if !filepath.IsAbs(path) {
+			path = filepath.Join(review.patch.Repository, filepath.FromSlash(path))
+		}
+		return tea.ExecProcess(exec.Command("sh", "-c", editorCommand+" +"+strconv.Itoa(int(number))+" '"+strings.ReplaceAll(path, "'", "'\"'\"'")+"'"), func(err error) tea.Msg {
+			return sourceEditorFinishedMsg{err}
+		}), nil
 	}
-	path, number := file.NewPath, line.NewNumber
-	if path == "" || path == "/dev/null" {
-		path = file.OldPath
-	}
-	if number == 0 {
-		number = line.OldNumber
-	}
-	if path == "" || path == "/dev/null" || number < 1 {
-		return nil, fmt.Errorf("current line has no editable working-tree location")
-	}
-	if !filepath.IsAbs(path) {
-		path = filepath.Join(m.review.patch.Repository, filepath.FromSlash(path))
-	}
-	return tea.ExecProcess(SourceCommand(editorCommand, path, int(number)), func(err error) tea.Msg {
-		return sourceEditorFinishedMsg{err: err}
-	}), nil
+	return nil, fmt.Errorf("select a code line to open in $EDITOR")
 }
 
-func (m Model) openCommentEditor() (tea.Cmd, error) {
+func (m Model) openCommentEditor() (uiCommand, error) {
+	state := &m.comments
 	editorCommand := strings.TrimSpace(os.Getenv("EDITOR"))
 	if editorCommand == "" {
 		return nil, fmt.Errorf("$EDITOR is not set")
 	}
-	path, err := CreateCommentFile(m.comments.body, m.comments.editAnchor)
+	path, err := CreateCommentFile(state.body, state.editAnchor)
 	if err != nil {
 		return nil, err
 	}
-	return tea.ExecProcess(CommentCommand(editorCommand, path), func(editorErr error) tea.Msg {
-		body, err := ReadCommentFile(path, m.comments.editAnchor, editorErr)
-		return commentEditorFinishedMsg{body: body, err: err}
+	return tea.ExecProcess(exec.Command("sh", "-c", editorCommand+" '"+strings.ReplaceAll(path, "'", "'\"'\"'")+"'"), func(editorErr error) tea.Msg {
+		body, err := ReadCommentFile(path, state.editAnchor, editorErr)
+		return commentEditorFinishedMsg{body, err}
 	}), nil
 }

@@ -7,66 +7,102 @@ import (
 )
 
 func (m *Model) move(direction Direction) {
-	next, ok := m.review.view.Move(m.review.cursor, direction)
-	if !ok {
-		return
-	}
-	if m.review.selection != nil {
-		selection, selectionOK := m.review.view.ExtendSelection(*m.review.selection, next)
-		if !selectionOK {
-			return
+	review := &m.review
+	if review.view.valid(review.cursor) {
+		if next, ok := review.view.scan(review.cursor.Coordinate, review.cursor.Pane, direction); ok {
+			if review.selection != nil {
+				selection, selectionOK := review.view.ExtendSelection(*review.selection, next)
+				if !selectionOK {
+					return
+				}
+				review.selection = &selection
+			}
+			m.setCursor(next)
 		}
-		m.review.selection = &selection
 	}
-	m.setCursor(next)
 }
 
 func (m *Model) setCursor(cursor Cursor) {
-	m.review.cursor = cursor
-	m.review.viewport = m.review.view.KeepVisible(m.review.viewport, cursor)
+	review := &m.review
+	review.cursor = cursor
+	review.viewport = review.view.KeepVisible(review.viewport, cursor)
 }
 
 func (m *Model) halfPage(direction Direction) {
-	viewport, cursor := m.review.view.ScrollHalfPage(m.review.viewport, m.review.cursor, direction)
-	if m.review.selection != nil {
-		selection, ok := m.review.view.ExtendSelection(*m.review.selection, cursor)
+	review := &m.review
+	view := review.view
+	viewport, cursor := review.viewport, review.cursor
+	if view.valid(cursor) {
+		distance := int(direction) * max(1, viewport.Height/2)
+		viewport.Top += distance
+		viewport = view.clampViewport(viewport)
+		target := min(len(view.rows)-1, max(0, cursor.Coordinate+distance))
+		height, top := view.contentHeight(viewport), viewport.Top
+	search:
+		for distance := range height {
+			offset := int(direction) * distance
+			for _, y := range []int{target + offset, target - offset} {
+				if y >= top && y < top+height && y < len(view.rows) {
+					if candidate, ok := view.cursorAt(y, cursor.Pane); ok {
+						cursor = candidate
+						break search
+					}
+				}
+			}
+		}
+	}
+	if review.selection != nil {
+		selection, ok := view.ExtendSelection(*review.selection, cursor)
 		if !ok {
 			return
 		}
-		m.review.selection = &selection
+		review.selection = &selection
 	}
-	m.review.viewport, m.review.cursor = viewport, cursor
+	review.viewport, review.cursor = viewport, cursor
 }
 
 func (m *Model) jumpFile(direction Direction) {
-	m.cancelSelection()
-	if cursor, ok := m.review.view.JumpFile(m.review.cursor, direction); ok {
-		m.setCursor(cursor)
+	review := &m.review
+	review.selection = nil
+	view := review.view
+	if view.valid(review.cursor) {
+		fileIndex, y := view.rows[review.cursor.Coordinate].file, review.cursor.Coordinate
+		for {
+			cursor, ok := view.scan(y, review.cursor.Pane, direction)
+			if !ok {
+				return
+			}
+			if view.rows[cursor.Coordinate].file != fileIndex {
+				m.setCursor(cursor)
+				return
+			}
+			y = cursor.Coordinate
+		}
 	}
 }
 
 func (m *Model) switchPane(pane Pane) {
-	if !m.sideBySideActive() {
-		return
-	}
-	cursor, ok := m.review.view.SwitchPane(m.review.cursor, pane)
-	if !ok {
-		return
-	}
-	if m.review.selection != nil {
-		first, firstOK := m.review.view.SwitchPane(m.review.selection.First, pane)
-		last, lastOK := m.review.view.SwitchPane(m.review.selection.Last, pane)
-		if !firstOK || !lastOK {
-			return
+	review := &m.review
+	view := review.view
+	switchPane := view.SwitchPane
+	if m.sideBySideActive() {
+		if cursor, ok := switchPane(review.cursor, pane); ok {
+			currentSelection := review.selection
+			if currentSelection != nil {
+				first, firstOK := switchPane(currentSelection.First, pane)
+				last, lastOK := switchPane(currentSelection.Last, pane)
+				if !firstOK || !lastOK {
+					return
+				}
+				selection, ok := view.ExtendSelection(Selection{first, first}, last)
+				if !ok {
+					return
+				}
+				review.selection = &selection
+			}
+			m.setCursor(cursor)
 		}
-		selection := m.review.view.BeginSelection(first)
-		selection, ok = m.review.view.ExtendSelection(selection, last)
-		if !ok {
-			return
-		}
-		m.review.selection = &selection
 	}
-	m.setCursor(cursor)
 }
 
 func (m Model) sideBySideActive() bool {
@@ -74,49 +110,43 @@ func (m Model) sideBySideActive() bool {
 }
 
 func (m *Model) toggleSideBySide() {
-	enabled := !m.review.sideBySide
+	review := &m.review
+	enabled := !review.sideBySide
 	if enabled && m.width < minimumSideBySideWidth {
 		m.err = fmt.Errorf("side-by-side view requires a terminal at least %d columns wide", minimumSideBySideWidth)
 		return
 	}
-	m.setSideBySide(enabled)
+	wasActive := m.sideBySideActive()
+	review.sideBySide = enabled
+	if wasActive != m.sideBySideActive() {
+		m.rebuildView(review.patch)
+	}
 	if m.saveLayout != nil {
-		if err := m.saveLayout(m.review.sideBySide); err != nil {
+		if err := m.saveLayout(review.sideBySide); err != nil {
 			m.err = fmt.Errorf("save side-by-side preference: %w", err)
 		}
 	}
 }
 
-func (m *Model) setSideBySide(enabled bool) {
-	wasActive := m.sideBySideActive()
-	m.review.sideBySide = enabled
-	if wasActive != m.sideBySideActive() {
-		m.rebuildView(m.review.patch)
-	}
-}
-
-func (m Model) updateSearch(name string, key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+func (m Model) updateSearch(name string, key tea.KeyPressMsg) (tea.Model, uiCommand) {
+	search := &m.search
 	switch name {
-	case "esc":
-		m.setCursor(m.search.from)
-		m.mode = modeBrowse
-		m.search.query = nil
-		m.search.miss = false
-	case "enter":
-		if len(m.search.query) > 0 && !m.search.miss {
-			m.search.term = string(m.search.query)
+	case "esc", "enter":
+		if name == "esc" {
+			m.setCursor(search.from)
+		} else if len(search.query) > 0 && !search.miss {
+			search.term = string(search.query)
 		}
 		m.mode = modeBrowse
-		m.search.query = nil
-		m.search.miss = false
+		search.query, search.miss = nil, false
 	case "backspace":
-		if len(m.search.query) > 0 {
-			m.search.query = m.search.query[:len(m.search.query)-1]
+		if len(search.query) > 0 {
+			search.query = search.query[:len(search.query)-1]
 		}
 		m.updateIncrementalSearch()
 	default:
 		if key.Text != "" {
-			m.search.query = append(m.search.query, []rune(key.Text)...)
+			search.query = append(search.query, []rune(key.Text)...)
 			m.updateIncrementalSearch()
 		}
 	}
@@ -124,26 +154,27 @@ func (m Model) updateSearch(name string, key tea.KeyPressMsg) (tea.Model, tea.Cm
 }
 
 func (m *Model) updateIncrementalSearch() {
-	if len(m.search.query) == 0 {
-		m.setCursor(m.search.from)
-		m.search.miss = false
+	search, review := &m.search, &m.review
+	if len(search.query) == 0 {
+		m.setCursor(search.from)
+		search.miss = false
 		return
 	}
-	match, ok := m.review.view.Search(string(m.search.query), m.search.from, Forward)
-	m.search.miss = !ok
+	match, ok := review.view.Search(string(search.query), search.from, Forward)
+	search.miss = !ok
 	if ok {
 		m.setCursor(match)
 	}
 }
 
 func (m *Model) repeatSearch(direction Direction) {
-	if m.search.term == "" {
-		return
+	search, review := &m.search, &m.review
+	if search.term != "" {
+		match, ok := review.view.Search(search.term, review.cursor, direction)
+		if !ok {
+			m.err = fmt.Errorf("no matches for %q", search.term)
+			return
+		}
+		m.setCursor(match)
 	}
-	match, ok := m.review.view.Search(m.search.term, m.review.cursor, direction)
-	if !ok {
-		m.err = fmt.Errorf("no matches for %q", m.search.term)
-		return
-	}
-	m.setCursor(match)
 }
