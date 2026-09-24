@@ -2,7 +2,6 @@ package ui
 
 import (
 	"fmt"
-	"github.com/eskelinenantti/review-my-slop/internal/comments"
 
 	"github.com/eskelinenantti/review-my-slop/internal/patch"
 )
@@ -18,17 +17,17 @@ func (v *diffView) ExtendSelection(selection Selection, cursor Cursor) (Selectio
 	return selection, false
 }
 
-func (v *diffView) Anchor(selection Selection) (comments.Anchor, error) {
+func (v *diffView) Anchor(selection Selection) (reviewAnchor, error) {
 	lines := v.selectedLines(selection)
 	if len(lines) == 0 {
-		return comments.Anchor{}, fmt.Errorf("select code lines before commenting")
+		return reviewAnchor{}, fmt.Errorf("select code lines before commenting")
 	}
 	file, _ := v.File(selection.First)
 	filePath := file.NewPath
 	if filePath == "" {
 		filePath = file.OldPath
 	}
-	anchor := comments.Anchor{FilePath: filePath}
+	anchor := reviewAnchor{FilePath: filePath}
 	for _, line := range lines {
 		prefix := " "
 		switch line.Kind {
@@ -44,7 +43,7 @@ func (v *diffView) Anchor(selection Selection) (comments.Anchor, error) {
 	return anchor, nil
 }
 
-func (v *diffView) selectedLines(selection Selection) []patch.Line {
+func (v *diffView) selectedLines(selection Selection) []reviewLine {
 	firstCursor, lastCursor := selection.First, selection.Last
 	if _, ok := v.ExtendSelection(selection, lastCursor); !ok {
 		return nil
@@ -54,7 +53,7 @@ func (v *diffView) selectedLines(selection Selection) []patch.Line {
 		first, last = last, first
 	}
 	firstPane, lastPane := firstCursor.Pane, lastCursor.Pane
-	var lines []patch.Line
+	var lines []reviewLine
 	for y := first; y <= last; y++ {
 		panes := []Pane{firstPane}
 		if first == last && firstPane != lastPane {
@@ -71,22 +70,22 @@ func (v *diffView) selectedLines(selection Selection) []patch.Line {
 	return lines
 }
 
-func (v *diffView) File(cursor Cursor) (patch.File, bool) {
+func (v *diffView) File(cursor Cursor) (reviewFile, bool) {
 	if v.valid(cursor) {
 		return v.patch.Files[v.rows[cursor.Coordinate].file], true
 	}
-	return patch.File{}, false
+	return reviewFile{}, false
 }
 
-func (v *diffView) Line(cursor Cursor) (patch.Line, bool) {
+func (v *diffView) Line(cursor Cursor) (reviewLine, bool) {
 	if v.valid(cursor) {
 		current := v.rows[cursor.Coordinate]
 		return v.patch.Files[current.file].Hunks[current.hunk].Lines[v.lineIndex(current, cursor.Pane)], true
 	}
-	return patch.Line{}, false
+	return reviewLine{}, false
 }
 
-func (v *diffView) FindCursor(file patch.File, hunk patch.Hunk, line patch.Line, nearby int, pane Pane) (Cursor, bool) {
+func (v *diffView) FindCursor(file reviewFile, hunk reviewHunk, line reviewLine, nearby int, pane Pane) (Cursor, bool) {
 	var matches [3][]Cursor
 	// build assigns every row a valid file index.
 	for y, current := range v.rows {
@@ -137,12 +136,12 @@ func accumulateRange(start, end *int, value int) {
 	}
 }
 
-func sameFile(candidate, target patch.File) bool {
+func sameFile(candidate, target reviewFile) bool {
 	return candidate.OldPath != "" && candidate.OldPath == target.OldPath ||
 		candidate.NewPath != "" && candidate.NewPath == target.NewPath
 }
 
-func highlightedLine(lines []string, number patch.LineNumber, fallback string) string {
+func highlightedLine(lines []string, number reviewNumber, fallback string) string {
 	if number <= 0 || int(number) > len(lines) {
 		return fallback
 	}

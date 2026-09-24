@@ -7,6 +7,9 @@ import (
 
 type SaveCommentFunc func(comments.Comment, patch.Patch) (comments.Comment, error)
 
+// mode is test-only scaffolding for the unexported model field.
+type mode = uint8
+
 type InitialLayout struct {
 	SideBySide     bool
 	SaveSideBySide func(bool) error

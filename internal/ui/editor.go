@@ -4,11 +4,9 @@ import (
 	"fmt"
 	"os"
 	"strings"
-
-	"github.com/eskelinenantti/review-my-slop/internal/comments"
 )
 
-func CreateCommentFile(body string, anchor comments.Anchor) (string, error) {
+func CreateCommentFile(body string, anchor reviewAnchor) (string, error) {
 	file, err := os.CreateTemp("", "review-my-slop-comment-*.md")
 	if err != nil {
 		return "", fmt.Errorf("create comment file: %w", err)
@@ -33,7 +31,7 @@ func CreateCommentFile(body string, anchor comments.Anchor) (string, error) {
 	return path, nil
 }
 
-func ReadCommentFile(path string, anchor comments.Anchor, editorErr error) (string, error) {
+func ReadCommentFile(path string, anchor reviewAnchor, editorErr error) (string, error) {
 	defer os.Remove(path)
 	if editorErr != nil {
 		return "", fmt.Errorf("editor: %w", editorErr)

@@ -107,25 +107,25 @@ func selected(selection *Selection, cursor Cursor) bool {
 		cursor.Coordinate >= min(first, last) && cursor.Coordinate <= max(first, last)
 }
 
-func lineStyle(kind patch.LineKind, dark bool) lipgloss.Style {
+func lineStyle(kind reviewKind, dark bool) lipgloss.Style {
 	lightDark := lipgloss.LightDark(dark)
 	switch kind {
 	case patch.Addition:
-		return lipgloss.NewStyle().Background(lightDark(lipgloss.Color("#dafbe1"), lipgloss.Color("#1b3823")))
+		return baseStyle.Background(lightDark(lipgloss.Color("#dafbe1"), lipgloss.Color("#1b3823")))
 	case patch.Deletion:
-		return lipgloss.NewStyle().Background(lightDark(lipgloss.Color("#ffebe9"), lipgloss.Color("#402222")))
+		return baseStyle.Background(lightDark(lipgloss.Color("#ffebe9"), lipgloss.Color("#402222")))
 	}
 	return contextStyle
 }
 
-func number(value patch.LineNumber) string {
+func number(value reviewNumber) string {
 	if value == 0 {
 		return ""
 	}
 	return strconv.Itoa(int(value))
 }
 
-func linePrefix(kind patch.LineKind) string {
+func linePrefix(kind reviewKind) string {
 	switch kind {
 	case patch.Addition:
 		return addedStyle.Render("+")
@@ -199,15 +199,15 @@ func fitANSIWindow(value string, offset, width int) string {
 
 var (
 	ansiSGRPattern = regexp.MustCompile(`\x1b\[[0-9;]*m`)
-	fileStyle      = lipgloss.NewStyle().Bold(true)
-	metadataStyle  = lipgloss.NewStyle().Faint(true)
-	hunkStyle      = lipgloss.NewStyle().Foreground(lipgloss.Magenta)
-	contextStyle   = lipgloss.NewStyle()
-	addedStyle     = lipgloss.NewStyle().Foreground(lipgloss.Green)
-	removedStyle   = lipgloss.NewStyle().Foreground(lipgloss.Red)
-	cursorStyle    = lipgloss.NewStyle().Reverse(true)
+	fileStyle      = baseStyle.Bold(true)
+	metadataStyle  = baseStyle.Faint(true)
+	hunkStyle      = baseStyle.Foreground(lipgloss.Magenta)
+	contextStyle   = baseStyle
+	addedStyle     = baseStyle.Foreground(lipgloss.Green)
+	removedStyle   = baseStyle.Foreground(lipgloss.Red)
+	cursorStyle    = baseStyle.Reverse(true)
 )
 
 func selectionRowStyle(dark bool) lipgloss.Style {
-	return lipgloss.NewStyle().Background(lipgloss.LightDark(dark)(lipgloss.Color("#dbeafe"), lipgloss.Color("#1e3a5f")))
+	return baseStyle.Background(lipgloss.LightDark(dark)(lipgloss.Color("#dbeafe"), lipgloss.Color("#1e3a5f")))
 }

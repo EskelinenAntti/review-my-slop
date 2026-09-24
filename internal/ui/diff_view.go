@@ -6,10 +6,8 @@ import (
 	"github.com/eskelinenantti/review-my-slop/internal/patch"
 )
 
-type rowKind uint8
-
 const (
-	fileRow rowKind = iota
+	fileRow = iota
 	metadataRow
 	hunkRow
 	lineRow
@@ -17,19 +15,19 @@ const (
 
 type (
 	entry struct {
-		kind                rowKind
+		kind                uint8
 		file, hunk          int
 		leftLine, rightLine int
 		text, left, right   string
 	}
 	diffView struct {
-		patch       patch.Patch
+		patch       reviewPatch
 		rows        []entry
 		split, dark bool
 	}
 )
 
-func newDiffView(p patch.Patch, dark, split bool) *diffView {
+func newDiffView(p reviewPatch, dark, split bool) *diffView {
 	v := &diffView{patch: p, split: split, dark: dark}
 	v.build()
 	return v
@@ -70,7 +68,7 @@ func (v *diffView) build() {
 	v.rows = rows
 }
 
-func appendSplitLines(rows []entry, fileIndex, hunkIndex int, hunk patch.Hunk, highlighted Pair) []entry {
+func appendSplitLines(rows []entry, fileIndex, hunkIndex int, hunk reviewHunk, highlighted Pair) []entry {
 	lines := hunk.Lines
 	last := len(lines)
 	for index := 0; index < last; {

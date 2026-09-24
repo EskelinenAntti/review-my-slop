@@ -10,11 +10,9 @@ import (
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
-
-	"github.com/eskelinenantti/review-my-slop/internal/comments"
 )
 
-func (m Model) updateComments(name string) (tea.Model, tea.Cmd) {
+func (m Model) updateComments(name string) (tea.Model, uiCommand) {
 	state := &m.comments
 	items := state.items
 	m.err = nil
@@ -51,7 +49,7 @@ func (m Model) updateComments(name string) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m *Model) beginComment() (tea.Cmd, error) {
+func (m *Model) beginComment() (uiCommand, error) {
 	review, state := &m.review, &m.comments
 	selection := review.selection
 	if selection == nil {
@@ -86,7 +84,7 @@ func (m *Model) finishCommentEdit() {
 		m.clearCommentEdit()
 		return
 	}
-	comment := comments.Comment{Anchor: state.editAnchor, Body: body}
+	comment := reviewComment{Anchor: state.editAnchor, Body: body}
 	if editing {
 		comment = state.items[index]
 		comment.Body = body
@@ -129,10 +127,10 @@ func (m *Model) deleteComment(index int) {
 }
 
 func (m *Model) clearCommentEdit() {
-	m.comments.body, m.comments.editIndex, m.comments.editAnchor = "", -1, comments.Anchor{}
+	m.comments.body, m.comments.editIndex, m.comments.editAnchor = "", -1, reviewAnchor{}
 }
 
-func (m Model) openCurrentLine() (tea.Cmd, error) {
+func (m Model) openCurrentLine() (uiCommand, error) {
 	review := &m.review
 	editorCommand := strings.TrimSpace(os.Getenv("EDITOR"))
 	if editorCommand == "" {
@@ -161,7 +159,7 @@ func (m Model) openCurrentLine() (tea.Cmd, error) {
 	return nil, fmt.Errorf("select a code line to open in $EDITOR")
 }
 
-func (m Model) openCommentEditor() (tea.Cmd, error) {
+func (m Model) openCommentEditor() (uiCommand, error) {
 	state := &m.comments
 	editorCommand := strings.TrimSpace(os.Getenv("EDITOR"))
 	if editorCommand == "" {

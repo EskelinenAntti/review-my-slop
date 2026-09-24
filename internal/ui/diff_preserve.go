@@ -1,11 +1,9 @@
 package ui
 
-import "github.com/eskelinenantti/review-my-slop/internal/patch"
-
 type cursorIdentity struct {
-	file   patch.File
-	hunk   patch.Hunk
-	line   patch.Line
+	file   reviewFile
+	hunk   reviewHunk
+	line   reviewLine
 	cursor Cursor
 	valid  bool
 }

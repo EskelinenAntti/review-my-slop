@@ -180,10 +180,11 @@ t	toggle unified/side-by-side
 q	quit`
 
 var (
-	titleStyle         = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Cyan)
-	screenContextStyle = lipgloss.NewStyle()
-	screenCursorStyle  = lipgloss.NewStyle().Reverse(true)
-	editorCursorStyle  = lipgloss.NewStyle().Reverse(true)
-	mutedStyle         = lipgloss.NewStyle().Faint(true)
-	errorStyle         = lipgloss.NewStyle().Foreground(lipgloss.Red).Bold(true)
+	baseStyle          = lipgloss.NewStyle()
+	titleStyle         = baseStyle.Bold(true).Foreground(lipgloss.Cyan)
+	screenContextStyle = baseStyle
+	screenCursorStyle  = baseStyle.Reverse(true)
+	editorCursorStyle  = baseStyle.Reverse(true)
+	mutedStyle         = baseStyle.Faint(true)
+	errorStyle         = baseStyle.Foreground(lipgloss.Red).Bold(true)
 )

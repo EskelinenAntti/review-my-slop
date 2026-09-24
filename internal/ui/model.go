@@ -12,11 +12,21 @@ import (
 )
 
 type (
-	Size struct {
+	// Local aliases keep the model declarations focused on review concepts.
+	reviewComment = comments.Comment
+	reviewPatch   = patch.Patch
+	reviewAnchor  = comments.Anchor
+	reviewFile    = patch.File
+	reviewHunk    = patch.Hunk
+	reviewLine    = patch.Line
+	reviewNumber  = patch.LineNumber
+	reviewKind    = patch.LineKind
+	uiCommand     = tea.Cmd
+	Size          struct {
 		Width, Height int
 	}
 	refreshDiffMsg struct {
-		patch  patch.Patch
+		patch  reviewPatch
 		branch string
 		err    error
 	}
@@ -25,16 +35,15 @@ type (
 		err  error
 	}
 	commentsLoadedMsg struct {
-		comments []comments.Comment
+		comments []reviewComment
 		revision uint64
 		err      error
 	}
 	sourceEditorFinishedMsg struct{ err error }
-	mode                    uint8
 )
 
 const (
-	modeBrowse mode = iota
+	modeBrowse = iota
 	modeComments
 	modeHelp
 	modeSearch
@@ -48,7 +57,7 @@ var DefaultSize = Size{80, 30}
 
 type (
 	reviewState struct {
-		patch      patch.Patch
+		patch      reviewPatch
 		view       *diffView
 		cursor     Cursor
 		viewport   Viewport
@@ -56,10 +65,10 @@ type (
 		sideBySide bool
 	}
 	commentState struct {
-		items          []comments.Comment
+		items          []reviewComment
 		row, editIndex int
 		body           string
-		editAnchor     comments.Anchor
+		editAnchor     reviewAnchor
 		revision       uint64
 	}
 	searchState struct {
@@ -73,20 +82,19 @@ type (
 		comments                    commentState
 		search                      searchState
 		width, height               int
-		mode                        mode
-		save                        func(comments.Comment, patch.Patch) (comments.Comment, error)
-		delete                      func(comments.Comment, patch.Patch) error
-		load                        func() ([]comments.Comment, error)
-		refresh                     func(string) (patch.Patch, error)
+		mode                        uint8
+		save                        func(reviewComment, reviewPatch) (reviewComment, error)
+		delete                      func(reviewComment, reviewPatch) error
+		load                        func() ([]reviewComment, error)
+		refresh                     func(string) (reviewPatch, error)
 		err                         error
-		pendingKey                  string
+		pendingKey, defaultBranch   string
 		saveLayout                  func(bool) error
-		defaultBranch               string
 		quitting, showDefault, dark bool
 	}
 )
 
-func NewWithReview(loader patch.Loader, store comments.Store, ctx context.Context, directory string, p patch.Patch, items []comments.Comment, size Size, defaultBranch string) (Model, error) {
+func NewWithReview(loader patch.Loader, store comments.Store, ctx context.Context, directory string, p reviewPatch, items []reviewComment, size Size, defaultBranch string) (Model, error) {
 	sideBySide, err := loadLayoutSettings()
 	if err != nil {
 		return Model{}, err
@@ -99,13 +107,13 @@ func NewWithReview(loader patch.Loader, store comments.Store, ctx context.Contex
 		comments: commentState{items: items, editIndex: -1},
 		width:    size.Width,
 		height:   size.Height,
-		save: func(comment comments.Comment, p patch.Patch) (comments.Comment, error) {
+		save: func(comment reviewComment, p reviewPatch) (reviewComment, error) {
 			comment.Repository = p.Repository
 			if comment.ID == "" {
 				return store.Add(comment)
 			}
 			if err := store.Update(comment); err != nil {
-				return comments.Comment{}, err
+				return reviewComment{}, err
 			}
 			return comment, nil
 		},
@@ -117,13 +125,13 @@ func NewWithReview(loader patch.Loader, store comments.Store, ctx context.Contex
 	review.view = newDiffView(p, m.dark, m.sideBySideActive())
 	review.viewport = review.view.Resize(Viewport{}, m.width, m.screenBodyHeight())
 	review.cursor, _ = review.view.First()
-	m.delete = func(comment comments.Comment, p patch.Patch) error {
+	m.delete = func(comment reviewComment, p reviewPatch) error {
 		return store.Delete(p.Repository, comment.ID)
 	}
-	m.load = func() ([]comments.Comment, error) {
+	m.load = func() ([]reviewComment, error) {
 		return store.List(review.patch.Repository)
 	}
-	m.refresh = func(branch string) (patch.Patch, error) {
+	m.refresh = func(branch string) (reviewPatch, error) {
 		if branch == "" {
 			return loader.Load(ctx, directory)
 		}
@@ -132,9 +140,9 @@ func NewWithReview(loader patch.Loader, store comments.Store, ctx context.Contex
 	return m, nil
 }
 
-func (Model) Init() tea.Cmd { return func() tea.Msg { return tea.RequestBackgroundColor() } }
+func (Model) Init() uiCommand { return func() tea.Msg { return tea.RequestBackgroundColor() } }
 
-func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+func (m Model) Update(msg tea.Msg) (tea.Model, uiCommand) {
 	review, comments := &m.review, &m.comments
 	switch msg := msg.(type) {
 	case tea.BackgroundColorMsg:
@@ -192,7 +200,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m Model) loadRefresh() tea.Cmd {
+func (m Model) loadRefresh() uiCommand {
 	if m.refresh == nil {
 		return nil
 	}
@@ -200,7 +208,7 @@ func (m Model) loadRefresh() tea.Cmd {
 	return func() tea.Msg { p, err := m.refresh(branch); return refreshDiffMsg{p, branch, err} }
 }
 
-func (m *Model) rebuildView(p patch.Patch) {
+func (m *Model) rebuildView(p reviewPatch) {
 	review := &m.review
 	oldView := review.view
 	review.patch = p
@@ -213,7 +221,7 @@ func (m *Model) rebuildView(p patch.Patch) {
 	}
 }
 
-func (m Model) updateKey(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+func (m Model) updateKey(key tea.KeyPressMsg) (tea.Model, uiCommand) {
 	name := key.String()
 	review, comments, search := &m.review, &m.comments, &m.search
 	cursor, view, viewport := review.cursor, review.view, &review.viewport
@@ -252,10 +260,7 @@ func (m Model) updateKey(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		default:
 			return m, nil
 		}
-		headerHeight := 0
-		if height > 1 {
-			headerHeight = 1
-		}
+		headerHeight := min(1, max(1, height)-1)
 		offset := max(0, alignmentOffset-headerHeight)
 		viewport.Top = cursor.Coordinate - offset
 		if !view.hasStickyHeader(viewport.Top, height) {
@@ -275,7 +280,7 @@ func (m Model) updateKey(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 	}
-	var cmd tea.Cmd
+	var cmd uiCommand
 	switch name {
 	case "ctrl+c", "q":
 		m.quitting, cmd = true, tea.Quit

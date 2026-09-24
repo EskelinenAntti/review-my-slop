@@ -128,7 +128,7 @@ func (m *Model) toggleSideBySide() {
 	}
 }
 
-func (m Model) updateSearch(name string, key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+func (m Model) updateSearch(name string, key tea.KeyPressMsg) (tea.Model, uiCommand) {
 	search := &m.search
 	switch name {
 	case "esc", "enter":
