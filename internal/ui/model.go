@@ -127,7 +127,7 @@ func New(p patch.Patch, comments []comments.Comment, save SaveCommentFunc, layou
 	return m
 }
 
-func NewWithReview(actions review.Actions, p patch.Patch, items []comments.Comment, size Size) (Model, error) {
+func NewWithReview(actions review.Review, p patch.Patch, items []comments.Comment, size Size) (Model, error) {
 	sideBySide, err := loadLayoutSettings()
 	if err != nil {
 		return Model{}, err

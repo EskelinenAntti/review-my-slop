@@ -26,14 +26,6 @@ type CommentStore interface {
 	Acknowledge(string, []string) error
 }
 
-// Actions is the narrow interface a human-facing UI needs to drive a review.
-type Actions interface {
-	Load(string) (patch.Patch, error)
-	Comments(patch.Patch) ([]comments.Comment, error)
-	SaveComment(comments.Comment, patch.Patch) (comments.Comment, error)
-	DeleteComment(comments.Comment, patch.Patch) error
-}
-
 // Review coordinates the patch and comments that make up one review.
 type Review struct {
 	context   context.Context
@@ -41,8 +33,6 @@ type Review struct {
 	patches   PatchSource
 	comments  CommentStore
 }
-
-var _ Actions = Review{}
 
 func New(ctx context.Context, directory string, patches PatchSource, comments CommentStore) Review {
 	return Review{context: ctx, directory: directory, patches: patches, comments: comments}
