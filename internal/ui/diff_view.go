@@ -32,17 +32,17 @@ type diffView struct {
 
 func NewUnifiedView(p patch.Patch, dark bool) View {
 	v := &diffView{patch: p, dark: dark}
-	v.buildUnified()
+	v.build()
 	return v
 }
 
 func NewSideBySideView(p patch.Patch, dark bool) View {
 	v := &diffView{patch: p, split: true, dark: dark}
-	v.buildSplit()
+	v.build()
 	return v
 }
 
-func (v *diffView) buildUnified() {
+func (v *diffView) build() {
 	for fileIndex := range v.patch.Files {
 		file := &v.patch.Files[fileIndex]
 		v.appendFileHeader(fileIndex, file)
@@ -50,6 +50,10 @@ func (v *diffView) buildUnified() {
 		for hunkIndex := range file.Hunks {
 			hunk := &file.Hunks[hunkIndex]
 			v.rows = append(v.rows, entry{kind: hunkRow, file: fileIndex, hunk: hunkIndex, leftLine: -1, rightLine: -1, text: hunkHeader(hunk.Header)})
+			if v.split {
+				v.appendSplitLines(fileIndex, hunkIndex, hunk, highlighted)
+				continue
+			}
 			for lineIndex, line := range hunk.Lines {
 				text := line.Text
 				if line.Kind == patch.Deletion {
@@ -63,52 +67,43 @@ func (v *diffView) buildUnified() {
 	}
 }
 
-func (v *diffView) buildSplit() {
-	for fileIndex := range v.patch.Files {
-		file := &v.patch.Files[fileIndex]
-		v.appendFileHeader(fileIndex, file)
-		highlighted := v.highlight(file)
-		for hunkIndex := range file.Hunks {
-			hunk := &file.Hunks[hunkIndex]
-			v.rows = append(v.rows, entry{kind: hunkRow, file: fileIndex, hunk: hunkIndex, leftLine: -1, rightLine: -1, text: hunkHeader(hunk.Header)})
-			for index := 0; index < len(hunk.Lines); {
-				line := hunk.Lines[index]
-				switch line.Kind {
-				case patch.Context:
-					text := highlightedLine(highlighted.New, line.NewNumber, line.Text)
-					v.rows = append(v.rows, entry{kind: lineRow, file: fileIndex, hunk: hunkIndex, leftLine: index, rightLine: index, left: text, right: text})
-					index++
-				case patch.Addition:
-					text := highlightedLine(highlighted.New, line.NewNumber, line.Text)
-					v.rows = append(v.rows, entry{kind: lineRow, file: fileIndex, hunk: hunkIndex, leftLine: -1, rightLine: index, right: text})
-					index++
-				case patch.Deletion:
-					removedStart := index
-					for index < len(hunk.Lines) && hunk.Lines[index].Kind == patch.Deletion {
-						index++
-					}
-					addedStart, addedEnd := index, index
-					for addedEnd < len(hunk.Lines) && hunk.Lines[addedEnd].Kind == patch.Addition {
-						addedEnd++
-					}
-					count := max(index-removedStart, addedEnd-addedStart)
-					for offset := 0; offset < count; offset++ {
-						current := entry{kind: lineRow, file: fileIndex, hunk: hunkIndex, leftLine: -1, rightLine: -1}
-						if removedStart+offset < index {
-							current.leftLine = removedStart + offset
-							old := hunk.Lines[current.leftLine]
-							current.left = highlightedLine(highlighted.Old, old.OldNumber, old.Text)
-						}
-						if addedStart+offset < addedEnd {
-							current.rightLine = addedStart + offset
-							added := hunk.Lines[current.rightLine]
-							current.right = highlightedLine(highlighted.New, added.NewNumber, added.Text)
-						}
-						v.rows = append(v.rows, current)
-					}
-					index = addedEnd
-				}
+func (v *diffView) appendSplitLines(fileIndex, hunkIndex int, hunk *patch.Hunk, highlighted Pair) {
+	for index := 0; index < len(hunk.Lines); {
+		line := hunk.Lines[index]
+		switch line.Kind {
+		case patch.Context:
+			text := highlightedLine(highlighted.New, line.NewNumber, line.Text)
+			v.rows = append(v.rows, entry{kind: lineRow, file: fileIndex, hunk: hunkIndex, leftLine: index, rightLine: index, left: text, right: text})
+			index++
+		case patch.Addition:
+			text := highlightedLine(highlighted.New, line.NewNumber, line.Text)
+			v.rows = append(v.rows, entry{kind: lineRow, file: fileIndex, hunk: hunkIndex, leftLine: -1, rightLine: index, right: text})
+			index++
+		case patch.Deletion:
+			removedStart := index
+			for index < len(hunk.Lines) && hunk.Lines[index].Kind == patch.Deletion {
+				index++
 			}
+			addedStart, addedEnd := index, index
+			for addedEnd < len(hunk.Lines) && hunk.Lines[addedEnd].Kind == patch.Addition {
+				addedEnd++
+			}
+			count := max(index-removedStart, addedEnd-addedStart)
+			for offset := 0; offset < count; offset++ {
+				current := entry{kind: lineRow, file: fileIndex, hunk: hunkIndex, leftLine: -1, rightLine: -1}
+				if removedStart+offset < index {
+					current.leftLine = removedStart + offset
+					old := hunk.Lines[current.leftLine]
+					current.left = highlightedLine(highlighted.Old, old.OldNumber, old.Text)
+				}
+				if addedStart+offset < addedEnd {
+					current.rightLine = addedStart + offset
+					added := hunk.Lines[current.rightLine]
+					current.right = highlightedLine(highlighted.New, added.NewNumber, added.Text)
+				}
+				v.rows = append(v.rows, current)
+			}
+			index = addedEnd
 		}
 	}
 }
