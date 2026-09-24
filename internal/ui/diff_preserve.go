@@ -14,7 +14,7 @@ type cursorIdentity struct {
 // from state where next contains it.
 func Preserve(old View, state State, next View) State {
 	viewport, oldCursor := state.Viewport, state.Cursor
-	result := State{Viewport: next.NewViewport(viewport.Width, viewport.Height)}
+	result := State{Viewport: next.Resize(Viewport{}, viewport.Width, viewport.Height)}
 	rowsAbove := 0
 	if oldCursor != nil {
 		rowsAbove = oldCursor.Coordinate - viewport.Top
@@ -43,13 +43,14 @@ func Preserve(old View, state State, next View) State {
 }
 
 func identify(v View, cursor *Cursor) cursorIdentity {
-	if cursor == nil {
+	if cursor == nil || !v.valid(*cursor) {
 		return cursorIdentity{}
 	}
-	file, fileOK := v.File(*cursor)
-	hunk, hunkOK := v.Hunk(*cursor)
-	line, lineOK := v.Line(*cursor)
-	return cursorIdentity{file, hunk, line, *cursor, fileOK && hunkOK && lineOK}
+	current := v.rows[cursor.Coordinate]
+	file := v.patch.Files[current.file]
+	hunk := file.Hunks[current.hunk]
+	line := hunk.Lines[v.lineIndex(current, cursor.Pane)]
+	return cursorIdentity{file, hunk, line, *cursor, true}
 }
 
 func preserveSelection(old View, selection *Selection, next View) (Selection, bool) {

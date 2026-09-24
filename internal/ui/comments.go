@@ -3,8 +3,10 @@ package ui
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
@@ -164,7 +166,7 @@ func (m Model) openCurrentLine() (tea.Cmd, error) {
 	if !filepath.IsAbs(path) {
 		path = filepath.Join(review.patch.Repository, filepath.FromSlash(path))
 	}
-	return tea.ExecProcess(SourceCommand(editorCommand, path, int(number)), func(err error) tea.Msg {
+	return tea.ExecProcess(exec.Command("sh", "-c", editorCommand+" +"+strconv.Itoa(int(number))+" '"+strings.ReplaceAll(path, "'", "'\"'\"'")+"'"), func(err error) tea.Msg {
 		return sourceEditorFinishedMsg{err}
 	}), nil
 }
@@ -179,7 +181,7 @@ func (m Model) openCommentEditor() (tea.Cmd, error) {
 	if err != nil {
 		return nil, err
 	}
-	return tea.ExecProcess(CommentCommand(editorCommand, path), func(editorErr error) tea.Msg {
+	return tea.ExecProcess(exec.Command("sh", "-c", editorCommand+" '"+strings.ReplaceAll(path, "'", "'\"'\"'")+"'"), func(editorErr error) tea.Msg {
 		body, err := ReadCommentFile(path, state.editAnchor, editorErr)
 		return commentEditorFinishedMsg{body, err}
 	}), nil

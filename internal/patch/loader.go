@@ -43,7 +43,9 @@ type Loader struct {
 }
 
 func (l *Loader) Root(ctx context.Context, dir string) (string, error) {
-	l.ensureRunner()
+	if l.Runner == nil {
+		l.Runner = runGit
+	}
 	rootBytes, err := l.Runner(ctx, dir, "rev-parse", "--show-toplevel")
 	if err != nil {
 		return "", err
@@ -53,12 +55,6 @@ func (l *Loader) Root(ctx context.Context, dir string) (string, error) {
 		return "", fmt.Errorf("resolve repository root: %w", err)
 	}
 	return root, nil
-}
-
-func (l *Loader) ensureRunner() {
-	if l.Runner == nil {
-		l.Runner = runGit
-	}
 }
 
 func (l *Loader) Load(ctx context.Context, dir string) (Patch, error) {
@@ -176,8 +172,19 @@ func parseTracked(ctx context.Context, runner Runner, root string, raw []byte, b
 			DisplayPath: visibleText(display),
 			Metadata:    metadata,
 		}
-		file.OldSource = readSource(ctx, runner, root, oldPath, base+":"+oldPath)
-		file.NewSource = readWorkingTree(root, newPath)
+		if oldPath != "" && oldPath != "/dev/null" {
+			if out, readErr := runner(ctx, root, "show", base+":"+oldPath); readErr == nil && len(out) <= maxFileBytes && bytes.IndexByte(out, 0) < 0 {
+				file.OldSource = visibleSource(string(out))
+			}
+		}
+		if newPath != "" && newPath != "/dev/null" {
+			full := filepath.Join(root, filepath.FromSlash(newPath))
+			if info, statErr := os.Lstat(full); statErr == nil && info.Mode().IsRegular() && info.Size() <= maxFileBytes {
+				if out, readErr := os.ReadFile(full); readErr == nil && bytes.IndexByte(out, 0) < 0 {
+					file.NewSource = visibleSource(string(out))
+				}
+			}
+		}
 		for _, h := range fd.Hunks {
 			lines, parseErr := parseHunkBody(h.OrigStartLine, h.NewStartLine, h.Body)
 			if parseErr != nil {
@@ -298,33 +305,6 @@ func parseHunkBody(oldLine, newLine int32, body []byte) ([]Line, error) {
 		lines = append(lines, line)
 	}
 	return lines, nil
-}
-
-func readSource(ctx context.Context, runner Runner, root, path, object string) string {
-	if path == "" || path == "/dev/null" {
-		return ""
-	}
-	out, err := runner(ctx, root, "show", object)
-	if err != nil || len(out) > maxFileBytes || bytes.IndexByte(out, 0) >= 0 {
-		return ""
-	}
-	return visibleSource(string(out))
-}
-
-func readWorkingTree(root, path string) string {
-	if path == "" || path == "/dev/null" {
-		return ""
-	}
-	full := filepath.Join(root, filepath.FromSlash(path))
-	info, err := os.Lstat(full)
-	if err != nil || !info.Mode().IsRegular() || info.Size() > maxFileBytes {
-		return ""
-	}
-	out, err := os.ReadFile(full)
-	if err != nil || bytes.IndexByte(out, 0) >= 0 {
-		return ""
-	}
-	return visibleSource(string(out))
 }
 
 func cleanDiffPath(path string) string {

@@ -7,13 +7,6 @@ const (
 	Right
 )
 
-func (pane Pane) Other() Pane {
-	if pane == Left {
-		return Right
-	}
-	return Left
-}
-
 type Cursor struct {
 	Coordinate int
 	Pane       Pane

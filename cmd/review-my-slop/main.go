@@ -11,7 +11,6 @@ import (
 
 	"github.com/eskelinenantti/review-my-slop/internal/comments"
 	"github.com/eskelinenantti/review-my-slop/internal/patch"
-	"github.com/eskelinenantti/review-my-slop/internal/review"
 	"github.com/eskelinenantti/review-my-slop/internal/ui"
 )
 
@@ -52,12 +51,12 @@ func runCode(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	currentReview := review.Review{Patches: patch.Loader{}, Store: store}
-	loaded, err := currentReview.Patches.Load(ctx, current)
+	loader := patch.Loader{}
+	loaded, err := loader.Load(ctx, current)
 	if err != nil {
 		return err
 	}
-	pending, err := currentReview.Store.List(loaded.Repository)
+	pending, err := store.List(loaded.Repository)
 	if err != nil {
 		return err
 	}
@@ -65,23 +64,20 @@ func runCode(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	size := initialTerminalSize()
-	model, err := ui.NewWithReview(currentReview, ctx, current, loaded, pending, size, defaultBranch)
+	size := ui.DefaultSize
+	for _, fd := range []uintptr{os.Stdin.Fd(), os.Stdout.Fd()} {
+		if width, height, err := term.GetSize(fd); err == nil {
+			size = ui.Size{Width: width, Height: height}
+			break
+		}
+	}
+	model, err := ui.NewWithReview(loader, store, ctx, current, loaded, pending, size, defaultBranch)
 	if err != nil {
 		return err
 	}
 	program := tea.NewProgram(model, tea.WithWindowSize(size.Width, size.Height))
 	_, err = program.Run()
 	return err
-}
-
-func initialTerminalSize() ui.Size {
-	for _, fd := range []uintptr{os.Stdin.Fd(), os.Stdout.Fd()} {
-		if width, height, err := term.GetSize(fd); err == nil {
-			return ui.Size{Width: width, Height: height}
-		}
-	}
-	return ui.DefaultSize
 }
 
 func runCommentsAt(ctx context.Context, current string, output io.Writer) error {

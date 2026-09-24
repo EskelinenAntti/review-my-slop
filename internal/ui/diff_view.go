@@ -30,10 +30,6 @@ type diffView struct {
 	dark  bool
 }
 
-func newEntry(kind rowKind, file, hunk, leftLine, rightLine int, text, left, right string) entry {
-	return entry{kind, file, hunk, leftLine, rightLine, text, left, right}
-}
-
 func newDiffView(p patch.Patch, dark, split bool) View {
 	v := &diffView{patch: p, split: split, dark: dark}
 	v.build()
@@ -42,14 +38,21 @@ func newDiffView(p patch.Patch, dark, split bool) View {
 
 func (v *diffView) build() {
 	for fileIndex, file := range v.patch.Files {
-		v.appendFileHeader(fileIndex, file)
-		highlighted := Sources(file.Path(), file.OldSource, file.NewSource, v.dark)
+		v.rows = append(v.rows, entry{fileRow, fileIndex, -1, -1, -1, file.DisplayPath, "", ""})
+		for _, metadata := range file.Metadata {
+			v.rows = append(v.rows, entry{metadataRow, fileIndex, -1, -1, -1, metadata, "", ""})
+		}
+		filename := file.NewPath
+		if filename == "" {
+			filename = file.OldPath
+		}
+		highlighted := Pair{render(filename, file.OldSource, v.dark), render(filename, file.NewSource, v.dark)}
 		for hunkIndex, hunk := range file.Hunks {
 			header := hunk.Header
 			if !strings.HasPrefix(header, "@@") {
 				header = "@@ " + header
 			}
-			v.rows = append(v.rows, newEntry(hunkRow, fileIndex, hunkIndex, -1, -1, header, "", ""))
+			v.rows = append(v.rows, entry{hunkRow, fileIndex, hunkIndex, -1, -1, header, "", ""})
 			if v.split {
 				v.appendSplitLines(fileIndex, hunkIndex, hunk, highlighted)
 				continue
@@ -61,7 +64,7 @@ func (v *diffView) build() {
 				} else {
 					text = highlightedLine(highlighted.New, line.NewNumber, text)
 				}
-				v.rows = append(v.rows, newEntry(lineRow, fileIndex, hunkIndex, lineIndex, lineIndex, text, "", ""))
+				v.rows = append(v.rows, entry{lineRow, fileIndex, hunkIndex, lineIndex, lineIndex, text, "", ""})
 			}
 		}
 	}
@@ -77,7 +80,7 @@ func (v *diffView) appendSplitLines(fileIndex, hunkIndex int, hunk patch.Hunk, h
 			if line.Kind == patch.Context {
 				left = index
 			}
-			v.rows = append(v.rows, newEntry(lineRow, fileIndex, hunkIndex, left, index, "", text, text))
+			v.rows = append(v.rows, entry{lineRow, fileIndex, hunkIndex, left, index, "", text, text})
 			index++
 			continue
 		}
@@ -103,15 +106,8 @@ func (v *diffView) appendSplitLines(fileIndex, hunkIndex int, hunk patch.Hunk, h
 				added := lines[rightLine]
 				right = highlightedLine(highlighted.New, added.NewNumber, added.Text)
 			}
-			v.rows = append(v.rows, newEntry(lineRow, fileIndex, hunkIndex, leftLine, rightLine, "", left, right))
+			v.rows = append(v.rows, entry{lineRow, fileIndex, hunkIndex, leftLine, rightLine, "", left, right})
 		}
 		index = addedEnd
-	}
-}
-
-func (v *diffView) appendFileHeader(fileIndex int, file patch.File) {
-	v.rows = append(v.rows, newEntry(fileRow, fileIndex, -1, -1, -1, file.DisplayPath, "", ""))
-	for _, metadata := range file.Metadata {
-		v.rows = append(v.rows, newEntry(metadataRow, fileIndex, -1, -1, -1, metadata, "", ""))
 	}
 }

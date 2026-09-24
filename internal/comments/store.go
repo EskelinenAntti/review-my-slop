@@ -25,11 +25,15 @@ type Store struct {
 }
 
 func OpenDefault() (Store, error) {
-	data, err := appDir("XDG_DATA_HOME", filepath.Join(".local", "share"))
-	if err != nil {
-		return Store{}, err
+	root := os.Getenv("XDG_DATA_HOME")
+	if !filepath.IsAbs(root) {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return Store{}, fmt.Errorf("resolve user home directory: %w", err)
+		}
+		root = filepath.Join(home, ".local", "share")
 	}
-	return Store{filepath.Join(data, "comments.db")}, nil
+	return Store{filepath.Join(root, "review-my-slop", "comments.db")}, nil
 }
 
 func (s Store) Add(comment Comment) (Comment, error) {

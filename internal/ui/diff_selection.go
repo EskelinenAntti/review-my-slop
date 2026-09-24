@@ -24,18 +24,17 @@ func (v *diffView) ExtendSelection(selection Selection, cursor Cursor) (Selectio
 	return selection, true
 }
 
-func (v *diffView) Lines(selection Selection) []patch.Line {
-	first, last := selection.First.Coordinate, selection.Last.Coordinate
-	return v.selectedLines(selection, first == last && selection.First.Pane != selection.Last.Pane)
-}
-
 func (v *diffView) Anchor(selection Selection) (comments.Anchor, error) {
 	lines := v.selectedLines(selection, false)
 	if len(lines) == 0 {
 		return comments.Anchor{}, fmt.Errorf("select code lines before commenting")
 	}
 	file, _ := v.File(selection.First)
-	anchor := comments.Anchor{FilePath: file.Path()}
+	filePath := file.NewPath
+	if filePath == "" {
+		filePath = file.OldPath
+	}
+	anchor := comments.Anchor{FilePath: filePath}
 	for _, line := range lines {
 		prefix := " "
 		switch line.Kind {
@@ -86,14 +85,6 @@ func (v *diffView) File(cursor Cursor) (patch.File, bool) {
 	return v.patch.Files[v.rows[cursor.Coordinate].file], true
 }
 
-func (v *diffView) Hunk(cursor Cursor) (patch.Hunk, bool) {
-	if !v.valid(cursor) {
-		return patch.Hunk{}, false
-	}
-	current := v.rows[cursor.Coordinate]
-	return v.patch.Files[current.file].Hunks[current.hunk], true
-}
-
 func (v *diffView) Line(cursor Cursor) (patch.Line, bool) {
 	if !v.valid(cursor) {
 		return patch.Line{}, false
@@ -108,7 +99,7 @@ func (v *diffView) FindCursor(file patch.File, hunk patch.Hunk, line patch.Line,
 		if current.file < 0 || !sameFile(v.patch.Files[current.file], file) || current.hunk < 0 || v.patch.Files[current.file].Hunks[current.hunk].Header != hunk.Header {
 			continue
 		}
-		for _, candidatePane := range []Pane{pane, pane.Other()} {
+		for _, candidatePane := range []Pane{pane, Right - pane} {
 			candidate, ok := v.cursorAt(y, candidatePane)
 			if !ok {
 				continue
@@ -129,25 +120,17 @@ func (v *diffView) FindCursor(file patch.File, hunk patch.Hunk, line patch.Line,
 	}
 	for match := len(matches) - 1; match >= 0; match-- {
 		if len(matches[match]) > 0 {
-			return closest(matches[match], nearby), true
+			best := matches[match][0]
+			for _, candidate := range matches[match][1:] {
+				distance, bestDistance := candidate.Coordinate-nearby, best.Coordinate-nearby
+				if max(distance, -distance) < max(bestDistance, -bestDistance) {
+					best = candidate
+				}
+			}
+			return best, true
 		}
 	}
 	return Cursor{}, false
-}
-
-func sameFile(candidate, target patch.File) bool {
-	return candidate.OldPath != "" && candidate.OldPath == target.OldPath ||
-		candidate.NewPath != "" && candidate.NewPath == target.NewPath
-}
-
-func closest(candidates []Cursor, nearby int) Cursor {
-	best := candidates[0]
-	for _, candidate := range candidates[1:] {
-		if abs(candidate.Coordinate-nearby) < abs(best.Coordinate-nearby) {
-			best = candidate
-		}
-	}
-	return best
 }
 
 func accumulateRange(start, end *int, value int) {
@@ -162,11 +145,9 @@ func accumulateRange(start, end *int, value int) {
 	}
 }
 
-func abs(value int) int {
-	if value < 0 {
-		return -value
-	}
-	return value
+func sameFile(candidate, target patch.File) bool {
+	return candidate.OldPath != "" && candidate.OldPath == target.OldPath ||
+		candidate.NewPath != "" && candidate.NewPath == target.NewPath
 }
 
 func highlightedLine(lines []string, number patch.LineNumber, fallback string) string {

@@ -3,8 +3,6 @@ package ui
 import (
 	"fmt"
 	"os"
-	"os/exec"
-	"strconv"
 	"strings"
 
 	"github.com/eskelinenantti/review-my-slop/internal/comments"
@@ -16,7 +14,15 @@ func CreateCommentFile(body string, anchor comments.Anchor) (string, error) {
 		return "", fmt.Errorf("create comment file: %w", err)
 	}
 	path := file.Name()
-	if _, err := file.WriteString(CommentDraft(body, anchor)); err != nil {
+	draft := body
+	if len(anchor.QuotedLines) > 0 {
+		separator := "\n"
+		if body != "" && !strings.HasSuffix(body, "\n") {
+			separator = "\n\n"
+		}
+		draft = body + separator + suggestionBlock(suggestionLines(anchor.QuotedLines)) + "\n"
+	}
+	if _, err := file.WriteString(draft); err != nil {
 		_ = file.Close()
 		_ = os.Remove(path)
 		return "", fmt.Errorf("write comment file: %w", err)
@@ -40,18 +46,6 @@ func ReadCommentFile(path string, anchor comments.Anchor, editorErr error) (stri
 	return StripUnchangedSuggestion(string(body), anchor.QuotedLines), nil
 }
 
-func CommentDraft(body string, anchor comments.Anchor) string {
-	if len(anchor.QuotedLines) == 0 {
-		return body
-	}
-	lines := suggestionLines(anchor.QuotedLines)
-	separator := "\n"
-	if body != "" && !strings.HasSuffix(body, "\n") {
-		separator = "\n\n"
-	}
-	return body + separator + suggestionBlock(lines) + "\n"
-}
-
 func StripUnchangedSuggestion(body string, quoted []string) string {
 	if len(quoted) == 0 {
 		return body
@@ -71,14 +65,6 @@ func StripUnchangedSuggestion(body string, quoted []string) string {
 	return before + "\n" + strings.TrimLeft(after, "\n")
 }
 
-func CommentCommand(editor, path string) *exec.Cmd {
-	return exec.Command("sh", "-c", editor+" "+shellQuote(path))
-}
-
-func SourceCommand(editor, path string, line int) *exec.Cmd {
-	return CommentCommand(editor+" +"+strconv.Itoa(line), path)
-}
-
 func suggestionLines(quoted []string) []string {
 	lines := []string{}
 	for _, line := range quoted {
@@ -89,7 +75,7 @@ func suggestionLines(quoted []string) []string {
 	return lines
 }
 
-func contextFence(lines []string) string {
+func suggestionBlock(lines []string) string {
 	longest := 0
 	for _, line := range lines {
 		run := 0
@@ -102,18 +88,10 @@ func contextFence(lines []string) string {
 			}
 		}
 	}
-	return strings.Repeat("`", max(3, longest+1))
-}
-
-func suggestionBlock(lines []string) string {
-	fence := contextFence(lines)
+	fence := strings.Repeat("`", max(3, longest+1))
 	suggestion := fence + "suggestion\n" + strings.Join(lines, "\n")
 	if len(lines) > 0 {
 		suggestion += "\n"
 	}
 	return suggestion + fence
-}
-
-func shellQuote(value string) string {
-	return "'" + strings.ReplaceAll(value, "'", "'\"'\"'") + "'"
 }

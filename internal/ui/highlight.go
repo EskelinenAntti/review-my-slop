@@ -13,10 +13,6 @@ type Pair struct {
 	New []string
 }
 
-func Sources(filename, oldSource, newSource string, darkBackground bool) Pair {
-	return Pair{render(filename, oldSource, darkBackground), render(filename, newSource, darkBackground)}
-}
-
 func render(filename, source string, darkBackground bool) []string {
 	if source == "" {
 		return nil

@@ -32,13 +32,6 @@ func (v *diffView) First() (Cursor, bool) {
 	return v.scan(-1, Left, Forward, false)
 }
 
-func (v *diffView) Last() (Cursor, bool) {
-	if cursor, ok := v.scan(len(v.rows), Right, Backward, false); ok {
-		return cursor, true
-	}
-	return v.scan(len(v.rows), Left, Backward, false)
-}
-
 func (v *diffView) scan(start int, pane Pane, direction Direction, wrap bool) (Cursor, bool) {
 	rows := v.rows
 	if len(rows) == 0 {
@@ -65,13 +58,6 @@ func (v *diffView) scan(start int, pane Pane, direction Direction, wrap bool) (C
 	return Cursor{}, false
 }
 
-func (v *diffView) Move(cursor Cursor, direction Direction) (Cursor, bool) {
-	if !v.valid(cursor) {
-		return Cursor{}, false
-	}
-	return v.scan(cursor.Coordinate, cursor.Pane, direction, false)
-}
-
 func (v *diffView) Search(query string, cursor Cursor, direction Direction) (Cursor, bool) {
 	if query == "" || !v.valid(cursor) {
 		return Cursor{}, false
@@ -89,7 +75,7 @@ func (v *diffView) Search(query string, cursor Cursor, direction Direction) (Cur
 			y = 0
 		}
 		current := rows[y]
-		for _, candidatePane := range []Pane{pane, pane.Other()} {
+		for _, candidatePane := range []Pane{pane, Right - pane} {
 			candidate, ok := v.cursorAt(y, candidatePane)
 			if !ok || !split && candidatePane != pane {
 				continue
@@ -100,55 +86,25 @@ func (v *diffView) Search(query string, cursor Cursor, direction Direction) (Cur
 			}
 		}
 		if current.kind != lineRow && strings.Contains(strings.ToLower(ansi.Strip(current.text)), query) {
-			if candidate, ok := v.cursorNearRow(y, pane, direction); ok {
-				return candidate, true
-			}
-		}
-	}
-	return Cursor{}, false
-}
-
-func (v *diffView) cursorNearRow(y int, pane Pane, direction Direction) (Cursor, bool) {
-	rows, split := v.rows, v.split
-	for distance := 1; distance <= len(rows); distance++ {
-		offset := int(direction) * distance
-		for _, candidateY := range []int{y + offset, y - offset} {
-			if candidateY < 0 || candidateY >= len(rows) {
-				continue
-			}
-			if rows[candidateY].file != rows[y].file {
-				continue
-			}
-			if candidate, ok := v.cursorAt(candidateY, pane); ok {
-				return candidate, true
-			}
-			if split {
-				if candidate, ok := v.cursorAt(candidateY, pane.Other()); ok {
-					return candidate, true
+			for distance := 1; distance <= len(rows); distance++ {
+				offset := int(direction) * distance
+				for _, candidateY := range []int{y + offset, y - offset} {
+					if candidateY < 0 || candidateY >= len(rows) || rows[candidateY].file != rows[y].file {
+						continue
+					}
+					if candidate, ok := v.cursorAt(candidateY, pane); ok {
+						return candidate, true
+					}
+					if split {
+						if candidate, ok := v.cursorAt(candidateY, Right-pane); ok {
+							return candidate, true
+						}
+					}
 				}
 			}
 		}
 	}
 	return Cursor{}, false
-}
-
-func (v *diffView) JumpFile(cursor Cursor, direction Direction) (Cursor, bool) {
-	if !v.valid(cursor) {
-		return Cursor{}, false
-	}
-	file, _ := v.File(cursor)
-	y := cursor.Coordinate
-	for {
-		next, ok := v.scan(y, cursor.Pane, direction, false)
-		if !ok {
-			return Cursor{}, false
-		}
-		nextFile, _ := v.File(next)
-		if nextFile.OldPath != file.OldPath || nextFile.NewPath != file.NewPath {
-			return next, true
-		}
-		y = next.Coordinate
-	}
 }
 
 func (v *diffView) SwitchPane(cursor Cursor, pane Pane) (Cursor, bool) {

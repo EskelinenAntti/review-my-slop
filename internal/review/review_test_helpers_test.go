@@ -5,7 +5,6 @@ import (
 	"github.com/eskelinenantti/review-my-slop/internal/patch"
 )
 
-// Review coordinates the patch and comments that make up one review.
 type Review struct {
 	Patches patch.Loader
 	Store   comments.Store

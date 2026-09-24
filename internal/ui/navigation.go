@@ -8,7 +8,10 @@ import (
 
 func (m *Model) move(direction Direction) {
 	review := &m.review
-	next, ok := review.view.Move(review.cursor, direction)
+	if !review.view.valid(review.cursor) {
+		return
+	}
+	next, ok := review.view.scan(review.cursor.Coordinate, review.cursor.Pane, direction, false)
 	if !ok {
 		return
 	}
@@ -30,9 +33,31 @@ func (m *Model) setCursor(cursor Cursor) {
 
 func (m *Model) halfPage(direction Direction) {
 	review := &m.review
-	viewport, cursor := review.view.ScrollHalfPage(review.viewport, review.cursor, direction)
+	view := review.view
+	viewport, cursor := review.viewport, review.cursor
+	if view.valid(cursor) {
+		distance := int(direction) * max(1, viewport.Height/2)
+		viewport.Top += distance
+		viewport = view.clampViewport(viewport)
+		target := min(len(view.rows)-1, max(0, cursor.Coordinate+distance))
+		height := view.contentHeight(viewport)
+		top := viewport.Top
+	search:
+		for distance := 0; distance < height; distance++ {
+			offset := int(direction) * distance
+			for _, y := range []int{target + offset, target - offset} {
+				if y < top || y >= top+height || y >= len(view.rows) {
+					continue
+				}
+				if candidate, ok := view.cursorAt(y, cursor.Pane); ok {
+					cursor = candidate
+					break search
+				}
+			}
+		}
+	}
 	if review.selection != nil {
-		selection, ok := review.view.ExtendSelection(*review.selection, cursor)
+		selection, ok := view.ExtendSelection(*review.selection, cursor)
 		if !ok {
 			return
 		}
@@ -44,8 +69,22 @@ func (m *Model) halfPage(direction Direction) {
 func (m *Model) jumpFile(direction Direction) {
 	m.cancelSelection()
 	review := &m.review
-	if cursor, ok := review.view.JumpFile(review.cursor, direction); ok {
-		m.setCursor(cursor)
+	view := review.view
+	if !view.valid(review.cursor) {
+		return
+	}
+	file := view.patch.Files[view.rows[review.cursor.Coordinate].file]
+	for y := review.cursor.Coordinate; ; {
+		cursor, ok := view.scan(y, review.cursor.Pane, direction, false)
+		if !ok {
+			return
+		}
+		nextFile := view.patch.Files[view.rows[cursor.Coordinate].file]
+		if nextFile.OldPath != file.OldPath || nextFile.NewPath != file.NewPath {
+			m.setCursor(cursor)
+			return
+		}
+		y = cursor.Coordinate
 	}
 }
 

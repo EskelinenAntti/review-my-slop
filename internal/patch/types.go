@@ -16,13 +16,6 @@ type File struct {
 	Hunks       []Hunk
 }
 
-func (f File) Path() string {
-	if f.NewPath != "" {
-		return f.NewPath
-	}
-	return f.OldPath
-}
-
 type Hunk struct {
 	Header string
 	Lines  []Line

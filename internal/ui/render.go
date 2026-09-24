@@ -29,7 +29,19 @@ func (m Model) render() string {
 	case modeComments:
 		return m.renderComments()
 	}
-	added, removed := patchLineCounts(review.patch)
+	var added, removed int
+	for _, file := range review.patch.Files {
+		for _, hunk := range file.Hunks {
+			for _, line := range hunk.Lines {
+				switch line.Kind {
+				case patch.Addition:
+					added++
+				case patch.Deletion:
+					removed++
+				}
+			}
+		}
+	}
 	header := titleStyle.Render("review-my-slop") + "  " + mutedStyle.Render(fmt.Sprintf("+%d-%d", added, removed))
 	var body []string
 	if len(review.patch.Files) == 0 {
@@ -42,7 +54,17 @@ func (m Model) render() string {
 	} else {
 		body = strings.Split(review.view.Render(review.viewport, review.cursor, review.selection), "\n")
 	}
-	footer := m.renderStatus()
+	search := &m.search
+	status := "j/k/h/l move  c comment  ? help  q quit"
+	if m.mode == modeSearch {
+		status = "/" + string(search.query) + editorCursorStyle.Render(" ")
+		if search.miss {
+			status += errorStyle.Render("  no matches")
+		}
+	} else if m.review.selection != nil {
+		status = "visual selection  j/k extend  c comment  Esc cancel"
+	}
+	footer := m.renderFooter(mutedStyle.Render(status))
 	if m.err != nil {
 		footer = m.renderFooter(errorStyle.Render(m.err.Error()))
 	}
@@ -63,54 +85,27 @@ func (m Model) renderScreen(header string, body []string, footer string) string 
 	return strings.Join(lines, "\n")
 }
 
-func patchLineCounts(p patch.Patch) (added, removed int) {
-	for _, file := range p.Files {
-		for _, hunk := range file.Hunks {
-			for _, line := range hunk.Lines {
-				switch line.Kind {
-				case patch.Addition:
-					added++
-				case patch.Deletion:
-					removed++
-				}
-			}
-		}
-	}
-	return
-}
-
-func (m Model) renderStatus() string {
-	search := &m.search
-	status := "j/k/h/l move  c comment  ? help  q quit"
-	if m.mode == modeSearch {
-		status = "/" + string(search.query) + editorCursorStyle.Render(" ")
-		if search.miss {
-			status += errorStyle.Render("  no matches")
-		}
-	} else if m.review.selection != nil {
-		status = "visual selection  j/k extend  c comment  Esc cancel"
-	}
-	return m.renderFooter(mutedStyle.Render(status))
-}
-
 func (m Model) renderFooter(left string) string {
-	right := mutedStyle.Render(m.viewLabel())
+	review := &m.review
+	progress := ""
+	if review.viewport.Top > 0 {
+		rows := review.view.rows
+		progressValue := 0
+		if len(rows) > 0 {
+			bottom := min(len(rows), review.viewport.Top+review.view.contentHeight(review.viewport))
+			progressValue = bottom * 100 / len(rows)
+		}
+		progress = fmt.Sprintf(" (%d%%)", progressValue)
+	}
+	label := "local changes"
+	if branch := m.currentBranch(); branch != "" {
+		label = "branch changes from " + branch
+	}
+	right := mutedStyle.Render(label + progress)
 	width := max(20, m.width)
 	rightWidth := lipgloss.Width(right)
 	left = ansi.Truncate(left, max(0, width-rightWidth-1), "")
 	return left + strings.Repeat(" ", max(1, width-lipgloss.Width(left)-rightWidth)) + right
-}
-
-func (m Model) viewLabel() string {
-	review := &m.review
-	progress := ""
-	if review.viewport.Top > 0 {
-		progress = fmt.Sprintf(" (%d%%)", review.view.ViewportProgress(review.viewport))
-	}
-	if branch := m.currentBranch(); branch != "" {
-		return "branch changes from " + branch + progress
-	}
-	return "local changes" + progress
 }
 
 func (m Model) renderComments() string {
@@ -158,7 +153,14 @@ func (m Model) renderHelp() string {
 		keys, description, _ := strings.Cut(line, "\t")
 		bindings = append(bindings, keyBinding{keys, description})
 	}
-	body := append([]string{""}, renderKeyBindings(bindings)...)
+	width := 0
+	for _, binding := range bindings {
+		width = max(width, lipgloss.Width(binding.keys))
+	}
+	body := []string{""}
+	for _, binding := range bindings {
+		body = append(body, binding.keys+strings.Repeat(" ", width-lipgloss.Width(binding.keys))+"  "+binding.description)
+	}
 	return m.renderScreen(titleStyle.Render("review-my-slop help"), body, mutedStyle.Render("? or Esc closes help"))
 }
 
@@ -182,18 +184,6 @@ R	refresh diff
 Tab	toggle local/branch changes
 t	toggle unified/side-by-side
 q	quit`
-
-func renderKeyBindings(bindings []keyBinding) []string {
-	width := 0
-	for _, binding := range bindings {
-		width = max(width, lipgloss.Width(binding.keys))
-	}
-	lines := []string{}
-	for _, binding := range bindings {
-		lines = append(lines, binding.keys+strings.Repeat(" ", width-lipgloss.Width(binding.keys))+"  "+binding.description)
-	}
-	return lines
-}
 
 var (
 	titleStyle         = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Cyan)

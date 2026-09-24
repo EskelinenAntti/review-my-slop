@@ -9,24 +9,11 @@ import (
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/eskelinenantti/review-my-slop/internal/patch"
-	"github.com/eskelinenantti/review-my-slop/internal/review"
 )
-
-type SaveCommentFunc func(comments.Comment, patch.Patch) (comments.Comment, error)
-type DeleteCommentFunc func(comments.Comment, patch.Patch) error
-type LoadCommentsFunc func() ([]comments.Comment, error)
-type RefreshDiffFunc func(parent string) (patch.Patch, error)
-type SaveSideBySideFunc func(bool) error
 
 type Size struct {
 	Width  int
 	Height int
-}
-
-type InitialLayout struct {
-	SideBySide     bool
-	SaveSideBySide SaveSideBySideFunc
-	Size           Size
 }
 
 type refreshDiffMsg struct {
@@ -94,58 +81,61 @@ type Model struct {
 	width         int
 	height        int
 	mode          mode
-	save          SaveCommentFunc
-	delete        DeleteCommentFunc
-	load          LoadCommentsFunc
-	refresh       RefreshDiffFunc
+	save          func(comments.Comment, patch.Patch) (comments.Comment, error)
+	delete        func(comments.Comment, patch.Patch) error
+	load          func() ([]comments.Comment, error)
+	refresh       func(string) (patch.Patch, error)
 	err           error
 	quitting      bool
 	pendingKey    string
-	saveLayout    SaveSideBySideFunc
+	saveLayout    func(bool) error
 	defaultBranch string
 	showDefault   bool
 	dark          bool
 }
 
-func New(p patch.Patch, comments []comments.Comment, save SaveCommentFunc, layout InitialLayout) Model {
-	size := layout.Size
-	if size.Width <= 0 || size.Height <= 0 {
-		size = DefaultSize
-	}
-	m := Model{
-		review:     reviewState{patch: p},
-		comments:   commentState{items: comments, editIndex: -1},
-		width:      size.Width,
-		height:     size.Height,
-		save:       save,
-		saveLayout: layout.SaveSideBySide,
-		dark:       true,
-	}
-	review := &m.review
-	review.sideBySide = layout.SideBySide
-	review.view = m.newReviewView(p)
-	review.viewport = review.view.NewViewport(m.width, m.screenBodyHeight())
-	review.cursor, _ = review.view.First()
-	return m
-}
-
-func NewWithReview(actions review.Review, ctx context.Context, directory string, p patch.Patch, items []comments.Comment, size Size, defaultBranch string) (Model, error) {
+func NewWithReview(loader patch.Loader, store comments.Store, ctx context.Context, directory string, p patch.Patch, items []comments.Comment, size Size, defaultBranch string) (Model, error) {
 	sideBySide, err := loadLayoutSettings()
 	if err != nil {
 		return Model{}, err
 	}
-	m := New(p, items, actions.SaveComment, InitialLayout{
-		sideBySide, saveLayoutSettings, size,
-	})
-	m.delete = actions.DeleteComment
+	if size.Width <= 0 || size.Height <= 0 {
+		size = DefaultSize
+	}
+	m := Model{
+		review:   reviewState{patch: p},
+		comments: commentState{items: items, editIndex: -1},
+		width:    size.Width,
+		height:   size.Height,
+		save: func(comment comments.Comment, p patch.Patch) (comments.Comment, error) {
+			comment.Repository = p.Repository
+			if comment.ID == "" {
+				return store.Add(comment)
+			}
+			if err := store.Update(comment); err != nil {
+				return comments.Comment{}, err
+			}
+			return comment, nil
+		},
+		saveLayout: saveLayoutSettings,
+		dark:       true,
+	}
+	review := &m.review
+	review.sideBySide = sideBySide
+	review.view = newDiffView(p, m.dark, m.sideBySideActive())
+	review.viewport = review.view.Resize(Viewport{}, m.width, m.screenBodyHeight())
+	review.cursor, _ = review.view.First()
+	m.delete = func(comment comments.Comment, p patch.Patch) error {
+		return store.Delete(p.Repository, comment.ID)
+	}
 	m.load = func() ([]comments.Comment, error) {
-		return actions.Store.List(m.review.patch.Repository)
+		return store.List(m.review.patch.Repository)
 	}
 	m.refresh = func(branch string) (patch.Patch, error) {
 		if branch == "" {
-			return actions.Patches.Load(ctx, directory)
+			return loader.Load(ctx, directory)
 		}
-		return actions.Patches.LoadBranch(ctx, directory, branch)
+		return loader.LoadBranch(ctx, directory, branch)
 	}
 	m.defaultBranch = defaultBranch
 	return m, nil
@@ -222,17 +212,6 @@ func (m Model) loadRefresh() tea.Cmd {
 	return func() tea.Msg { p, err := m.refresh(branch); return refreshDiffMsg{p, branch, err} }
 }
 
-func (m Model) loadComments() tea.Cmd {
-	if m.load == nil {
-		return nil
-	}
-	revision := m.comments.revision
-	return func() tea.Msg {
-		comments, err := m.load()
-		return commentsLoadedMsg{comments, revision, err}
-	}
-}
-
 func (m *Model) rebuildView(p patch.Patch) {
 	review := &m.review
 	oldView := review.view
@@ -242,17 +221,13 @@ func (m *Model) rebuildView(p patch.Patch) {
 		Viewport:  review.viewport,
 	}
 	review.patch = p
-	review.view = m.newReviewView(p)
+	review.view = newDiffView(p, m.dark, m.sideBySideActive())
 	state := Preserve(oldView, oldState, review.view)
 	review.viewport = state.Viewport
 	review.selection = state.Selection
 	if state.Cursor != nil {
 		review.cursor = *state.Cursor
 	}
-}
-
-func (m Model) newReviewView(p patch.Patch) View {
-	return newDiffView(p, m.dark, m.sideBySideActive())
 }
 
 func (m Model) updateKey(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
@@ -287,14 +262,34 @@ func (m Model) updateKey(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	if pending == "z" {
+		var alignment VerticalAlignment
 		switch name {
 		case "z":
-			review.viewport = view.Align(review.viewport, cursor, Middle)
+			alignment = Middle
 		case "t":
-			review.viewport = view.Align(review.viewport, cursor, Top)
 		case "b":
-			review.viewport = view.Align(review.viewport, cursor, Bottom)
+			alignment = Bottom
+		default:
+			return m, nil
 		}
+		height := review.viewport.Height
+		headerHeight := 0
+		if height > 1 {
+			headerHeight = 1
+		}
+		alignmentOffset := 0
+		switch alignment {
+		case Middle:
+			alignmentOffset = height / 2
+		case Bottom:
+			alignmentOffset = height - 1
+		}
+		offset := max(0, alignmentOffset-headerHeight)
+		review.viewport.Top = cursor.Coordinate - offset
+		if !view.hasStickyHeader(review.viewport.Top, height) {
+			review.viewport.Top = cursor.Coordinate - alignmentOffset
+		}
+		review.viewport = view.clampViewport(review.viewport)
 		return m, nil
 	}
 	if pending == "ctrl+w" {
@@ -304,7 +299,7 @@ func (m Model) updateKey(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		case "l":
 			m.switchPane(Right)
 		case "ctrl+w":
-			m.switchPane(cursor.Pane.Other())
+			m.switchPane(Right - cursor.Pane)
 		}
 		return m, nil
 	}
@@ -330,13 +325,16 @@ func (m Model) updateKey(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	case "k", "up":
 		m.move(Backward)
 	case "h", "left":
-		review.viewport = view.ScrollHorizontal(review.viewport, -horizontalScrollStep)
+		review.viewport.LeftColumn -= horizontalScrollStep
+		review.viewport = view.clampViewport(review.viewport)
 	case "l", "right":
-		review.viewport = view.ScrollHorizontal(review.viewport, horizontalScrollStep)
+		review.viewport.LeftColumn += horizontalScrollStep
+		review.viewport = view.clampViewport(review.viewport)
 	case "0":
 		review.viewport.LeftColumn = 0
 	case "$":
-		review.viewport = view.ScrollHorizontal(review.viewport, int(^uint(0)>>1))
+		review.viewport.LeftColumn += int(^uint(0) >> 1)
+		review.viewport = view.clampViewport(review.viewport)
 	case "ctrl+d":
 		m.halfPage(Forward)
 	case "ctrl+u":
@@ -352,7 +350,9 @@ func (m Model) updateKey(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			m.pendingKey = "g"
 		}
 	case "G":
-		if cursor, ok := view.Last(); ok {
+		if cursor, ok := view.scan(len(view.rows), Right, Backward, false); ok {
+			m.setCursor(cursor)
+		} else if cursor, ok := view.scan(len(view.rows), Left, Backward, false); ok {
 			m.setCursor(cursor)
 		}
 	case "z":
@@ -385,7 +385,13 @@ func (m Model) updateKey(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	case "C":
 		m.mode = modeComments
 		comments.row = min(comments.row, max(0, len(comments.items)-1))
-		cmd = m.loadComments()
+		if m.load != nil {
+			revision := comments.revision
+			cmd = func() tea.Msg {
+				items, err := m.load()
+				return commentsLoadedMsg{items, revision, err}
+			}
+		}
 	case "R":
 		cmd = m.loadRefresh()
 	case "tab":
