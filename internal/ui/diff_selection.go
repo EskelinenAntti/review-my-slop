@@ -102,9 +102,7 @@ func (v *diffView) Line(cursor Cursor) (patch.Line, bool) {
 }
 
 func (v *diffView) FindCursor(file patch.File, hunk patch.Hunk, line patch.Line, nearby Coordinate, pane Pane) (Cursor, bool) {
-	candidates := make([]Cursor, 0)
-	fallbacks := make([]Cursor, 0)
-	nearbyCandidates := make([]Cursor, 0)
+	matches := [3][]Cursor{}
 	for y, current := range v.rows {
 		if current.file < 0 || !sameFile(v.patch.Files[current.file], file) || current.hunk < 0 || v.patch.Files[current.file].Hunks[current.hunk].Header != hunk.Header {
 			continue
@@ -118,23 +116,20 @@ func (v *diffView) FindCursor(file patch.File, hunk patch.Hunk, line patch.Line,
 			if candidateLine.Kind == line.Kind && candidateLine.OldNumber == line.OldNumber && candidateLine.NewNumber == line.NewNumber {
 				return candidate, true
 			}
-			if candidateLine.Kind == line.Kind && candidateLine.Text == line.Text {
-				candidates = append(candidates, candidate)
-			}
+			match := 0
 			if candidateLine.Kind == line.Kind {
-				fallbacks = append(fallbacks, candidate)
+				match = 1
+				if candidateLine.Text == line.Text {
+					match = 2
+				}
 			}
-			nearbyCandidates = append(nearbyCandidates, candidate)
+			matches[match] = append(matches[match], candidate)
 		}
 	}
-	if len(candidates) > 0 {
-		return closest(candidates, nearby), true
-	}
-	if len(fallbacks) > 0 {
-		return closest(fallbacks, nearby), true
-	}
-	if len(nearbyCandidates) > 0 {
-		return closest(nearbyCandidates, nearby), true
+	for match := len(matches) - 1; match >= 0; match-- {
+		if len(matches[match]) > 0 {
+			return closest(matches[match], nearby), true
+		}
 	}
 	return Cursor{}, false
 }
