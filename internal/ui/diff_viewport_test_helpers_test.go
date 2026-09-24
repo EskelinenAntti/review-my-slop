@@ -53,7 +53,11 @@ func (v *diffView) Hunk(cursor Cursor) (patch.Hunk, bool) {
 
 func (v *diffView) Lines(selection Selection) []patch.Line {
 	first, last := selection.First.Coordinate, selection.Last.Coordinate
-	return v.selectedLines(selection, first == last && selection.First.Pane != selection.Last.Pane)
+	lines := v.selectedLines(selection)
+	if first == last && selection.First.Pane != selection.Last.Pane && len(lines) > 1 && lines[0] == lines[1] {
+		return lines[:1]
+	}
+	return lines
 }
 
 func (v *diffView) Last() (Cursor, bool) {

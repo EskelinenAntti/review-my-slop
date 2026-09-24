@@ -21,7 +21,7 @@ func (v *diffView) ExtendSelection(selection Selection, cursor Cursor) (Selectio
 }
 
 func (v *diffView) Anchor(selection Selection) (comments.Anchor, error) {
-	lines := v.selectedLines(selection, false)
+	lines := v.selectedLines(selection)
 	if len(lines) == 0 {
 		return comments.Anchor{}, fmt.Errorf("select code lines before commenting")
 	}
@@ -46,7 +46,7 @@ func (v *diffView) Anchor(selection Selection) (comments.Anchor, error) {
 	return anchor, nil
 }
 
-func (v *diffView) selectedLines(selection Selection, deduplicate bool) []patch.Line {
+func (v *diffView) selectedLines(selection Selection) []patch.Line {
 	firstCursor, lastCursor := selection.First, selection.Last
 	if _, ok := v.ExtendSelection(selection, lastCursor); !ok {
 		return nil
@@ -66,7 +66,7 @@ func (v *diffView) selectedLines(selection Selection, deduplicate bool) []patch.
 		}
 		for _, pane := range panes {
 			line, ok := v.Line(Cursor{y, pane})
-			if !ok || deduplicate && len(lines) > 0 && lines[len(lines)-1] == line {
+			if !ok {
 				continue
 			}
 			lines = append(lines, line)
