@@ -51,7 +51,7 @@ func describeRange(anchor Anchor) string {
 }
 
 func lineRange(side string, start, end int) string {
-	if end <= start {
+	if end == 0 || end == start {
 		return fmt.Sprintf("%s line %d", side, start)
 	}
 	return fmt.Sprintf("%s lines %d-%d", side, start, end)

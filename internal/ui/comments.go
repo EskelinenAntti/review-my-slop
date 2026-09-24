@@ -46,9 +46,7 @@ func (m Model) updateComments(name string) (tea.Model, tea.Cmd) {
 			return m, cmd
 		}
 	case "D":
-		if len(items) > 0 {
-			m.deleteComment(state.row)
-		}
+		m.deleteComment(state.row)
 	}
 	return m, nil
 }
@@ -79,9 +77,7 @@ func (m *Model) finishCommentEdit() {
 	index := state.editIndex
 	editing := index >= 0
 	if body == "" {
-		if editing {
-			m.deleteComment(index)
-		}
+		m.deleteComment(index)
 		m.clearCommentEdit()
 		m.review.selection = nil
 		return
