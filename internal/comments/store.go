@@ -186,26 +186,24 @@ func findComment(bucket *bolt.Bucket, repository, id string) ([]byte, error) {
 }
 
 func decodeComment(data []byte) (Comment, error) {
-	var legacy struct {
+	var stored struct {
 		ID         string    `json:"id"`
 		Repository string    `json:"repository"`
 		CreatedAt  time.Time `json:"created_at"`
+		Anchor     Anchor    `json:"anchor"`
+		Body       string    `json:"body"`
 		Comment    *struct {
 			Anchor Anchor `json:"anchor"`
 			Body   string `json:"body"`
 		} `json:"comment"`
 	}
-	if err := json.Unmarshal(data, &legacy); err != nil {
+	if err := json.Unmarshal(data, &stored); err != nil {
 		return Comment{}, fmt.Errorf("decode comment: %w", err)
 	}
-	if legacy.Comment != nil {
-		return Comment{ID: legacy.ID, Repository: legacy.Repository, CreatedAt: legacy.CreatedAt, Anchor: legacy.Comment.Anchor, Body: legacy.Comment.Body}, nil
+	if stored.Comment != nil {
+		stored.Anchor, stored.Body = stored.Comment.Anchor, stored.Comment.Body
 	}
-	var comment Comment
-	if err := json.Unmarshal(data, &comment); err != nil {
-		return Comment{}, fmt.Errorf("decode comment: %w", err)
-	}
-	return comment, nil
+	return Comment{ID: stored.ID, Repository: stored.Repository, CreatedAt: stored.CreatedAt, Anchor: stored.Anchor, Body: stored.Body}, nil
 }
 
 func (s Store) update(fn func(*bolt.Bucket) error) error {

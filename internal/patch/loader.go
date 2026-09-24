@@ -18,13 +18,9 @@ import (
 
 const maxFileBytes = 2 << 20
 
-type Runner interface {
-	Run(ctx context.Context, dir string, args ...string) ([]byte, error)
-}
+type Runner func(ctx context.Context, dir string, args ...string) ([]byte, error)
 
-type ExecRunner struct{}
-
-func (ExecRunner) Run(ctx context.Context, dir string, args ...string) ([]byte, error) {
+func runGit(ctx context.Context, dir string, args ...string) ([]byte, error) {
 	cmd := exec.CommandContext(ctx, "git", args...)
 	cmd.Dir = dir
 	cmd.Env = append(os.Environ(),
@@ -46,11 +42,9 @@ type Loader struct {
 	Runner Runner
 }
 
-func (l Loader) Root(ctx context.Context, dir string) (string, error) {
-	if l.Runner == nil {
-		l.Runner = ExecRunner{}
-	}
-	rootBytes, err := l.Runner.Run(ctx, dir, "rev-parse", "--show-toplevel")
+func (l *Loader) Root(ctx context.Context, dir string) (string, error) {
+	l.ensureRunner()
+	rootBytes, err := l.Runner(ctx, dir, "rev-parse", "--show-toplevel")
 	if err != nil {
 		return "", err
 	}
@@ -61,10 +55,13 @@ func (l Loader) Root(ctx context.Context, dir string) (string, error) {
 	return root, nil
 }
 
-func (l Loader) Load(ctx context.Context, dir string) (Patch, error) {
+func (l *Loader) ensureRunner() {
 	if l.Runner == nil {
-		l.Runner = ExecRunner{}
+		l.Runner = runGit
 	}
+}
+
+func (l *Loader) Load(ctx context.Context, dir string) (Patch, error) {
 	root, err := l.Root(ctx, dir)
 	if err != nil {
 		return Patch{}, err
@@ -74,20 +71,15 @@ func (l Loader) Load(ctx context.Context, dir string) (Patch, error) {
 	if err != nil {
 		return Patch{}, err
 	}
-	return l.build(ctx, root, "", raw, func(ctx context.Context, runner Runner, root, path string) string {
-		return readSource(ctx, runner, root, path, ":"+path)
-	})
+	return l.build(ctx, root, "", raw)
 }
 
-func (l Loader) LoadBranch(ctx context.Context, dir, branch string) (Patch, error) {
-	if l.Runner == nil {
-		l.Runner = ExecRunner{}
-	}
+func (l *Loader) LoadBranch(ctx context.Context, dir, branch string) (Patch, error) {
 	root, err := l.Root(ctx, dir)
 	if err != nil {
 		return Patch{}, err
 	}
-	baseBytes, err := l.Runner.Run(ctx, root, "merge-base", branch, "HEAD")
+	baseBytes, err := l.Runner(ctx, root, "merge-base", branch, "HEAD")
 	if err != nil {
 		return Patch{}, fmt.Errorf("find branch point with %s: %w", branch, err)
 	}
@@ -96,16 +88,10 @@ func (l Loader) LoadBranch(ctx context.Context, dir, branch string) (Patch, erro
 	if err != nil {
 		return Patch{}, err
 	}
-	readBase := func(ctx context.Context, runner Runner, root, path string) string {
-		return readSource(ctx, runner, root, path, base+":"+path)
-	}
-	return l.build(ctx, root, branch, raw, readBase)
+	return l.build(ctx, root, branch, raw)
 }
 
-func (l Loader) DefaultBranch(ctx context.Context, dir string) (string, error) {
-	if l.Runner == nil {
-		l.Runner = ExecRunner{}
-	}
+func (l *Loader) DefaultBranch(ctx context.Context, dir string) (string, error) {
 	root, err := l.Root(ctx, dir)
 	if err != nil {
 		return "", err
@@ -122,13 +108,11 @@ func (l Loader) diff(ctx context.Context, root string, revisions ...string) ([]b
 	}
 	args = append(args, revisions...)
 	args = append(args, "--")
-	return l.Runner.Run(ctx, root, args...)
+	return l.Runner(ctx, root, args...)
 }
 
-type sourceReader func(context.Context, Runner, string, string) string
-
-func (l Loader) build(ctx context.Context, root, base string, raw []byte, readOld sourceReader) (Patch, error) {
-	files, err := parseTracked(ctx, l.Runner, root, raw, readOld)
+func (l Loader) build(ctx context.Context, root, base string, raw []byte) (Patch, error) {
+	files, err := parseTracked(ctx, l.Runner, root, raw, base)
 	if err != nil {
 		return Patch{}, err
 	}
@@ -155,18 +139,18 @@ func (l Loader) build(ctx context.Context, root, base string, raw []byte, readOl
 }
 
 func (l Loader) defaultBranch(ctx context.Context, root string) string {
-	if out, err := l.Runner.Run(ctx, root, "symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD"); err == nil {
+	if out, err := l.Runner(ctx, root, "symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD"); err == nil {
 		return strings.TrimSpace(string(out))
 	}
 	for _, candidate := range []string{"origin/main", "main", "origin/master", "master"} {
-		if _, err := l.Runner.Run(ctx, root, "rev-parse", "--verify", "--quiet", candidate+"^{commit}"); err == nil {
+		if _, err := l.Runner(ctx, root, "rev-parse", "--verify", "--quiet", candidate+"^{commit}"); err == nil {
 			return candidate
 		}
 	}
 	return ""
 }
 
-func parseTracked(ctx context.Context, runner Runner, root string, raw []byte, readOld sourceReader) ([]File, error) {
+func parseTracked(ctx context.Context, runner Runner, root string, raw []byte, base string) ([]File, error) {
 	if len(bytes.TrimSpace(raw)) == 0 {
 		return nil, nil
 	}
@@ -192,7 +176,7 @@ func parseTracked(ctx context.Context, runner Runner, root string, raw []byte, r
 			DisplayPath: visibleText(display),
 			Metadata:    metadata,
 		}
-		file.OldSource = readOld(ctx, runner, root, oldPath)
+		file.OldSource = readSource(ctx, runner, root, oldPath, base+":"+oldPath)
 		file.NewSource = readWorkingTree(root, newPath)
 		for _, h := range fd.Hunks {
 			lines, parseErr := parseHunkBody(h.OrigStartLine, h.NewStartLine, h.Body)
@@ -214,7 +198,7 @@ func parseTracked(ctx context.Context, runner Runner, root string, raw []byte, r
 }
 
 func (l Loader) loadUntracked(ctx context.Context, root string) ([]File, error) {
-	out, err := l.Runner.Run(ctx, root, "ls-files", "--others", "--exclude-standard", "-z")
+	out, err := l.Runner(ctx, root, "ls-files", "--others", "--exclude-standard", "-z")
 	if err != nil {
 		return nil, err
 	}
@@ -328,7 +312,7 @@ func readSource(ctx context.Context, runner Runner, root, path, object string) s
 	if path == "" || path == "/dev/null" {
 		return ""
 	}
-	out, err := runner.Run(ctx, root, "show", object)
+	out, err := runner(ctx, root, "show", object)
 	if err != nil || len(out) > maxFileBytes || bytes.IndexByte(out, 0) >= 0 {
 		return ""
 	}
