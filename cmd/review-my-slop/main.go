@@ -100,7 +100,7 @@ func runCommentsAt(ctx context.Context, current string, output io.Writer) error 
 	if err != nil {
 		return err
 	}
-	pending, err := currentReview.ExportRepository(output, root)
+	pending, err := currentReview.ExportComments(output, patch.Patch{Repository: root})
 	if err != nil {
 		return err
 	}

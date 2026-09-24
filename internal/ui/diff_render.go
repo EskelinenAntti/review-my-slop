@@ -205,7 +205,7 @@ func fitANSIWindow(value string, offset, width int) string {
 	if width <= 0 {
 		return ""
 	}
-	value = expandTabs(value)
+	value = strings.ReplaceAll(value, "\t", "    ")
 	if offset > 0 {
 		value = ansi.TruncateLeft(value, offset, "")
 	}
@@ -215,8 +215,6 @@ func fitANSIWindow(value string, offset, width int) string {
 	}
 	return value
 }
-
-func expandTabs(value string) string { return strings.ReplaceAll(value, "\t", "    ") }
 
 func stylePrefix(style lipgloss.Style) string {
 	const marker = "\x00"

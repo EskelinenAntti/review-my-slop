@@ -46,10 +46,14 @@ func (v *diffView) build() {
 	for fileIndex := range v.patch.Files {
 		file := &v.patch.Files[fileIndex]
 		v.appendFileHeader(fileIndex, file)
-		highlighted := v.highlight(file)
+		highlighted := Sources(file.Path(), file.OldSource, file.NewSource, v.dark)
 		for hunkIndex := range file.Hunks {
 			hunk := &file.Hunks[hunkIndex]
-			v.rows = append(v.rows, entry{kind: hunkRow, file: fileIndex, hunk: hunkIndex, leftLine: -1, rightLine: -1, text: hunkHeader(hunk.Header)})
+			header := hunk.Header
+			if !strings.HasPrefix(header, "@@") {
+				header = "@@ " + header
+			}
+			v.rows = append(v.rows, entry{kind: hunkRow, file: fileIndex, hunk: hunkIndex, leftLine: -1, rightLine: -1, text: header})
 			if v.split {
 				v.appendSplitLines(fileIndex, hunkIndex, hunk, highlighted)
 				continue
@@ -68,16 +72,18 @@ func (v *diffView) build() {
 }
 
 func (v *diffView) appendSplitLines(fileIndex, hunkIndex int, hunk *patch.Hunk, highlighted Pair) {
+	base := entry{kind: lineRow, file: fileIndex, hunk: hunkIndex, leftLine: -1, rightLine: -1}
 	for index := 0; index < len(hunk.Lines); {
 		line := hunk.Lines[index]
 		switch line.Kind {
-		case patch.Context:
+		case patch.Context, patch.Addition:
 			text := highlightedLine(highlighted.New, line.NewNumber, line.Text)
-			v.rows = append(v.rows, entry{kind: lineRow, file: fileIndex, hunk: hunkIndex, leftLine: index, rightLine: index, left: text, right: text})
-			index++
-		case patch.Addition:
-			text := highlightedLine(highlighted.New, line.NewNumber, line.Text)
-			v.rows = append(v.rows, entry{kind: lineRow, file: fileIndex, hunk: hunkIndex, leftLine: -1, rightLine: index, right: text})
+			current := base
+			current.rightLine, current.right = index, text
+			if line.Kind == patch.Context {
+				current.leftLine, current.left = index, text
+			}
+			v.rows = append(v.rows, current)
 			index++
 		case patch.Deletion:
 			removedStart := index
@@ -90,7 +96,7 @@ func (v *diffView) appendSplitLines(fileIndex, hunkIndex int, hunk *patch.Hunk, 
 			}
 			count := max(index-removedStart, addedEnd-addedStart)
 			for offset := 0; offset < count; offset++ {
-				current := entry{kind: lineRow, file: fileIndex, hunk: hunkIndex, leftLine: -1, rightLine: -1}
+				current := base
 				if removedStart+offset < index {
 					current.leftLine = removedStart + offset
 					old := hunk.Lines[current.leftLine]
@@ -113,15 +119,4 @@ func (v *diffView) appendFileHeader(fileIndex int, file *patch.File) {
 	for _, metadata := range file.Metadata {
 		v.rows = append(v.rows, entry{kind: metadataRow, file: fileIndex, hunk: -1, leftLine: -1, rightLine: -1, text: metadata})
 	}
-}
-
-func (v *diffView) highlight(file *patch.File) Pair {
-	return Sources(file.Path(), file.OldSource, file.NewSource, v.dark)
-}
-
-func hunkHeader(header string) string {
-	if strings.HasPrefix(header, "@@") {
-		return header
-	}
-	return "@@ " + header
 }

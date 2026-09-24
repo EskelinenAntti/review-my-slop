@@ -1,6 +1,8 @@
 package ui
 
 import (
+	"strings"
+
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 )
@@ -130,7 +132,7 @@ func (v *diffView) maxHorizontalOffset(width int) int {
 		if current.kind != lineRow {
 			continue
 		}
-		longest = max(longest, lipgloss.Width(expandTabs(ansi.Strip(current.text+current.left+current.right)))+extra)
+		longest = max(longest, lipgloss.Width(strings.ReplaceAll(ansi.Strip(current.text+current.left+current.right), "\t", "    "))+extra)
 	}
 	return max(0, longest-contentWidth)
 }

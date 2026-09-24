@@ -102,24 +102,16 @@ func (s Store) Update(comment Comment) error {
 		return fmt.Errorf("encode comment: %w", err)
 	}
 	return s.update(func(bucket *bolt.Bucket) error {
-		cursor := bucket.Cursor()
-		for key, value := cursor.First(); key != nil; key, value = cursor.Next() {
-			stored, err := decodeComment(value)
-			if err != nil {
+		oldKey, err := findComment(bucket, comment.Repository, comment.ID)
+		if err != nil {
+			return err
+		}
+		if !bytes.Equal(oldKey, []byte(comment.ID)) {
+			if err := bucket.Delete(oldKey); err != nil {
 				return err
 			}
-			if stored.Repository != comment.Repository || stored.ID != comment.ID {
-				continue
-			}
-			oldKey := append([]byte(nil), key...)
-			if !bytes.Equal(oldKey, []byte(comment.ID)) {
-				if err := bucket.Delete(oldKey); err != nil {
-					return err
-				}
-			}
-			return bucket.Put([]byte(comment.ID), data)
 		}
-		return errors.New("comment is no longer in the comments")
+		return bucket.Put([]byte(comment.ID), data)
 	})
 }
 
@@ -128,18 +120,11 @@ func (s Store) Delete(repository, id string) error {
 		return errors.New("repository and comment ID are required")
 	}
 	return s.update(func(bucket *bolt.Bucket) error {
-		cursor := bucket.Cursor()
-		for key, value := cursor.First(); key != nil; key, value = cursor.Next() {
-			comment, err := decodeComment(value)
-			if err != nil {
-				return err
-			}
-			if comment.Repository != repository || comment.ID != id {
-				continue
-			}
-			return bucket.Delete(key)
+		key, err := findComment(bucket, repository, id)
+		if err != nil {
+			return err
 		}
-		return errors.New("comment is no longer in the comments")
+		return bucket.Delete(key)
 	})
 }
 
@@ -184,6 +169,20 @@ func validateComment(comment Comment) error {
 		return fmt.Errorf("comment exceeds %d bytes", maxCommentBytes)
 	}
 	return nil
+}
+
+func findComment(bucket *bolt.Bucket, repository, id string) ([]byte, error) {
+	cursor := bucket.Cursor()
+	for key, value := cursor.First(); key != nil; key, value = cursor.Next() {
+		comment, err := decodeComment(value)
+		if err != nil {
+			return nil, err
+		}
+		if comment.Repository == repository && comment.ID == id {
+			return append([]byte(nil), key...), nil
+		}
+	}
+	return nil, errors.New("comment is no longer in the comments")
 }
 
 func decodeComment(data []byte) (Comment, error) {

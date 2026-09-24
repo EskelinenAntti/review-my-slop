@@ -74,7 +74,9 @@ func (l Loader) Load(ctx context.Context, dir string) (Patch, error) {
 	if err != nil {
 		return Patch{}, err
 	}
-	return l.build(ctx, root, "", raw, readIndex)
+	return l.build(ctx, root, "", raw, func(ctx context.Context, runner Runner, root, path string) string {
+		return readSource(ctx, runner, root, path, ":"+path)
+	})
 }
 
 func (l Loader) LoadBranch(ctx context.Context, dir, branch string) (Patch, error) {
@@ -95,7 +97,7 @@ func (l Loader) LoadBranch(ctx context.Context, dir, branch string) (Patch, erro
 		return Patch{}, err
 	}
 	readBase := func(ctx context.Context, runner Runner, root, path string) string {
-		return readRevision(ctx, runner, root, base, path)
+		return readSource(ctx, runner, root, path, base+":"+path)
 	}
 	return l.build(ctx, root, branch, raw, readBase)
 }
@@ -180,11 +182,15 @@ func parseTracked(ctx context.Context, runner Runner, root string, raw []byte, r
 		if display == "" || display == "/dev/null" {
 			display = oldPath
 		}
+		metadata := make([]string, len(fd.Extended))
+		for index, value := range fd.Extended {
+			metadata[index] = visibleText(value)
+		}
 		file := File{
 			OldPath:     oldPath,
 			NewPath:     newPath,
 			DisplayPath: visibleText(display),
-			Metadata:    visibleStrings(fd.Extended),
+			Metadata:    metadata,
 		}
 		file.OldSource = readOld(ctx, runner, root, oldPath)
 		file.NewSource = readWorkingTree(root, newPath)
@@ -193,8 +199,12 @@ func parseTracked(ctx context.Context, runner Runner, root string, raw []byte, r
 			if parseErr != nil {
 				return nil, fmt.Errorf("%s: %w", display, parseErr)
 			}
+			header := fmt.Sprintf("@@ -%d,%d +%d,%d @@", h.OrigStartLine, h.OrigLines, h.NewStartLine, h.NewLines)
+			if h.Section != "" {
+				header += " " + h.Section
+			}
 			file.Hunks = append(file.Hunks, Hunk{
-				Header: formatHunkHeader(h),
+				Header: header,
 				Lines:  lines,
 			})
 		}
@@ -257,7 +267,11 @@ func (l Loader) loadUntracked(ctx context.Context, root string) ([]File, error) 
 }
 
 func addedFile(path, content string) File {
-	sourceLines := splitSourceLines(content)
+	content = strings.TrimSuffix(content, "\n")
+	var sourceLines []string
+	if content != "" {
+		sourceLines = strings.Split(content, "\n")
+	}
 	lines := make([]Line, 0, len(sourceLines))
 	for i, line := range sourceLines {
 		lines = append(lines, Line{Kind: Addition, Text: line, NewNumber: LineNumber(i + 1)})
@@ -284,33 +298,30 @@ func parseHunkBody(oldLine, newLine int32, body []byte) ([]Line, error) {
 		if len(raw) == 0 {
 			return nil, errors.New("malformed empty diff line")
 		}
-		text := visibleText(string(raw[1:]))
+		line := Line{Text: visibleText(string(raw[1:]))}
 		switch raw[0] {
 		case ' ':
-			lines = append(lines, Line{Kind: Context, Text: text, OldNumber: LineNumber(oldLine), NewNumber: LineNumber(newLine)})
+			line.Kind = Context
+			line.OldNumber, line.NewNumber = LineNumber(oldLine), LineNumber(newLine)
 			oldLine++
 			newLine++
 		case '+':
-			lines = append(lines, Line{Kind: Addition, Text: text, NewNumber: LineNumber(newLine)})
+			line.Kind = Addition
+			line.NewNumber = LineNumber(newLine)
 			newLine++
 		case '-':
-			lines = append(lines, Line{Kind: Deletion, Text: text, OldNumber: LineNumber(oldLine)})
+			line.Kind = Deletion
+			line.OldNumber = LineNumber(oldLine)
 			oldLine++
 		case '\\':
 			// "\ No newline at end of file" belongs to the preceding line.
+			continue
 		default:
 			return nil, fmt.Errorf("unexpected diff prefix %q", raw[0])
 		}
+		lines = append(lines, line)
 	}
 	return lines, nil
-}
-
-func readIndex(ctx context.Context, runner Runner, root, path string) string {
-	return readSource(ctx, runner, root, path, ":"+path)
-}
-
-func readRevision(ctx context.Context, runner Runner, root, revision, path string) string {
-	return readSource(ctx, runner, root, path, revision+":"+path)
 }
 
 func readSource(ctx context.Context, runner Runner, root, path, object string) string {
@@ -350,22 +361,6 @@ func cleanDiffPath(path string) string {
 	return path
 }
 
-func splitSourceLines(content string) []string {
-	content = strings.TrimSuffix(content, "\n")
-	if content == "" {
-		return nil
-	}
-	return strings.Split(content, "\n")
-}
-
-func visibleStrings(values []string) []string {
-	result := make([]string, len(values))
-	for index, value := range values {
-		result[index] = visibleText(value)
-	}
-	return result
-}
-
 func visibleSource(value string) string {
 	var result strings.Builder
 	for _, r := range value {
@@ -385,12 +380,4 @@ func visibleSource(value string) string {
 
 func visibleText(value string) string {
 	return strings.ReplaceAll(visibleSource(value), "\n", `\n`)
-}
-
-func formatHunkHeader(h *diff.Hunk) string {
-	header := fmt.Sprintf("@@ -%d,%d +%d,%d @@", h.OrigStartLine, h.OrigLines, h.NewStartLine, h.NewLines)
-	if h.Section != "" {
-		header += " " + h.Section
-	}
-	return header
 }
