@@ -56,10 +56,10 @@ func (s Store) Add(comment Comment) (Comment, error) {
 	key := []byte(comment.ID)
 	err = s.transact(true, func(bucket *bolt.Bucket) error {
 		var pending int
-		cursor := bucket.Cursor()
-		for _, value := cursor.First(); value != nil; _, value = cursor.Next() {
+		_ = bucket.ForEach(func(_, value []byte) error {
 			pending += len(value)
-		}
+			return nil
+		})
 		if pending+len(data) > maxPendingBytes {
 			return fmt.Errorf("pending feedback exceeds %d bytes", maxPendingBytes)
 		}
