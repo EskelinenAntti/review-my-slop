@@ -94,14 +94,20 @@ func runCommentsAt(ctx context.Context, current string, output io.Writer) error 
 	if err != nil {
 		return err
 	}
-	currentReview := review.New(ctx, current, patch.Loader{}, store)
 	root, err := (&patch.Loader{}).Root(ctx, current)
 	if err != nil {
 		return err
 	}
-	pending, err := currentReview.ExportComments(output, patch.Patch{Repository: root})
+	pending, err := store.List(root)
 	if err != nil {
 		return err
 	}
-	return currentReview.AcknowledgeRepository(root, pending)
+	if err := comments.WritePrompt(output, pending); err != nil {
+		return err
+	}
+	ids := make([]string, len(pending))
+	for index, comment := range pending {
+		ids[index] = comment.ID
+	}
+	return store.Acknowledge(root, ids)
 }

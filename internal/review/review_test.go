@@ -33,11 +33,13 @@ func TestExportDoesNotAcknowledge(t *testing.T) {
 	if _, err := store.Add(comments.Comment{ID: "one", Repository: "/repo", Body: "check"}); err != nil {
 		t.Fatal(err)
 	}
-	currentReview := New(context.Background(), "/work", patch.Loader{}, store)
 	var output bytes.Buffer
 
-	pending, err := currentReview.ExportComments(&output, patch.Patch{Repository: "/repo"})
+	pending, err := store.List("/repo")
 	if err != nil {
+		t.Fatal(err)
+	}
+	if err := comments.WritePrompt(&output, pending); err != nil {
 		t.Fatal(err)
 	}
 	stored, err := store.List("/repo")
@@ -47,7 +49,11 @@ func TestExportDoesNotAcknowledge(t *testing.T) {
 	if len(pending) != 1 || len(stored) != 1 {
 		t.Fatalf("pending = %#v, stored = %#v", pending, stored)
 	}
-	if err := currentReview.AcknowledgeRepository("/repo", pending); err != nil {
+	ids := make([]string, len(pending))
+	for index, comment := range pending {
+		ids[index] = comment.ID
+	}
+	if err := store.Acknowledge("/repo", ids); err != nil {
 		t.Fatal(err)
 	}
 	stored, err = store.List("/repo")
