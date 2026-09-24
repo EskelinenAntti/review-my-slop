@@ -23,12 +23,12 @@ func CreateCommentFile(body string, anchor comments.Anchor) (string, error) {
 		draft = body + separator + suggestionBlock(suggestionLines(anchor.QuotedLines)) + "\n"
 	}
 	if _, err := file.WriteString(draft); err != nil {
-		_ = file.Close()
-		_ = os.Remove(path)
+		file.Close()
+		os.Remove(path)
 		return "", fmt.Errorf("write comment file: %w", err)
 	}
 	if err := file.Close(); err != nil {
-		_ = os.Remove(path)
+		os.Remove(path)
 		return "", fmt.Errorf("close comment file: %w", err)
 	}
 	return path, nil

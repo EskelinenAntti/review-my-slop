@@ -99,7 +99,7 @@ func NewWithReview(loader patch.Loader, store comments.Store, ctx context.Contex
 	if err != nil {
 		return Model{}, err
 	}
-	if size.Width <= 0 || size.Height <= 0 {
+	if min(size.Width, size.Height) <= 0 {
 		size = DefaultSize
 	}
 	m := Model{

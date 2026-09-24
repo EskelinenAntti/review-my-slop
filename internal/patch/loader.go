@@ -119,9 +119,9 @@ func (l Loader) build(ctx context.Context, root, base string, raw []byte) (Patch
 	sort.SliceStable(files, func(i, j int) bool { return files[i].DisplayPath < files[j].DisplayPath })
 
 	hash := sha256.New()
-	_, _ = hash.Write(append([]byte(base), raw...))
+	hash.Write(append([]byte(base), raw...))
 	for _, file := range untracked {
-		_, _ = hash.Write(append([]byte(file.NewPath), []byte(file.NewSource)...))
+		hash.Write(append([]byte(file.NewPath), []byte(file.NewSource)...))
 	}
 
 	return Patch{

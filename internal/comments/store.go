@@ -54,9 +54,9 @@ func (s Store) Add(comment Comment) (Comment, error) {
 		return Comment{}, fmt.Errorf("encode comment: %w", err)
 	}
 	key := []byte(comment.ID)
-	err = s.transact(true, func(bucket *bolt.Bucket) error {
+	return comment, s.transact(true, func(bucket *bolt.Bucket) error {
 		var pending int
-		_ = bucket.ForEach(func(_, value []byte) error {
+		bucket.ForEach(func(_, value []byte) error {
 			pending += len(value)
 			return nil
 		})
@@ -68,12 +68,11 @@ func (s Store) Add(comment Comment) (Comment, error) {
 		}
 		return bucket.Put(key, data)
 	})
-	return comment, err
 }
 
 func (s Store) List(repository string) ([]Comment, error) {
 	var comments []Comment
-	err := s.transact(false, func(bucket *bolt.Bucket) error {
+	return comments, s.transact(false, func(bucket *bolt.Bucket) error {
 		return bucket.ForEach(func(_, value []byte) error {
 			comment, err := decodeComment(value)
 			if err != nil {
@@ -85,7 +84,6 @@ func (s Store) List(repository string) ([]Comment, error) {
 			return nil
 		})
 	})
-	return comments, err
 }
 
 func (s Store) Update(comment Comment) error {
