@@ -1,9 +1,6 @@
 package ui
 
-import (
-	"charm.land/lipgloss/v2"
-	"github.com/charmbracelet/x/ansi"
-)
+import "github.com/charmbracelet/x/ansi"
 
 func (v *diffView) NewViewport(width, height int) Viewport {
 	return v.Resize(Viewport{}, width, height)
@@ -25,45 +22,54 @@ func (v *diffView) clampViewport(viewport Viewport) Viewport {
 }
 
 func (v *diffView) hasStickyHeader(top Coordinate, viewportHeight int) bool {
-	return viewportHeight > 1 && top.Y >= 0 && top.Y < len(v.rows) && v.rows[top.Y].kind != fileRow
+	y, rows := top.Y, v.rows
+	return viewportHeight > 1 && y >= 0 && y < len(rows) && rows[y].kind != fileRow
 }
 
 func (v *diffView) contentHeight(viewport Viewport) int {
 	height := viewport.Height
-	if v.hasStickyHeader(viewport.Top, viewport.Height) {
+	if v.hasStickyHeader(viewport.Top, height) {
 		height--
 	}
 	return max(1, height)
 }
 
 func (v *diffView) KeepVisible(viewport Viewport, cursor Cursor) Viewport {
+	clamp := v.clampViewport
 	if !v.valid(cursor) {
-		return v.clampViewport(viewport)
+		return clamp(viewport)
 	}
-	viewport = v.clampViewport(viewport)
+	viewport = clamp(viewport)
+	y := cursor.Coordinate.Y
 	for range 2 {
 		height := v.contentHeight(viewport)
-		if cursor.Coordinate.Y < viewport.Top.Y {
-			viewport.Top.Y = cursor.Coordinate.Y
+		top := viewport.Top.Y
+		if y < top {
+			top = y
 		}
-		if cursor.Coordinate.Y >= viewport.Top.Y+height {
-			viewport.Top.Y = cursor.Coordinate.Y - height + 1
+		if y >= top+height {
+			top = y - height + 1
 		}
-		viewport = v.clampViewport(viewport)
+		viewport.Top.Y = top
+		viewport = clamp(viewport)
 	}
 	return viewport
 }
 
 func (v *diffView) Align(viewport Viewport, cursor Cursor, alignment VerticalAlignment) Viewport {
+	height := viewport.Height
+	top := viewport.Top
+	y := cursor.Coordinate.Y
 	headerHeight := 0
-	if viewport.Height > 1 {
+	if height > 1 {
 		headerHeight = 1
 	}
-	offset := max(0, alignmentOffset(viewport.Height, alignment)-headerHeight)
-	viewport.Top.Y = cursor.Coordinate.Y - offset
-	if !v.hasStickyHeader(viewport.Top, viewport.Height) {
-		viewport.Top.Y = cursor.Coordinate.Y - alignmentOffset(viewport.Height, alignment)
+	offset := max(0, alignmentOffset(height, alignment)-headerHeight)
+	top.Y = y - offset
+	if !v.hasStickyHeader(top, height) {
+		top.Y = y - alignmentOffset(height, alignment)
 	}
+	viewport.Top = top
 	return v.clampViewport(viewport)
 }
 
@@ -97,18 +103,20 @@ func (v *diffView) ScrollHalfPage(viewport Viewport, cursor Cursor, direction Di
 }
 
 func (v *diffView) ViewportProgress(viewport Viewport) int {
-	if len(v.rows) == 0 {
+	rows := v.rows
+	if len(rows) == 0 {
 		return 0
 	}
-	bottom := min(len(v.rows), viewport.Top.Y+v.contentHeight(viewport))
-	return bottom * 100 / len(v.rows)
+	bottom := min(len(rows), viewport.Top.Y+v.contentHeight(viewport))
+	return bottom * 100 / len(rows)
 }
 
 func (v *diffView) nearest(target int, pane Pane, direction Direction, viewport Viewport) (Cursor, bool) {
 	height := v.contentHeight(viewport)
+	top := viewport.Top.Y
 	for distance := 0; distance < height; distance++ {
 		for _, y := range []int{target + int(direction)*distance, target - int(direction)*distance} {
-			if y < viewport.Top.Y || y >= viewport.Top.Y+height || y >= len(v.rows) {
+			if y < top || y >= top+height || y >= len(v.rows) {
 				continue
 			}
 			if cursor, ok := v.cursorAt(y, pane); ok {
@@ -130,7 +138,7 @@ func (v *diffView) maxHorizontalOffset(width int) int {
 		if current.kind != lineRow {
 			continue
 		}
-		longest = max(longest, lipgloss.Width(expandTabs(ansi.Strip(current.text+current.left+current.right)))+extra)
+		longest = max(longest, widthOf(expandTabs(ansi.Strip(current.text+current.left+current.right)))+extra)
 	}
 	return max(0, longest-contentWidth)
 }

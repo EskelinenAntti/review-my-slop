@@ -5,6 +5,15 @@ import (
 	"github.com/eskelinenantti/review-my-slop/internal/patch"
 )
 
+type diffPatch = patch.Patch
+type commentAnchor = comments.Anchor
+type reviewComment = comments.Comment
+type diffFile = patch.File
+type diffHunk = patch.Hunk
+type diffLine = patch.Line
+type diffLineKind = patch.LineKind
+type diffLineNumber = patch.LineNumber
+
 type Coordinate struct {
 	Y int
 }

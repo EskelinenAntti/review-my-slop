@@ -7,11 +7,12 @@ import (
 )
 
 func WritePrompt(w io.Writer, comments []Comment) error {
+	println := fmt.Fprintln
 	if len(comments) == 0 {
-		_, err := fmt.Fprintln(w, "No pending review comments.")
+		_, err := println(w, "No pending review comments.")
 		return err
 	}
-	if _, err := fmt.Fprintln(w, "New comments since last run:"); err != nil {
+	if _, err := println(w, "New comments since last run:"); err != nil {
 		return err
 	}
 	for index, comment := range comments {
@@ -19,20 +20,21 @@ func WritePrompt(w io.Writer, comments []Comment) error {
 		if _, err := fmt.Fprintf(w, "\n### %d. `%s` (%s)\n\n", index+1, a.FilePath, describeRange(a)); err != nil {
 			return err
 		}
-		if len(a.QuotedLines) > 0 {
-			if _, err := fmt.Fprintln(w, "```diff"); err != nil {
+		quotedLines := a.QuotedLines
+		if len(quotedLines) > 0 {
+			if _, err := println(w, "```diff"); err != nil {
 				return err
 			}
-			for _, line := range a.QuotedLines {
-				if _, err := fmt.Fprintln(w, line); err != nil {
+			for _, line := range quotedLines {
+				if _, err := println(w, line); err != nil {
 					return err
 				}
 			}
-			if _, err := fmt.Fprintln(w, "```"); err != nil {
+			if _, err := println(w, "```"); err != nil {
 				return err
 			}
 		}
-		if _, err := fmt.Fprintln(w, strings.TrimSpace(comment.Body)); err != nil {
+		if _, err := println(w, strings.TrimSpace(comment.Body)); err != nil {
 			return err
 		}
 	}
@@ -41,11 +43,12 @@ func WritePrompt(w io.Writer, comments []Comment) error {
 
 func describeRange(anchor Anchor) string {
 	var sides []string
-	if anchor.OldStart > 0 {
-		sides = append(sides, lineRange("old", anchor.OldStart, anchor.OldEnd))
+	oldStart, newStart := anchor.OldStart, anchor.NewStart
+	if oldStart > 0 {
+		sides = append(sides, lineRange("old", oldStart, anchor.OldEnd))
 	}
-	if anchor.NewStart > 0 {
-		sides = append(sides, lineRange("new", anchor.NewStart, anchor.NewEnd))
+	if newStart > 0 {
+		sides = append(sides, lineRange("new", newStart, anchor.NewEnd))
 	}
 	if len(sides) == 0 {
 		return "diff lines"
@@ -55,7 +58,7 @@ func describeRange(anchor Anchor) string {
 
 func lineRange(side string, start, end int) string {
 	if end == 0 || end == start {
-		return fmt.Sprintf("%s line %d", side, start)
+		return formatString("%s line %d", side, start)
 	}
-	return fmt.Sprintf("%s lines %d-%d", side, start, end)
+	return formatString("%s lines %d-%d", side, start, end)
 }

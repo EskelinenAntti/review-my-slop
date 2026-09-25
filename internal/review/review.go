@@ -53,10 +53,11 @@ func (r Review) Repository() (string, error) {
 }
 
 func (r Review) Load(branch string) (patch.Patch, error) {
+	patches, ctx, directory := r.patches, r.context, r.directory
 	if branch == "" {
-		return r.patches.Load(r.context, r.directory)
+		return patches.Load(ctx, directory)
 	}
-	return r.patches.LoadBranch(r.context, r.directory, branch)
+	return patches.LoadBranch(ctx, directory, branch)
 }
 
 func (r Review) DefaultBranch() (string, error) {
@@ -68,14 +69,15 @@ func (r Review) Comments(p patch.Patch) ([]comments.Comment, error) {
 }
 
 func (r Review) SaveComment(comment comments.Comment, p patch.Patch) (comments.Comment, error) {
+	store := r.comments
 	comment.Repository = p.Repository
 	if comment.ID != "" {
-		if err := r.comments.Update(comment); err != nil {
+		if err := store.Update(comment); err != nil {
 			return comments.Comment{}, err
 		}
 		return comment, nil
 	}
-	return r.comments.Add(comment)
+	return store.Add(comment)
 }
 
 func (r Review) DeleteComment(comment comments.Comment, p patch.Patch) error {
@@ -98,11 +100,7 @@ func (r Review) ExportRepository(w io.Writer, repository string) ([]comments.Com
 }
 
 func (r Review) Acknowledge(p patch.Patch, pending []comments.Comment) error {
-	ids := make([]string, len(pending))
-	for index, comment := range pending {
-		ids[index] = comment.ID
-	}
-	return r.comments.Acknowledge(p.Repository, ids)
+	return r.comments.Acknowledge(p.Repository, commentIDs(pending))
 }
 
 func (r Review) AcknowledgeRepository(repository string, pending []comments.Comment) error {

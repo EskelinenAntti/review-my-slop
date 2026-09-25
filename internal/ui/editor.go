@@ -1,7 +1,6 @@
 package ui
 
 import (
-	"fmt"
 	"os"
 	"os/exec"
 	"strconv"
@@ -13,17 +12,18 @@ import (
 func CreateCommentFile(body string, anchor comments.Anchor) (string, error) {
 	file, err := os.CreateTemp("", "review-my-slop-comment-*.md")
 	if err != nil {
-		return "", fmt.Errorf("create comment file: %w", err)
+		return "", formatError("create comment file: %w", err)
 	}
 	path := file.Name()
+	closeFile, remove := file.Close, os.Remove
 	if _, err := file.WriteString(CommentDraft(body, anchor)); err != nil {
-		_ = file.Close()
-		_ = os.Remove(path)
-		return "", fmt.Errorf("write comment file: %w", err)
+		_ = closeFile()
+		_ = remove(path)
+		return "", formatError("write comment file: %w", err)
 	}
-	if err := file.Close(); err != nil {
-		_ = os.Remove(path)
-		return "", fmt.Errorf("close comment file: %w", err)
+	if err := closeFile(); err != nil {
+		_ = remove(path)
+		return "", formatError("close comment file: %w", err)
 	}
 	return path, nil
 }
@@ -31,35 +31,30 @@ func CreateCommentFile(body string, anchor comments.Anchor) (string, error) {
 func ReadCommentFile(path string, anchor comments.Anchor, editorErr error) (string, error) {
 	defer os.Remove(path)
 	if editorErr != nil {
-		return "", fmt.Errorf("editor: %w", editorErr)
+		return "", formatError("editor: %w", editorErr)
 	}
 	body, err := os.ReadFile(path)
 	if err != nil {
-		return "", fmt.Errorf("read comment file: %w", err)
+		return "", formatError("read comment file: %w", err)
 	}
 	return StripUnchangedSuggestion(string(body), anchor.QuotedLines), nil
 }
 
 func CommentDraft(body string, anchor comments.Anchor) string {
-	if len(anchor.QuotedLines) == 0 {
+	quotedLines := anchor.QuotedLines
+	if len(quotedLines) == 0 {
 		return body
 	}
-	lines := suggestionLines(anchor.QuotedLines)
+	lines := suggestionLines(quotedLines)
 	var draft strings.Builder
-	draft.WriteString(body)
+	writeString, writeByte := draft.WriteString, draft.WriteByte
+	writeString(body)
 	if body != "" && !strings.HasSuffix(body, "\n") {
-		draft.WriteByte('\n')
+		writeByte('\n')
 	}
-	draft.WriteByte('\n')
-	fence := contextFence(lines)
-	draft.WriteString(fence)
-	draft.WriteString("suggestion\n")
-	for _, line := range lines {
-		draft.WriteString(line)
-		draft.WriteByte('\n')
-	}
-	draft.WriteString(fence)
-	draft.WriteByte('\n')
+	writeByte('\n')
+	writeString(suggestionBlock(lines))
+	writeByte('\n')
 	return draft.String()
 }
 
@@ -68,26 +63,32 @@ func StripUnchangedSuggestion(body string, quoted []string) string {
 		return body
 	}
 	lines := suggestionLines(quoted)
-	fence := contextFence(lines)
-	var suggestion strings.Builder
-	suggestion.WriteString(fence)
-	suggestion.WriteString("suggestion\n")
-	for _, line := range lines {
-		suggestion.WriteString(line)
-		suggestion.WriteByte('\n')
-	}
-	suggestion.WriteString(fence)
-	start := strings.Index(body, suggestion.String())
+	suggestion := suggestionBlock(lines)
+	start := strings.Index(body, suggestion)
 	if start < 0 {
 		return body
 	}
-	end := start + suggestion.Len()
+	end := start + len(suggestion)
 	before := strings.TrimRight(body[:start], "\n")
 	after := body[end:]
-	if strings.TrimSpace(after) == "" {
+	if trimSpace(after) == "" {
 		return before
 	}
 	return before + "\n" + strings.TrimLeft(after, "\n")
+}
+
+func suggestionBlock(lines []string) string {
+	fence := contextFence(lines)
+	var suggestion strings.Builder
+	writeString, writeByte := suggestion.WriteString, suggestion.WriteByte
+	writeString(fence)
+	writeString("suggestion\n")
+	for _, line := range lines {
+		writeString(line)
+		writeByte('\n')
+	}
+	writeString(fence)
+	return suggestion.String()
 }
 
 func CommentCommand(editor, path string) *exec.Cmd {
@@ -121,9 +122,9 @@ func contextFence(lines []string) string {
 			}
 		}
 	}
-	return strings.Repeat("`", max(3, longest+1))
+	return repeat("`", max(3, longest+1))
 }
 
 func shellQuote(value string) string {
-	return "'" + strings.ReplaceAll(value, "'", "'\"'\"'") + "'"
+	return "'" + replaceAll(value, "'", "'\"'\"'") + "'"
 }

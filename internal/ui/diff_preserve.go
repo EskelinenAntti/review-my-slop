@@ -1,11 +1,9 @@
 package ui
 
-import "github.com/eskelinenantti/review-my-slop/internal/patch"
-
 type cursorIdentity struct {
-	file   patch.File
-	hunk   patch.Hunk
-	line   patch.Line
+	file   diffFile
+	hunk   diffHunk
+	line   diffLine
 	cursor Cursor
 	valid  bool
 }
@@ -13,31 +11,33 @@ type cursorIdentity struct {
 // Preserve returns fresh State for next by retaining the meaningful position
 // from state where next contains it.
 func Preserve(old View, state State, next View) State {
-	result := State{Viewport: next.NewViewport(state.Viewport.Width, state.Viewport.Height)}
+	oldCursor, oldViewport := state.Cursor, state.Viewport
+	viewport := next.NewViewport(oldViewport.Width, oldViewport.Height)
+	result := State{Viewport: viewport}
 	rowsAbove := 0
-	if state.Cursor != nil {
-		rowsAbove = state.Cursor.Coordinate.Y - state.Viewport.Top.Y
+	if oldCursor != nil {
+		rowsAbove = oldCursor.Coordinate.Y - oldViewport.Top.Y
 	}
 
-	cursor := identify(old, state.Cursor)
-	if cursor.valid {
-		if translated, ok := next.FindCursor(cursor.file, cursor.hunk, cursor.line, cursor.cursor.Coordinate, cursor.cursor.Pane); ok {
-			result.Cursor = &translated
-		}
+	identity := identify(old, oldCursor)
+	var cursor *Cursor
+	if translated, ok := translateCursor(next, identity); ok {
+		cursor = &translated
 	}
-	if result.Cursor == nil {
+	if cursor == nil {
 		if first, ok := next.First(); ok {
-			result.Cursor = &first
+			cursor = &first
 		}
 	}
 
 	if selection, ok := preserveSelection(old, state.Selection, next); ok {
 		result.Selection = &selection
 	}
-	if result.Cursor != nil {
-		result.Viewport.Top.Y = max(0, result.Cursor.Coordinate.Y-rowsAbove)
-		result.Viewport = next.KeepVisible(result.Viewport, *result.Cursor)
+	if cursor != nil {
+		viewport.Top.Y = max(0, cursor.Coordinate.Y-rowsAbove)
+		viewport = next.KeepVisible(viewport, *cursor)
 	}
+	result.Cursor, result.Viewport = cursor, viewport
 	return result
 }
 
@@ -51,17 +51,22 @@ func identify(v View, cursor *Cursor) cursorIdentity {
 	return cursorIdentity{file: file, hunk: hunk, line: line, cursor: *cursor, valid: fileOK && hunkOK && lineOK}
 }
 
+func translateCursor(v View, identity cursorIdentity) (Cursor, bool) {
+	if !identity.valid {
+		return Cursor{}, false
+	}
+	cursor := identity.cursor
+	return v.FindCursor(identity.file, identity.hunk, identity.line, cursor.Coordinate, cursor.Pane)
+}
+
 func preserveSelection(old View, selection *Selection, next View) (Selection, bool) {
 	if selection == nil {
 		return Selection{}, false
 	}
 	first := identify(old, &selection.First)
 	last := identify(old, &selection.Last)
-	if !first.valid || !last.valid {
-		return Selection{}, false
-	}
-	translatedFirst, firstOK := next.FindCursor(first.file, first.hunk, first.line, first.cursor.Coordinate, first.cursor.Pane)
-	translatedLast, lastOK := next.FindCursor(last.file, last.hunk, last.line, last.cursor.Coordinate, last.cursor.Pane)
+	translatedFirst, firstOK := translateCursor(next, first)
+	translatedLast, lastOK := translateCursor(next, last)
 	if !firstOK || !lastOK || !sameFile(first.file, last.file) || first.hunk.Header != last.hunk.Header {
 		return Selection{}, false
 	}
