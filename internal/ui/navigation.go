@@ -1,70 +1,76 @@
 package ui
 
-import (
-	"fmt"
-
-	tea "charm.land/bubbletea/v2"
-)
-
 func (m *Model) move(direction Direction) {
-	next, ok := m.review.view.Move(m.review.cursor, direction)
+	review := &m.review
+	view := review.view
+	next, ok := view.Move(review.cursor, direction)
 	if !ok {
 		return
 	}
-	if m.review.selection != nil {
-		selection, selectionOK := m.review.view.ExtendSelection(*m.review.selection, next)
+	currentSelection := review.selection
+	if currentSelection != nil {
+		selection, selectionOK := view.ExtendSelection(*currentSelection, next)
 		if !selectionOK {
 			return
 		}
-		m.review.selection = &selection
+		review.selection = &selection
 	}
 	m.setCursor(next)
 }
 
 func (m *Model) setCursor(cursor Cursor) {
-	m.review.cursor = cursor
-	m.review.viewport = m.review.view.KeepVisible(m.review.viewport, cursor)
+	review := &m.review
+	review.cursor = cursor
+	review.viewport = review.view.KeepVisible(review.viewport, cursor)
 }
 
 func (m *Model) halfPage(direction Direction) {
-	viewport, cursor := m.review.view.ScrollHalfPage(m.review.viewport, m.review.cursor, direction)
-	if m.review.selection != nil {
-		selection, ok := m.review.view.ExtendSelection(*m.review.selection, cursor)
+	review := &m.review
+	view := review.view
+	viewport, cursor := view.ScrollHalfPage(review.viewport, review.cursor, direction)
+	currentSelection := review.selection
+	if currentSelection != nil {
+		selection, ok := view.ExtendSelection(*currentSelection, cursor)
 		if !ok {
 			return
 		}
-		m.review.selection = &selection
+		review.selection = &selection
 	}
-	m.review.viewport, m.review.cursor = viewport, cursor
+	review.viewport, review.cursor = viewport, cursor
 }
 
 func (m *Model) jumpFile(direction Direction) {
+	review := &m.review
 	m.cancelSelection()
-	if cursor, ok := m.review.view.JumpFile(m.review.cursor, direction); ok {
+	if cursor, ok := review.view.JumpFile(review.cursor, direction); ok {
 		m.setCursor(cursor)
 	}
 }
 
 func (m *Model) switchPane(pane Pane) {
+	review := &m.review
 	if !m.sideBySideActive() {
 		return
 	}
-	cursor, ok := m.review.view.SwitchPane(m.review.cursor, pane)
+	view := review.view
+	switchViewPane := view.SwitchPane
+	cursor, ok := switchViewPane(review.cursor, pane)
 	if !ok {
 		return
 	}
-	if m.review.selection != nil {
-		first, firstOK := m.review.view.SwitchPane(m.review.selection.First, pane)
-		last, lastOK := m.review.view.SwitchPane(m.review.selection.Last, pane)
+	currentSelection := review.selection
+	if currentSelection != nil {
+		first, firstOK := switchViewPane(currentSelection.First, pane)
+		last, lastOK := switchViewPane(currentSelection.Last, pane)
 		if !firstOK || !lastOK {
 			return
 		}
-		selection := m.review.view.BeginSelection(first)
-		selection, ok = m.review.view.ExtendSelection(selection, last)
+		selection := view.BeginSelection(first)
+		selection, ok = view.ExtendSelection(selection, last)
 		if !ok {
 			return
 		}
-		m.review.selection = &selection
+		review.selection = &selection
 	}
 	m.setCursor(cursor)
 }
@@ -74,75 +80,93 @@ func (m Model) sideBySideActive() bool {
 }
 
 func (m *Model) toggleSideBySide() {
-	enabled := !m.review.sideBySide
+	review := &m.review
+	saveLayout := m.saveLayout
+	enabled := !review.sideBySide
 	if enabled && m.width < minimumSideBySideWidth {
-		m.err = fmt.Errorf("side-by-side view requires a terminal at least %d columns wide", minimumSideBySideWidth)
+		m.err = formatError("side-by-side view requires a terminal at least %d columns wide", minimumSideBySideWidth)
 		return
 	}
 	m.setSideBySide(enabled)
-	if m.saveLayout != nil {
-		if err := m.saveLayout(m.review.sideBySide); err != nil {
-			m.err = fmt.Errorf("save side-by-side preference: %w", err)
+	if saveLayout != nil {
+		if err := saveLayout(review.sideBySide); err != nil {
+			m.err = formatError("save side-by-side preference: %w", err)
 		}
 	}
 }
 
 func (m *Model) setSideBySide(enabled bool) {
+	review := &m.review
 	wasActive := m.sideBySideActive()
-	m.review.sideBySide = enabled
+	review.sideBySide = enabled
 	if wasActive != m.sideBySideActive() {
-		m.rebuildView(m.review.patch)
+		m.rebuildView(review.patch)
 	}
 }
 
-func (m Model) updateSearch(name string, key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+func (m Model) updateSearch(name string, key teaKeyPress) (teaModel, teaCmd) {
+	search := &m.search
+	query := search.query
+	hasQuery := len(query) > 0
+	miss, text := search.miss, key.Text
+	updateIncremental := m.updateIncrementalSearch
+	update := false
 	switch name {
 	case "esc":
-		m.setCursor(m.search.from)
+		m.setCursor(search.from)
 		m.mode = modeBrowse
-		m.search.query = nil
-		m.search.miss = false
+		query = nil
+		miss = false
 	case "enter":
-		if len(m.search.query) > 0 && !m.search.miss {
-			m.search.term = string(m.search.query)
+		if hasQuery && !miss {
+			search.term = string(query)
 		}
 		m.mode = modeBrowse
-		m.search.query = nil
-		m.search.miss = false
+		query = nil
+		miss = false
 	case "backspace":
-		if len(m.search.query) > 0 {
-			m.search.query = m.search.query[:len(m.search.query)-1]
+		if hasQuery {
+			query = query[:len(query)-1]
 		}
-		m.updateIncrementalSearch()
+		update = true
 	default:
-		if key.Text != "" {
-			m.search.query = append(m.search.query, []rune(key.Text)...)
-			m.updateIncrementalSearch()
+		if text != "" {
+			query = append(query, []rune(text)...)
+			update = true
 		}
+	}
+	search.query = query
+	search.miss = miss
+	if update {
+		updateIncremental(query)
 	}
 	return m, nil
 }
 
-func (m *Model) updateIncrementalSearch() {
-	if len(m.search.query) == 0 {
-		m.setCursor(m.search.from)
-		m.search.miss = false
+func (m *Model) updateIncrementalSearch(query []rune) {
+	review, search := &m.review, &m.search
+	from, setCursor := search.from, m.setCursor
+	if len(query) == 0 {
+		setCursor(from)
+		search.miss = false
 		return
 	}
-	match, ok := m.review.view.Search(string(m.search.query), m.search.from, Forward)
-	m.search.miss = !ok
+	match, ok := review.view.Search(string(query), from, Forward)
+	search.miss = !ok
 	if ok {
-		m.setCursor(match)
+		setCursor(match)
 	}
 }
 
 func (m *Model) repeatSearch(direction Direction) {
-	if m.search.term == "" {
+	review, search := &m.review, &m.search
+	term := search.term
+	if term == "" {
 		return
 	}
-	match, ok := m.review.view.Search(m.search.term, m.review.cursor, direction)
+	match, ok := review.view.Search(term, review.cursor, direction)
 	if !ok {
-		m.err = fmt.Errorf("no matches for %q", m.search.term)
+		m.err = formatError("no matches for %q", term)
 		return
 	}
 	m.setCursor(match)

@@ -17,8 +17,9 @@ type File struct {
 }
 
 func (f File) Path() string {
-	if f.NewPath != "" {
-		return f.NewPath
+	path := f.NewPath
+	if path != "" {
+		return path
 	}
 	return f.OldPath
 }

@@ -3,7 +3,6 @@ package ui
 import (
 	"encoding/json"
 	"errors"
-	"fmt"
 	"os"
 	"path/filepath"
 )
@@ -22,11 +21,11 @@ func loadLayoutSettings() (bool, error) {
 		return false, nil
 	}
 	if err != nil {
-		return false, fmt.Errorf("read UI settings: %w", err)
+		return false, formatError("read UI settings: %w", err)
 	}
 	var settings layoutSettings
 	if err := json.Unmarshal(data, &settings); err != nil {
-		return false, fmt.Errorf("decode UI settings: %w", err)
+		return false, formatError("decode UI settings: %w", err)
 	}
 	return settings.SideBySide, nil
 }
@@ -36,33 +35,35 @@ func saveLayoutSettings(enabled bool) error {
 	if err != nil {
 		return err
 	}
-	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
-		return fmt.Errorf("create UI settings directory: %w", err)
+	directory := filepath.Dir(path)
+	if err := os.MkdirAll(directory, 0o700); err != nil {
+		return formatError("create UI settings directory: %w", err)
 	}
 	data, err := json.Marshal(layoutSettings{SideBySide: enabled})
 	if err != nil {
-		return fmt.Errorf("encode UI settings: %w", err)
+		return formatError("encode UI settings: %w", err)
 	}
 	data = append(data, '\n')
-	temporary, err := os.CreateTemp(filepath.Dir(path), "ui-*.tmp")
+	temporary, err := os.CreateTemp(directory, "ui-*.tmp")
 	if err != nil {
-		return fmt.Errorf("create UI settings file: %w", err)
+		return formatError("create UI settings file: %w", err)
 	}
 	temporaryPath := temporary.Name()
+	closeTemporary := temporary.Close
 	defer os.Remove(temporaryPath)
 	if err := temporary.Chmod(0o600); err != nil {
-		temporary.Close()
-		return fmt.Errorf("secure UI settings file: %w", err)
+		closeTemporary()
+		return formatError("secure UI settings file: %w", err)
 	}
 	if _, err := temporary.Write(data); err != nil {
-		temporary.Close()
-		return fmt.Errorf("write UI settings: %w", err)
+		closeTemporary()
+		return formatError("write UI settings: %w", err)
 	}
-	if err := temporary.Close(); err != nil {
-		return fmt.Errorf("close UI settings: %w", err)
+	if err := closeTemporary(); err != nil {
+		return formatError("close UI settings: %w", err)
 	}
 	if err := os.Rename(temporaryPath, path); err != nil {
-		return fmt.Errorf("replace UI settings: %w", err)
+		return formatError("replace UI settings: %w", err)
 	}
 	return nil
 }
@@ -70,7 +71,7 @@ func saveLayoutSettings(enabled bool) error {
 func layoutSettingsPath() (string, error) {
 	config, err := os.UserConfigDir()
 	if err != nil {
-		return "", fmt.Errorf("resolve UI settings directory: %w", err)
+		return "", formatError("resolve UI settings directory: %w", err)
 	}
 	return filepath.Join(config, "review-my-slop", "ui.json"), nil
 }

@@ -1,7 +1,6 @@
 package comments
 
 import (
-	"fmt"
 	"os"
 	"path/filepath"
 )
@@ -13,12 +12,13 @@ func DataDir() (string, error) {
 }
 
 func appDir(environment, fallback string) (string, error) {
+	join := filepath.Join
 	if root := os.Getenv(environment); filepath.IsAbs(root) {
-		return filepath.Join(root, appName), nil
+		return join(root, appName), nil
 	}
 	home, err := os.UserHomeDir()
 	if err != nil {
-		return "", fmt.Errorf("resolve user home directory: %w", err)
+		return "", formatError("resolve user home directory: %w", err)
 	}
-	return filepath.Join(home, fallback, appName), nil
+	return join(home, fallback, appName), nil
 }

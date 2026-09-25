@@ -23,11 +23,12 @@ func main() {
 }
 
 func run(ctx context.Context, args []string, output io.Writer) error {
+	formatError := fmt.Errorf
 	if len(args) == 0 {
 		return runCode(ctx)
 	}
 	if len(args) > 1 {
-		return fmt.Errorf("usage: review-my-slop [code|comments]")
+		return formatError("usage: review-my-slop [code|comments]")
 	}
 	switch args[0] {
 	case "code":
@@ -35,7 +36,7 @@ func run(ctx context.Context, args []string, output io.Writer) error {
 	case "comments":
 		return runComments(ctx, output)
 	default:
-		return fmt.Errorf("unknown subcommand %q; usage: review-my-slop [code|comments]", args[0])
+		return formatError("unknown subcommand %q; usage: review-my-slop [code|comments]", args[0])
 	}
 }
 
@@ -72,12 +73,15 @@ func runCode(ctx context.Context) error {
 	return err
 }
 
-func initialTerminalSize() ui.Size {
-	if width, height, err := term.GetSize(os.Stdin.Fd()); err == nil {
-		return ui.Size{Width: width, Height: height}
+type terminalSize = ui.Size
+
+func initialTerminalSize() terminalSize {
+	getSize := term.GetSize
+	if width, height, err := getSize(os.Stdin.Fd()); err == nil {
+		return terminalSize{Width: width, Height: height}
 	}
-	if width, height, err := term.GetSize(os.Stdout.Fd()); err == nil {
-		return ui.Size{Width: width, Height: height}
+	if width, height, err := getSize(os.Stdout.Fd()); err == nil {
+		return terminalSize{Width: width, Height: height}
 	}
 	return ui.DefaultSize
 }
