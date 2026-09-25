@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-func TestScoreCountsEveryCallAndSelector(t *testing.T) {
+func TestScoreCountsCallWithoutCalleeSelector(t *testing.T) {
 	score := scoreSources(t, `package review
 
 import "fmt"
@@ -14,19 +14,39 @@ import "fmt"
 func printValue(value string) { fmt.Println(value) }
 `)
 
-	if score != 2 {
-		t.Fatalf("score=%d, want call and selector", score)
+	if score != 1 {
+		t.Fatalf("score=%d, want one call", score)
 	}
 }
 
-func TestScoreCountsChainedCallSelectors(t *testing.T) {
+func TestScoreCountsChainedCallsWithoutCalleeSelectors(t *testing.T) {
 	score := scoreSources(t, `package review
 
 func call(client interface{ API() interface{ Call() } }) { client.API().Call() }
 `)
 
-	if score != 4 {
-		t.Fatalf("score=%d, want two calls and two selectors", score)
+	if score != 2 {
+		t.Fatalf("score=%d, want two calls", score)
+	}
+}
+
+func TestWrapperDoesNotBeatDirectCall(t *testing.T) {
+	direct := scoreSources(t, `package review
+
+import "fmt"
+
+func run(message string) error { return fmt.Errorf(message) }
+`)
+	wrapped := scoreSources(t, `package review
+
+import "fmt"
+
+func formatError(message string) error { return fmt.Errorf(message) }
+func run(message string) error { return formatError(message) }
+`)
+
+	if wrapped <= direct {
+		t.Fatalf("wrapped score=%d, direct score=%d", wrapped, direct)
 	}
 }
 
