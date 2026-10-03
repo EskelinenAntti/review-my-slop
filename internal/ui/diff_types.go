@@ -40,12 +40,22 @@ type Selection struct {
 	Last  Cursor
 }
 
-// State is the cursor, selection, and viewport associated with a View.
-// Cursor and Selection are nil when the View has no selectable line.
+// State is the selection and viewport associated with a View.
+// Selection is nil only when the View has no selectable line.
+// Extending distinguishes visual selection from a normal single-line cursor.
 type State struct {
-	Cursor    *Cursor
 	Selection *Selection
+	Extending bool
 	Viewport  Viewport
+}
+
+// Cursor returns the active selection endpoint. The zero cursor is invalid in
+// an empty view, allowing navigation and viewport operations to remain no-ops.
+func (s State) Cursor() Cursor {
+	if s.Selection == nil {
+		return Cursor{}
+	}
+	return s.Selection.Last
 }
 
 type Direction int8
@@ -89,5 +99,5 @@ type View interface {
 	Line(Cursor) (patch.Line, bool)
 
 	FindCursor(patch.File, patch.Hunk, patch.Line, Coordinate, Pane) (Cursor, bool)
-	Render(Viewport, Cursor, *Selection) string
+	Render(Viewport, *Selection) string
 }

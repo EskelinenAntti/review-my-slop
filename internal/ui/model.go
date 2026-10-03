@@ -62,11 +62,9 @@ const (
 var DefaultSize = Size{Width: 80, Height: 30}
 
 type reviewState struct {
-	patch      patch.Patch
-	view       View
-	cursor     Cursor
-	viewport   Viewport
-	selection  *Selection
+	patch patch.Patch
+	view  View
+	State
 	sideBySide bool
 }
 
@@ -122,8 +120,11 @@ func New(p patch.Patch, comments []comments.Comment, save SaveCommentFunc, layou
 	}
 	m.review.sideBySide = layout.SideBySide
 	m.review.view = m.newReviewView(p)
-	m.review.viewport = m.review.view.NewViewport(m.width, m.screenBodyHeight())
-	m.review.cursor, _ = m.review.view.First()
+	m.review.Viewport = m.review.view.NewViewport(m.width, m.screenBodyHeight())
+	if first, ok := m.review.view.First(); ok {
+		selection := m.review.view.BeginSelection(first)
+		m.review.Selection = &selection
+	}
 	return m
 }
 
@@ -173,11 +174,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		activeBefore := m.sideBySideActive()
 		m.width, m.height = msg.Width, msg.Height
-		m.review.viewport = m.review.view.Resize(m.review.viewport, m.width, m.screenBodyHeight())
+		m.review.Viewport = m.review.view.Resize(m.review.Viewport, m.width, m.screenBodyHeight())
 		if activeBefore != m.sideBySideActive() {
 			m.rebuildView(m.review.patch)
 		} else {
-			m.review.viewport = m.review.view.KeepVisible(m.review.viewport, m.review.cursor)
+			m.review.Viewport = m.review.view.KeepVisible(m.review.Viewport, m.review.Cursor())
 		}
 	case commentEditorFinishedMsg:
 		if msg.err != nil {
@@ -243,19 +244,10 @@ func (m Model) loadComments() tea.Cmd {
 
 func (m *Model) rebuildView(p patch.Patch) {
 	oldView := m.review.view
-	oldState := State{
-		Cursor:    &m.review.cursor,
-		Selection: m.review.selection,
-		Viewport:  m.review.viewport,
-	}
+	oldState := m.review.State
 	m.review.patch = p
 	m.review.view = m.newReviewView(p)
-	state := Preserve(oldView, oldState, m.review.view)
-	m.review.viewport = state.Viewport
-	m.review.selection = state.Selection
-	if state.Cursor != nil {
-		m.review.cursor = *state.Cursor
-	}
+	m.review.State = Preserve(oldView, oldState, m.review.view)
 }
 
 func (m Model) newReviewView(p patch.Patch) View {
@@ -294,11 +286,11 @@ func (m Model) updateKey(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	if pending == "z" {
 		switch name {
 		case "z":
-			m.review.viewport = m.review.view.Align(m.review.viewport, m.review.cursor, Middle)
+			m.review.Viewport = m.review.view.Align(m.review.Viewport, m.review.Cursor(), Middle)
 		case "t":
-			m.review.viewport = m.review.view.Align(m.review.viewport, m.review.cursor, Top)
+			m.review.Viewport = m.review.view.Align(m.review.Viewport, m.review.Cursor(), Top)
 		case "b":
-			m.review.viewport = m.review.view.Align(m.review.viewport, m.review.cursor, Bottom)
+			m.review.Viewport = m.review.view.Align(m.review.Viewport, m.review.Cursor(), Bottom)
 		}
 		return m, nil
 	}
@@ -309,7 +301,7 @@ func (m Model) updateKey(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		case "l":
 			m.switchPane(Right)
 		case "ctrl+w":
-			m.switchPane(m.review.cursor.Pane.Other())
+			m.switchPane(m.review.Cursor().Pane.Other())
 		}
 		return m, nil
 	}
@@ -323,7 +315,7 @@ func (m Model) updateKey(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		m.cancelSelection()
 		m.mode = modeSearch
 		m.search.query = nil
-		m.search.from = m.review.cursor
+		m.search.from = m.review.Cursor()
 		m.search.miss = false
 	case "n":
 		m.repeatSearch(Forward)
@@ -334,13 +326,13 @@ func (m Model) updateKey(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	case "k", "up":
 		m.move(Backward)
 	case "h", "left":
-		m.review.viewport = m.review.view.ScrollHorizontal(m.review.viewport, -horizontalScrollStep)
+		m.review.Viewport = m.review.view.ScrollHorizontal(m.review.Viewport, -horizontalScrollStep)
 	case "l", "right":
-		m.review.viewport = m.review.view.ScrollHorizontal(m.review.viewport, horizontalScrollStep)
+		m.review.Viewport = m.review.view.ScrollHorizontal(m.review.Viewport, horizontalScrollStep)
 	case "0":
-		m.review.viewport.LeftColumn = 0
+		m.review.Viewport.LeftColumn = 0
 	case "$":
-		m.review.viewport = m.review.view.ScrollHorizontal(m.review.viewport, int(^uint(0)>>1))
+		m.review.Viewport = m.review.view.ScrollHorizontal(m.review.Viewport, int(^uint(0)>>1))
 	case "ctrl+d":
 		m.halfPage(Forward)
 	case "ctrl+u":
@@ -364,9 +356,8 @@ func (m Model) updateKey(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	case "]", "[":
 		m.pendingKey = name
 	case "v":
-		if m.review.selection == nil {
-			selection := m.review.view.BeginSelection(m.review.cursor)
-			m.review.selection = &selection
+		if !m.review.Extending {
+			m.review.Extending = m.review.Selection != nil
 		} else {
 			m.cancelSelection()
 		}

@@ -12,7 +12,8 @@ import (
 	"github.com/eskelinenantti/review-my-slop/internal/patch"
 )
 
-func (v *diffView) Render(viewport Viewport, cursor Cursor, selection *Selection) string {
+func (v *diffView) Render(viewport Viewport, selection *Selection) string {
+	cursor := (State{Selection: selection}).Cursor()
 	viewport = v.clampViewport(viewport)
 	lines := make([]string, 0, viewport.Height)
 	if v.hasStickyHeader(viewport.Top, viewport.Height) {
@@ -60,7 +61,7 @@ func (v *diffView) renderUnifiedRow(current entry, y int, viewport Viewport, cur
 		if selected(selection, candidate) {
 			style, strip = selectionRowStyle(v.dark), true
 		}
-		if cursor.Coordinate.Y == y {
+		if selection != nil && cursor.Coordinate.Y == y {
 			style, strip = cursorStyle, true
 		}
 		return renderStyledRow(style, value, width, strip)
@@ -106,7 +107,7 @@ func (v *diffView) renderPane(current entry, y int, pane Pane, width, offset int
 	if selected(selection, candidate) {
 		style, strip = selectionRowStyle(v.dark), true
 	}
-	if cursor == candidate {
+	if selection != nil && cursor == candidate {
 		style, strip = cursorStyle, true
 	}
 	return renderStyledRow(style, value, width, strip)

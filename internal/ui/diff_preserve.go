@@ -15,28 +15,35 @@ type cursorIdentity struct {
 func Preserve(old View, state State, next View) State {
 	result := State{Viewport: next.NewViewport(state.Viewport.Width, state.Viewport.Height)}
 	rowsAbove := 0
-	if state.Cursor != nil {
-		rowsAbove = state.Cursor.Coordinate.Y - state.Viewport.Top.Y
-	}
-
-	cursor := identify(old, state.Cursor)
-	if cursor.valid {
-		if translated, ok := next.FindCursor(cursor.file, cursor.hunk, cursor.line, cursor.cursor.Coordinate, cursor.cursor.Pane); ok {
-			result.Cursor = &translated
-		}
-	}
-	if result.Cursor == nil {
-		if first, ok := next.First(); ok {
-			result.Cursor = &first
-		}
+	if state.Selection != nil {
+		rowsAbove = state.Cursor().Coordinate.Y - state.Viewport.Top.Y
 	}
 
 	if selection, ok := preserveSelection(old, state.Selection, next); ok {
 		result.Selection = &selection
+		result.Extending = state.Extending
+	} else {
+		var active *Cursor
+		if state.Selection != nil {
+			active = &state.Selection.Last
+		}
+		identity := identify(old, active)
+		if identity.valid {
+			if cursor, ok := next.FindCursor(identity.file, identity.hunk, identity.line, identity.cursor.Coordinate, identity.cursor.Pane); ok {
+				selection := next.BeginSelection(cursor)
+				result.Selection = &selection
+			}
+		}
+		if result.Selection == nil {
+			if first, ok := next.First(); ok {
+				selection := next.BeginSelection(first)
+				result.Selection = &selection
+			}
+		}
 	}
-	if result.Cursor != nil {
-		result.Viewport.Top.Y = max(0, result.Cursor.Coordinate.Y-rowsAbove)
-		result.Viewport = next.KeepVisible(result.Viewport, *result.Cursor)
+	if result.Selection != nil {
+		result.Viewport.Top.Y = max(0, result.Cursor().Coordinate.Y-rowsAbove)
+		result.Viewport = next.KeepVisible(result.Viewport, result.Cursor())
 	}
 	return result
 }

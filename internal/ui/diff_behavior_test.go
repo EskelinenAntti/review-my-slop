@@ -141,7 +141,7 @@ func TestFileHeaderSticksWithoutCoveringDiffRows(t *testing.T) {
 	viewport := v.NewViewport(60, 3)
 	viewport.Top.Y = 3
 
-	rendered := strings.Split(ansi.Strip(v.Render(viewport, Cursor{}, nil)), "\n")
+	rendered := strings.Split(ansi.Strip(v.Render(viewport, nil)), "\n")
 	if len(rendered) != viewport.Height || !strings.Contains(rendered[0], "first.go") {
 		t.Fatalf("sticky render = %#v", rendered)
 	}
@@ -151,13 +151,13 @@ func TestFileHeaderSticksWithoutCoveringDiffRows(t *testing.T) {
 
 	secondFileRow := 5
 	viewport.Top.Y = secondFileRow
-	rendered = strings.Split(ansi.Strip(v.Render(viewport, Cursor{}, nil)), "\n")
+	rendered = strings.Split(ansi.Strip(v.Render(viewport, nil)), "\n")
 	if strings.Count(strings.Join(rendered, "\n"), "second.go") != 1 {
 		t.Fatalf("file header was duplicated at its natural position: %#v", rendered)
 	}
 
 	viewport.Top.Y = secondFileRow + 1
-	rendered = strings.Split(ansi.Strip(v.Render(viewport, Cursor{}, nil)), "\n")
+	rendered = strings.Split(ansi.Strip(v.Render(viewport, nil)), "\n")
 	if !strings.Contains(rendered[0], "second.go") {
 		t.Fatalf("sticky header did not change with the file: %#v", rendered)
 	}
@@ -167,7 +167,7 @@ func TestKeepVisibleAccountsForStickyFileHeader(t *testing.T) {
 	v := NewUnifiedView(longPatch(), true).(*diffView)
 	cursor, _ := v.Last()
 	viewport := v.KeepVisible(v.NewViewport(50, 4), cursor)
-	rendered := ansi.Strip(v.Render(viewport, cursor, nil))
+	rendered := ansi.Strip(v.Render(viewport, ptr(v.BeginSelection(cursor))))
 	line, _ := v.Line(cursor)
 	if cursor.Coordinate.Y >= viewport.Top.Y+v.contentHeight(viewport) || !strings.Contains(rendered, strconv.Itoa(int(line.NewNumber))) {
 		t.Fatalf("last cursor row is hidden by sticky header: viewport=%#v render=%q", viewport, rendered)
@@ -190,9 +190,9 @@ func TestHorizontalScrollKeepsUnifiedGutterFixed(t *testing.T) {
 	cursor := mustFirst(t, v)
 	viewport := v.NewViewport(37, 1)
 	viewport = v.KeepVisible(viewport, cursor)
-	before := ansi.Strip(v.Render(viewport, cursor, nil))
+	before := ansi.Strip(v.Render(viewport, ptr(v.BeginSelection(cursor))))
 	viewport = v.ScrollHorizontal(viewport, 4)
-	after := ansi.Strip(v.Render(viewport, cursor, nil))
+	after := ansi.Strip(v.Render(viewport, ptr(v.BeginSelection(cursor))))
 	if before[:14] != after[:14] || !strings.Contains(after[14:], "efghij") || viewport.LeftColumn != 4 {
 		t.Fatalf("before=%q after=%q viewport=%#v", before, after, viewport)
 	}
@@ -204,7 +204,7 @@ func TestHorizontalScrollKeepsSplitGuttersAndDividerFixed(t *testing.T) {
 	viewport := v.NewViewport(120, 1)
 	viewport = v.KeepVisible(viewport, cursor)
 	viewport = v.ScrollHorizontal(viewport, 8)
-	rendered := ansi.Strip(v.Render(viewport, cursor, nil))
+	rendered := ansi.Strip(v.Render(viewport, ptr(v.BeginSelection(cursor))))
 	if strings.Index(rendered, "│") != 59 || rendered[:6] != "    1 " || rendered[63:69] != "    1 " {
 		t.Fatalf("gutters moved: %q", rendered)
 	}
@@ -243,7 +243,7 @@ func TestSelectionBackgroundKeepsDefaultWeight(t *testing.T) {
 	v := NewUnifiedView(testPatch(), false)
 	first := mustFirst(t, v)
 	removed, _ := v.Search("removed one", first, Forward)
-	selection := v.BeginSelection(removed)
+	selection := Selection{First: removed, Last: first}
 	rendered := renderTarget(v, removed, first, 72, &selection)
 	if strings.Contains(rendered, "\x1b[1m") {
 		t.Fatalf("selection is bold: %q", rendered)
@@ -301,7 +301,12 @@ func renderOne(v View, cursor Cursor, width int, selection *Selection) string {
 func renderTarget(v View, target, active Cursor, width int, selection *Selection) string {
 	viewport := v.NewViewport(width, 1)
 	viewport.Top = target.Coordinate
-	return v.Render(viewport, active, selection)
+	if selection == nil {
+		if _, ok := v.Line(active); ok {
+			selection = ptr(v.BeginSelection(active))
+		}
+	}
+	return v.Render(viewport, selection)
 }
 
 func longLinePatch() patch.Patch {

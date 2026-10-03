@@ -54,7 +54,7 @@ func TestSideBySideToggleStillSavesPreference(t *testing.T) {
 
 	m = updateModel(t, m, textKey("t"))
 	m = updateModel(t, m, textKey("t"))
-	if !slices.Equal(saved, []bool{true, false}) {
+	if m.review.sideBySide || !slices.Equal(saved, []bool{true, false}) {
 		t.Fatalf("saved=%v", saved)
 	}
 }
@@ -62,20 +62,21 @@ func TestSideBySideToggleStillSavesPreference(t *testing.T) {
 func TestRefreshTranslatesCursorAndSelection(t *testing.T) {
 	m := testModel(modelPatch(), nil, nil)
 	m.move(1)
-	selection := m.review.view.BeginSelection(m.review.cursor)
-	m.review.selection = &selection
+	selection := m.review.view.BeginSelection(m.review.Cursor())
+	m.review.Selection = &selection
+	m.review.Extending = true
 	m.move(1)
-	want, _ := m.review.view.Line(m.review.cursor)
+	want, _ := m.review.view.Line(m.review.Cursor())
 	refreshed := modelPatch()
 	refreshed.Fingerprint = "new"
 	refreshed.Files[0].Metadata = []string{"new metadata"}
 	m.rebuildView(refreshed)
-	got, ok := m.review.view.Line(m.review.cursor)
+	got, ok := m.review.view.Line(m.review.Cursor())
 	if !ok || got != want {
 		t.Fatalf("cursor line = %#v, want %#v", got, want)
 	}
-	if m.review.selection == nil || len(m.review.view.Lines(*m.review.selection)) != 2 {
-		t.Fatalf("selection was not translated: %#v", m.review.selection)
+	if m.review.Selection == nil || len(m.review.view.Lines(*m.review.Selection)) != 2 {
+		t.Fatalf("selection was not translated: %#v", m.review.Selection)
 	}
 }
 
@@ -84,14 +85,14 @@ func TestViewSwitchPreservesSemanticCursor(t *testing.T) {
 	m.width = 120
 	m.move(1)
 	m.move(1)
-	want, _ := m.review.view.Line(m.review.cursor)
-	oldCoordinate := m.review.cursor.Coordinate
+	want, _ := m.review.view.Line(m.review.Cursor())
+	oldCoordinate := m.review.Cursor().Coordinate
 	m.setSideBySide(true)
-	got, ok := m.review.view.Line(m.review.cursor)
+	got, ok := m.review.view.Line(m.review.Cursor())
 	if !ok || got != want {
 		t.Fatalf("cursor line after switch = %#v", got)
 	}
-	if m.review.cursor.Coordinate == oldCoordinate {
+	if m.review.Cursor().Coordinate == oldCoordinate {
 		t.Fatal("layout switch reused the old coordinate")
 	}
 }
@@ -114,7 +115,7 @@ func TestCommentSaveUsesPatchAndPreservesAnchor(t *testing.T) {
 func TestRenderingAndKeyBindingsRemainAvailable(t *testing.T) {
 	m := testModel(modelPatch(), nil, nil)
 	m.width, m.height = 80, 10
-	m.review.viewport = m.review.view.Resize(m.review.viewport, m.width, m.screenBodyHeight())
+	m.review.Viewport = m.review.view.Resize(m.review.Viewport, m.width, m.screenBodyHeight())
 	rendered := m.render()
 	for _, value := range []string{"review-my-slop", "+1-1", "old()", "new()", "local changes"} {
 		if !strings.Contains(rendered, value) {

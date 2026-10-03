@@ -7,40 +7,42 @@ import (
 )
 
 func (m *Model) move(direction Direction) {
-	next, ok := m.review.view.Move(m.review.cursor, direction)
-	if !ok {
-		return
+	if next, ok := m.review.view.Move(m.review.Cursor(), direction); ok {
+		m.setCursor(next)
 	}
-	if m.review.selection != nil {
-		selection, selectionOK := m.review.view.ExtendSelection(*m.review.selection, next)
-		if !selectionOK {
-			return
-		}
-		m.review.selection = &selection
-	}
-	m.setCursor(next)
 }
 
-func (m *Model) setCursor(cursor Cursor) {
-	m.review.cursor = cursor
-	m.review.viewport = m.review.view.KeepVisible(m.review.viewport, cursor)
+// setCursor updates the selection and viewport together. All movement uses the
+// active endpoint, and visual movement cannot leave the anchor's file or hunk.
+func (m *Model) setCursor(cursor Cursor) bool {
+	return m.moveTo(cursor, m.review.Viewport)
+}
+
+func (m *Model) moveTo(cursor Cursor, viewport Viewport) bool {
+	if _, ok := m.review.view.Line(cursor); !ok {
+		return false
+	}
+	selection := m.review.view.BeginSelection(cursor)
+	if m.review.Extending {
+		var ok bool
+		selection, ok = m.review.view.ExtendSelection(*m.review.Selection, cursor)
+		if !ok {
+			return false
+		}
+	}
+	m.review.Selection = &selection
+	m.review.Viewport = m.review.view.KeepVisible(viewport, cursor)
+	return true
 }
 
 func (m *Model) halfPage(direction Direction) {
-	viewport, cursor := m.review.view.ScrollHalfPage(m.review.viewport, m.review.cursor, direction)
-	if m.review.selection != nil {
-		selection, ok := m.review.view.ExtendSelection(*m.review.selection, cursor)
-		if !ok {
-			return
-		}
-		m.review.selection = &selection
-	}
-	m.review.viewport, m.review.cursor = viewport, cursor
+	viewport, cursor := m.review.view.ScrollHalfPage(m.review.Viewport, m.review.Cursor(), direction)
+	m.moveTo(cursor, viewport)
 }
 
 func (m *Model) jumpFile(direction Direction) {
 	m.cancelSelection()
-	if cursor, ok := m.review.view.JumpFile(m.review.cursor, direction); ok {
+	if cursor, ok := m.review.view.JumpFile(m.review.Cursor(), direction); ok {
 		m.setCursor(cursor)
 	}
 }
@@ -49,13 +51,13 @@ func (m *Model) switchPane(pane Pane) {
 	if !m.sideBySideActive() {
 		return
 	}
-	cursor, ok := m.review.view.SwitchPane(m.review.cursor, pane)
+	cursor, ok := m.review.view.SwitchPane(m.review.Cursor(), pane)
 	if !ok {
 		return
 	}
-	if m.review.selection != nil {
-		first, firstOK := m.review.view.SwitchPane(m.review.selection.First, pane)
-		last, lastOK := m.review.view.SwitchPane(m.review.selection.Last, pane)
+	if m.review.Extending {
+		first, firstOK := m.review.view.SwitchPane(m.review.Selection.First, pane)
+		last, lastOK := m.review.view.SwitchPane(m.review.Selection.Last, pane)
 		if !firstOK || !lastOK {
 			return
 		}
@@ -64,7 +66,9 @@ func (m *Model) switchPane(pane Pane) {
 		if !ok {
 			return
 		}
-		m.review.selection = &selection
+		m.review.Selection = &selection
+		m.review.Viewport = m.review.view.KeepVisible(m.review.Viewport, selection.Last)
+		return
 	}
 	m.setCursor(cursor)
 }
@@ -140,7 +144,7 @@ func (m *Model) repeatSearch(direction Direction) {
 	if m.search.term == "" {
 		return
 	}
-	match, ok := m.review.view.Search(m.search.term, m.review.cursor, direction)
+	match, ok := m.review.view.Search(m.search.term, m.review.Cursor(), direction)
 	if !ok {
 		m.err = fmt.Errorf("no matches for %q", m.search.term)
 		return
