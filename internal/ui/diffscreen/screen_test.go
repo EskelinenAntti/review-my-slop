@@ -216,6 +216,87 @@ func TestHorizontalScrollEdgesAreIdempotent(t *testing.T) {
 	}
 }
 
+func TestVerticalScrollKeepsFocusInViewport(t *testing.T) {
+	p := longPatch()
+	p.Files[0].OldPath, p.Files[0].NewPath = "long.go", "long.go"
+	for _, split := range []bool{false, true} {
+		v := New(p, Options{SideBySide: split})
+		v.Resize(120, 10)
+		v.ToggleSelection()
+		for range 4 {
+			v.Move(NextLine)
+		}
+		cursor, selection := v.cursor, *v.selection
+		before := v.Render(nil)
+		v.ScrollVertical(3)
+		if v.viewport.top != 3 || v.Render(nil) == before {
+			t.Fatal("scroll did not move content")
+		}
+		if v.cursor != cursor || *v.selection != selection {
+			t.Fatal("scroll moved focus while it was still visible")
+		}
+		v.ScrollVertical(6)
+		if v.cursor.row != v.viewport.top || v.selection.Last != v.cursor || v.selection.First != selection.First {
+			t.Fatal("scroll did not clamp focus and extend selection")
+		}
+		before = v.Render(nil)
+		v.Update(p)
+		if v.Render(nil) != before {
+			t.Fatal("refresh reset scrolled content")
+		}
+		v.Resize(120, 11)
+		if v.viewport.top != 9 {
+			t.Fatal("resize reset scrolled content")
+		}
+		v.Move(NextLine)
+		if !v.view.cursorVisible(v.viewport, v.cursor) {
+			t.Fatal("keyboard navigation did not reveal focus")
+		}
+		v.ScrollVertical(-8)
+		if v.cursor.row != v.viewport.top+v.view.contentHeight(v.viewport)-1 {
+			t.Fatal("scroll up did not clamp focus to bottom of viewport")
+		}
+	}
+}
+
+func TestVerticalScrollDoesNotCrossSelectionHunk(t *testing.T) {
+	v := New(testPatch(), Options{})
+	v.Resize(80, 6)
+	v.ToggleSelection()
+	cursor, viewport, selection := v.cursor, v.viewport, *v.selection
+	v.ScrollVertical(100)
+	if v.cursor != cursor || v.viewport != viewport || *v.selection != selection {
+		t.Fatal("scroll partially changed selection across hunks")
+	}
+}
+
+func TestVerticalScrollClampsAtContentEdges(t *testing.T) {
+	for _, p := range []patch.Patch{longPatch(), testPatch(), {}} {
+		for _, height := range []int{1, 10, 100} {
+			v := New(p, Options{})
+			v.Resize(80, height)
+			distance := int(^uint(0) >> 1)
+			v.ScrollVertical(distance)
+			end := v.viewport.top
+			if len(v.view.rows) > v.viewport.Height && end == 0 {
+				t.Fatal("overflowing content did not scroll")
+			}
+			if len(v.view.rows) > 0 && end+v.view.contentHeight(v.viewport) < len(v.view.rows) {
+				t.Fatal("scroll did not reach final row")
+			}
+			v.ScrollVertical(distance)
+			if v.viewport.top != end {
+				t.Fatal("scroll past end changed viewport")
+			}
+			v.ScrollVertical(-distance)
+			v.ScrollVertical(-distance)
+			if v.viewport.top != 0 {
+				t.Fatal("scroll start not clamped")
+			}
+		}
+	}
+}
+
 func TestSearchEditingOwnsUnicodeQueryAcrossUpdates(t *testing.T) {
 	p := testPatch()
 	v := New(p, Options{Dark: true})

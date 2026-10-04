@@ -83,6 +83,17 @@ func (v *diffView) scrollHorizontal(viewport diffViewport, columns int) diffView
 	return v.clampViewport(viewport)
 }
 
+func (v *diffView) scrollVertical(viewport diffViewport, rows int) diffViewport {
+	end := v.clampViewport(diffViewport{Width: viewport.Width, Height: viewport.Height, top: len(v.rows)}).top
+	rows = max(-viewport.top, min(rows, end-viewport.top))
+	viewport.top += rows
+	return v.clampViewport(viewport)
+}
+
+func (v *diffView) cursorVisible(viewport diffViewport, cursor diffCursor) bool {
+	return v.valid(cursor) && cursor.row >= viewport.top && cursor.row < viewport.top+v.contentHeight(viewport)
+}
+
 func (v *diffView) scrollHalfPage(viewport diffViewport, cursor diffCursor, direction direction) (diffViewport, diffCursor) {
 	if !v.valid(cursor) {
 		return viewport, cursor

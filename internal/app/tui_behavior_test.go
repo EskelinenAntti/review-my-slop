@@ -551,6 +551,44 @@ func TestViewPreservesTerminalColors(t *testing.T) {
 	if result.BackgroundColor != nil || result.ForegroundColor != nil || !result.AltScreen || !result.ReportFocus {
 		t.Fatalf("view=%#v", result)
 	}
+	if result.MouseMode != tea.MouseModeCellMotion {
+		t.Fatal("view does not capture terminal wheel events")
+	}
+}
+
+func TestMouseWheelScrollsContentWithoutMovingFocus(t *testing.T) {
+	m := testModel(longModelPatch(), nil, nil)
+	m = updateModel(t, m, tea.WindowSizeMsg{Width: 37, Height: 9})
+	m = updateModel(t, m, textKey("v"))
+	m = updateModel(t, m, textKey("j"))
+	_, focus, _ := m.diffView.Current()
+	_, selected, _ := m.diffView.Selected()
+	initial := m.render()
+	for _, button := range []tea.MouseButton{tea.MouseWheelDown, tea.MouseWheelRight} {
+		m = updateModel(t, m, tea.MouseWheelMsg{Button: button})
+	}
+	if m.render() == initial || !strings.Contains(m.render(), "%)") {
+		t.Fatal("wheel did not scroll content")
+	}
+	_, got, _ := m.diffView.Current()
+	_, gotSelected, _ := m.diffView.Selected()
+	if got != focus || !slices.Equal(selected, gotSelected) {
+		t.Fatal("wheel changed focus or selection")
+	}
+	for _, button := range []tea.MouseButton{tea.MouseWheelUp, tea.MouseWheelLeft} {
+		m = updateModel(t, m, tea.MouseWheelMsg{Button: button})
+	}
+	if m.render() != initial {
+		t.Fatal("reverse wheel did not restore content")
+	}
+	for _, mode := range []mode{modeComments, modeHelp} {
+		m.mode = mode
+		before := m.diffView.Render(nil)
+		m = updateModel(t, m, tea.MouseWheelMsg{Button: tea.MouseWheelDown})
+		if m.diffView.Render(nil) != before {
+			t.Fatal("wheel scrolled diff behind another screen")
+		}
+	}
 }
 
 func updateModel(t *testing.T, m model, msg tea.Msg) model {

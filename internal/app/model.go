@@ -67,6 +67,7 @@ const (
 )
 
 const horizontalScrollStep = 4
+const verticalScrollStep = 3
 
 var defaultSize = size{Width: 80, Height: 30}
 
@@ -224,6 +225,20 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	case tea.KeyPressMsg:
 		return m.updateKey(msg)
+	case tea.MouseWheelMsg:
+		if m.mode != modeBrowse && m.mode != modeSearch {
+			break
+		}
+		switch msg.Button {
+		case tea.MouseWheelUp:
+			m.diffView.ScrollVertical(-verticalScrollStep)
+		case tea.MouseWheelDown:
+			m.diffView.ScrollVertical(verticalScrollStep)
+		case tea.MouseWheelLeft:
+			m.diffView.ScrollHorizontal(-horizontalScrollStep)
+		case tea.MouseWheelRight:
+			m.diffView.ScrollHorizontal(horizontalScrollStep)
+		}
 	}
 	return m, nil
 }
