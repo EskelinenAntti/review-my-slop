@@ -17,7 +17,7 @@ func TestRenderKeyBindingsAlignsDescriptions(t *testing.T) {
 }
 
 func TestShellHelpShowsBindingsAndCloses(t *testing.T) {
-	model := New(Initial{Size: Size{Width: 80, Height: 12}}, Dependencies{})
+	model := New(Initial{Size: Size{Width: 80, Height: 30}}, Dependencies{})
 	model.Update(patchscreen.HelpRequested{})
 	help := model.Render()
 	for _, binding := range []string{
