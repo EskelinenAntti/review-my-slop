@@ -2,16 +2,16 @@ package ui
 
 import (
 	"fmt"
-	"os"
 	"path/filepath"
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/eskelinenantti/review-my-slop/internal/comments"
+	"github.com/eskelinenantti/review-my-slop/internal/editor"
 )
 
-func (m Model) updateComments(name string) (tea.Model, tea.Cmd) {
+func (m model) updateComments(name string) (tea.Model, tea.Cmd) {
 	m.err = nil
 	switch name {
 	case "esc", "C", "q":
@@ -48,13 +48,13 @@ func (m Model) updateComments(name string) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m *Model) beginComment() (tea.Cmd, error) {
+func (m *model) beginComment() (tea.Cmd, error) {
 	selection := m.review.selection
 	if selection == nil {
-		current := m.review.view.BeginSelection(m.review.cursor)
+		current := m.review.view.beginSelection(m.review.cursor)
 		selection = &current
 	}
-	anchor, err := m.review.view.Anchor(*selection)
+	anchor, err := m.review.view.anchor(*selection)
 	if err != nil {
 		return nil, err
 	}
@@ -67,7 +67,7 @@ func (m *Model) beginComment() (tea.Cmd, error) {
 	return cmd, nil
 }
 
-func (m *Model) finishCommentEdit() {
+func (m *model) finishCommentEdit() {
 	body := strings.TrimSpace(m.comments.body)
 	if body == "" {
 		if m.comments.editIndex >= 0 {
@@ -107,7 +107,7 @@ func (m *Model) finishCommentEdit() {
 	m.cancelSelection()
 }
 
-func (m *Model) deleteComment(index int) {
+func (m *model) deleteComment(index int) {
 	if index < 0 || index >= len(m.comments.items) {
 		return
 	}
@@ -125,23 +125,29 @@ func (m *Model) deleteComment(index int) {
 	m.err = nil
 }
 
-func (m *Model) clearCommentEdit() {
+func (m *model) clearCommentEdit() {
 	m.comments.body = ""
 	m.comments.editIndex = -1
 	m.comments.editAnchor = comments.Anchor{}
 }
 
-func (m *Model) cancelSelection() { m.review.selection = nil }
+func (m *model) cancelSelection() { m.review.selection = nil }
 
-func (m Model) openCurrentLine() (tea.Cmd, error) {
-	editorCommand := strings.TrimSpace(os.Getenv("EDITOR"))
-	if editorCommand == "" {
-		return nil, fmt.Errorf("$EDITOR is not set")
+func (m model) openCurrentLine() (tea.Cmd, error) {
+	path, number, err := m.sourceLocation()
+	if err != nil {
+		return nil, err
 	}
-	file, fileOK := m.review.view.File(m.review.cursor)
-	line, lineOK := m.review.view.Line(m.review.cursor)
+	return editor.OpenSource(m.ctx, path, number, func(err error) tea.Msg {
+		return sourceEditorFinishedMsg{err: err}
+	})
+}
+
+func (m model) sourceLocation() (string, int, error) {
+	file, fileOK := m.review.view.file(m.review.cursor)
+	line, lineOK := m.review.view.line(m.review.cursor)
 	if !fileOK || !lineOK {
-		return nil, fmt.Errorf("select a code line to open in $EDITOR")
+		return "", 0, fmt.Errorf("select a code line to open in $EDITOR")
 	}
 	path, number := file.NewPath, line.NewNumber
 	if path == "" || path == "/dev/null" {
@@ -151,27 +157,16 @@ func (m Model) openCurrentLine() (tea.Cmd, error) {
 		number = line.OldNumber
 	}
 	if path == "" || path == "/dev/null" || number < 1 {
-		return nil, fmt.Errorf("current line has no editable working-tree location")
+		return "", 0, fmt.Errorf("current line has no editable working-tree location")
 	}
 	if !filepath.IsAbs(path) {
 		path = filepath.Join(m.review.patch.Root, filepath.FromSlash(path))
 	}
-	return tea.ExecProcess(SourceCommand(editorCommand, path, int(number)), func(err error) tea.Msg {
-		return sourceEditorFinishedMsg{err: err}
-	}), nil
+	return path, int(number), nil
 }
 
-func (m Model) openCommentEditor() (tea.Cmd, error) {
-	editorCommand := strings.TrimSpace(os.Getenv("EDITOR"))
-	if editorCommand == "" {
-		return nil, fmt.Errorf("$EDITOR is not set")
-	}
-	path, err := CreateCommentFile(m.comments.body, m.comments.editAnchor)
-	if err != nil {
-		return nil, err
-	}
-	return tea.ExecProcess(CommentCommand(editorCommand, path), func(editorErr error) tea.Msg {
-		body, err := ReadCommentFile(path, m.comments.editAnchor, editorErr)
+func (m model) openCommentEditor() (tea.Cmd, error) {
+	return editor.EditComment(m.ctx, m.comments.body, m.comments.editAnchor, func(body string, err error) tea.Msg {
 		return commentEditorFinishedMsg{body: body, err: err}
-	}), nil
+	})
 }

@@ -12,15 +12,15 @@ import (
 	"github.com/eskelinenantti/review-my-slop/internal/patch"
 )
 
-func (v *diffView) Render(viewport Viewport, cursor Cursor, selection *Selection) string {
+func (v *diffView) render(viewport diffViewport, cursor diffCursor, selection *diffSelection) string {
 	viewport = v.clampViewport(viewport)
 	lines := make([]string, 0, viewport.Height)
-	if v.hasStickyHeader(viewport.Top, viewport.Height) {
-		current := v.rows[viewport.Top.Y]
+	if v.hasStickyHeader(viewport.top, viewport.Height) {
+		current := v.rows[viewport.top.Y]
 		lines = append(lines, v.renderFileRow(v.patch.Files[current.file].DisplayPath, viewport.Width))
 	}
-	end := min(len(v.rows), viewport.Top.Y+v.contentHeight(viewport))
-	for y := viewport.Top.Y; y < end; y++ {
+	end := min(len(v.rows), viewport.top.Y+v.contentHeight(viewport))
+	for y := viewport.top.Y; y < end; y++ {
 		current := v.rows[y]
 		if v.split && current.kind == lineRow {
 			lines = append(lines, v.renderSplitRow(current, y, viewport, cursor, selection))
@@ -34,7 +34,7 @@ func (v *diffView) Render(viewport Viewport, cursor Cursor, selection *Selection
 	return strings.Join(lines, "\n")
 }
 
-func (v *diffView) renderUnifiedRow(current entry, y int, viewport Viewport, cursor Cursor, selection *Selection) string {
+func (v *diffView) renderUnifiedRow(current entry, y int, viewport diffViewport, cursor diffCursor, selection *diffSelection) string {
 	width := max(20, viewport.Width)
 	switch current.kind {
 	case fileRow:
@@ -56,11 +56,11 @@ func (v *diffView) renderUnifiedRow(current entry, y int, viewport Viewport, cur
 		value := gutter + fitANSIWindow(current.text, viewport.LeftColumn, width-lipgloss.Width(gutter))
 		style := lineStyle(line.Kind, v.dark)
 		strip := false
-		candidate := Cursor{Coordinate: Coordinate{Y: y}, Pane: cursor.Pane}
+		candidate := diffCursor{coordinate: coordinate{Y: y}, pane: cursor.pane}
 		if selected(selection, candidate) {
 			style, strip = selectionRowStyle(v.dark), true
 		}
-		if cursor.Coordinate.Y == y {
+		if cursor.coordinate.Y == y {
 			style, strip = cursorStyle, true
 		}
 		return renderStyledRow(style, value, width, strip)
@@ -72,15 +72,15 @@ func (v *diffView) renderFileRow(path string, width int) string {
 	return fileStyle.Width(max(20, width)).Render(path)
 }
 
-func (v *diffView) renderSplitRow(current entry, y int, viewport Viewport, cursor Cursor, selection *Selection) string {
+func (v *diffView) renderSplitRow(current entry, y int, viewport diffViewport, cursor diffCursor, selection *diffSelection) string {
 	leftWidth := max(20, (viewport.Width-3)/2)
 	rightWidth := max(20, viewport.Width-3-leftWidth)
-	left := v.renderPane(current, y, Left, leftWidth, viewport.LeftColumn, cursor, selection)
-	right := v.renderPane(current, y, Right, rightWidth, viewport.LeftColumn, cursor, selection)
+	left := v.renderPane(current, y, left, leftWidth, viewport.LeftColumn, cursor, selection)
+	right := v.renderPane(current, y, right, rightWidth, viewport.LeftColumn, cursor, selection)
 	return left + " │ " + right
 }
 
-func (v *diffView) renderPane(current entry, y int, pane Pane, width, offset int, cursor Cursor, selection *Selection) string {
+func (v *diffView) renderPane(current entry, y int, pane diffPane, width, offset int, cursor diffCursor, selection *diffSelection) string {
 	index := v.lineIndex(current, pane)
 	if index < 0 {
 		return strings.Repeat(" ", width)
@@ -88,7 +88,7 @@ func (v *diffView) renderPane(current entry, y int, pane Pane, width, offset int
 	line := v.patch.Files[current.file].Hunks[current.hunk].Lines[index]
 	text := current.right
 	numberValue := line.NewNumber
-	if pane == Left {
+	if pane == left {
 		text, numberValue = current.left, line.OldNumber
 	}
 	prefix := "  "
@@ -102,7 +102,7 @@ func (v *diffView) renderPane(current entry, y int, pane Pane, width, offset int
 	value := gutter + fitANSIWindow(prefix+text, offset, width-lipgloss.Width(gutter))
 	style := lineStyle(line.Kind, v.dark)
 	strip := false
-	candidate := Cursor{Coordinate: Coordinate{Y: y}, Pane: pane}
+	candidate := diffCursor{coordinate: coordinate{Y: y}, pane: pane}
 	if selected(selection, candidate) {
 		style, strip = selectionRowStyle(v.dark), true
 	}
@@ -112,21 +112,21 @@ func (v *diffView) renderPane(current entry, y int, pane Pane, width, offset int
 	return renderStyledRow(style, value, width, strip)
 }
 
-func selected(selection *Selection, cursor Cursor) bool {
+func selected(selection *diffSelection, cursor diffCursor) bool {
 	if selection == nil {
 		return false
 	}
-	first, last := selection.First.Coordinate.Y, selection.Last.Coordinate.Y
-	if first == last && selection.First.Pane != selection.Last.Pane {
-		return cursor.Coordinate.Y == first && (cursor.Pane == selection.First.Pane || cursor.Pane == selection.Last.Pane)
+	first, last := selection.First.coordinate.Y, selection.Last.coordinate.Y
+	if first == last && selection.First.pane != selection.Last.pane {
+		return cursor.coordinate.Y == first && (cursor.pane == selection.First.pane || cursor.pane == selection.Last.pane)
 	}
-	if selection.First.Pane != cursor.Pane {
+	if selection.First.pane != cursor.pane {
 		return false
 	}
 	if first > last {
 		first, last = last, first
 	}
-	return cursor.Coordinate.Y >= first && cursor.Coordinate.Y <= last
+	return cursor.coordinate.Y >= first && cursor.coordinate.Y <= last
 }
 
 func lineStyle(kind patch.LineKind, dark bool) lipgloss.Style {

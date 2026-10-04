@@ -14,14 +14,14 @@ import (
 	"github.com/eskelinenantti/review-my-slop/internal/patch"
 )
 
-func testModel(p patch.Patch, comments []comments.Comment, save SaveCommentFunc) Model {
-	return New(p, comments, save, InitialLayout{Size: Size{Width: 100, Height: 30}})
+func testModel(p patch.Patch, comments []comments.Comment, save saveCommentFunc) model {
+	return newModel(p, comments, save, initialLayout{size: size{Width: 100, Height: 30}})
 }
 
 func TestStoreBackedCommentLifecycle(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	store := comments.Store{Path: filepath.Join(t.TempDir(), "comments.db")}
-	m, err := NewWithStore(store, modelPatch(), nil, DefaultSize)
+	m, err := newWithStore(store, modelPatch(), nil, defaultSize)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -58,9 +58,9 @@ func TestStoreBackedCommentLifecycle(t *testing.T) {
 }
 
 func TestNewUsesSavedSideBySideForWideInitialSize(t *testing.T) {
-	m := New(modelPatch(), nil, nil, InitialLayout{
+	m := newModel(modelPatch(), nil, nil, initialLayout{
 		SideBySide: true,
-		Size:       Size{Width: 120, Height: 30},
+		size:       size{Width: 120, Height: 30},
 	})
 	if !m.review.sideBySide || !m.sideBySideActive() || !strings.Contains(m.render(), "│") {
 		t.Fatalf("sideBySide=%v active=%v render=%q", m.review.sideBySide, m.sideBySideActive(), m.render())
@@ -68,9 +68,9 @@ func TestNewUsesSavedSideBySideForWideInitialSize(t *testing.T) {
 }
 
 func TestNewKeepsSavedSideBySideInactiveForNarrowInitialSize(t *testing.T) {
-	m := New(modelPatch(), nil, nil, InitialLayout{
+	m := newModel(modelPatch(), nil, nil, initialLayout{
 		SideBySide: true,
-		Size:       Size{Width: 80, Height: 30},
+		size:       size{Width: 80, Height: 30},
 	})
 	if !m.review.sideBySide || m.sideBySideActive() || strings.Contains(m.render(), "│") {
 		t.Fatalf("sideBySide=%v active=%v render=%q", m.review.sideBySide, m.sideBySideActive(), m.render())
@@ -84,12 +84,12 @@ func TestNewKeepsSavedSideBySideInactiveForNarrowInitialSize(t *testing.T) {
 
 func TestSideBySideToggleStillSavesPreference(t *testing.T) {
 	var saved []bool
-	m := New(modelPatch(), nil, nil, InitialLayout{
+	m := newModel(modelPatch(), nil, nil, initialLayout{
 		SaveSideBySide: func(enabled bool) error {
 			saved = append(saved, enabled)
 			return nil
 		},
-		Size: Size{Width: 120, Height: 30},
+		size: size{Width: 120, Height: 30},
 	})
 
 	m = updateModel(t, m, textKey("t"))
@@ -102,33 +102,33 @@ func TestSideBySideToggleStillSavesPreference(t *testing.T) {
 func TestRefreshTranslatesCursorAndSelection(t *testing.T) {
 	m := testModel(modelPatch(), nil, nil)
 	m.move(1)
-	selection := m.review.view.BeginSelection(m.review.cursor)
-	m.review.selection = &selection
+	diffSelection := m.review.view.beginSelection(m.review.cursor)
+	m.review.selection = &diffSelection
 	m.move(1)
-	want, _ := m.review.view.Line(m.review.cursor)
+	want, _ := m.review.view.line(m.review.cursor)
 	refreshed := modelPatch()
 	refreshed.Files[0].Metadata = []string{"new metadata"}
 	m.rebuildView(refreshed)
-	got, ok := m.review.view.Line(m.review.cursor)
+	got, ok := m.review.view.line(m.review.cursor)
 	if !ok || got != want {
-		t.Fatalf("cursor line = %#v, want %#v", got, want)
+		t.Fatalf("diffCursor line = %#v, want %#v", got, want)
 	}
-	if m.review.selection == nil || len(m.review.view.Lines(*m.review.selection)) != 2 {
-		t.Fatalf("selection was not translated: %#v", m.review.selection)
+	if m.review.selection == nil || len(m.review.view.lines(*m.review.selection)) != 2 {
+		t.Fatalf("diffSelection was not translated: %#v", m.review.selection)
 	}
 }
 
 func TestUnchangedRefreshRebuildsAndPreservesState(t *testing.T) {
 	p := longPatch()
 	p.Files[0].OldPath, p.Files[0].NewPath = "long.go", "long.go"
-	m := New(p, nil, nil, InitialLayout{Size: Size{Width: 40, Height: 8}})
+	m := newModel(p, nil, nil, initialLayout{size: size{Width: 40, Height: 8}})
 	for range 8 {
-		m.move(Forward)
+		m.move(forward)
 	}
-	selection := m.review.view.BeginSelection(m.review.cursor)
-	m.review.selection = &selection
-	m.move(Forward)
-	m.review.viewport = m.review.view.ScrollHorizontal(m.review.viewport, 12)
+	diffSelection := m.review.view.beginSelection(m.review.cursor)
+	m.review.selection = &diffSelection
+	m.move(forward)
+	m.review.viewport = m.review.view.scrollHorizontal(m.review.viewport, 12)
 	oldView := m.review.view
 	wantCursor, wantViewport, wantSelection := m.review.cursor, m.review.viewport, *m.review.selection
 	m.err = fmt.Errorf("previous refresh failed")
@@ -138,7 +138,7 @@ func TestUnchangedRefreshRebuildsAndPreservesState(t *testing.T) {
 		t.Fatal("unchanged refresh did not rebuild")
 	}
 	if m.review.cursor != wantCursor || m.review.viewport != wantViewport || m.review.selection == nil || *m.review.selection != wantSelection {
-		t.Fatalf("state after refresh: cursor=%#v viewport=%#v selection=%#v", m.review.cursor, m.review.viewport, m.review.selection)
+		t.Fatalf("viewState after refresh: diffCursor=%#v diffViewport=%#v diffSelection=%#v", m.review.cursor, m.review.viewport, m.review.selection)
 	}
 	if m.err != nil {
 		t.Fatalf("refresh did not clear error: %v", m.err)
@@ -150,7 +150,7 @@ func TestRefreshFailureRetainsView(t *testing.T) {
 	oldView, oldCursor := m.review.view, m.review.cursor
 	m = updateModel(t, m, refreshDiffMsg{err: fmt.Errorf("git failed")})
 	if m.err == nil || m.review.view != oldView || m.review.cursor != oldCursor || m.review.patch.Root != "/repo" {
-		t.Fatalf("view=%v cursor=%#v patch=%#v error=%v", m.review.view, m.review.cursor, m.review.patch, m.err)
+		t.Fatalf("view=%v diffCursor=%#v patch=%#v error=%v", m.review.view, m.review.cursor, m.review.patch, m.err)
 	}
 }
 
@@ -159,14 +159,14 @@ func TestViewSwitchPreservesSemanticCursor(t *testing.T) {
 	m.width = 120
 	m.move(1)
 	m.move(1)
-	want, _ := m.review.view.Line(m.review.cursor)
-	oldCoordinate := m.review.cursor.Coordinate
+	want, _ := m.review.view.line(m.review.cursor)
+	oldCoordinate := m.review.cursor.coordinate
 	m.setSideBySide(true)
-	got, ok := m.review.view.Line(m.review.cursor)
+	got, ok := m.review.view.line(m.review.cursor)
 	if !ok || got != want {
-		t.Fatalf("cursor line after switch = %#v", got)
+		t.Fatalf("diffCursor line after switch = %#v", got)
 	}
-	if m.review.cursor.Coordinate == oldCoordinate {
+	if m.review.cursor.coordinate == oldCoordinate {
 		t.Fatal("layout switch reused the old coordinate")
 	}
 }
@@ -189,7 +189,7 @@ func TestCommentSaveUsesPatchAndPreservesAnchor(t *testing.T) {
 func TestRenderingAndKeyBindingsRemainAvailable(t *testing.T) {
 	m := testModel(modelPatch(), nil, nil)
 	m.width, m.height = 80, 10
-	m.review.viewport = m.review.view.Resize(m.review.viewport, m.width, m.screenBodyHeight())
+	m.review.viewport = m.review.view.resize(m.review.viewport, m.width, m.screenBodyHeight())
 	rendered := m.render()
 	for _, value := range []string{"review-my-slop", "+1-1", "old()", "new()", "local changes"} {
 		if !strings.Contains(rendered, value) {
@@ -198,7 +198,7 @@ func TestRenderingAndKeyBindingsRemainAvailable(t *testing.T) {
 	}
 	m.mode = modeHelp
 	if !strings.Contains(m.render(), "Ctrl-w h/l/w") {
-		t.Fatal("help lost pane binding")
+		t.Fatal("help lost diffPane binding")
 	}
 }
 
@@ -211,7 +211,7 @@ func TestEmptyViewKeepsKeyboardHintAtBottom(t *testing.T) {
 		t.Fatalf("line %d = %q, want it to contain %q", m.height-1, got, want)
 	}
 	if got := lines[2]; !strings.Contains(got, "No unstaged or untracked changes.") {
-		t.Fatalf("empty-state line = %q", got)
+		t.Fatalf("empty-viewState line = %q", got)
 	}
 }
 
@@ -254,14 +254,6 @@ func TestCommentsMenuScrollsWithinScreenBody(t *testing.T) {
 	}
 	if !strings.Contains(rendered[m.height-2], "j/k move") {
 		t.Fatalf("footer line = %q", rendered[m.height-2])
-	}
-}
-
-func TestCommentDraftRoundTrip(t *testing.T) {
-	anchor := comments.Anchor{QuotedLines: []string{" old", "-gone", "+new"}}
-	draft := CommentDraft("body", anchor)
-	if got := StripUnchangedSuggestion(draft, anchor.QuotedLines); got != "body" {
-		t.Fatalf("unchanged suggestion result = %q", got)
 	}
 }
 

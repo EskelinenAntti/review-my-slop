@@ -6,66 +6,66 @@ type cursorIdentity struct {
 	file   patch.File
 	hunk   patch.Hunk
 	line   patch.Line
-	cursor Cursor
+	cursor diffCursor
 	valid  bool
 }
 
-// Preserve returns fresh State for next by retaining the meaningful position
+// preserve returns fresh viewState for next by retaining the meaningful position
 // from state where next contains it.
-func Preserve(old View, state State, next View) State {
-	result := State{Viewport: next.NewViewport(state.Viewport.Width, state.Viewport.Height)}
-	result.Viewport = next.ScrollHorizontal(result.Viewport, state.Viewport.LeftColumn)
+func preserve(old reviewView, state viewState, next reviewView) viewState {
+	result := viewState{viewport: next.newViewport(state.viewport.Width, state.viewport.Height)}
+	result.viewport = next.scrollHorizontal(result.viewport, state.viewport.LeftColumn)
 	rowsAbove := 0
-	if state.Cursor != nil {
-		rowsAbove = state.Cursor.Coordinate.Y - state.Viewport.Top.Y
+	if state.cursor != nil {
+		rowsAbove = state.cursor.coordinate.Y - state.viewport.top.Y
 	}
 
-	cursor := identify(old, state.Cursor)
+	cursor := identify(old, state.cursor)
 	if cursor.valid {
-		if translated, ok := next.FindCursor(cursor.file, cursor.hunk, cursor.line, cursor.cursor.Coordinate, cursor.cursor.Pane); ok {
-			result.Cursor = &translated
+		if translated, ok := next.findCursor(cursor.file, cursor.hunk, cursor.line, cursor.cursor.coordinate, cursor.cursor.pane); ok {
+			result.cursor = &translated
 		}
 	}
-	if result.Cursor == nil {
-		if first, ok := next.First(); ok {
-			result.Cursor = &first
+	if result.cursor == nil {
+		if first, ok := next.first(); ok {
+			result.cursor = &first
 		}
 	}
 
-	if selection, ok := preserveSelection(old, state.Selection, next); ok {
-		result.Selection = &selection
+	if selection, ok := preserveSelection(old, state.selection, next); ok {
+		result.selection = &selection
 	}
-	if result.Cursor != nil {
-		result.Viewport.Top.Y = max(0, result.Cursor.Coordinate.Y-rowsAbove)
-		result.Viewport = next.KeepVisible(result.Viewport, *result.Cursor)
+	if result.cursor != nil {
+		result.viewport.top.Y = max(0, result.cursor.coordinate.Y-rowsAbove)
+		result.viewport = next.keepVisible(result.viewport, *result.cursor)
 	}
 	return result
 }
 
-func identify(v View, cursor *Cursor) cursorIdentity {
+func identify(v reviewView, cursor *diffCursor) cursorIdentity {
 	if cursor == nil {
 		return cursorIdentity{}
 	}
-	file, fileOK := v.File(*cursor)
-	hunk, hunkOK := v.Hunk(*cursor)
-	line, lineOK := v.Line(*cursor)
+	file, fileOK := v.file(*cursor)
+	hunk, hunkOK := v.hunk(*cursor)
+	line, lineOK := v.line(*cursor)
 	return cursorIdentity{file: file, hunk: hunk, line: line, cursor: *cursor, valid: fileOK && hunkOK && lineOK}
 }
 
-func preserveSelection(old View, selection *Selection, next View) (Selection, bool) {
+func preserveSelection(old reviewView, selection *diffSelection, next reviewView) (diffSelection, bool) {
 	if selection == nil {
-		return Selection{}, false
+		return diffSelection{}, false
 	}
 	first := identify(old, &selection.First)
 	last := identify(old, &selection.Last)
 	if !first.valid || !last.valid {
-		return Selection{}, false
+		return diffSelection{}, false
 	}
-	translatedFirst, firstOK := next.FindCursor(first.file, first.hunk, first.line, first.cursor.Coordinate, first.cursor.Pane)
-	translatedLast, lastOK := next.FindCursor(last.file, last.hunk, last.line, last.cursor.Coordinate, last.cursor.Pane)
+	translatedFirst, firstOK := next.findCursor(first.file, first.hunk, first.line, first.cursor.coordinate, first.cursor.pane)
+	translatedLast, lastOK := next.findCursor(last.file, last.hunk, last.line, last.cursor.coordinate, last.cursor.pane)
 	if !firstOK || !lastOK || !sameFile(first.file, last.file) || first.hunk.Header != last.hunk.Header {
-		return Selection{}, false
+		return diffSelection{}, false
 	}
-	translated := next.BeginSelection(translatedFirst)
-	return next.ExtendSelection(translated, translatedLast)
+	translated := next.beginSelection(translatedFirst)
+	return next.extendSelection(translated, translatedLast)
 }

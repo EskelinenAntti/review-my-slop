@@ -6,9 +6,6 @@ import (
 	"io"
 	"os"
 
-	tea "charm.land/bubbletea/v2"
-	"github.com/charmbracelet/x/term"
-
 	"github.com/eskelinenantti/review-my-slop/internal/comments"
 	"github.com/eskelinenantti/review-my-slop/internal/patch"
 	"github.com/eskelinenantti/review-my-slop/internal/ui"
@@ -47,31 +44,7 @@ func runCode(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	pending, err := commentStore.List(currentPatch.Root)
-	if err != nil {
-		return err
-	}
-	size := initialTerminalSize()
-	model, err := ui.NewWithStore(commentStore, currentPatch, pending, size)
-	if err != nil {
-		return err
-	}
-	model.SetRefresh(func(kind patch.Kind) (patch.Patch, error) {
-		return patch.Get(ctx, kind)
-	})
-	program := tea.NewProgram(model, tea.WithWindowSize(size.Width, size.Height))
-	_, err = program.Run()
-	return err
-}
-
-func initialTerminalSize() ui.Size {
-	if width, height, err := term.GetSize(os.Stdin.Fd()); err == nil {
-		return ui.Size{Width: width, Height: height}
-	}
-	if width, height, err := term.GetSize(os.Stdout.Fd()); err == nil {
-		return ui.Size{Width: width, Height: height}
-	}
-	return ui.DefaultSize
+	return ui.Run(ctx, currentPatch, commentStore, patch.Get)
 }
 
 func runComments(ctx context.Context, output io.Writer) error {

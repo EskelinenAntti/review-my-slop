@@ -8,7 +8,7 @@ import (
 	"github.com/alecthomas/chroma/v2/quick"
 )
 
-type Pair struct {
+type pair struct {
 	Old []string
 	New []string
 }

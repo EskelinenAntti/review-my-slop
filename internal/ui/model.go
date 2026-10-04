@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/eskelinenantti/review-my-slop/internal/comments"
@@ -10,29 +11,29 @@ import (
 	"github.com/eskelinenantti/review-my-slop/internal/patch"
 )
 
-type SaveCommentFunc func(comments.Comment, patch.Patch) (comments.Comment, error)
-type DeleteCommentFunc func(comments.Comment, patch.Patch) error
-type LoadCommentsFunc func() ([]comments.Comment, error)
-type RefreshDiffFunc func(patch.Kind) (patch.Patch, error)
-type SaveSideBySideFunc func(bool) error
+type saveCommentFunc func(comments.Comment, patch.Patch) (comments.Comment, error)
+type deleteCommentFunc func(comments.Comment, patch.Patch) error
+type loadCommentsFunc func() ([]comments.Comment, error)
+type refreshDiffFunc func(patch.Kind) (patch.Patch, error)
+type saveSideBySideFunc func(bool) error
 
-// CommentStore supplies the persistence operations used by the terminal client.
-type CommentStore interface {
+// commentStore supplies the persistence operations used by the terminal client.
+type commentStore interface {
 	Add(comments.Comment) (comments.Comment, error)
 	List(string) ([]comments.Comment, error)
 	Update(comments.Comment) error
 	Delete(string, string) error
 }
 
-type Size struct {
+type size struct {
 	Width  int
 	Height int
 }
 
-type InitialLayout struct {
+type initialLayout struct {
 	SideBySide     bool
-	SaveSideBySide SaveSideBySideFunc
-	Size           Size
+	SaveSideBySide saveSideBySideFunc
+	size           size
 }
 
 type refreshDiffMsg struct {
@@ -66,14 +67,14 @@ const (
 	minimumSideBySideWidth = 100
 )
 
-var DefaultSize = Size{Width: 80, Height: 30}
+var defaultSize = size{Width: 80, Height: 30}
 
 type reviewState struct {
 	patch      patch.Patch
-	view       View
-	cursor     Cursor
-	viewport   Viewport
-	selection  *Selection
+	view       reviewView
+	cursor     diffCursor
+	viewport   diffViewport
+	selection  *diffSelection
 	sideBySide bool
 }
 
@@ -89,35 +90,37 @@ type commentState struct {
 type searchState struct {
 	query []rune
 	term  string
-	from  Cursor
+	from  diffCursor
 	miss  bool
 }
 
-type Model struct {
+type model struct {
+	ctx        context.Context
 	review     reviewState
 	comments   commentState
 	search     searchState
 	width      int
 	height     int
 	mode       mode
-	save       SaveCommentFunc
-	delete     DeleteCommentFunc
-	load       LoadCommentsFunc
-	refresh    RefreshDiffFunc
+	save       saveCommentFunc
+	delete     deleteCommentFunc
+	load       loadCommentsFunc
+	refresh    refreshDiffFunc
 	err        error
 	quitting   bool
 	pendingKey string
-	saveLayout SaveSideBySideFunc
+	saveLayout saveSideBySideFunc
 	kind       patch.Kind
 	dark       bool
 }
 
-func New(p patch.Patch, comments []comments.Comment, save SaveCommentFunc, layout InitialLayout) Model {
-	size := layout.Size
+func newModel(p patch.Patch, comments []comments.Comment, save saveCommentFunc, layout initialLayout) model {
+	size := layout.size
 	if size.Width <= 0 || size.Height <= 0 {
-		size = DefaultSize
+		size = defaultSize
 	}
-	m := Model{
+	m := model{
+		ctx:        context.Background(),
 		review:     reviewState{patch: p},
 		comments:   commentState{items: comments, editIndex: -1},
 		width:      size.Width,
@@ -129,17 +132,17 @@ func New(p patch.Patch, comments []comments.Comment, save SaveCommentFunc, layou
 	}
 	m.review.sideBySide = layout.SideBySide
 	m.review.view = m.newReviewView(p)
-	m.review.viewport = m.review.view.NewViewport(m.width, m.screenBodyHeight())
-	m.review.cursor, _ = m.review.view.First()
+	m.review.viewport = m.review.view.newViewport(m.width, m.screenBodyHeight())
+	m.review.cursor, _ = m.review.view.first()
 	return m
 }
 
-func NewWithStore(store CommentStore, p patch.Patch, items []comments.Comment, size Size) (Model, error) {
+func newWithStore(store commentStore, p patch.Patch, items []comments.Comment, size size) (model, error) {
 	sideBySide, err := loadLayoutSettings()
 	if err != nil {
-		return Model{}, err
+		return model{}, err
 	}
-	m := New(p, items, func(comment comments.Comment, current patch.Patch) (comments.Comment, error) {
+	m := newModel(p, items, func(comment comments.Comment, current patch.Patch) (comments.Comment, error) {
 		comment.Repository = current.Root
 		if comment.ID != "" {
 			if err := store.Update(comment); err != nil {
@@ -148,31 +151,31 @@ func NewWithStore(store CommentStore, p patch.Patch, items []comments.Comment, s
 			return comment, nil
 		}
 		return store.Add(comment)
-	}, InitialLayout{
+	}, initialLayout{
 		SideBySide:     sideBySide,
 		SaveSideBySide: saveLayoutSettings,
-		Size:           size,
+		size:           size,
 	})
-	m.SetDelete(func(comment comments.Comment, current patch.Patch) error {
+	m.setDelete(func(comment comments.Comment, current patch.Patch) error {
 		return store.Delete(current.Root, comment.ID)
 	})
-	m.SetLoadComments(func() ([]comments.Comment, error) {
+	m.setLoadComments(func() ([]comments.Comment, error) {
 		return store.List(p.Root)
 	})
 	return m, nil
 }
 
-func (m *Model) SetRefresh(refresh RefreshDiffFunc)    { m.refresh = refresh }
-func (m *Model) SetDelete(delete DeleteCommentFunc)    { m.delete = delete }
-func (m *Model) SetLoadComments(load LoadCommentsFunc) { m.load = load }
-func (m *Model) SetSideBySide(enabled bool, save SaveSideBySideFunc) {
+func (m *model) setRefresh(refresh refreshDiffFunc)    { m.refresh = refresh }
+func (m *model) setDelete(delete deleteCommentFunc)    { m.delete = delete }
+func (m *model) setLoadComments(load loadCommentsFunc) { m.load = load }
+func (m *model) configureSideBySide(enabled bool, save saveSideBySideFunc) {
 	m.saveLayout = save
 	m.setSideBySide(enabled)
 }
 
-func (m Model) Init() tea.Cmd { return func() tea.Msg { return tea.RequestBackgroundColor() } }
+func (m model) Init() tea.Cmd { return func() tea.Msg { return tea.RequestBackgroundColor() } }
 
-func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.BackgroundColorMsg:
 		if dark := msg.IsDark(); dark != m.dark {
@@ -182,11 +185,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		activeBefore := m.sideBySideActive()
 		m.width, m.height = msg.Width, msg.Height
-		m.review.viewport = m.review.view.Resize(m.review.viewport, m.width, m.screenBodyHeight())
+		m.review.viewport = m.review.view.resize(m.review.viewport, m.width, m.screenBodyHeight())
 		if activeBefore != m.sideBySideActive() {
 			m.rebuildView(m.review.patch)
 		} else {
-			m.review.viewport = m.review.view.KeepVisible(m.review.viewport, m.review.cursor)
+			m.review.viewport = m.review.view.keepVisible(m.review.viewport, m.review.cursor)
 		}
 	case commentEditorFinishedMsg:
 		if msg.err != nil {
@@ -231,7 +234,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m Model) loadRefresh() tea.Cmd {
+func (m model) loadRefresh() tea.Cmd {
 	if m.refresh == nil {
 		return nil
 	}
@@ -239,7 +242,7 @@ func (m Model) loadRefresh() tea.Cmd {
 	return func() tea.Msg { p, err := m.refresh(kind); return refreshDiffMsg{patch: p, kind: kind, err: err} }
 }
 
-func (m Model) loadComments() tea.Cmd {
+func (m model) loadComments() tea.Cmd {
 	if m.load == nil {
 		return nil
 	}
@@ -250,31 +253,31 @@ func (m Model) loadComments() tea.Cmd {
 	}
 }
 
-func (m *Model) rebuildView(p patch.Patch) {
+func (m *model) rebuildView(p patch.Patch) {
 	oldView := m.review.view
-	oldState := State{
-		Cursor:    &m.review.cursor,
-		Selection: m.review.selection,
-		Viewport:  m.review.viewport,
+	oldState := viewState{
+		cursor:    &m.review.cursor,
+		selection: m.review.selection,
+		viewport:  m.review.viewport,
 	}
 	m.review.patch = p
 	m.review.view = m.newReviewView(p)
-	state := Preserve(oldView, oldState, m.review.view)
-	m.review.viewport = state.Viewport
-	m.review.selection = state.Selection
-	if state.Cursor != nil {
-		m.review.cursor = *state.Cursor
+	state := preserve(oldView, oldState, m.review.view)
+	m.review.viewport = state.viewport
+	m.review.selection = state.selection
+	if state.cursor != nil {
+		m.review.cursor = *state.cursor
 	}
 }
 
-func (m Model) newReviewView(p patch.Patch) View {
+func (m model) newReviewView(p patch.Patch) reviewView {
 	if m.sideBySideActive() {
-		return NewSideBySideView(p, m.dark)
+		return newSideBySideView(p, m.dark)
 	}
-	return NewUnifiedView(p, m.dark)
+	return newUnifiedView(p, m.dark)
 }
 
-func (m Model) updateKey(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+func (m model) updateKey(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	name := key.String()
 	if m.mode == modeComments {
 		return m.updateComments(name)
@@ -293,32 +296,32 @@ func (m Model) updateKey(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	m.pendingKey = ""
 	if pending == "[" || pending == "]" {
 		if pending+name == "]f" {
-			m.jumpFile(Forward)
+			m.jumpFile(forward)
 		}
 		if pending+name == "[f" {
-			m.jumpFile(Backward)
+			m.jumpFile(backward)
 		}
 		return m, nil
 	}
 	if pending == "z" {
 		switch name {
 		case "z":
-			m.review.viewport = m.review.view.Align(m.review.viewport, m.review.cursor, Middle)
+			m.review.viewport = m.review.view.align(m.review.viewport, m.review.cursor, middle)
 		case "t":
-			m.review.viewport = m.review.view.Align(m.review.viewport, m.review.cursor, Top)
+			m.review.viewport = m.review.view.align(m.review.viewport, m.review.cursor, top)
 		case "b":
-			m.review.viewport = m.review.view.Align(m.review.viewport, m.review.cursor, Bottom)
+			m.review.viewport = m.review.view.align(m.review.viewport, m.review.cursor, bottom)
 		}
 		return m, nil
 	}
 	if pending == "ctrl+w" {
 		switch name {
 		case "h":
-			m.switchPane(Left)
+			m.switchPane(left)
 		case "l":
-			m.switchPane(Right)
+			m.switchPane(right)
 		case "ctrl+w":
-			m.switchPane(m.review.cursor.Pane.Other())
+			m.switchPane(m.review.cursor.pane.other())
 		}
 		return m, nil
 	}
@@ -335,37 +338,37 @@ func (m Model) updateKey(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		m.search.from = m.review.cursor
 		m.search.miss = false
 	case "n":
-		m.repeatSearch(Forward)
+		m.repeatSearch(forward)
 	case "N":
-		m.repeatSearch(Backward)
+		m.repeatSearch(backward)
 	case "j", "down":
-		m.move(Forward)
+		m.move(forward)
 	case "k", "up":
-		m.move(Backward)
+		m.move(backward)
 	case "h", "left":
-		m.review.viewport = m.review.view.ScrollHorizontal(m.review.viewport, -horizontalScrollStep)
+		m.review.viewport = m.review.view.scrollHorizontal(m.review.viewport, -horizontalScrollStep)
 	case "l", "right":
-		m.review.viewport = m.review.view.ScrollHorizontal(m.review.viewport, horizontalScrollStep)
+		m.review.viewport = m.review.view.scrollHorizontal(m.review.viewport, horizontalScrollStep)
 	case "0":
 		m.review.viewport.LeftColumn = 0
 	case "$":
-		m.review.viewport = m.review.view.ScrollHorizontal(m.review.viewport, int(^uint(0)>>1))
+		m.review.viewport = m.review.view.scrollHorizontal(m.review.viewport, int(^uint(0)>>1))
 	case "ctrl+d":
-		m.halfPage(Forward)
+		m.halfPage(forward)
 	case "ctrl+u":
-		m.halfPage(Backward)
+		m.halfPage(backward)
 	case "ctrl+w":
 		m.pendingKey = name
 	case "g":
 		if pending == "g" {
-			if cursor, ok := m.review.view.First(); ok {
+			if cursor, ok := m.review.view.first(); ok {
 				m.setCursor(cursor)
 			}
 		} else {
 			m.pendingKey = "g"
 		}
 	case "G":
-		if cursor, ok := m.review.view.Last(); ok {
+		if cursor, ok := m.review.view.last(); ok {
 			m.setCursor(cursor)
 		}
 	case "z":
@@ -374,7 +377,7 @@ func (m Model) updateKey(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		m.pendingKey = name
 	case "v":
 		if m.review.selection == nil {
-			selection := m.review.view.BeginSelection(m.review.cursor)
+			selection := m.review.view.beginSelection(m.review.cursor)
 			m.review.selection = &selection
 		} else {
 			m.cancelSelection()
@@ -418,4 +421,4 @@ func (m Model) updateKey(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m Model) screenBodyHeight() int { return max(1, m.height-3) }
+func (m model) screenBodyHeight() int { return max(1, m.height-3) }
