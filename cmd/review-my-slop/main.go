@@ -39,20 +39,20 @@ func run(ctx context.Context, args []string, output io.Writer) error {
 }
 
 func runCode(ctx context.Context) error {
-	store, err := comments.OpenDefault()
+	commentStore, err := comments.OpenDefault()
 	if err != nil {
 		return err
 	}
-	loaded, err := patch.Get(ctx, patch.Unstaged)
+	currentPatch, err := patch.Get(ctx, patch.Unstaged)
 	if err != nil {
 		return err
 	}
-	pending, err := store.List(loaded.Root)
+	pending, err := commentStore.List(currentPatch.Root)
 	if err != nil {
 		return err
 	}
 	size := initialTerminalSize()
-	model, err := ui.NewWithStore(store, loaded, pending, size)
+	model, err := ui.NewWithStore(commentStore, currentPatch, pending, size)
 	if err != nil {
 		return err
 	}
@@ -75,13 +75,13 @@ func initialTerminalSize() ui.Size {
 }
 
 func runComments(ctx context.Context, output io.Writer) error {
-	store, err := comments.OpenDefault()
+	commentStore, err := comments.OpenDefault()
 	if err != nil {
 		return err
 	}
-	p, err := patch.Get(ctx, patch.Unstaged)
+	currentPatch, err := patch.Get(ctx, patch.Unstaged)
 	if err != nil {
 		return err
 	}
-	return store.WritePending(output, p.Root)
+	return commentStore.WritePending(output, currentPatch.Root)
 }
