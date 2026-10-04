@@ -15,7 +15,7 @@ const (
 	lineRow
 )
 
-type entry struct {
+type displayRow struct {
 	kind              rowKind
 	file, hunk        int
 	leftLine          int
@@ -23,34 +23,34 @@ type entry struct {
 	text, left, right string
 }
 
-type diffView struct {
+type projection struct {
 	patch patch.Patch
-	rows  []entry
+	rows  []displayRow
 	split bool
 	dark  bool
 }
 
-func newDiffView(p patch.Patch, split, dark bool) *diffView {
-	v := &diffView{patch: p, split: split, dark: dark}
+func buildProjection(p patch.Patch, split, dark bool) *projection {
+	v := &projection{patch: p, split: split, dark: dark}
 	for fileIndex, file := range p.Files {
-		v.rows = append(v.rows, entry{kind: fileRow, file: fileIndex, hunk: -1, leftLine: -1, rightLine: -1, text: file.DisplayPath})
+		v.rows = append(v.rows, displayRow{kind: fileRow, file: fileIndex, hunk: -1, leftLine: -1, rightLine: -1, text: file.DisplayPath})
 		for _, metadata := range file.Metadata {
-			v.rows = append(v.rows, entry{kind: metadataRow, file: fileIndex, hunk: -1, leftLine: -1, rightLine: -1, text: metadata})
+			v.rows = append(v.rows, displayRow{kind: metadataRow, file: fileIndex, hunk: -1, leftLine: -1, rightLine: -1, text: metadata})
 		}
-		highlighted := v.highlight(&file)
+		highlighted := highlightFile(&file, dark)
 		for hunkIndex, hunk := range file.Hunks {
-			v.rows = append(v.rows, entry{kind: hunkRow, file: fileIndex, hunk: hunkIndex, leftLine: -1, rightLine: -1, text: hunkHeader(hunk.Header)})
-			for _, indices := range lineRows(hunk.Lines, split) {
-				row := entry{kind: lineRow, file: fileIndex, hunk: hunkIndex, leftLine: indices[0], rightLine: indices[1]}
+			v.rows = append(v.rows, displayRow{kind: hunkRow, file: fileIndex, hunk: hunkIndex, leftLine: -1, rightLine: -1, text: formatHunkHeader(hunk.Header)})
+			for _, indices := range projectHunkLines(hunk.Lines, split) {
+				row := displayRow{kind: lineRow, file: fileIndex, hunk: hunkIndex, leftLine: indices[left], rightLine: indices[right]}
 				if !split {
 					line := hunk.Lines[row.rightLine]
-					row.text = sourceText(highlighted, line)
+					row.text = highlighted.textFor(line)
 				} else {
 					if row.leftLine >= 0 {
-						row.left = sourceText(highlighted, hunk.Lines[row.leftLine])
+						row.left = highlighted.textFor(hunk.Lines[row.leftLine])
 					}
 					if row.rightLine >= 0 {
-						row.right = sourceText(highlighted, hunk.Lines[row.rightLine])
+						row.right = highlighted.textFor(hunk.Lines[row.rightLine])
 					}
 				}
 				v.rows = append(v.rows, row)
@@ -60,9 +60,9 @@ func newDiffView(p patch.Patch, split, dark bool) *diffView {
 	return v
 }
 
-// lineRows maps source lines to display rows. Split mode pairs each deletion
+// projectHunkLines maps source lines to display rows. Split mode pairs each deletion
 // block with the immediately following additions; unmatched panes use -1.
-func lineRows(lines []patch.Line, split bool) [][2]int {
+func projectHunkLines(lines []patch.Line, split bool) [][2]int {
 	rows := make([][2]int, 0, len(lines))
 	for index := 0; index < len(lines); {
 		if !split || lines[index].Kind == patch.Context {
@@ -86,10 +86,10 @@ func lineRows(lines []patch.Line, split bool) [][2]int {
 		for offset := 0; offset < max(addedStart-removedStart, index-addedStart); offset++ {
 			pair := [2]int{-1, -1}
 			if removedStart+offset < addedStart {
-				pair[0] = removedStart + offset
+				pair[left] = removedStart + offset
 			}
 			if addedStart+offset < index {
-				pair[1] = addedStart + offset
+				pair[right] = addedStart + offset
 			}
 			rows = append(rows, pair)
 		}
@@ -97,21 +97,7 @@ func lineRows(lines []patch.Line, split bool) [][2]int {
 	return rows
 }
 
-func sourceText(highlighted pair, line patch.Line) string {
-	if line.Kind == patch.Deletion {
-		return highlightedLine(highlighted.Old, line.OldNumber, line.Text)
-	}
-	return highlightedLine(highlighted.New, line.NewNumber, line.Text)
-}
-
-func (v *diffView) highlight(file *patch.File) pair {
-	return pair{
-		Old: render(file.OldPath, file.OldSource, v.dark),
-		New: render(file.NewPath, file.NewSource, v.dark),
-	}
-}
-
-func hunkHeader(header string) string {
+func formatHunkHeader(header string) string {
 	if strings.HasPrefix(header, "@@") {
 		return header
 	}

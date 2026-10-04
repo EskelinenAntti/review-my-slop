@@ -7,38 +7,40 @@ import (
 )
 
 func TestPreserveTranslatesCursorSelectionAndViewport(t *testing.T) {
-	old := newUnifiedView(testPatch(), true)
+	old := unifiedProjection(testPatch(), true)
 	first := mustFirst(t, old)
-	cursor, ok := old.search("added one", first, forward)
+	cursor, ok := old.findMatch("added one", first, Forward)
 	if !ok {
 		t.Fatal("cursor not found")
 	}
-	selection := old.beginSelection(first)
+	selection := diffSelection{First: first, Last: first}
 	selection, ok = old.extendSelection(selection, cursor)
 	if !ok {
 		t.Fatal("selection not created")
 	}
 	viewport := old.newViewport(100, 4)
-	viewport = old.align(viewport, cursor, middle)
-	screen := &View{view: old, cursor: cursor, selection: &selection, viewport: viewport}
+	viewport = old.align(viewport, cursor, Center)
+	screen := &View{projection: old, cursor: cursor, selection: &selection, viewport: viewport}
 
-	next := newSideBySideView(testPatch(), true)
-	screen.replaceView(next)
+	next := splitProjection(testPatch(), true)
+	screen.replaceProjection(next)
 	preserved := screen
 
-	if !next.valid(preserved.cursor) {
+	if !next.hasSourceLine(preserved.cursor) {
 		t.Fatal("cursor was not preserved")
 	}
-	line, ok := next.line(preserved.cursor)
+	source := next.sourceAt(preserved.cursor)
+	line, ok := source.line, source.valid
 	if !ok || line.Text != "added one" {
 		t.Fatalf("cursor line = %#v, ok=%v", line, ok)
 	}
 	if preserved.selection == nil {
 		t.Fatalf("selection = %#v", preserved.selection)
 	}
-	firstLine, firstOK := next.line(preserved.selection.First)
-	lastLine, lastOK := next.line(preserved.selection.Last)
-	if !firstOK || !lastOK || firstLine.Text != "before" || lastLine.Text != "added one" {
+	firstSource := next.sourceAt(preserved.selection.First)
+	lastSource := next.sourceAt(preserved.selection.Last)
+	firstLine, lastLine := firstSource.line, lastSource.line
+	if !firstSource.valid || !lastSource.valid || firstLine.Text != "before" || lastLine.Text != "added one" {
 		t.Fatalf("selection endpoints = %#v, %#v", firstLine, lastLine)
 	}
 	if got, want := preserved.cursor.row-preserved.viewport.top, cursor.row-viewport.top; got != want {
@@ -47,14 +49,14 @@ func TestPreserveTranslatesCursorSelectionAndViewport(t *testing.T) {
 }
 
 func TestPreserveReturnsEmptyStateForEmptyView(t *testing.T) {
-	old := newUnifiedView(testPatch(), true)
+	old := unifiedProjection(testPatch(), true)
 	cursor := mustFirst(t, old)
-	screen := &View{view: old, cursor: cursor, selection: ptr(old.beginSelection(cursor)), viewport: old.newViewport(80, 10)}
+	screen := &View{projection: old, cursor: cursor, selection: ptr(diffSelection{First: cursor, Last: cursor}), viewport: old.newViewport(80, 10)}
 
-	screen.replaceView(newUnifiedView(patch.Patch{}, true))
+	screen.replaceProjection(unifiedProjection(patch.Patch{}, true))
 	preserved := screen
 
-	if preserved.view.valid(preserved.cursor) || preserved.selection != nil {
+	if preserved.projection.hasSourceLine(preserved.cursor) || preserved.selection != nil {
 		t.Fatalf("state = %#v", preserved)
 	}
 }
@@ -62,15 +64,15 @@ func TestPreserveReturnsEmptyStateForEmptyView(t *testing.T) {
 func TestPreserveClampsHorizontalOffsetForShorterLines(t *testing.T) {
 	p := longPatch()
 	p.Files[0].OldPath, p.Files[0].NewPath = "long.go", "long.go"
-	old := newUnifiedView(p, true)
+	old := unifiedProjection(p, true)
 	cursor := mustFirst(t, old)
 	viewport := old.scrollHorizontal(old.newViewport(40, 10), 30)
 	if viewport.LeftColumn == 0 {
 		t.Fatal("fixture does not scroll horizontally")
 	}
 	short := testPatch()
-	preserved := &View{view: old, cursor: cursor, viewport: viewport}
-	preserved.replaceView(newUnifiedView(short, true))
+	preserved := &View{projection: old, cursor: cursor, viewport: viewport}
+	preserved.replaceProjection(unifiedProjection(short, true))
 	if preserved.viewport.LeftColumn != 0 {
 		t.Fatalf("horizontal offset = %d", preserved.viewport.LeftColumn)
 	}

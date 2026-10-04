@@ -24,7 +24,7 @@ func TestSelectedDefaultsToCurrentAndMovementExtendsRange(t *testing.T) {
 		v.Move(NextLine)
 	}
 	if v.cursor.row < before.row {
-		t.Fatal("selection moved backward")
+		t.Fatal("selection moved Backward")
 	}
 	file, _, _ = v.Selected()
 	if file.NewPath != "first.go" {

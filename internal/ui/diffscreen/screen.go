@@ -55,7 +55,7 @@ const (
 // View owns focus, selection, search, and scrolling for a patch presentation.
 // It has no knowledge of keys, editors, or comment persistence.
 type View struct {
-	view          *diffView
+	projection    *projection
 	cursor        diffCursor
 	viewport      diffViewport
 	selection     *diffSelection
@@ -74,9 +74,9 @@ type searchState struct {
 // New creates a view with default dimensions of 80 columns and 30 rows.
 func New(p patch.Patch, options Options) *View {
 	v := &View{options: options, width: 80, height: 30}
-	v.view = v.newReviewView(p)
-	v.viewport = v.view.newViewport(v.width, frame.BodyHeight(v.height))
-	v.cursor, _ = v.view.first()
+	v.projection = buildProjection(p, v.sideBySideActive(), v.options.Dark)
+	v.viewport = v.projection.newViewport(v.width, frame.BodyHeight(v.height))
+	v.cursor, _ = v.projection.firstCursor()
 	return v
 }
 
@@ -84,7 +84,7 @@ func New(p patch.Patch, options Options) *View {
 // relative screen position. Missing targets fall back to nearby available code.
 func (v *View) Update(p patch.Patch) {
 	v.search.repeatMiss = false
-	v.replaceView(v.newReviewView(p))
+	v.replaceProjection(buildProjection(p, v.sideBySideActive(), v.options.Dark))
 }
 
 // Configure changes presentation options while preserving meaningful position.
@@ -93,7 +93,7 @@ func (v *View) Configure(options Options) {
 	dark := v.options.Dark
 	v.options = options
 	if active != v.sideBySideActive() || dark != options.Dark {
-		v.Update(v.view.patch)
+		v.Update(v.projection.patch)
 	}
 }
 
@@ -101,18 +101,15 @@ func (v *View) Configure(options Options) {
 func (v *View) Resize(width, height int) {
 	active := v.sideBySideActive()
 	v.width, v.height = width, height
-	v.viewport = v.view.resize(v.viewport, width, frame.BodyHeight(height))
+	v.viewport = v.projection.resize(v.viewport, width, frame.BodyHeight(height))
 	if active != v.sideBySideActive() {
-		v.Update(v.view.patch)
+		v.Update(v.projection.patch)
 	} else {
-		v.viewport = v.view.keepVisible(v.viewport, v.cursor)
+		v.viewport = v.projection.keepVisible(v.viewport, v.cursor)
 	}
 }
 
 func (v *View) sideBySideActive() bool { return v.options.SideBySide && v.width >= 100 }
-func (v *View) newReviewView(p patch.Patch) *diffView {
-	return newDiffView(p, v.sideBySideActive(), v.options.Dark)
-}
 
 // Move performs navigation and keeps the resulting focus visible. Line and
 // page movement extend active selection only within its original hunk.
@@ -120,25 +117,25 @@ func (v *View) Move(motion Motion) {
 	v.search.repeatMiss = false
 	switch motion {
 	case PreviousLine:
-		v.move(backward)
+		v.moveLine(Backward)
 	case NextLine:
-		v.move(forward)
+		v.moveLine(Forward)
 	case PreviousPage:
-		v.halfPage(backward)
+		v.moveHalfPage(Backward)
 	case NextPage:
-		v.halfPage(forward)
+		v.moveHalfPage(Forward)
 	case FirstLine:
-		if cursor, ok := v.view.first(); ok {
-			v.setCursor(cursor)
+		if cursor, ok := v.projection.firstCursor(); ok {
+			v.focusCursor(cursor)
 		}
 	case LastLine:
-		if cursor, ok := v.view.last(); ok {
-			v.setCursor(cursor)
+		if cursor, ok := v.projection.lastCursor(); ok {
+			v.focusCursor(cursor)
 		}
 	case PreviousFile:
-		v.jumpFile(backward)
+		v.jumpFile(Backward)
 	case NextFile:
-		v.jumpFile(forward)
+		v.jumpFile(Forward)
 	case OldPane:
 		v.switchPane(left)
 	case NewPane:
@@ -148,28 +145,27 @@ func (v *View) Move(motion Motion) {
 	}
 }
 
-func (v *View) move(direction direction) {
-	next, ok := v.view.move(v.cursor, direction)
-	if !ok {
-		return
+func (v *View) moveLine(direction Direction) {
+	next, ok := v.projection.stepCursor(v.cursor, direction)
+	if ok {
+		v.commitMovement(v.projection.keepVisible(v.viewport, next), next)
 	}
-	if v.selection != nil {
-		selection, ok := v.view.extendSelection(*v.selection, next)
-		if !ok {
-			return
-		}
-		v.selection = &selection
-	}
-	v.setCursor(next)
 }
-func (v *View) setCursor(cursor diffCursor) {
+
+func (v *View) focusCursor(cursor diffCursor) {
 	v.cursor = cursor
-	v.viewport = v.view.keepVisible(v.viewport, cursor)
+	v.viewport = v.projection.keepVisible(v.viewport, cursor)
 }
-func (v *View) halfPage(direction direction) {
-	viewport, cursor := v.view.scrollHalfPage(v.viewport, v.cursor, direction)
+
+func (v *View) moveHalfPage(direction Direction) {
+	v.commitMovement(v.projection.scrollHalfPage(v.viewport, v.cursor, direction))
+}
+
+// commitMovement extends selection before changing either focus or scrolling.
+// A movement outside the selected hunk leaves all three unchanged.
+func (v *View) commitMovement(viewport diffViewport, cursor diffCursor) {
 	if v.selection != nil {
-		selection, ok := v.view.extendSelection(*v.selection, cursor)
+		selection, ok := v.projection.extendSelection(*v.selection, cursor)
 		if !ok {
 			return
 		}
@@ -177,43 +173,44 @@ func (v *View) halfPage(direction direction) {
 	}
 	v.viewport, v.cursor = viewport, cursor
 }
-func (v *View) jumpFile(direction direction) {
+
+func (v *View) jumpFile(direction Direction) {
 	v.ClearSelection()
-	if cursor, ok := v.view.jumpFile(v.cursor, direction); ok {
-		v.setCursor(cursor)
+	if cursor, ok := v.projection.jumpFile(v.cursor, direction); ok {
+		v.focusCursor(cursor)
 	}
 }
 func (v *View) switchPane(pane diffPane) {
-	cursor, ok := v.view.switchPane(v.cursor, pane)
+	cursor, ok := v.projection.switchPane(v.cursor, pane)
 	if !ok {
 		return
 	}
 	if v.selection != nil {
-		first, firstOK := v.view.switchPane(v.selection.First, pane)
-		last, lastOK := v.view.switchPane(v.selection.Last, pane)
+		first, firstOK := v.projection.switchPane(v.selection.First, pane)
+		last, lastOK := v.projection.switchPane(v.selection.Last, pane)
 		if !firstOK || !lastOK {
 			return
 		}
-		selection := v.view.beginSelection(first)
-		selection, ok = v.view.extendSelection(selection, last)
+		selection := diffSelection{First: first, Last: first}
+		selection, ok = v.projection.extendSelection(selection, last)
 		if !ok {
 			return
 		}
 		v.selection = &selection
 	}
-	v.setCursor(cursor)
+	v.focusCursor(cursor)
 }
 
 func (v *View) Align(alignment Alignment) {
 	v.search.repeatMiss = false
-	if _, ok := v.view.line(v.cursor); !ok {
+	if !v.projection.hasSourceLine(v.cursor) {
 		return
 	}
-	v.viewport = v.view.align(v.viewport, v.cursor, verticalAlignment(alignment))
+	v.viewport = v.projection.align(v.viewport, v.cursor, alignment)
 }
 func (v *View) ScrollHorizontal(columns int) {
 	v.search.repeatMiss = false
-	v.viewport = v.view.scrollHorizontal(v.viewport, columns)
+	v.viewport = v.projection.scrollHorizontal(v.viewport, columns)
 }
 func (v *View) ToggleSelection() {
 	v.search.repeatMiss = false
@@ -221,8 +218,8 @@ func (v *View) ToggleSelection() {
 		v.ClearSelection()
 		return
 	}
-	if _, ok := v.view.line(v.cursor); ok {
-		selection := v.view.beginSelection(v.cursor)
+	if v.projection.hasSourceLine(v.cursor) {
+		selection := diffSelection{First: v.cursor, Last: v.cursor}
 		v.selection = &selection
 	}
 }
@@ -233,19 +230,18 @@ func (v *View) ClearSelection() { v.selection = nil; v.search.repeatMiss = false
 func (v *View) Selected() (patch.File, []patch.Line, bool) {
 	selection := v.selection
 	if selection == nil {
-		current := v.view.beginSelection(v.cursor)
+		current := diffSelection{First: v.cursor, Last: v.cursor}
 		selection = &current
 	}
-	file, ok := v.view.file(selection.First)
-	lines := v.view.lines(*selection)
-	return file, lines, ok && len(lines) > 0
+	source := v.projection.sourceAt(selection.First)
+	lines := v.projection.selectedLines(*selection)
+	return source.file, lines, source.valid && len(lines) > 0
 }
 
 // Current returns the focused source line, independent of any selected range.
 func (v *View) Current() (patch.File, patch.Line, bool) {
-	file, fileOK := v.view.file(v.cursor)
-	line, lineOK := v.view.line(v.cursor)
-	return file, line, fileOK && lineOK
+	source := v.projection.sourceAt(v.cursor)
+	return source.file, source.line, source.valid
 }
 
 func (v *View) BeginSearch() {
@@ -280,14 +276,14 @@ func (v *View) BackspaceSearch() {
 func (v *View) previewSearch(query string) {
 	v.search.query = query
 	if query == "" {
-		v.setCursor(v.search.from)
+		v.focusCursor(v.search.from)
 		v.search.miss = false
 		return
 	}
-	cursor, ok := v.view.search(query, v.search.from, forward)
+	cursor, ok := v.projection.findMatch(query, v.search.from, Forward)
 	v.search.miss = !ok
 	if ok {
-		v.setCursor(cursor)
+		v.focusCursor(cursor)
 	}
 }
 func (v *View) AcceptSearch() {
@@ -304,7 +300,7 @@ func (v *View) CancelSearch() {
 	if !v.search.active {
 		return
 	}
-	v.setCursor(v.search.from)
+	v.focusCursor(v.search.from)
 	v.search.active, v.search.miss = false, false
 	v.search.query = ""
 }
@@ -315,10 +311,10 @@ func (v *View) Find(d Direction) bool {
 	if d != Forward && d != Backward {
 		return false
 	}
-	cursor, ok := v.view.search(v.search.term, v.cursor, direction(d))
+	cursor, ok := v.projection.findMatch(v.search.term, v.cursor, d)
 	v.search.repeatMiss = !ok
 	if ok {
-		v.setCursor(cursor)
+		v.focusCursor(cursor)
 	}
 	return ok
 }
@@ -327,18 +323,18 @@ func (v *View) Find(d Direction) bool {
 // final blank line. A non-nil error replaces the status while retaining the
 // position label. Dimensions are configured through Resize.
 func (v *View) Render(err error) string {
-	added, removed := patchLineCounts(v.view.patch)
+	added, removed := patchLineCounts(v.projection.patch)
 	header := titleStyle.Render("review-my-slop") + "  " + mutedStyle.Render(fmt.Sprintf("+%d-%d", added, removed))
 	var body []string
-	if len(v.view.patch.Files) == 0 {
+	if len(v.projection.patch.Files) == 0 {
 		empty := "No unstaged or untracked changes."
-		if v.view.patch.Kind == patch.Branch {
+		if v.projection.patch.Kind == patch.Branch {
 			empty = "No branch or worktree changes."
 		}
 		body = make([]string, frame.BodyHeight(v.height))
 		body[min(1, len(body)-1)] = mutedStyle.Render(empty)
 	} else {
-		body = strings.Split(v.view.render(v.viewport, v.cursor, v.selection), "\n")
+		body = strings.Split(v.projection.renderBody(v.viewport, v.cursor, v.selection), "\n")
 	}
 	status := "j/k/h/l move  c comment  ? help  q quit"
 	if v.search.active {
@@ -360,11 +356,11 @@ func (v *View) Render(err error) string {
 }
 func (v *View) renderFooter(value string) string {
 	label := "local changes"
-	if v.view.patch.Kind == patch.Branch {
-		label = "branch changes from " + v.view.patch.Branch
+	if v.projection.patch.Kind == patch.Branch {
+		label = "branch changes from " + v.projection.patch.Branch
 	}
 	if v.viewport.top > 0 {
-		label += fmt.Sprintf(" (%d%%)", v.view.viewportProgress(v.viewport))
+		label += fmt.Sprintf(" (%d%%)", v.projection.viewportProgress(v.viewport))
 	}
 	right := mutedStyle.Render(label)
 	width := max(20, v.width)

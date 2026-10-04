@@ -6,11 +6,11 @@ import (
 	"github.com/charmbracelet/x/ansi"
 )
 
-func (v *diffView) valid(cursor diffCursor) bool {
+func (v *projection) hasSourceLine(cursor diffCursor) bool {
 	return cursor.row >= 0 && cursor.row < len(v.rows) && v.lineIndex(v.rows[cursor.row], cursor.pane) >= 0
 }
 
-func (v *diffView) lineIndex(current entry, pane diffPane) int {
+func (v *projection) lineIndex(current displayRow, pane diffPane) int {
 	if current.kind != lineRow {
 		return -1
 	}
@@ -20,26 +20,26 @@ func (v *diffView) lineIndex(current entry, pane diffPane) int {
 	return current.leftLine
 }
 
-func (v *diffView) cursorAt(y int, pane diffPane) (diffCursor, bool) {
+func (v *projection) cursorAt(y int, pane diffPane) (diffCursor, bool) {
 	cursor := diffCursor{row: y, pane: pane}
-	return cursor, v.valid(cursor)
+	return cursor, v.hasSourceLine(cursor)
 }
 
-func (v *diffView) first() (diffCursor, bool) {
-	if cursor, ok := v.scan(-1, right, forward); ok {
+func (v *projection) firstCursor() (diffCursor, bool) {
+	if cursor, ok := v.nextSelectableCursor(-1, right, Forward); ok {
 		return cursor, true
 	}
-	return v.scan(-1, left, forward)
+	return v.nextSelectableCursor(-1, left, Forward)
 }
 
-func (v *diffView) last() (diffCursor, bool) {
-	if cursor, ok := v.scan(len(v.rows), right, backward); ok {
+func (v *projection) lastCursor() (diffCursor, bool) {
+	if cursor, ok := v.nextSelectableCursor(len(v.rows), right, Backward); ok {
 		return cursor, true
 	}
-	return v.scan(len(v.rows), left, backward)
+	return v.nextSelectableCursor(len(v.rows), left, Backward)
 }
 
-func (v *diffView) scan(start int, pane diffPane, direction direction) (diffCursor, bool) {
+func (v *projection) nextSelectableCursor(start int, pane diffPane, direction Direction) (diffCursor, bool) {
 	for y := start + int(direction); y >= 0 && y < len(v.rows); y += int(direction) {
 		if cursor, ok := v.cursorAt(y, pane); ok {
 			return cursor, true
@@ -48,15 +48,15 @@ func (v *diffView) scan(start int, pane diffPane, direction direction) (diffCurs
 	return diffCursor{}, false
 }
 
-func (v *diffView) move(cursor diffCursor, direction direction) (diffCursor, bool) {
-	if !v.valid(cursor) {
+func (v *projection) stepCursor(cursor diffCursor, direction Direction) (diffCursor, bool) {
+	if !v.hasSourceLine(cursor) {
 		return diffCursor{}, false
 	}
-	return v.scan(cursor.row, cursor.pane, direction)
+	return v.nextSelectableCursor(cursor.row, cursor.pane, direction)
 }
 
-func (v *diffView) search(query string, cursor diffCursor, direction direction) (diffCursor, bool) {
-	if query == "" || !v.valid(cursor) {
+func (v *projection) findMatch(query string, cursor diffCursor, direction Direction) (diffCursor, bool) {
+	if query == "" || !v.hasSourceLine(cursor) {
 		return diffCursor{}, false
 	}
 	query = strings.ToLower(query)
@@ -75,13 +75,13 @@ func (v *diffView) search(query string, cursor diffCursor, direction direction) 
 			if !ok || !v.split && pane != cursor.pane {
 				continue
 			}
-			line, _ := v.line(candidate)
+			line := v.sourceAt(candidate).line
 			if strings.Contains(strings.ToLower(line.Text), query) {
 				return candidate, true
 			}
 		}
 		if current.kind != lineRow && strings.Contains(strings.ToLower(ansi.Strip(current.text)), query) {
-			if candidate, ok := v.cursorNearRow(y, cursor.pane, direction); ok {
+			if candidate, ok := v.nearestFileCursor(y, cursor.pane, direction); ok {
 				return candidate, true
 			}
 		}
@@ -89,7 +89,7 @@ func (v *diffView) search(query string, cursor diffCursor, direction direction) 
 	return diffCursor{}, false
 }
 
-func (v *diffView) cursorNearRow(y int, pane diffPane, direction direction) (diffCursor, bool) {
+func (v *projection) nearestFileCursor(y int, pane diffPane, direction Direction) (diffCursor, bool) {
 	for distance := 1; distance <= len(v.rows); distance++ {
 		for _, candidateY := range []int{y + int(direction)*distance, y - int(direction)*distance} {
 			if candidateY < 0 || candidateY >= len(v.rows) {
@@ -111,18 +111,18 @@ func (v *diffView) cursorNearRow(y int, pane diffPane, direction direction) (dif
 	return diffCursor{}, false
 }
 
-func (v *diffView) jumpFile(cursor diffCursor, direction direction) (diffCursor, bool) {
-	if !v.valid(cursor) {
+func (v *projection) jumpFile(cursor diffCursor, direction Direction) (diffCursor, bool) {
+	if !v.hasSourceLine(cursor) {
 		return diffCursor{}, false
 	}
-	file, _ := v.file(cursor)
+	file := v.sourceAt(cursor).file
 	y := cursor.row
 	for {
-		next, ok := v.scan(y, cursor.pane, direction)
+		next, ok := v.nextSelectableCursor(y, cursor.pane, direction)
 		if !ok {
 			return diffCursor{}, false
 		}
-		nextFile, _ := v.file(next)
+		nextFile := v.sourceAt(next).file
 		if nextFile.OldPath != file.OldPath || nextFile.NewPath != file.NewPath {
 			return next, true
 		}
@@ -130,8 +130,8 @@ func (v *diffView) jumpFile(cursor diffCursor, direction direction) (diffCursor,
 	}
 }
 
-func (v *diffView) switchPane(cursor diffCursor, pane diffPane) (diffCursor, bool) {
-	if !v.split || !v.valid(cursor) {
+func (v *projection) switchPane(cursor diffCursor, pane diffPane) (diffCursor, bool) {
+	if !v.split || !v.hasSourceLine(cursor) {
 		return diffCursor{}, false
 	}
 	if candidate, ok := v.cursorAt(cursor.row, pane); ok {
