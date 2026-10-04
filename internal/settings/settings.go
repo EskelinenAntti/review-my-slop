@@ -1,4 +1,4 @@
-package ui
+package settings
 
 import (
 	"encoding/json"
@@ -8,46 +8,49 @@ import (
 	"path/filepath"
 )
 
-type layoutSettings struct {
+// Preferences contains the persisted UI preferences.
+type Preferences struct {
 	SideBySide bool `json:"side_by_side"`
 }
 
-func loadLayoutSettings() (bool, error) {
-	path, err := layoutSettingsPath()
+// Load reads preferences from the user configuration directory. Missing files use defaults.
+func Load() (Preferences, error) {
+	path, err := settingsPath()
 	if err != nil {
-		return false, err
+		return Preferences{}, err
 	}
-	return readLayoutSettings(path)
+	return readPreferences(path)
 }
 
-func readLayoutSettings(path string) (bool, error) {
+func readPreferences(path string) (Preferences, error) {
 	data, err := os.ReadFile(path)
 	if errors.Is(err, os.ErrNotExist) {
-		return false, nil
+		return Preferences{}, nil
 	}
 	if err != nil {
-		return false, fmt.Errorf("read UI settings: %w", err)
+		return Preferences{}, fmt.Errorf("read UI settings: %w", err)
 	}
-	var settings layoutSettings
+	var settings Preferences
 	if err := json.Unmarshal(data, &settings); err != nil {
-		return false, fmt.Errorf("decode UI settings: %w", err)
+		return Preferences{}, fmt.Errorf("decode UI settings: %w", err)
 	}
-	return settings.SideBySide, nil
+	return settings, nil
 }
 
-func saveLayoutSettings(enabled bool) error {
-	path, err := layoutSettingsPath()
+// Save atomically replaces the user preferences file.
+func Save(preferences Preferences) error {
+	path, err := settingsPath()
 	if err != nil {
 		return err
 	}
-	return writeLayoutSettings(path, enabled)
+	return writePreferences(path, preferences)
 }
 
-func writeLayoutSettings(path string, enabled bool) error {
+func writePreferences(path string, preferences Preferences) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return fmt.Errorf("create UI settings directory: %w", err)
 	}
-	data, err := json.Marshal(layoutSettings{SideBySide: enabled})
+	data, err := json.Marshal(preferences)
 	if err != nil {
 		return fmt.Errorf("encode UI settings: %w", err)
 	}
@@ -75,7 +78,7 @@ func writeLayoutSettings(path string, enabled bool) error {
 	return nil
 }
 
-func layoutSettingsPath() (string, error) {
+func settingsPath() (string, error) {
 	config, err := os.UserConfigDir()
 	if err != nil {
 		return "", fmt.Errorf("resolve UI settings directory: %w", err)
