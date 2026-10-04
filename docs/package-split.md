@@ -292,12 +292,14 @@ Workers must not cherry-pick into or edit the integration worktree themselves.
 | integration | cmd, remaining internal/ui root, old ui tests/files removal, docs final status | All worker commits |
 
 Each worker copies/adapts relevant behavior tests into its own packages without
-editing old root ui tests. Integrator removes old source/tests after confirming
-coverage migration. Claim records are disjoint files. Integration can begin as
-commits arrive; final order core, layout_navigation, rendering, comment_screen,
-patch_screen, then shell/CLI. Any contract change is coordinated explicitly.
-Workers can read each other's worktrees but never edit them. The integrator is
-responsible for final fixes, full checks and committing the complete feature branch.
+editing old root ui tests. Shell/CLI owner removes old source/tests after
+confirming coverage migration. Claim records are disjoint files. Each feature
+worker integrates its own claim and implementation commits onto the shared
+feature branch while holding `/tmp/review-my-slop-integration.lock`; coordinate
+integration windows and keep the shell/CLI worktree clean before another worker
+integrates. The shell/CLI owner handles final fixes, full checks and the final
+branch validation. Any contract change is coordinated explicitly. Workers can
+read each other's worktrees but never edit them.
 
 ## Acceptance
 
