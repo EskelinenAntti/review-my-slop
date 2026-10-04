@@ -11,7 +11,6 @@ import (
 
 	"github.com/eskelinenantti/review-my-slop/internal/comments"
 	"github.com/eskelinenantti/review-my-slop/internal/patch"
-	"github.com/eskelinenantti/review-my-slop/internal/review"
 	"github.com/eskelinenantti/review-my-slop/internal/ui"
 )
 
@@ -44,20 +43,22 @@ func runCode(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	currentReview := review.New(ctx, patch.Get, store)
-	loaded, err := currentReview.Load(patch.Unstaged)
+	loaded, err := patch.Get(ctx, patch.Unstaged)
 	if err != nil {
 		return err
 	}
-	pending, err := currentReview.Comments(loaded)
+	pending, err := store.List(loaded.Root)
 	if err != nil {
 		return err
 	}
 	size := initialTerminalSize()
-	model, err := ui.NewWithReview(currentReview, loaded, pending, size)
+	model, err := ui.NewWithStore(store, loaded, pending, size)
 	if err != nil {
 		return err
 	}
+	model.SetRefresh(func(kind patch.Kind) (patch.Patch, error) {
+		return patch.Get(ctx, kind)
+	})
 	program := tea.NewProgram(model, tea.WithWindowSize(size.Width, size.Height))
 	_, err = program.Run()
 	return err
@@ -82,16 +83,5 @@ func runComments(ctx context.Context, output io.Writer) error {
 	if err != nil {
 		return err
 	}
-	pending, err := store.List(p.Root)
-	if err != nil {
-		return err
-	}
-	if err := comments.WritePrompt(output, pending); err != nil {
-		return err
-	}
-	ids := make([]string, len(pending))
-	for i, comment := range pending {
-		ids[i] = comment.ID
-	}
-	return store.Acknowledge(p.Root, ids)
+	return store.WritePending(output, p.Root)
 }

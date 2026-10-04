@@ -8,7 +8,6 @@ import (
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/eskelinenantti/review-my-slop/internal/patch"
-	"github.com/eskelinenantti/review-my-slop/internal/review"
 )
 
 type SaveCommentFunc func(comments.Comment, patch.Patch) (comments.Comment, error)
@@ -16,6 +15,14 @@ type DeleteCommentFunc func(comments.Comment, patch.Patch) error
 type LoadCommentsFunc func() ([]comments.Comment, error)
 type RefreshDiffFunc func(patch.Kind) (patch.Patch, error)
 type SaveSideBySideFunc func(bool) error
+
+// CommentStore supplies the persistence operations used by the terminal client.
+type CommentStore interface {
+	Add(comments.Comment) (comments.Comment, error)
+	List(string) ([]comments.Comment, error)
+	Update(comments.Comment) error
+	Delete(string, string) error
+}
 
 type Size struct {
 	Width  int
@@ -127,21 +134,31 @@ func New(p patch.Patch, comments []comments.Comment, save SaveCommentFunc, layou
 	return m
 }
 
-func NewWithReview(actions review.Actions, p patch.Patch, items []comments.Comment, size Size) (Model, error) {
+func NewWithStore(store CommentStore, p patch.Patch, items []comments.Comment, size Size) (Model, error) {
 	sideBySide, err := loadLayoutSettings()
 	if err != nil {
 		return Model{}, err
 	}
-	m := New(p, items, actions.SaveComment, InitialLayout{
+	m := New(p, items, func(comment comments.Comment, current patch.Patch) (comments.Comment, error) {
+		comment.Repository = current.Root
+		if comment.ID != "" {
+			if err := store.Update(comment); err != nil {
+				return comments.Comment{}, err
+			}
+			return comment, nil
+		}
+		return store.Add(comment)
+	}, InitialLayout{
 		SideBySide:     sideBySide,
 		SaveSideBySide: saveLayoutSettings,
 		Size:           size,
 	})
-	m.SetDelete(actions.DeleteComment)
-	m.SetLoadComments(func() ([]comments.Comment, error) {
-		return actions.Comments(m.review.patch)
+	m.SetDelete(func(comment comments.Comment, current patch.Patch) error {
+		return store.Delete(current.Root, comment.ID)
 	})
-	m.SetRefresh(actions.Load)
+	m.SetLoadComments(func() ([]comments.Comment, error) {
+		return store.List(p.Root)
+	})
 	return m, nil
 }
 

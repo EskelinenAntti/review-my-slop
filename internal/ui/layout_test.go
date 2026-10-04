@@ -1,23 +1,26 @@
 package ui
 
-import "testing"
+import (
+	"path/filepath"
+	"testing"
+)
 
 func TestLayoutSettingsRoundTrip(t *testing.T) {
-	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	path := filepath.Join(t.TempDir(), "review-my-slop", "ui.json")
 
-	if enabled, err := loadLayoutSettings(); err != nil || enabled {
+	if enabled, err := readLayoutSettings(path); err != nil || enabled {
 		t.Fatalf("default layout = %v, error = %v", enabled, err)
 	}
-	if err := saveLayoutSettings(true); err != nil {
+	if err := writeLayoutSettings(path, true); err != nil {
 		t.Fatal(err)
 	}
-	if enabled, err := loadLayoutSettings(); err != nil || !enabled {
+	if enabled, err := readLayoutSettings(path); err != nil || !enabled {
 		t.Fatalf("saved layout = %v, error = %v", enabled, err)
 	}
-	if err := saveLayoutSettings(false); err != nil {
+	if err := writeLayoutSettings(path, false); err != nil {
 		t.Fatal(err)
 	}
-	if enabled, err := loadLayoutSettings(); err != nil || enabled {
+	if enabled, err := readLayoutSettings(path); err != nil || enabled {
 		t.Fatalf("updated layout = %v, error = %v", enabled, err)
 	}
 }
