@@ -59,6 +59,7 @@ type View struct {
 	cursor        diffCursor
 	viewport      diffViewport
 	selection     *diffSelection
+	drag          *diffCursor
 	options       Options
 	width, height int
 	search        searchState
@@ -83,6 +84,7 @@ func New(p patch.Patch, options Options) *View {
 // Update replaces the patch while preserving meaningful focus, selection, and
 // relative screen position. Missing targets fall back to nearby available code.
 func (v *View) Update(p patch.Patch) {
+	v.EndDrag()
 	v.search.repeatMiss = false
 	v.replaceView(v.newReviewView(p))
 }
@@ -99,6 +101,7 @@ func (v *View) Configure(options Options) {
 
 // Resize accepts full screen dimensions, reserving space for the header/footer.
 func (v *View) Resize(width, height int) {
+	v.EndDrag()
 	active := v.sideBySideActive()
 	v.width, v.height = width, height
 	v.viewport = v.view.resize(v.viewport, width, frame.BodyHeight(height))
@@ -117,6 +120,7 @@ func (v *View) newReviewView(p patch.Patch) *diffView {
 // Move performs navigation and keeps the resulting focus visible. Line and
 // page movement extend active selection only within its original hunk.
 func (v *View) Move(motion Motion) {
+	v.EndDrag()
 	v.search.repeatMiss = false
 	switch motion {
 	case PreviousLine:
@@ -256,7 +260,7 @@ func (v *View) ToggleSelection() {
 		v.selection = &selection
 	}
 }
-func (v *View) ClearSelection() { v.selection = nil; v.search.repeatMiss = false }
+func (v *View) ClearSelection() { v.EndDrag(); v.selection = nil; v.search.repeatMiss = false }
 
 // Selected returns the focused line when no explicit range is selected.
 // The bool is false when the patch has no selectable code.
