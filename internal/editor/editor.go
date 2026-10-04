@@ -1,6 +1,7 @@
-package ui
+package editor
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
@@ -10,13 +11,13 @@ import (
 	"github.com/eskelinenantti/review-my-slop/internal/comments"
 )
 
-func CreateCommentFile(body string, anchor comments.Anchor) (string, error) {
+func createCommentFile(body string, anchor comments.Anchor) (string, error) {
 	file, err := os.CreateTemp("", "review-my-slop-comment-*.md")
 	if err != nil {
 		return "", fmt.Errorf("create comment file: %w", err)
 	}
 	path := file.Name()
-	if _, err := file.WriteString(CommentDraft(body, anchor)); err != nil {
+	if _, err := file.WriteString(commentDraft(body, anchor)); err != nil {
 		_ = file.Close()
 		_ = os.Remove(path)
 		return "", fmt.Errorf("write comment file: %w", err)
@@ -28,19 +29,15 @@ func CreateCommentFile(body string, anchor comments.Anchor) (string, error) {
 	return path, nil
 }
 
-func ReadCommentFile(path string, anchor comments.Anchor, editorErr error) (string, error) {
-	defer os.Remove(path)
-	if editorErr != nil {
-		return "", fmt.Errorf("editor: %w", editorErr)
-	}
+func readCommentFile(path string, anchor comments.Anchor) (string, error) {
 	body, err := os.ReadFile(path)
 	if err != nil {
 		return "", fmt.Errorf("read comment file: %w", err)
 	}
-	return StripUnchangedSuggestion(string(body), anchor.QuotedLines), nil
+	return stripUnchangedSuggestion(string(body), anchor.QuotedLines), nil
 }
 
-func CommentDraft(body string, anchor comments.Anchor) string {
+func commentDraft(body string, anchor comments.Anchor) string {
 	if len(anchor.QuotedLines) == 0 {
 		return body
 	}
@@ -63,7 +60,7 @@ func CommentDraft(body string, anchor comments.Anchor) string {
 	return draft.String()
 }
 
-func StripUnchangedSuggestion(body string, quoted []string) string {
+func stripUnchangedSuggestion(body string, quoted []string) string {
 	if len(quoted) == 0 {
 		return body
 	}
@@ -90,12 +87,12 @@ func StripUnchangedSuggestion(body string, quoted []string) string {
 	return before + "\n" + strings.TrimLeft(after, "\n")
 }
 
-func CommentCommand(editor, path string) *exec.Cmd {
-	return exec.Command("sh", "-c", editor+" "+shellQuote(path))
+func commentCommand(ctx context.Context, editor, path string) *exec.Cmd {
+	return exec.CommandContext(ctx, "sh", "-c", editor+" "+shellQuote(path))
 }
 
-func SourceCommand(editor, path string, line int) *exec.Cmd {
-	return exec.Command("sh", "-c", editor+" +"+strconv.Itoa(line)+" "+shellQuote(path))
+func sourceCommand(ctx context.Context, editor, path string, line int) *exec.Cmd {
+	return exec.CommandContext(ctx, "sh", "-c", editor+" +"+strconv.Itoa(line)+" "+shellQuote(path))
 }
 
 func suggestionLines(quoted []string) []string {

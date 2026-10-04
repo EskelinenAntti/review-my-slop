@@ -5,89 +5,89 @@ import (
 	"github.com/eskelinenantti/review-my-slop/internal/patch"
 )
 
-type Coordinate struct {
+type coordinate struct {
 	Y int
 }
 
-type Pane uint8
+type diffPane uint8
 
 const (
-	Left Pane = iota
-	Right
+	left diffPane = iota
+	right
 )
 
-func (pane Pane) Other() Pane {
-	if pane == Left {
-		return Right
+func (pane diffPane) other() diffPane {
+	if pane == left {
+		return right
 	}
-	return Left
+	return left
 }
 
-type Cursor struct {
-	Coordinate Coordinate
-	Pane       Pane
+type diffCursor struct {
+	coordinate coordinate
+	pane       diffPane
 }
 
-type Viewport struct {
-	Top        Coordinate
+type diffViewport struct {
+	top        coordinate
 	LeftColumn int
 	Width      int
 	Height     int
 }
 
-type Selection struct {
-	First Cursor
-	Last  Cursor
+type diffSelection struct {
+	First diffCursor
+	Last  diffCursor
 }
 
-// State is the cursor, selection, and viewport associated with a View.
-// Cursor and Selection are nil when the View has no selectable line.
-type State struct {
-	Cursor    *Cursor
-	Selection *Selection
-	Viewport  Viewport
+// viewState is the cursor, selection, and viewport associated with a reviewView.
+// diffCursor and diffSelection are nil when the reviewView has no selectable line.
+type viewState struct {
+	cursor    *diffCursor
+	selection *diffSelection
+	viewport  diffViewport
 }
 
-type Direction int8
+type direction int8
 
 const (
-	Backward Direction = -1
-	Forward  Direction = 1
+	backward direction = -1
+	forward  direction = 1
 )
 
-type VerticalAlignment uint8
+type verticalAlignment uint8
 
 const (
-	Top VerticalAlignment = iota
-	Middle
-	Bottom
+	top verticalAlignment = iota
+	middle
+	bottom
 )
 
-type View interface {
-	First() (Cursor, bool)
-	Last() (Cursor, bool)
-	Move(Cursor, Direction) (Cursor, bool)
-	Search(string, Cursor, Direction) (Cursor, bool)
-	JumpFile(Cursor, Direction) (Cursor, bool)
-	SwitchPane(Cursor, Pane) (Cursor, bool)
+type reviewView interface {
+	first() (diffCursor, bool)
+	last() (diffCursor, bool)
+	move(diffCursor, direction) (diffCursor, bool)
+	search(string, diffCursor, direction) (diffCursor, bool)
+	jumpFile(diffCursor, direction) (diffCursor, bool)
+	switchPane(diffCursor, diffPane) (diffCursor, bool)
 
-	NewViewport(width, height int) Viewport
-	Resize(Viewport, int, int) Viewport
-	KeepVisible(Viewport, Cursor) Viewport
-	Align(Viewport, Cursor, VerticalAlignment) Viewport
-	ScrollHorizontal(Viewport, int) Viewport
-	ScrollHalfPage(Viewport, Cursor, Direction) (Viewport, Cursor)
-	ViewportProgress(Viewport) int
+	newViewport(width, height int) diffViewport
+	resize(diffViewport, int, int) diffViewport
+	keepVisible(diffViewport, diffCursor) diffViewport
+	align(diffViewport, diffCursor, verticalAlignment) diffViewport
+	scrollHorizontal(diffViewport, int) diffViewport
+	scrollHalfPage(diffViewport, diffCursor, direction) (diffViewport, diffCursor)
+	viewportProgress(diffViewport) int
 
-	BeginSelection(Cursor) Selection
-	ExtendSelection(Selection, Cursor) (Selection, bool)
-	Lines(Selection) []patch.Line
-	Anchor(Selection) (comments.Anchor, error)
+	beginSelection(diffCursor) diffSelection
+	extendSelection(diffSelection, diffCursor) (diffSelection, bool)
+	lines(diffSelection) []patch.Line
+	anchor(diffSelection) (comments.Anchor, error)
 
-	File(Cursor) (patch.File, bool)
-	Hunk(Cursor) (patch.Hunk, bool)
-	Line(Cursor) (patch.Line, bool)
+	file(diffCursor) (patch.File, bool)
+	hunk(diffCursor) (patch.Hunk, bool)
+	line(diffCursor) (patch.Line, bool)
 
-	FindCursor(patch.File, patch.Hunk, patch.Line, Coordinate, Pane) (Cursor, bool)
-	Render(Viewport, Cursor, *Selection) string
+	findCursor(patch.File, patch.Hunk, patch.Line, coordinate, diffPane) (diffCursor, bool)
+	render(diffViewport, diffCursor, *diffSelection) string
 }

@@ -11,7 +11,7 @@ import (
 	"github.com/eskelinenantti/review-my-slop/internal/patch"
 )
 
-func (m Model) View() tea.View {
+func (m model) View() tea.View {
 	if m.quitting {
 		return tea.NewView("")
 	}
@@ -21,7 +21,7 @@ func (m Model) View() tea.View {
 	return result
 }
 
-func (m Model) render() string {
+func (m model) render() string {
 	if m.mode == modeHelp {
 		return m.renderHelp()
 	}
@@ -39,7 +39,7 @@ func (m Model) render() string {
 		body = make([]string, m.screenBodyHeight())
 		body[min(1, len(body)-1)] = mutedStyle.Render(empty)
 	} else {
-		body = strings.Split(m.review.view.Render(m.review.viewport, m.review.cursor, m.review.selection), "\n")
+		body = strings.Split(m.review.view.render(m.review.viewport, m.review.cursor, m.review.selection), "\n")
 	}
 	footer := m.renderStatus()
 	if m.err != nil {
@@ -48,7 +48,7 @@ func (m Model) render() string {
 	return m.renderScreen(header, body, footer)
 }
 
-func (m Model) renderScreen(header string, body []string, footer string) string {
+func (m model) renderScreen(header string, body []string, footer string) string {
 	height := m.screenBodyHeight()
 	if len(body) > height {
 		body = body[:height]
@@ -79,7 +79,7 @@ func patchLineCounts(p patch.Patch) (added, removed int) {
 	return
 }
 
-func (m Model) renderStatus() string {
+func (m model) renderStatus() string {
 	status := "j/k/h/l move  c comment  ? help  q quit"
 	if m.mode == modeSearch {
 		status = "/" + string(m.search.query) + editorCursorStyle.Render(" ")
@@ -92,7 +92,7 @@ func (m Model) renderStatus() string {
 	return m.renderFooter(mutedStyle.Render(status))
 }
 
-func (m Model) renderFooter(left string) string {
+func (m model) renderFooter(left string) string {
 	right := mutedStyle.Render(m.viewLabel())
 	width := max(20, m.width)
 	rightWidth := lipgloss.Width(right)
@@ -100,10 +100,10 @@ func (m Model) renderFooter(left string) string {
 	return left + strings.Repeat(" ", max(1, width-lipgloss.Width(left)-rightWidth)) + right
 }
 
-func (m Model) viewLabel() string {
+func (m model) viewLabel() string {
 	progress := ""
-	if m.review.viewport.Top.Y > 0 {
-		progress = fmt.Sprintf(" (%d%%)", m.review.view.ViewportProgress(m.review.viewport))
+	if m.review.viewport.top.Y > 0 {
+		progress = fmt.Sprintf(" (%d%%)", m.review.view.viewportProgress(m.review.viewport))
 	}
 	if m.kind == patch.Branch {
 		return "branch changes from " + m.review.patch.Branch + progress
@@ -111,7 +111,7 @@ func (m Model) viewLabel() string {
 	return "local changes" + progress
 }
 
-func (m Model) renderComments() string {
+func (m model) renderComments() string {
 	header := titleStyle.Render("comments") + "  " + mutedStyle.Render(fmt.Sprintf("%d pending", len(m.comments.items)))
 	height := m.screenBodyHeight()
 	body := make([]string, 0, height)
@@ -145,7 +145,7 @@ func (m Model) renderComments() string {
 	return m.renderScreen(header, body, footer)
 }
 
-func (m Model) renderHelp() string {
+func (m model) renderHelp() string {
 	bindings := []keyBinding{{"j/k, arrows", "move"}, {"h/l, left/right", "scroll horizontally"}, {"Ctrl-w h/l/w", "switch side-by-side pane"}, {"0/$", "start/end of lines"}, {"gg/G", "first/last changed line"}, {"zz/zt/zb", "center/top/bottom current line"}, {"Ctrl-d/Ctrl-u", "half-page down/up"}, {"/", "search diff text"}, {"n/N", "next/previous search match"}, {"]f/[f", "next/previous file"}, {"v", "select a line range"}, {"c", "comment on selection/current line"}, {"e", "open current line in $EDITOR"}, {"C", "view comments"}, {"R", "refresh diff"}, {"Tab", "toggle local/branch changes"}, {"t", "toggle unified/side-by-side"}, {"q", "quit"}}
 	body := append([]string{""}, renderKeyBindings(bindings)...)
 	return m.renderScreen(titleStyle.Render("review-my-slop help"), body, mutedStyle.Render("? or Esc closes help"))

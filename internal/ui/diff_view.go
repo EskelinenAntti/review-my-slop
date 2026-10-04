@@ -30,13 +30,13 @@ type diffView struct {
 	dark  bool
 }
 
-func NewUnifiedView(p patch.Patch, dark bool) View {
+func newUnifiedView(p patch.Patch, dark bool) reviewView {
 	v := &diffView{patch: p, dark: dark}
 	v.buildUnified()
 	return v
 }
 
-func NewSideBySideView(p patch.Patch, dark bool) View {
+func newSideBySideView(p patch.Patch, dark bool) reviewView {
 	v := &diffView{patch: p, split: true, dark: dark}
 	v.buildSplit()
 	return v
@@ -119,8 +119,8 @@ func (v *diffView) buildSplit() {
 	}
 }
 
-func (v *diffView) highlight(file *patch.File) Pair {
-	return Pair{
+func (v *diffView) highlight(file *patch.File) pair {
+	return pair{
 		Old: render(file.OldPath, file.OldSource, v.dark),
 		New: render(file.NewPath, file.NewSource, v.dark),
 	}
