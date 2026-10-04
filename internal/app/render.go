@@ -12,6 +12,7 @@ func (m model) View() tea.View {
 	result := tea.NewView(m.render())
 	result.AltScreen = true
 	result.ReportFocus = true
+	result.MouseMode = tea.MouseModeCellMotion
 	return result
 }
 func (m model) render() string {
@@ -28,6 +29,7 @@ func (m model) renderHelp() string {
 	bindings := []helpscreen.Binding{
 		{Keys: "j/k, arrows", Description: "move"},
 		{Keys: "h/l, left/right", Description: "scroll horizontally"},
+		{Keys: "Mouse wheel", Description: "scroll content"},
 		{Keys: "Ctrl-w h/l/w", Description: "switch side-by-side pane"},
 		{Keys: "0/$", Description: "start/end of lines"},
 		{Keys: "gg/G", Description: "first/last changed line"},

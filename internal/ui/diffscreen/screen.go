@@ -215,6 +215,36 @@ func (v *View) ScrollHorizontal(columns int) {
 	v.search.repeatMiss = false
 	v.viewport = v.view.scrollHorizontal(v.viewport, columns)
 }
+
+// ScrollVertical moves content first, moving focus only when it leaves the
+// visible code. Like keyboard movement, it extends selection within its hunk.
+func (v *View) ScrollVertical(rows int) {
+	v.search.repeatMiss = false
+	viewport := v.view.scrollVertical(v.viewport, rows)
+	cursor := v.cursor
+	if v.view.valid(cursor) && !v.view.cursorVisible(viewport, cursor) {
+		target := max(viewport.top, min(cursor.row, viewport.top+v.view.contentHeight(viewport)-1))
+		d := forward
+		if cursor.row > target {
+			d = backward
+		}
+		candidate, ok := v.view.nearest(target, cursor.pane, d, viewport)
+		if !ok && v.view.split {
+			candidate, ok = v.view.nearest(target, cursor.pane.other(), d, viewport)
+		}
+		if ok {
+			cursor = candidate
+		}
+	}
+	if v.selection != nil && cursor != v.cursor {
+		selection, ok := v.view.extendSelection(*v.selection, cursor)
+		if !ok {
+			return
+		}
+		v.selection = &selection
+	}
+	v.viewport, v.cursor = viewport, cursor
+}
 func (v *View) ToggleSelection() {
 	v.search.repeatMiss = false
 	if v.selection != nil {
