@@ -93,3 +93,40 @@ func TestRenderErrorKeepsScreenLayout(t *testing.T) {
 		t.Fatalf("error footer=%q", failed[5])
 	}
 }
+
+func TestClickUsesVisibleRowsWithoutScrollingList(t *testing.T) {
+	items := make([]comments.Comment, 10)
+	for index := range items {
+		items[index] = comments.Comment{ID: fmt.Sprint(index)}
+	}
+	v := New(items)
+	v.Resize(80, 7)
+	v.Move(100)
+	if !v.Click(20, 1) {
+		t.Fatal("visible comment click rejected")
+	}
+	selected, _ := v.Selected()
+	if selected.ID != "6" || v.top != 6 {
+		t.Fatal("click did not preserve the visible list position")
+	}
+	if !v.Click(20, 4) {
+		t.Fatal("last visible row click rejected")
+	}
+	selected, _ = v.Selected()
+	if selected.ID != "9" {
+		t.Fatal("last visible row mapped to wrong comment")
+	}
+	for _, point := range [][2]int{{0, 0}, {0, 5}, {0, 6}, {-1, 1}, {80, 1}} {
+		if v.Click(point[0], point[1]) {
+			t.Fatalf("invalid point accepted: %v", point)
+		}
+	}
+	v.Update(items[:1])
+	if v.Click(20, 2) {
+		t.Fatal("blank row click accepted")
+	}
+	v.Update(nil)
+	if v.Click(20, 1) {
+		t.Fatal("empty list click accepted")
+	}
+}

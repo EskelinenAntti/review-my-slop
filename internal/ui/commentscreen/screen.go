@@ -15,6 +15,7 @@ import (
 type View struct {
 	items         []comments.Comment
 	row           int
+	top           int
 	width, height int
 }
 
@@ -38,17 +39,47 @@ func (v *View) Update(items []comments.Comment) {
 			}
 		}
 	}
+	v.keepVisible()
 }
-func (v *View) Resize(width, height int) { v.width, v.height = width, height }
+func (v *View) Resize(width, height int) {
+	v.width, v.height = width, height
+	v.keepVisible()
+}
 func (v *View) Move(delta int) {
 	delta = max(-v.row, min(delta, max(0, len(v.items)-1)-v.row))
 	v.row += delta
+	v.keepVisible()
 }
 func (v *View) Selected() (comments.Comment, bool) {
 	if len(v.items) == 0 {
 		return comments.Comment{}, false
 	}
 	return v.items[v.row], true
+}
+
+// Click focuses a visible comment at zero-based terminal coordinates.
+func (v *View) Click(x, y int) bool {
+	height := frame.BodyHeight(v.height)
+	if x < 0 || x >= v.width || y < 1 || y > height || y >= v.height-2 {
+		return false
+	}
+	row := v.startRow(height) + y - 1
+	if row >= len(v.items) {
+		return false
+	}
+	v.row = row
+	return true
+}
+
+func (v *View) startRow(height int) int {
+	return min(max(0, v.top), max(0, len(v.items)-height))
+}
+
+func (v *View) keepVisible() {
+	height := frame.BodyHeight(v.height)
+	v.top = min(v.top, v.row)
+	v.top = max(v.top, v.row-height+1)
+	v.top = v.startRow(height)
 }
 
 // Render composes the screen, showing a non-nil error in place of its hints.
@@ -60,7 +91,7 @@ func (v *View) Render(err error) string {
 		body = make([]string, height)
 		body[min(1, height-1)] = mutedStyle.Render("No pending comments.")
 	} else {
-		start := min(max(0, v.row-height+1), max(0, len(v.items)-height))
+		start := v.startRow(height)
 		end := min(len(v.items), start+height)
 		for index := start; index < end; index++ {
 			comment := v.items[index]

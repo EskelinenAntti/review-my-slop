@@ -224,8 +224,30 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.err = nil
 		}
 	case tea.KeyPressMsg:
+		m.diffView.EndDrag()
 		return m.updateKey(msg)
+	case tea.MouseClickMsg:
+		if msg.Button == tea.MouseLeft {
+			switch m.mode {
+			case modeBrowse:
+				m.diffView.BeginDrag(msg.X, msg.Y)
+			case modeComments:
+				m.commentView.Click(msg.X, msg.Y)
+			}
+		}
+	case tea.MouseMotionMsg:
+		if msg.Button == tea.MouseLeft && m.mode == modeBrowse {
+			m.diffView.DragTo(msg.X, msg.Y)
+		}
+	case tea.MouseReleaseMsg:
+		if msg.Button == tea.MouseLeft || msg.Button == tea.MouseNone {
+			if m.mode == modeBrowse {
+				m.diffView.DragTo(msg.X, msg.Y)
+			}
+			m.diffView.EndDrag()
+		}
 	case tea.MouseWheelMsg:
+		m.diffView.EndDrag()
 		if m.mode != modeBrowse && m.mode != modeSearch {
 			break
 		}
