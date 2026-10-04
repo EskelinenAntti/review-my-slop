@@ -1,4 +1,4 @@
-package ui
+package diffscreen
 
 import (
 	"regexp"
@@ -17,7 +17,7 @@ func TestSplitPairsUnequalChangeBlocksAndKeepsHunksSeparate(t *testing.T) {
 		{Header: "one", Lines: []patch.Line{{Kind: patch.Deletion, Text: "d1", OldNumber: 1}, {Kind: patch.Deletion, Text: "d2", OldNumber: 2}, {Kind: patch.Addition, Text: "a1", NewNumber: 1}, {Kind: patch.Addition, Text: "a2", NewNumber: 2}, {Kind: patch.Addition, Text: "a3", NewNumber: 3}, {Kind: patch.Context, Text: "c", OldNumber: 3, NewNumber: 4}}},
 		{Header: "two", Lines: []patch.Line{{Kind: patch.Addition, Text: "separate", NewNumber: 5}}},
 	}}}}
-	v := newSideBySideView(p, true).(*diffView)
+	v := newSideBySideView(p, true)
 	var code []entry
 	for _, current := range v.rows {
 		if current.kind == lineRow {
@@ -137,7 +137,7 @@ func TestFileHeaderSticksWithoutCoveringDiffRows(t *testing.T) {
 			{Kind: patch.Context, Text: "second one", OldNumber: 1, NewNumber: 1},
 		}}}},
 	}}
-	v := newUnifiedView(p, true).(*diffView)
+	v := newUnifiedView(p, true)
 	viewport := v.newViewport(60, 3)
 	viewport.top.Y = 3
 
@@ -164,7 +164,7 @@ func TestFileHeaderSticksWithoutCoveringDiffRows(t *testing.T) {
 }
 
 func TestKeepVisibleAccountsForStickyFileHeader(t *testing.T) {
-	v := newUnifiedView(longPatch(), true).(*diffView)
+	v := newUnifiedView(longPatch(), true)
 	cursor, _ := v.last()
 	viewport := v.keepVisible(v.newViewport(50, 4), cursor)
 	rendered := ansi.Strip(v.render(viewport, cursor, nil))
@@ -266,7 +266,7 @@ func TestSyntaxHighlightingSurvivesDiffStyling(t *testing.T) {
 
 func TestRenderedCodeRowsHaveExactTerminalWidth(t *testing.T) {
 	for _, test := range []struct {
-		constructor func(patch.Patch, bool) reviewView
+		constructor func(patch.Patch, bool) *diffView
 		width       int
 	}{{newUnifiedView, 37}, {newSideBySideView, 120}} {
 		v := test.constructor(testPatch(), true)
@@ -294,11 +294,11 @@ func TestRenderStyledRowStripsSyntaxBackgroundColors(t *testing.T) {
 	}
 }
 
-func renderOne(v reviewView, cursor diffCursor, width int, selection *diffSelection) string {
+func renderOne(v *diffView, cursor diffCursor, width int, selection *diffSelection) string {
 	return renderTarget(v, cursor, cursor, width, selection)
 }
 
-func renderTarget(v reviewView, target, active diffCursor, width int, selection *diffSelection) string {
+func renderTarget(v *diffView, target, active diffCursor, width int, selection *diffSelection) string {
 	viewport := v.newViewport(width, 1)
 	viewport.top = target.coordinate
 	return v.render(viewport, active, selection)

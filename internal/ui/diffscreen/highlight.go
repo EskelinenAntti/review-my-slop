@@ -1,4 +1,4 @@
-package ui
+package diffscreen
 
 import (
 	"bytes"

@@ -1,4 +1,4 @@
-package ui
+package diffscreen
 
 import (
 	"testing"
@@ -66,7 +66,7 @@ func TestPreserveClampsHorizontalOffsetForShorterLines(t *testing.T) {
 	if viewport.LeftColumn == 0 {
 		t.Fatal("fixture does not scroll horizontally")
 	}
-	short := modelPatch()
+	short := testPatch()
 	preserved := preserve(old, viewState{cursor: &cursor, viewport: viewport}, newUnifiedView(short, true))
 	if preserved.viewport.LeftColumn != 0 {
 		t.Fatalf("horizontal offset = %d", preserved.viewport.LeftColumn)

@@ -1,9 +1,6 @@
-package ui
+package diffscreen
 
 import (
-	"fmt"
-	"github.com/eskelinenantti/review-my-slop/internal/comments"
-
 	"github.com/eskelinenantti/review-my-slop/internal/patch"
 )
 
@@ -53,51 +50,6 @@ func (v *diffView) lines(selection diffSelection) []patch.Line {
 		}
 	}
 	return lines
-}
-
-func (v *diffView) anchor(selection diffSelection) (comments.Anchor, error) {
-	lines := v.lines(selection)
-	if len(lines) == 0 {
-		return comments.Anchor{}, fmt.Errorf("select code lines before commenting")
-	}
-	first := v.rows[selection.First.coordinate.Y]
-	file := v.patch.Files[first.file]
-	hunk := file.Hunks[first.hunk]
-	path := file.NewPath
-	if path == "" {
-		path = file.OldPath
-	}
-	anchor := comments.Anchor{FilePath: path}
-	start, end := selection.First.coordinate.Y, selection.Last.coordinate.Y
-	if start > end {
-		start, end = end, start
-	}
-	for y := start; y <= end; y++ {
-		panes := []diffPane{selection.First.pane}
-		if start == end && selection.First.pane != selection.Last.pane {
-			panes = append(panes, selection.Last.pane)
-		} else if y == selection.Last.coordinate.Y {
-			panes[0] = selection.Last.pane
-		}
-		for _, pane := range panes {
-			index := v.lineIndex(v.rows[y], pane)
-			if index < 0 {
-				continue
-			}
-			line := hunk.Lines[index]
-			prefix := " "
-			if line.Kind == patch.Addition {
-				prefix = "+"
-			}
-			if line.Kind == patch.Deletion {
-				prefix = "-"
-			}
-			anchor.QuotedLines = append(anchor.QuotedLines, prefix+line.Text)
-			accumulateRange(&anchor.OldStart, &anchor.OldEnd, int(line.OldNumber))
-			accumulateRange(&anchor.NewStart, &anchor.NewEnd, int(line.NewNumber))
-		}
-	}
-	return anchor, nil
 }
 
 func (v *diffView) file(cursor diffCursor) (patch.File, bool) {
@@ -174,18 +126,6 @@ func closest(candidates []diffCursor, nearby coordinate) diffCursor {
 		}
 	}
 	return best
-}
-
-func accumulateRange(start, end *int, value int) {
-	if value == 0 {
-		return
-	}
-	if *start == 0 || value < *start {
-		*start = value
-	}
-	if value > *end {
-		*end = value
-	}
 }
 
 func abs(value int) int {

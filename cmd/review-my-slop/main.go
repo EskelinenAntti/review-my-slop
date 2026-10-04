@@ -6,9 +6,9 @@ import (
 	"io"
 	"os"
 
+	"github.com/eskelinenantti/review-my-slop/internal/app"
 	"github.com/eskelinenantti/review-my-slop/internal/comments"
 	"github.com/eskelinenantti/review-my-slop/internal/patch"
-	"github.com/eskelinenantti/review-my-slop/internal/ui"
 )
 
 func main() {
@@ -44,7 +44,7 @@ func runCode(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	return ui.Run(ctx, currentPatch, commentStore, patch.Get)
+	return app.Run(ctx, currentPatch, commentStore, patch.Get)
 }
 
 func runComments(ctx context.Context, output io.Writer) error {

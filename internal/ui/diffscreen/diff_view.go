@@ -1,4 +1,4 @@
-package ui
+package diffscreen
 
 import (
 	"strings"
@@ -30,13 +30,13 @@ type diffView struct {
 	dark  bool
 }
 
-func newUnifiedView(p patch.Patch, dark bool) reviewView {
+func newUnifiedView(p patch.Patch, dark bool) *diffView {
 	v := &diffView{patch: p, dark: dark}
 	v.buildUnified()
 	return v
 }
 
-func newSideBySideView(p patch.Patch, dark bool) reviewView {
+func newSideBySideView(p patch.Patch, dark bool) *diffView {
 	v := &diffView{patch: p, split: true, dark: dark}
 	v.buildSplit()
 	return v
