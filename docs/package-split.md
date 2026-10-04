@@ -34,8 +34,8 @@ utility packages. There is no new `app` or generic workflow package.
 ## Frozen public contracts
 
 All paths below are under `internal`. Existing Patch/File/Hunk/Line values remain
-source compatible. Signatures in this section are the handshake between workers;
-changes require notifying the integrator and affected owners before using them.
+source compatible. Signatures in this section are the handshake between feature
+owners; coordinate any changes with affected owners before using them.
 
 ### patch
 
@@ -152,11 +152,17 @@ func (n *Navigation) Progress() int
 // package render
 type Theme struct { Dark bool }
 func Terminal(d *layout.Document, state navigation.Snapshot, theme Theme) string
+func NewRenderer() *Renderer
+func (r *Renderer) Render(d *layout.Document, state navigation.Snapshot, theme Theme) string
 ```
+
+`Renderer` reuses syntax highlighting for the same document and theme, retaining
+one document's highlight data and dropping it when either changes. `Terminal` is
+the stateless convenience call that creates a renderer for one render.
 
 Snapshot must be detached (copy cursor/selection values). Empty documents have a
 nil cursor. Navigation owns sticky-header visibility accounting and horizontal
-limits based on plain source widths; renderer owns painting the sticky header.
+limits based on terminal-cell source widths; renderer owns painting the sticky header.
 Preserve original selection constraints, empty-pane skipping, half-page visual
 rows and replacement/layout position fallback. Reject selection-invalid movement
 atomically. Rendering owns syntax coloring and its cache if useful; geometry must
@@ -277,13 +283,12 @@ AGENTS.md: one shell command at a time, no Go cache/env overrides; retry an actu
 sandbox-blocked Go command with require_escalated. Standard cache/modules need
 escalated access in this environment. Do not alter go.mod dependencies unnecessarily.
 
-## Parallel work ownership
+## Feature ownership and integration
 
-Workers use separate branches/worktrees derived from the spec commit. Each creates
-docs/work/<task>.md stating owner, paths, status and validation before implementation
-and updates it in the final commit. Send claim/final commit SHAs to the integrator.
-Only the integrator writes feature/package-split and cherry-picks worker commits.
-Workers must not cherry-pick into or edit the integration worktree themselves.
+Each feature owner claims the work, implements and tests the owned paths, then
+integrates their own claim and implementation commits onto `feature/package-split`
+while holding `/tmp/review-my-slop-integration.lock`. Feature owners work in
+separate worktrees and may read other worktrees, but must not edit them.
 
 | Task | Exclusive paths | Inputs |
 | --- | --- | --- |
@@ -292,17 +297,14 @@ Workers must not cherry-pick into or edit the integration worktree themselves.
 | rendering | internal/render | layout rows and navigation snapshots |
 | patch_screen | internal/ui/patch | layout/navigation/render/editor contracts |
 | comment_screen | internal/ui/comments, internal/editor | comments/patch contracts |
-| integration | cmd, remaining internal/ui root, old ui tests/files removal, docs final status | All worker commits |
+| shell_cli | cmd, remaining internal/ui root, old ui tests/files removal, shell/CLI work report | Screen and lower-level contracts |
 
-Each worker copies/adapts relevant behavior tests into its own packages without
-editing old root ui tests. Shell/CLI owner removes old source/tests after
-confirming coverage migration. Claim records are disjoint files. Each feature
-worker integrates its own claim and implementation commits onto the shared
-feature branch while holding `/tmp/review-my-slop-integration.lock`. The
-shell/CLI owner removes old source/tests after confirming coverage migration.
-The root task owner handles combined branch fixes and final checks. Any contract
-change is coordinated explicitly. Workers can read each other's worktrees but
-never edit them.
+Feature owners copy or adapt relevant behavior tests into their packages without
+editing old root UI tests. The shell/CLI owner owns `cmd`, the root `internal/ui`
+shell, and removal of old UI source and tests after confirming coverage migration.
+Claim reports use disjoint files. The root task owner runs combined validation
+and publishes the branch. Any contract change is coordinated explicitly with
+affected owners.
 
 ## Acceptance
 

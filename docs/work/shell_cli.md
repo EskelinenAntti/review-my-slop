@@ -1,7 +1,7 @@
-# Integration work
+# Shell and CLI work
 
-- Owner: `/root/integration` (shell/CLI feature)
-- Paths: `cmd`, root `internal/ui` shell/settings and legacy UI files/tests
+- Owner: shell/CLI feature owner
+- Paths: `cmd`, root `internal/ui` shell/help and legacy UI source/tests
 - Status: shell and CLI implementation integrated into `feature/package-split`
 - Validation: `/workspace/toolchains/go/bin/go test ./cmd/review-my-slop ./internal/ui` passed
 
