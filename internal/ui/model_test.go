@@ -2,6 +2,7 @@ package ui
 
 import (
 	"fmt"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
@@ -15,6 +16,45 @@ import (
 
 func testModel(p patch.Patch, comments []comments.Comment, save SaveCommentFunc) Model {
 	return New(p, comments, save, InitialLayout{Size: Size{Width: 100, Height: 30}})
+}
+
+func TestStoreBackedCommentLifecycle(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	store := comments.Store{Path: filepath.Join(t.TempDir(), "comments.db")}
+	m, err := NewWithStore(store, modelPatch(), nil, DefaultSize)
+	if err != nil {
+		t.Fatal(err)
+	}
+	anchor := comments.Anchor{FilePath: "main.go", NewStart: 2, QuotedLines: []string{"+new()"}}
+	m.comments.body = "check this"
+	m.comments.editAnchor = anchor
+	m.finishCommentEdit()
+	if m.err != nil {
+		t.Fatal(m.err)
+	}
+	loaded, err := m.load()
+	if err != nil || len(loaded) != 1 || loaded[0].Repository != "/repo" || loaded[0].ID == "" || !slices.Equal(loaded[0].Anchor.QuotedLines, anchor.QuotedLines) {
+		t.Fatalf("loaded = %#v, error = %v", loaded, err)
+	}
+	id := loaded[0].ID
+	m.comments.editIndex = 0
+	m.comments.body = "edited"
+	m.finishCommentEdit()
+	if m.err != nil {
+		t.Fatal(m.err)
+	}
+	loaded, err = m.load()
+	if err != nil || len(loaded) != 1 || loaded[0].ID != id || loaded[0].Body != "edited" {
+		t.Fatalf("edited = %#v, error = %v", loaded, err)
+	}
+	m.deleteComment(0)
+	if m.err != nil {
+		t.Fatal(m.err)
+	}
+	loaded, err = m.load()
+	if err != nil || len(loaded) != 0 {
+		t.Fatalf("remaining = %#v, error = %v", loaded, err)
+	}
 }
 
 func TestNewUsesSavedSideBySideForWideInitialSize(t *testing.T) {

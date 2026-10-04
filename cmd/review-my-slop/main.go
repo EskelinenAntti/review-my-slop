@@ -11,7 +11,6 @@ import (
 
 	"github.com/eskelinenantti/review-my-slop/internal/comments"
 	"github.com/eskelinenantti/review-my-slop/internal/patch"
-	"github.com/eskelinenantti/review-my-slop/internal/review"
 	"github.com/eskelinenantti/review-my-slop/internal/ui"
 )
 
@@ -40,24 +39,26 @@ func run(ctx context.Context, args []string, output io.Writer) error {
 }
 
 func runCode(ctx context.Context) error {
-	store, err := comments.OpenDefault()
+	commentStore, err := comments.OpenDefault()
 	if err != nil {
 		return err
 	}
-	currentReview := review.New(ctx, patch.Get, store)
-	loaded, err := currentReview.Load(patch.Unstaged)
+	currentPatch, err := patch.Get(ctx, patch.Unstaged)
 	if err != nil {
 		return err
 	}
-	pending, err := currentReview.Comments(loaded)
+	pending, err := commentStore.List(currentPatch.Root)
 	if err != nil {
 		return err
 	}
 	size := initialTerminalSize()
-	model, err := ui.NewWithReview(currentReview, loaded, pending, size)
+	model, err := ui.NewWithStore(commentStore, currentPatch, pending, size)
 	if err != nil {
 		return err
 	}
+	model.SetRefresh(func(kind patch.Kind) (patch.Patch, error) {
+		return patch.Get(ctx, kind)
+	})
 	program := tea.NewProgram(model, tea.WithWindowSize(size.Width, size.Height))
 	_, err = program.Run()
 	return err
@@ -74,24 +75,13 @@ func initialTerminalSize() ui.Size {
 }
 
 func runComments(ctx context.Context, output io.Writer) error {
-	store, err := comments.OpenDefault()
+	commentStore, err := comments.OpenDefault()
 	if err != nil {
 		return err
 	}
-	p, err := patch.Get(ctx, patch.Unstaged)
+	currentPatch, err := patch.Get(ctx, patch.Unstaged)
 	if err != nil {
 		return err
 	}
-	pending, err := store.List(p.Root)
-	if err != nil {
-		return err
-	}
-	if err := comments.WritePrompt(output, pending); err != nil {
-		return err
-	}
-	ids := make([]string, len(pending))
-	for i, comment := range pending {
-		ids[i] = comment.ID
-	}
-	return store.Acknowledge(p.Root, ids)
+	return commentStore.WritePending(output, currentPatch.Root)
 }

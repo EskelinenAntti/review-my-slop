@@ -17,6 +17,10 @@ func loadLayoutSettings() (bool, error) {
 	if err != nil {
 		return false, err
 	}
+	return readLayoutSettings(path)
+}
+
+func readLayoutSettings(path string) (bool, error) {
 	data, err := os.ReadFile(path)
 	if errors.Is(err, os.ErrNotExist) {
 		return false, nil
@@ -36,6 +40,10 @@ func saveLayoutSettings(enabled bool) error {
 	if err != nil {
 		return err
 	}
+	return writeLayoutSettings(path, enabled)
+}
+
+func writeLayoutSettings(path string, enabled bool) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return fmt.Errorf("create UI settings directory: %w", err)
 	}
