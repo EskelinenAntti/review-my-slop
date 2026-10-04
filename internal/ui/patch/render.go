@@ -21,7 +21,7 @@ func (m *Model) Render() string {
 		body = make([]string, m.bodyHeight())
 		body[min(1, len(body)-1)] = patchMutedStyle.Render(empty)
 	} else {
-		body = strings.Split(render.Terminal(m.doc, m.nav.Snapshot(), render.Theme{Dark: m.dark}), "\n")
+		body = strings.Split(m.renderer.Render(m.doc, m.nav.Snapshot(), render.Theme{Dark: m.dark}), "\n")
 	}
 	height := m.bodyHeight()
 	if len(body) > height {

@@ -82,7 +82,8 @@ func TestRenderHeaderAndFooterKeepReviewAppearance(t *testing.T) {
 	if !strings.Contains(lines[0], "review-my-slop  +2-1") || !strings.Contains(lines[len(lines)-2], "local changes") {
 		t.Fatalf("header/footer = %q / %q", lines[0], lines[len(lines)-2])
 	}
-	if !strings.Contains(m.Render(), "old()") || !strings.Contains(m.Render(), "new()") {
+	rendered := ansi.Strip(m.Render())
+	if !strings.Contains(rendered, "old()") || !strings.Contains(rendered, "new()") {
 		t.Fatal("render omitted changed lines")
 	}
 }
@@ -230,7 +231,7 @@ func TestCommentSavedCancelsSelectionAndKeysEmitRoutingEvents(t *testing.T) {
 func longPatch() corepatch.Patch {
 	lines := make([]corepatch.Line, 40)
 	for index := range lines {
-		lines[index] = corepatch.Line{Kind: corepatch.Context, Text: fmt.Sprintf("line %d %s", index, strings.Repeat("x", 80)), OldNumber: index + 1, NewNumber: index + 1}
+		lines[index] = corepatch.Line{Kind: corepatch.Context, Text: fmt.Sprintf("line %d %s", index, strings.Repeat("x", 80)), OldNumber: corepatch.LineNumber(index + 1), NewNumber: corepatch.LineNumber(index + 1)}
 	}
 	return corepatch.Patch{Repository: "/repo", Fingerprint: "long", Files: []corepatch.File{{DisplayPath: "long.go", OldPath: "long.go", NewPath: "long.go", Hunks: []corepatch.Hunk{{Header: "@@ -1,40 +1,40 @@", Lines: lines}}}}}
 }

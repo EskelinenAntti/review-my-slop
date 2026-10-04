@@ -61,6 +61,7 @@ type Model struct {
 	dark          bool
 	doc           *layout.Document
 	nav           *navigation.Navigation
+	renderer      *render.Renderer
 	deps          Dependencies
 	mode          screenMode
 	searchQuery   []rune
@@ -87,6 +88,7 @@ func New(initial Initial, dependencies Dependencies) *Model {
 		width:         width,
 		height:        height,
 		dark:          true,
+		renderer:      render.NewRenderer(),
 		deps:          dependencies,
 	}
 	m.rebuild(false)
