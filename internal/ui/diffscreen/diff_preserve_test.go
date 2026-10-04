@@ -20,15 +20,16 @@ func TestPreserveTranslatesCursorSelectionAndViewport(t *testing.T) {
 	}
 	viewport := old.newViewport(100, 4)
 	viewport = old.align(viewport, cursor, middle)
-	state := viewState{cursor: &cursor, selection: &selection, viewport: viewport}
+	screen := &View{view: old, cursor: cursor, selection: &selection, viewport: viewport}
 
 	next := newSideBySideView(testPatch(), true)
-	preserved := preserve(old, state, next)
+	screen.replaceView(next)
+	preserved := screen
 
-	if preserved.cursor == nil {
+	if !next.valid(preserved.cursor) {
 		t.Fatal("cursor was not preserved")
 	}
-	line, ok := next.line(*preserved.cursor)
+	line, ok := next.line(preserved.cursor)
 	if !ok || line.Text != "added one" {
 		t.Fatalf("cursor line = %#v, ok=%v", line, ok)
 	}
@@ -40,7 +41,7 @@ func TestPreserveTranslatesCursorSelectionAndViewport(t *testing.T) {
 	if !firstOK || !lastOK || firstLine.Text != "before" || lastLine.Text != "added one" {
 		t.Fatalf("selection endpoints = %#v, %#v", firstLine, lastLine)
 	}
-	if got, want := preserved.cursor.coordinate.Y-preserved.viewport.top.Y, cursor.coordinate.Y-viewport.top.Y; got != want {
+	if got, want := preserved.cursor.row-preserved.viewport.top, cursor.row-viewport.top; got != want {
 		t.Fatalf("screen row = %d, want %d", got, want)
 	}
 }
@@ -48,11 +49,12 @@ func TestPreserveTranslatesCursorSelectionAndViewport(t *testing.T) {
 func TestPreserveReturnsEmptyStateForEmptyView(t *testing.T) {
 	old := newUnifiedView(testPatch(), true)
 	cursor := mustFirst(t, old)
-	state := viewState{cursor: &cursor, selection: ptr(old.beginSelection(cursor)), viewport: old.newViewport(80, 10)}
+	screen := &View{view: old, cursor: cursor, selection: ptr(old.beginSelection(cursor)), viewport: old.newViewport(80, 10)}
 
-	preserved := preserve(old, state, newUnifiedView(patch.Patch{}, true))
+	screen.replaceView(newUnifiedView(patch.Patch{}, true))
+	preserved := screen
 
-	if preserved.cursor != nil || preserved.selection != nil {
+	if preserved.view.valid(preserved.cursor) || preserved.selection != nil {
 		t.Fatalf("state = %#v", preserved)
 	}
 }
@@ -67,7 +69,8 @@ func TestPreserveClampsHorizontalOffsetForShorterLines(t *testing.T) {
 		t.Fatal("fixture does not scroll horizontally")
 	}
 	short := testPatch()
-	preserved := preserve(old, viewState{cursor: &cursor, viewport: viewport}, newUnifiedView(short, true))
+	preserved := &View{view: old, cursor: cursor, viewport: viewport}
+	preserved.replaceView(newUnifiedView(short, true))
 	if preserved.viewport.LeftColumn != 0 {
 		t.Fatalf("horizontal offset = %d", preserved.viewport.LeftColumn)
 	}

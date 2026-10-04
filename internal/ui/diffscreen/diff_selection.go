@@ -12,8 +12,8 @@ func (v *diffView) extendSelection(selection diffSelection, cursor diffCursor) (
 	if !v.valid(selection.First) || !v.valid(cursor) {
 		return selection, false
 	}
-	first := v.rows[selection.First.coordinate.Y]
-	last := v.rows[cursor.coordinate.Y]
+	first := v.rows[selection.First.row]
+	last := v.rows[cursor.row]
 	if first.file != last.file || first.hunk != last.hunk {
 		return selection, false
 	}
@@ -25,7 +25,7 @@ func (v *diffView) lines(selection diffSelection) []patch.Line {
 	if _, ok := v.extendSelection(selection, selection.Last); !ok {
 		return nil
 	}
-	first, last := selection.First.coordinate.Y, selection.Last.coordinate.Y
+	first, last := selection.First.row, selection.Last.row
 	if first > last {
 		first, last = last, first
 	}
@@ -42,10 +42,10 @@ func (v *diffView) lines(selection diffSelection) []patch.Line {
 	}
 	for y := first; y <= last; y++ {
 		pane := selection.First.pane
-		if y == selection.Last.coordinate.Y {
+		if y == selection.Last.row {
 			pane = selection.Last.pane
 		}
-		if line, ok := v.line(diffCursor{coordinate: coordinate{Y: y}, pane: pane}); ok {
+		if line, ok := v.line(diffCursor{row: y, pane: pane}); ok {
 			lines = append(lines, line)
 		}
 	}
@@ -56,76 +56,57 @@ func (v *diffView) file(cursor diffCursor) (patch.File, bool) {
 	if !v.valid(cursor) {
 		return patch.File{}, false
 	}
-	return v.patch.Files[v.rows[cursor.coordinate.Y].file], true
-}
-
-func (v *diffView) hunk(cursor diffCursor) (patch.Hunk, bool) {
-	if !v.valid(cursor) {
-		return patch.Hunk{}, false
-	}
-	current := v.rows[cursor.coordinate.Y]
-	return v.patch.Files[current.file].Hunks[current.hunk], true
+	return v.patch.Files[v.rows[cursor.row].file], true
 }
 
 func (v *diffView) line(cursor diffCursor) (patch.Line, bool) {
 	if !v.valid(cursor) {
 		return patch.Line{}, false
 	}
-	current := v.rows[cursor.coordinate.Y]
+	current := v.rows[cursor.row]
 	return v.patch.Files[current.file].Hunks[current.hunk].Lines[v.lineIndex(current, cursor.pane)], true
 }
 
-func (v *diffView) findCursor(file patch.File, hunk patch.Hunk, line patch.Line, nearby coordinate, pane diffPane) (diffCursor, bool) {
-	candidates := make([]diffCursor, 0)
-	fallbacks := make([]diffCursor, 0)
-	nearbyCandidates := make([]diffCursor, 0)
+// findCursor prioritizes line numbers, then matching text and kind, then kind,
+// then any line in the same hunk. Ties keep the closest row and preferred pane.
+func (v *diffView) findCursor(target cursorIdentity) (diffCursor, bool) {
+	if !target.valid {
+		return diffCursor{}, false
+	}
+	best := diffCursor{}
+	bestRank, bestDistance := 0, 0
 	for y, current := range v.rows {
-		if current.file < 0 || !sameFile(v.patch.Files[current.file], file) || current.hunk < 0 || v.patch.Files[current.file].Hunks[current.hunk].Header != hunk.Header {
+		if current.hunk < 0 || !sameFile(v.patch.Files[current.file], target.file) || v.patch.Files[current.file].Hunks[current.hunk].Header != target.hunk.Header {
 			continue
 		}
-		for _, candidatePane := range []diffPane{pane, pane.other()} {
-			candidate, ok := v.cursorAt(y, candidatePane)
+		for _, pane := range [2]diffPane{target.cursor.pane, target.cursor.pane.other()} {
+			candidate, ok := v.cursorAt(y, pane)
 			if !ok {
 				continue
 			}
-			candidateLine, _ := v.line(candidate)
-			if candidateLine.Kind == line.Kind && candidateLine.OldNumber == line.OldNumber && candidateLine.NewNumber == line.NewNumber {
-				return candidate, true
+			line, _ := v.line(candidate)
+			rank := 1
+			if line.Kind == target.line.Kind {
+				if line.OldNumber == target.line.OldNumber && line.NewNumber == target.line.NewNumber {
+					return candidate, true
+				}
+				rank = 2
+				if line.Text == target.line.Text {
+					rank = 3
+				}
 			}
-			if candidateLine.Kind == line.Kind && candidateLine.Text == line.Text {
-				candidates = append(candidates, candidate)
+			distance := abs(y - target.cursor.row)
+			if rank > bestRank || rank == bestRank && distance < bestDistance {
+				best, bestRank, bestDistance = candidate, rank, distance
 			}
-			if candidateLine.Kind == line.Kind {
-				fallbacks = append(fallbacks, candidate)
-			}
-			nearbyCandidates = append(nearbyCandidates, candidate)
 		}
 	}
-	if len(candidates) > 0 {
-		return closest(candidates, nearby), true
-	}
-	if len(fallbacks) > 0 {
-		return closest(fallbacks, nearby), true
-	}
-	if len(nearbyCandidates) > 0 {
-		return closest(nearbyCandidates, nearby), true
-	}
-	return diffCursor{}, false
+	return best, bestRank > 0
 }
 
 func sameFile(candidate, target patch.File) bool {
 	return candidate.OldPath != "" && candidate.OldPath == target.OldPath ||
 		candidate.NewPath != "" && candidate.NewPath == target.NewPath
-}
-
-func closest(candidates []diffCursor, nearby coordinate) diffCursor {
-	best := candidates[0]
-	for _, candidate := range candidates[1:] {
-		if abs(candidate.coordinate.Y-nearby.Y) < abs(best.coordinate.Y-nearby.Y) {
-			best = candidate
-		}
-	}
-	return best
 }
 
 func abs(value int) int {

@@ -55,7 +55,6 @@ const (
 // View owns focus, selection, search, and scrolling for a patch presentation.
 // It has no knowledge of keys, editors, or comment persistence.
 type View struct {
-	patch         patch.Patch
 	view          *diffView
 	cursor        diffCursor
 	viewport      diffViewport
@@ -74,7 +73,7 @@ type searchState struct {
 
 // New creates a view with default dimensions of 80 columns and 30 rows.
 func New(p patch.Patch, options Options) *View {
-	v := &View{patch: p, options: options, width: 80, height: 30}
+	v := &View{options: options, width: 80, height: 30}
 	v.view = v.newReviewView(p)
 	v.viewport = v.view.newViewport(v.width, frame.BodyHeight(v.height))
 	v.cursor, _ = v.view.first()
@@ -85,26 +84,7 @@ func New(p patch.Patch, options Options) *View {
 // relative screen position. Missing targets fall back to nearby available code.
 func (v *View) Update(p patch.Patch) {
 	v.search.repeatMiss = false
-	old := v.view
-	state := viewState{cursor: &v.cursor, selection: v.selection, viewport: v.viewport}
-	origin := identify(old, &v.search.from)
-	v.patch = p
-	v.view = v.newReviewView(p)
-	preserved := preserve(old, state, v.view)
-	v.viewport, v.selection = preserved.viewport, preserved.selection
-	v.cursor = diffCursor{}
-	if preserved.cursor != nil {
-		v.cursor = *preserved.cursor
-	}
-	if v.search.active {
-		v.search.from = v.cursor
-		if origin.valid {
-			if translated, ok := v.view.findCursor(origin.file, origin.hunk, origin.line, origin.cursor.coordinate, origin.cursor.pane); ok {
-				v.search.from = translated
-			}
-		}
-		v.previewSearch(v.search.query)
-	}
+	v.replaceView(v.newReviewView(p))
 }
 
 // Configure changes presentation options while preserving meaningful position.
@@ -113,7 +93,7 @@ func (v *View) Configure(options Options) {
 	dark := v.options.Dark
 	v.options = options
 	if active != v.sideBySideActive() || dark != options.Dark {
-		v.Update(v.patch)
+		v.Update(v.view.patch)
 	}
 }
 
@@ -123,7 +103,7 @@ func (v *View) Resize(width, height int) {
 	v.width, v.height = width, height
 	v.viewport = v.view.resize(v.viewport, width, frame.BodyHeight(height))
 	if active != v.sideBySideActive() {
-		v.Update(v.patch)
+		v.Update(v.view.patch)
 	} else {
 		v.viewport = v.view.keepVisible(v.viewport, v.cursor)
 	}
@@ -131,10 +111,7 @@ func (v *View) Resize(width, height int) {
 
 func (v *View) sideBySideActive() bool { return v.options.SideBySide && v.width >= 100 }
 func (v *View) newReviewView(p patch.Patch) *diffView {
-	if v.sideBySideActive() {
-		return newSideBySideView(p, v.options.Dark)
-	}
-	return newUnifiedView(p, v.options.Dark)
+	return newDiffView(p, v.sideBySideActive(), v.options.Dark)
 }
 
 // Move performs navigation and keeps the resulting focus visible. Line and
@@ -350,12 +327,12 @@ func (v *View) Find(d Direction) bool {
 // final blank line. A non-nil error replaces the status while retaining the
 // position label. Dimensions are configured through Resize.
 func (v *View) Render(err error) string {
-	added, removed := patchLineCounts(v.patch)
+	added, removed := patchLineCounts(v.view.patch)
 	header := titleStyle.Render("review-my-slop") + "  " + mutedStyle.Render(fmt.Sprintf("+%d-%d", added, removed))
 	var body []string
-	if len(v.patch.Files) == 0 {
+	if len(v.view.patch.Files) == 0 {
 		empty := "No unstaged or untracked changes."
-		if v.patch.Kind == patch.Branch {
+		if v.view.patch.Kind == patch.Branch {
 			empty = "No branch or worktree changes."
 		}
 		body = make([]string, frame.BodyHeight(v.height))
@@ -383,10 +360,10 @@ func (v *View) Render(err error) string {
 }
 func (v *View) renderFooter(value string) string {
 	label := "local changes"
-	if v.patch.Kind == patch.Branch {
-		label = "branch changes from " + v.patch.Branch
+	if v.view.patch.Kind == patch.Branch {
+		label = "branch changes from " + v.view.patch.Branch
 	}
-	if v.viewport.top.Y > 0 {
+	if v.viewport.top > 0 {
 		label += fmt.Sprintf(" (%d%%)", v.view.viewportProgress(v.viewport))
 	}
 	right := mutedStyle.Render(label)

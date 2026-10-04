@@ -117,11 +117,11 @@ func TestSplitVerticalMovementAndHalfPageUseVisualRows(t *testing.T) {
 	viewport = v.keepVisible(viewport, cursor)
 	originalTop := viewport.top
 	viewport, moved := v.scrollHalfPage(viewport, cursor, forward)
-	if viewport.top.Y <= originalTop.Y || moved.coordinate.Y <= cursor.coordinate.Y {
+	if viewport.top <= originalTop || moved.row <= cursor.row {
 		t.Fatalf("viewport=%#v cursor=%#v", viewport, moved)
 	}
 	viewport, moved = v.scrollHalfPage(viewport, moved, backward)
-	if viewport.top != originalTop || moved.coordinate != cursor.coordinate {
+	if viewport.top != originalTop || moved.row != cursor.row {
 		t.Fatalf("round trip viewport=%#v cursor=%#v", viewport, moved)
 	}
 }
@@ -139,7 +139,7 @@ func TestFileHeaderSticksWithoutCoveringDiffRows(t *testing.T) {
 	}}
 	v := newUnifiedView(p, true)
 	viewport := v.newViewport(60, 3)
-	viewport.top.Y = 3
+	viewport.top = 3
 
 	rendered := strings.Split(ansi.Strip(v.render(viewport, diffCursor{}, nil)), "\n")
 	if len(rendered) != viewport.Height || !strings.Contains(rendered[0], "first.go") {
@@ -150,13 +150,13 @@ func TestFileHeaderSticksWithoutCoveringDiffRows(t *testing.T) {
 	}
 
 	secondFileRow := 5
-	viewport.top.Y = secondFileRow
+	viewport.top = secondFileRow
 	rendered = strings.Split(ansi.Strip(v.render(viewport, diffCursor{}, nil)), "\n")
 	if strings.Count(strings.Join(rendered, "\n"), "second.go") != 1 {
 		t.Fatalf("file header was duplicated at its natural position: %#v", rendered)
 	}
 
-	viewport.top.Y = secondFileRow + 1
+	viewport.top = secondFileRow + 1
 	rendered = strings.Split(ansi.Strip(v.render(viewport, diffCursor{}, nil)), "\n")
 	if !strings.Contains(rendered[0], "second.go") {
 		t.Fatalf("sticky header did not change with the file: %#v", rendered)
@@ -169,7 +169,7 @@ func TestKeepVisibleAccountsForStickyFileHeader(t *testing.T) {
 	viewport := v.keepVisible(v.newViewport(50, 4), cursor)
 	rendered := ansi.Strip(v.render(viewport, cursor, nil))
 	line, _ := v.line(cursor)
-	if cursor.coordinate.Y >= viewport.top.Y+v.contentHeight(viewport) || !strings.Contains(rendered, strconv.Itoa(int(line.NewNumber))) {
+	if cursor.row >= viewport.top+v.contentHeight(viewport) || !strings.Contains(rendered, strconv.Itoa(int(line.NewNumber))) {
 		t.Fatalf("last cursor row is hidden by sticky header: viewport=%#v render=%q", viewport, rendered)
 	}
 }
@@ -300,7 +300,7 @@ func renderOne(v *diffView, cursor diffCursor, width int, selection *diffSelecti
 
 func renderTarget(v *diffView, target, active diffCursor, width int, selection *diffSelection) string {
 	viewport := v.newViewport(width, 1)
-	viewport.top = target.coordinate
+	viewport.top = target.row
 	return v.render(viewport, active, selection)
 }
 

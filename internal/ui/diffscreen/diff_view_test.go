@@ -1,7 +1,6 @@
 package diffscreen
 
 import (
-	"reflect"
 	"strings"
 	"testing"
 
@@ -9,13 +8,6 @@ import (
 
 	"github.com/eskelinenantti/review-my-slop/internal/patch"
 )
-
-func TestCursorContainsOnlyCoordinateAndPane(t *testing.T) {
-	typeOfCursor := reflect.TypeFor[diffCursor]()
-	if typeOfCursor.NumField() != 2 || typeOfCursor.Field(0).Name != "coordinate" || typeOfCursor.Field(1).Name != "pane" {
-		t.Fatalf("diffCursor fields = %#v", reflect.VisibleFields(typeOfCursor))
-	}
-}
 
 func TestUnifiedNavigationSearchAndFileJumps(t *testing.T) {
 	v := newUnifiedView(testPatch(), true)
@@ -126,7 +118,7 @@ func TestViewportAlignmentResizeAndScrolling(t *testing.T) {
 	}
 	viewport := v.newViewport(30, 5)
 	viewport = v.keepVisible(viewport, cursor)
-	if cursor.coordinate.Y < viewport.top.Y || cursor.coordinate.Y >= viewport.top.Y+viewport.Height {
+	if cursor.row < viewport.top || cursor.row >= viewport.top+viewport.Height {
 		t.Fatalf("cursor not visible: %#v %#v", cursor, viewport)
 	}
 	viewport = v.align(viewport, cursor, middle)
@@ -134,7 +126,7 @@ func TestViewportAlignmentResizeAndScrolling(t *testing.T) {
 	if v.hasStickyHeader(viewport.top, viewport.Height) {
 		headerHeight = 1
 	}
-	if headerHeight+cursor.coordinate.Y-viewport.top.Y != viewport.Height/2 {
+	if headerHeight+cursor.row-viewport.top != viewport.Height/2 {
 		t.Fatalf("middle alignment = %#v", viewport)
 	}
 	viewport = v.scrollHorizontal(viewport, 4)
@@ -147,7 +139,7 @@ func TestViewportAlignmentResizeAndScrolling(t *testing.T) {
 	}
 	before := cursor
 	viewport, cursor = v.scrollHalfPage(viewport, cursor, forward)
-	if cursor.coordinate.Y < before.coordinate.Y {
+	if cursor.row < before.row {
 		t.Fatalf("half page moved backward: %#v -> %#v", before, cursor)
 	}
 }
@@ -191,17 +183,15 @@ func TestFindCursorUsesSemanticIdentityAcrossChangedCoordinates(t *testing.T) {
 	original := testPatch()
 	oldView := newUnifiedView(original, true)
 	cursor, _ := oldView.search("added one", mustFirst(t, oldView), forward)
-	file, _ := oldView.file(cursor)
-	hunk, _ := oldView.hunk(cursor)
 	line, _ := oldView.line(cursor)
 	changed := testPatch()
 	changed.Files[0].Metadata = []string{"mode changed", "more metadata"}
 	newView := newUnifiedView(changed, true)
-	translated, ok := newView.findCursor(file, hunk, line, cursor.coordinate, cursor.pane)
+	translated, ok := newView.findCursor(identify(oldView, cursor))
 	if !ok {
 		t.Fatal("semantic cursor was not found")
 	}
-	if translated.coordinate == cursor.coordinate {
+	if translated.row == cursor.row {
 		t.Fatal("cursor coordinate was reused after rows shifted")
 	}
 	translatedLine, _ := newView.line(translated)
@@ -227,13 +217,10 @@ func TestFindCursorFallsBackNearRemovedLine(t *testing.T) {
 	original := testPatch()
 	oldView := newUnifiedView(original, true)
 	cursor, _ := oldView.search("removed two", mustFirst(t, oldView), forward)
-	file, _ := oldView.file(cursor)
-	hunk, _ := oldView.hunk(cursor)
-	line, _ := oldView.line(cursor)
 	changed := testPatch()
 	changed.Files[0].Hunks[0].Lines = changed.Files[0].Hunks[0].Lines[:2]
 	newView := newUnifiedView(changed, true)
-	fallback, ok := newView.findCursor(file, hunk, line, cursor.coordinate, cursor.pane)
+	fallback, ok := newView.findCursor(identify(oldView, cursor))
 	if !ok {
 		t.Fatal("nearby cursor was not found")
 	}
@@ -271,4 +258,12 @@ func longPatch() patch.Patch {
 		lines[index] = patch.Line{Kind: patch.Context, Text: strings.Repeat("long", 20), OldNumber: patch.LineNumber(index + 1), NewNumber: patch.LineNumber(index + 1)}
 	}
 	return patch.Patch{Files: []patch.File{{DisplayPath: "long.go", Hunks: []patch.Hunk{{Header: "@@", Lines: lines}}}}}
+}
+
+func newUnifiedView(p patch.Patch, dark bool) *diffView {
+	return newDiffView(p, false, dark)
+}
+
+func newSideBySideView(p patch.Patch, dark bool) *diffView {
+	return newDiffView(p, true, dark)
 }
