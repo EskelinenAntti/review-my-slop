@@ -2,6 +2,7 @@ package comments
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"strings"
 	"testing"
@@ -234,6 +235,22 @@ func TestCommentListRenderingEditingDeletionAndRoutingKeys(t *testing.T) {
 		if _, ok := cmd().(BackRequested); !ok {
 			t.Fatalf("%s result = %#v", text, cmd())
 		}
+	}
+}
+
+func TestCommentsMenuScrollsWithinScreenBody(t *testing.T) {
+	items := make([]data.Comment, 10)
+	for index := range items {
+		items[index] = data.Comment{Body: fmt.Sprintf("comment %d", index), Anchor: patch.Anchor{FilePath: "main.go"}}
+	}
+	m := New(Initial{Width: 80, Height: 7, Items: items}, Dependencies{})
+	m.row = len(items) - 1
+	rendered := strings.Split(ansi.Strip(m.Render()), "\n")
+	if !strings.Contains(strings.Join(rendered[1:m.height-2], "\n"), "comment 9") {
+		t.Fatalf("selected comment is outside the screen body: %q", rendered)
+	}
+	if !strings.Contains(rendered[m.height-2], "j/k move") {
+		t.Fatalf("footer line = %q", rendered[m.height-2])
 	}
 }
 
