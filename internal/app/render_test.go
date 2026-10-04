@@ -15,8 +15,11 @@ func TestWorkflowErrorKeepsDiffLabelWithinFooter(t *testing.T) {
 			p := modelPatch()
 			p.Kind, p.Branch = kind, "main"
 			m := newModel(p, nil, nil, initialLayout{size: size{Width: width, Height: 8}})
-			m.err = fmt.Errorf("a very long storage failure that exceeds the available footer width")
+			m.err = fmt.Errorf("a very long storage failure\nthat exceeds the available footer width")
 			lines := strings.Split(m.render(), "\n")
+			if len(lines) != 8 {
+				t.Fatalf("error changed screen height: %d", len(lines))
+			}
 			footer := lines[len(lines)-2]
 			label := "local changes"
 			if kind == patch.Branch {

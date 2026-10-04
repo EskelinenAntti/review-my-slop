@@ -250,7 +250,7 @@ func TestZSequencesPositionCurrentLineInViewport(t *testing.T) {
 		want.Align(test.alignment)
 		m = updateModel(t, m, textKey("z"))
 		m = updateModel(t, m, textKey(test.key))
-		if m.diffView.Render() != want.Render() {
+		if m.diffView.Render(nil) != want.Render(nil) {
 			t.Fatalf("z%s did not align view", test.key)
 		}
 	}
@@ -336,26 +336,26 @@ func TestSideBySidePaneSwitchingUsesCtrlWSequences(t *testing.T) {
 func TestHorizontalScrollKeysMoveByStepAndReset(t *testing.T) {
 	m := testModel(longModelPatch(), nil, nil)
 	m = updateModel(t, m, tea.WindowSizeMsg{Width: 37, Height: 30})
-	initial := m.diffView.Render()
+	initial := m.diffView.Render(nil)
 	want := diffscreen.New(longModelPatch(), diffscreen.Options{Dark: true})
 	want.Resize(37, 30)
 	want.ScrollHorizontal(2 * horizontalScrollStep)
 	m = updateModel(t, m, textKey("l"))
 	m = updateModel(t, m, tea.KeyPressMsg(tea.Key{Code: tea.KeyRight}))
-	if m.diffView.Render() != want.Render() {
+	if m.diffView.Render(nil) != want.Render(nil) {
 		t.Fatal("right keys did not scroll by two steps")
 	}
 	m = updateModel(t, m, textKey("h"))
 	m = updateModel(t, m, tea.KeyPressMsg(tea.Key{Code: tea.KeyLeft}))
-	if m.diffView.Render() != initial {
+	if m.diffView.Render(nil) != initial {
 		t.Fatal("left keys did not restore initial offset")
 	}
 	m = updateModel(t, m, textKey("$"))
-	if m.diffView.Render() == initial {
+	if m.diffView.Render(nil) == initial {
 		t.Fatal("$ did not scroll")
 	}
 	m = updateModel(t, m, textKey("0"))
-	if m.diffView.Render() != initial {
+	if m.diffView.Render(nil) != initial {
 		t.Fatal("0 did not restore initial offset")
 	}
 }
@@ -415,21 +415,21 @@ func TestHeaderShowsAddedAndRemovedLineCounts(t *testing.T) {
 
 func TestSearchMovesIncrementallyRepeatsAndRestoresOrigin(t *testing.T) {
 	m := testModel(coveragePatch(), nil, nil)
-	origin := screenBody(m.diffView.Render())
+	origin := screenBody(m.diffView.Render(nil))
 	m = updateModel(t, m, textKey("/"))
 	m = updateModel(t, m, textKey("keep"))
-	first := screenBody(m.diffView.Render())
+	first := screenBody(m.diffView.Render(nil))
 	if m.mode != modeSearch || lineText(m) != "keep()" {
 		t.Fatalf("mode=%v line=%q", m.mode, lineText(m))
 	}
 	m = updateModel(t, m, specialKey(tea.KeyEnter))
 	m = updateModel(t, m, textKey("n"))
-	if screenBody(m.diffView.Render()) == first || lineText(m) != "keep()" {
-		t.Fatalf("next=%#v", screenBody(m.diffView.Render()))
+	if screenBody(m.diffView.Render(nil)) == first || lineText(m) != "keep()" {
+		t.Fatalf("next=%#v", screenBody(m.diffView.Render(nil)))
 	}
 	m = updateModel(t, m, textKey("N"))
-	if screenBody(m.diffView.Render()) != first {
-		t.Fatalf("previous=%#v", screenBody(m.diffView.Render()))
+	if screenBody(m.diffView.Render(nil)) != first {
+		t.Fatalf("previous=%#v", screenBody(m.diffView.Render(nil)))
 	}
 	m = updateModel(t, m, textKey("/"))
 	m = updateModel(t, m, textKey("missing"))
@@ -437,14 +437,14 @@ func TestSearchMovesIncrementallyRepeatsAndRestoresOrigin(t *testing.T) {
 		t.Fatal("missing search did not miss")
 	}
 	m = updateModel(t, m, specialKey(tea.KeyEsc))
-	if screenBody(m.diffView.Render()) != first {
-		t.Fatalf("cancel=%#v origin=%#v", screenBody(m.diffView.Render()), origin)
+	if screenBody(m.diffView.Render(nil)) != first {
+		t.Fatalf("cancel=%#v origin=%#v", screenBody(m.diffView.Render(nil)), origin)
 	}
 }
 
 func TestSearchMatchesFileNamesAndBackspaceRestoresOrigin(t *testing.T) {
 	m := testModel(coveragePatch(), nil, nil)
-	origin := screenBody(m.diffView.Render())
+	origin := screenBody(m.diffView.Render(nil))
 	m = updateModel(t, m, textKey("/"))
 	m = updateModel(t, m, textKey("main.go"))
 	file, _, _ := m.diffView.Current()
@@ -454,8 +454,8 @@ func TestSearchMatchesFileNamesAndBackspaceRestoresOrigin(t *testing.T) {
 	for range len("main.go") {
 		m = updateModel(t, m, specialKey(tea.KeyBackspace))
 	}
-	if screenBody(m.diffView.Render()) != origin || len(m.searchQuery) != 0 {
-		t.Fatalf("diffCursor=%#v query=%q", screenBody(m.diffView.Render()), m.searchQuery)
+	if screenBody(m.diffView.Render(nil)) != origin {
+		t.Fatalf("diffCursor=%#v", screenBody(m.diffView.Render(nil)))
 	}
 }
 
@@ -463,15 +463,15 @@ func TestSideBySideSearchActivatesPaneAndCancelRestoresIt(t *testing.T) {
 	m := testModel(coveragePatch(), nil, nil)
 	m = updateModel(t, m, tea.WindowSizeMsg{Width: 120, Height: 30})
 	m.setSideBySide(true)
-	origin := screenBody(m.diffView.Render())
+	origin := screenBody(m.diffView.Render(nil))
 	m = updateModel(t, m, textKey("/"))
 	m = updateModel(t, m, textKey("old()"))
 	if lineText(m) != "old()" {
-		t.Fatalf("diffCursor=%#v line=%q", screenBody(m.diffView.Render()), lineText(m))
+		t.Fatalf("diffCursor=%#v line=%q", screenBody(m.diffView.Render(nil)), lineText(m))
 	}
 	m = updateModel(t, m, specialKey(tea.KeyEsc))
-	if screenBody(m.diffView.Render()) != origin {
-		t.Fatalf("cancel=%#v want=%#v", screenBody(m.diffView.Render()), origin)
+	if screenBody(m.diffView.Render(nil)) != origin {
+		t.Fatalf("cancel=%#v want=%#v", screenBody(m.diffView.Render(nil)), origin)
 	}
 }
 

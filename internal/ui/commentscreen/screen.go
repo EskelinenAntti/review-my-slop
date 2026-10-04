@@ -50,7 +50,9 @@ func (v *View) Selected() (comments.Comment, bool) {
 	}
 	return v.items[v.row], true
 }
-func (v *View) Render() string {
+
+// Render composes the screen, showing a non-nil error in place of its hints.
+func (v *View) Render(err error) string {
 	header := titleStyle.Render("comments") + "  " + mutedStyle.Render(fmt.Sprintf("%d pending", len(v.items)))
 	height := frame.BodyHeight(v.height)
 	body := make([]string, 0, height)
@@ -77,10 +79,16 @@ func (v *View) Render() string {
 			body = append(body, style.Width(max(20, v.width)).Render(line))
 		}
 	}
-	return frame.Render(header, body, mutedStyle.Render("j/k move  Enter/e edit  D delete  Esc/q return"), v.height)
+	footer := mutedStyle.Render("j/k move  Enter/e edit  D delete  Esc/q return")
+	if err != nil {
+		message := strings.ReplaceAll(err.Error(), "\n", " ")
+		footer = errorStyle.Render(ansi.Truncate(message, max(20, v.width), ""))
+	}
+	return frame.Render(header, body, footer, v.height)
 }
 
 var (
 	titleStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Cyan)
 	mutedStyle = lipgloss.NewStyle().Faint(true)
+	errorStyle = lipgloss.NewStyle().Foreground(lipgloss.Red).Bold(true)
 )

@@ -60,12 +60,12 @@ func TestUpdateAndConfigurePreserveState(t *testing.T) {
 	if !ok || got != want {
 		t.Fatalf("configured current=%#v, want %#v", got, want)
 	}
-	if !strings.Contains(v.Render(), " │ ") {
+	if !strings.Contains(v.Render(nil), " │ ") {
 		t.Fatal("split layout not rendered")
 	}
-	before := v.Render()
+	before := v.Render(nil)
 	v.Update(p)
-	if v.Render() != before {
+	if v.Render(nil) != before {
 		t.Fatal("unchanged refresh changed presentation")
 	}
 }
@@ -82,7 +82,7 @@ func TestNarrowLayoutFallbackPreservesPreferenceAndPosition(t *testing.T) {
 	offset := v.cursor.coordinate.Y - v.viewport.top.Y
 	_, want, _ := v.Current()
 	v.Resize(80, 10)
-	if strings.Contains(v.Render(), " │ ") {
+	if strings.Contains(v.Render(nil), " │ ") {
 		t.Fatal("narrow layout remained split")
 	}
 	v.Resize(120, 10)
@@ -90,7 +90,7 @@ func TestNarrowLayoutFallbackPreservesPreferenceAndPosition(t *testing.T) {
 	if got != want || v.cursor.coordinate.Y-v.viewport.top.Y != offset {
 		t.Fatal("resize lost meaningful position")
 	}
-	if !strings.Contains(v.Render(), " │ ") {
+	if !strings.Contains(v.Render(nil), " │ ") {
 		t.Fatal("resize lost split preference")
 	}
 }
@@ -111,7 +111,8 @@ func TestSearchPreviewAcceptRepeatAndCancel(t *testing.T) {
 	v.Resize(120, 10)
 	origin := v.cursor
 	v.BeginSearch()
-	if !v.PreviewSearch("removed") {
+	v.InsertSearch("removed")
+	if strings.Contains(v.Render(nil), "no matches") {
 		t.Fatal("deletion not found")
 	}
 	if v.cursor.pane != left {
@@ -126,7 +127,8 @@ func TestSearchPreviewAcceptRepeatAndCancel(t *testing.T) {
 		t.Fatal("previous match not found")
 	}
 	v.BeginSearch()
-	if v.PreviewSearch("missing") {
+	v.InsertSearch("missing")
+	if !strings.Contains(v.Render(nil), "no matches") {
 		t.Fatal("missing query matched")
 	}
 	v.CancelSearch()
@@ -134,8 +136,10 @@ func TestSearchPreviewAcceptRepeatAndCancel(t *testing.T) {
 		t.Fatal("cancel did not restore focus")
 	}
 	v.BeginSearch()
-	v.PreviewSearch("before")
-	v.PreviewSearch("")
+	v.InsertSearch("before")
+	for range len("before") {
+		v.BackspaceSearch()
+	}
 	if v.cursor != first {
 		t.Fatal("empty query did not restore focus")
 	}
@@ -152,7 +156,7 @@ func TestSearchOriginSurvivesPatchAndLayoutChanges(t *testing.T) {
 	v.Move(NextLine)
 	_, origin, _ := v.Current()
 	v.BeginSearch()
-	v.PreviewSearch("added one")
+	v.InsertSearch("added one")
 	p.Files[0].Metadata = []string{"inserted"}
 	v.Update(p)
 	v.Resize(120, 10)
@@ -178,7 +182,7 @@ func TestEmptyAndMetadataOnlyPatches(t *testing.T) {
 		v.ToggleSelection()
 		v.ScrollHorizontal(100)
 		v.BeginSearch()
-		v.PreviewSearch("anything")
+		v.InsertSearch("anything")
 		v.CancelSearch()
 		if _, _, ok := v.Current(); ok {
 			t.Fatal("empty view returned focused code")
@@ -189,7 +193,7 @@ func TestEmptyAndMetadataOnlyPatches(t *testing.T) {
 		if v.Find(Forward) {
 			t.Fatal("empty view found a match")
 		}
-		_ = v.Render()
+		_ = v.Render(nil)
 	}
 }
 
@@ -209,5 +213,38 @@ func TestHorizontalScrollEdgesAreIdempotent(t *testing.T) {
 	v.ScrollHorizontal(-distance)
 	if v.viewport.LeftColumn != 0 {
 		t.Fatal("scroll start not clamped")
+	}
+}
+
+func TestSearchEditingOwnsUnicodeQueryAcrossUpdates(t *testing.T) {
+	p := testPatch()
+	v := New(p, Options{Dark: true})
+	_, origin, _ := v.Current()
+	v.InsertSearch("rem")
+	v.InsertSearch("oved界")
+	if !strings.Contains(v.Render(nil), "/removed界") {
+		t.Fatal("query chunks were not appended")
+	}
+	v.BackspaceSearch()
+	_, found, ok := v.Current()
+	if !ok || !strings.Contains(found.Text, "removed") || strings.Contains(v.Render(nil), "no matches") {
+		t.Fatal("Unicode backspace did not restore a matching query")
+	}
+	p.Files[0].Metadata = []string{"inserted"}
+	v.Update(p)
+	v.Resize(120, 10)
+	v.Configure(Options{SideBySide: true, Dark: true})
+	if !strings.Contains(v.Render(nil), "/removed") {
+		t.Fatal("reconfiguration lost the active query")
+	}
+	v.CancelSearch()
+	_, restored, _ := v.Current()
+	if restored != origin {
+		t.Fatal("cancel did not restore source focus")
+	}
+	v.BeginSearch()
+	v.BackspaceSearch()
+	if strings.Contains(v.Render(nil), "/removed") {
+		t.Fatal("new search retained the previous query")
 	}
 }

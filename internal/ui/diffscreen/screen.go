@@ -103,7 +103,7 @@ func (v *View) Update(p patch.Patch) {
 				v.search.from = translated
 			}
 		}
-		v.PreviewSearch(v.search.query)
+		v.previewSearch(v.search.query)
 	}
 }
 
@@ -278,24 +278,40 @@ func (v *View) BeginSearch() {
 	v.search.from = v.cursor
 }
 
-// PreviewSearch searches from the session origin, starting a session if needed.
-// An empty query restores its origin; a miss retains the last successful focus.
-func (v *View) PreviewSearch(query string) bool {
+// InsertSearch appends text to the query and previews from the search origin.
+// It starts a search session if needed; a miss retains the last successful focus.
+func (v *View) InsertSearch(text string) {
 	if !v.search.active {
 		v.BeginSearch()
 	}
+	v.previewSearch(v.search.query + text)
+}
+
+// BackspaceSearch removes the last Unicode code point from the active query.
+// An empty query restores the search origin. Outside a search it does nothing.
+func (v *View) BackspaceSearch() {
+	if !v.search.active {
+		return
+	}
+	query := []rune(v.search.query)
+	if len(query) > 0 {
+		query = query[:len(query)-1]
+	}
+	v.previewSearch(string(query))
+}
+
+func (v *View) previewSearch(query string) {
 	v.search.query = query
 	if query == "" {
 		v.setCursor(v.search.from)
 		v.search.miss = false
-		return true
+		return
 	}
 	cursor, ok := v.view.search(query, v.search.from, forward)
 	v.search.miss = !ok
 	if ok {
 		v.setCursor(cursor)
 	}
-	return ok
 }
 func (v *View) AcceptSearch() {
 	if !v.search.active {
@@ -331,8 +347,9 @@ func (v *View) Find(d Direction) bool {
 }
 
 // Render returns the full screen, including its header, status footer, and
-// final blank line. Dimensions are configured through Resize.
-func (v *View) Render() string {
+// final blank line. A non-nil error replaces the status while retaining the
+// position label. Dimensions are configured through Resize.
+func (v *View) Render(err error) string {
 	added, removed := patchLineCounts(v.patch)
 	header := titleStyle.Render("review-my-slop") + "  " + mutedStyle.Render(fmt.Sprintf("+%d-%d", added, removed))
 	var body []string
@@ -358,6 +375,9 @@ func (v *View) Render() string {
 	footer := mutedStyle.Render(status)
 	if v.search.repeatMiss {
 		footer = errorStyle.Render(fmt.Sprintf("no matches for %q", v.search.term))
+	}
+	if err != nil {
+		footer = errorStyle.Render(strings.ReplaceAll(err.Error(), "\n", " "))
 	}
 	return frame.Render(header, body, v.renderFooter(footer), v.height)
 }

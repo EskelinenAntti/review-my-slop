@@ -129,10 +129,10 @@ func TestUnchangedRefreshPreservesStateAndClearsError(t *testing.T) {
 	m.diffView.ToggleSelection()
 	m.diffView.Move(diffscreen.NextLine)
 	m.diffView.ScrollHorizontal(12)
-	before := m.diffView.Render()
+	before := m.diffView.Render(nil)
 	m.err = fmt.Errorf("previous refresh failed")
 	m = updateModel(t, m, refreshDiffMsg{patch: p})
-	if got := m.diffView.Render(); got != before {
+	if got := m.diffView.Render(nil); got != before {
 		t.Fatal("refresh changed presentation state")
 	}
 	if m.err != nil {
@@ -142,9 +142,9 @@ func TestUnchangedRefreshPreservesStateAndClearsError(t *testing.T) {
 
 func TestRefreshFailureRetainsView(t *testing.T) {
 	m := testModel(modelPatch(), nil, nil)
-	before := m.diffView.Render()
+	before := m.diffView.Render(nil)
 	m = updateModel(t, m, refreshDiffMsg{err: fmt.Errorf("git failed")})
-	if m.err == nil || m.diffView.Render() != before || m.currentPatch.Root != "/repo" {
+	if m.err == nil || m.diffView.Render(nil) != before || m.currentPatch.Root != "/repo" {
 		t.Fatalf("patch=%#v error=%v", m.currentPatch, m.err)
 	}
 }

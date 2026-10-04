@@ -26,20 +26,14 @@ func (m model) updateSearch(name string, key tea.KeyPressMsg) (tea.Model, tea.Cm
 	case "esc":
 		m.diffView.CancelSearch()
 		m.mode = modeBrowse
-		m.searchQuery = nil
 	case "enter":
 		m.diffView.AcceptSearch()
 		m.mode = modeBrowse
-		m.searchQuery = nil
 	case "backspace":
-		if len(m.searchQuery) > 0 {
-			m.searchQuery = m.searchQuery[:len(m.searchQuery)-1]
-		}
-		m.diffView.PreviewSearch(string(m.searchQuery))
+		m.diffView.BackspaceSearch()
 	default:
 		if key.Text != "" {
-			m.searchQuery = append(m.searchQuery, []rune(key.Text)...)
-			m.diffView.PreviewSearch(string(m.searchQuery))
+			m.diffView.InsertSearch(key.Text)
 		}
 	}
 	return m, nil
