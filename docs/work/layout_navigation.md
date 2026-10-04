@@ -10,5 +10,5 @@
   progress, and horizontal limits; `diff_preserve` cursor, selection, and viewport
   preservation across layout changes and empty replacement. Renderer-only width,
   ANSI, and styling assertions remain with the render owner.
-- Claim commit: pending
-- Final commit: pending
+- Claim commit: `c9f624296754649a2507f50701073537167546e7`
+- Implementation commit: `29174bf548efe73a7e5bea216188a6551477a422`
