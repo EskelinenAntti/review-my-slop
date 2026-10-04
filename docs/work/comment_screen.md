@@ -1,7 +1,7 @@
 Owner: comment_screen
 Paths: internal/ui/comments, internal/editor, docs/work/comment_screen.md
-Status: implementation complete; ready for feature-branch integration
-Validation: `/workspace/toolchains/go/bin/go test ./internal/editor ./internal/ui/comments` passed (standard Go build cache required escalation).
+Status: complete and self-integrated into `feature/package-split` (`4cd087e` claim, `2c6b0e9` implementation).
+Validation: `/workspace/toolchains/go/bin/go test ./internal/editor ./internal/ui/comments` and `/workspace/toolchains/go/bin/go test -race ./internal/ui/comments` passed. Root reran `/workspace/toolchains/go/bin/go test -race ./internal/editor` successfully.
 
 The comments screen owns list navigation, editor sessions, ID-based saves and deletes, pending-ID mutation reservations, and reload generation checks. It emits `Saved{FromPatch:true}` after a successful Patch-originated save, `Cancelled{FromPatch:true}` for a blank new composition so the shell can cancel Patch selection, and `Failed{Err:...}` for Patch-originated editor or persistence errors. The shell maps those events to `ui/patch.CommentSaved` and `ui/patch.Failure`.
 
