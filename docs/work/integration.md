@@ -2,8 +2,8 @@
 
 - Owner: `/root/integration` (shell/CLI feature)
 - Paths: `cmd`, root `internal/ui` shell/settings and legacy UI files/tests
-- Status: shell and CLI implementation complete; feature-branch integration pending
-- Validation: formatting and whitespace checks pass; focused Go checks will run after self-integration
+- Status: shell and CLI implementation integrated into `feature/package-split`
+- Validation: `/workspace/toolchains/go/bin/go test ./cmd/review-my-slop ./internal/ui` passed
 
 ## Legacy UI test migration
 
