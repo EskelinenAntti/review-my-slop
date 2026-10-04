@@ -1,12 +1,14 @@
-package comments
+package prompt
 
 import (
 	"fmt"
 	"io"
 	"strings"
+
+	"github.com/eskelinenantti/review-my-slop/internal/comments"
 )
 
-func WritePrompt(w io.Writer, comments []Comment) error {
+func Write(w io.Writer, comments []comments.Comment) error {
 	if len(comments) == 0 {
 		_, err := fmt.Fprintln(w, "No pending review comments.")
 		return err
@@ -39,7 +41,7 @@ func WritePrompt(w io.Writer, comments []Comment) error {
 	return nil
 }
 
-func describeRange(anchor Anchor) string {
+func describeRange(anchor comments.Anchor) string {
 	var sides []string
 	if anchor.OldStart > 0 {
 		sides = append(sides, lineRange("old", anchor.OldStart, anchor.OldEnd))

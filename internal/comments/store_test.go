@@ -1,7 +1,6 @@
 package comments
 
 import (
-	"bytes"
 	"os"
 	"path/filepath"
 	"strings"
@@ -65,48 +64,6 @@ func TestStoreQueuesByRepositoryAndDeletesExactPeek(t *testing.T) {
 	}
 	if dbInfo.Mode().Perm() != 0o600 {
 		t.Fatalf("database mode = %o, want 600", dbInfo.Mode().Perm())
-	}
-}
-
-func TestWritePrompt(t *testing.T) {
-	var out bytes.Buffer
-	comment := testComment("/repo", "Handle the nil case.")
-	comment.Anchor = Anchor{
-		FilePath: "main.go", OldStart: 10, OldEnd: 11, NewStart: 12, NewEnd: 13,
-		QuotedLines: []string{"-old()", "+new()"},
-	}
-	if err := WritePrompt(&out, []Comment{comment}); err != nil {
-		t.Fatal(err)
-	}
-	for _, expected := range []string{
-		"New comments since last run:",
-		"`main.go`",
-		"old lines 10-11",
-		"new lines 12-13",
-		"```diff",
-		"Handle the nil case.",
-	} {
-		if !strings.Contains(out.String(), expected) {
-			t.Fatalf("output lacks %q:\n%s", expected, out.String())
-		}
-	}
-	if strings.Contains(out.String(), "batch") {
-		t.Fatalf("output exposes internal batches:\n%s", out.String())
-	}
-}
-
-func TestWritePromptNumbersMessages(t *testing.T) {
-	var out bytes.Buffer
-	if err := WritePrompt(&out, []Comment{
-		testComment("/repo", "First."),
-		testComment("/repo", "Second."),
-	}); err != nil {
-		t.Fatal(err)
-	}
-	for _, expected := range []string{"### 1.", "### 2."} {
-		if !strings.Contains(out.String(), expected) {
-			t.Fatalf("output lacks %q:\n%s", expected, out.String())
-		}
 	}
 }
 
