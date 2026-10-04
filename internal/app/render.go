@@ -1,11 +1,7 @@
 package app
 
 import (
-	"strings"
-
 	tea "charm.land/bubbletea/v2"
-	"charm.land/lipgloss/v2"
-	"github.com/charmbracelet/x/ansi"
 	"github.com/eskelinenantti/review-my-slop/internal/ui/helpscreen"
 )
 
@@ -19,38 +15,14 @@ func (m model) View() tea.View {
 	return result
 }
 func (m model) render() string {
-	var rendered string
 	switch m.mode {
 	case modeHelp:
 		return m.renderHelp()
 	case modeComments:
-		rendered = m.commentView.Render()
+		return m.commentView.Render(m.err)
 	default:
-		rendered = m.diffView.Render()
+		return m.diffView.Render(m.err)
 	}
-	if m.err != nil {
-		lines := strings.Split(rendered, "\n")
-		footer := len(lines) - 2
-		message := lipgloss.NewStyle().Foreground(lipgloss.Red).Bold(true).Render(m.err.Error())
-		if m.mode == modeComments {
-			lines[footer] = message
-		} else {
-			// Diff footers have a right-aligned label separated by padding.
-			// Preserve that label while replacing the application status.
-			plain := ansi.Strip(lines[footer])
-			label := ""
-			index := max(strings.LastIndex(plain, "local changes"), strings.LastIndex(plain, "branch changes from "))
-			if index >= 0 {
-				label = plain[index:]
-			}
-			right := lipgloss.NewStyle().Faint(true).Render(label)
-			width := max(20, m.width)
-			message = ansi.Truncate(message, max(0, width-lipgloss.Width(right)-1), "")
-			lines[footer] = message + strings.Repeat(" ", max(1, width-lipgloss.Width(message)-lipgloss.Width(right))) + right
-		}
-		rendered = strings.Join(lines, "\n")
-	}
-	return rendered
 }
 func (m model) renderHelp() string {
 	bindings := []helpscreen.Binding{

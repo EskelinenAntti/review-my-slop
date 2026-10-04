@@ -97,7 +97,6 @@ type model struct {
 	diffOptions  diffscreen.Options
 	comments     commentState
 	edit         commentEdit
-	searchQuery  []rune
 
 	save       saveCommentFunc
 	delete     deleteCommentFunc
@@ -280,9 +279,7 @@ func (m model) updateKey(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	case "?":
 		m.mode = modeHelp
 	case "/":
-		m.diffView.ClearSelection()
 		m.mode = modeSearch
-		m.searchQuery = nil
 		m.diffView.BeginSearch()
 	case "n":
 		m.diffView.Find(diffscreen.Forward)

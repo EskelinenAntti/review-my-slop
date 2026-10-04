@@ -40,7 +40,7 @@ func TestMovementKeepsSelectedCommentVisible(t *testing.T) {
 	v := New(items)
 	v.Resize(80, 7)
 	v.Move(100)
-	lines := strings.Split(ansi.Strip(v.Render()), "\n")
+	lines := strings.Split(ansi.Strip(v.Render(nil)), "\n")
 	if !strings.Contains(strings.Join(lines[1:5], "\n"), ">   comment 9") {
 		t.Fatalf("last selection hidden: %q", lines)
 	}
@@ -48,7 +48,7 @@ func TestMovementKeepsSelectedCommentVisible(t *testing.T) {
 		t.Fatalf("footer misplaced: %q", lines)
 	}
 	v.Resize(80, 5)
-	if !strings.Contains(v.Render(), "comment 9") {
+	if !strings.Contains(v.Render(nil), "comment 9") {
 		t.Fatal("resize hid selection")
 	}
 	v.Move(-100)
@@ -65,7 +65,7 @@ func TestEmptyListAndInputOwnership(t *testing.T) {
 	if _, ok := v.Selected(); ok {
 		t.Fatal("empty list has a selection")
 	}
-	if !strings.Contains(v.Render(), "No pending comments.") {
+	if !strings.Contains(v.Render(nil), "No pending comments.") {
 		t.Fatal("empty state missing")
 	}
 	items := []comments.Comment{{ID: "one", Body: "original"}}
@@ -78,5 +78,18 @@ func TestEmptyListAndInputOwnership(t *testing.T) {
 	v.Update(nil)
 	if _, ok := v.Selected(); ok {
 		t.Fatal("cleared list has a selection")
+	}
+}
+
+func TestRenderErrorKeepsScreenLayout(t *testing.T) {
+	v := New([]comments.Comment{{ID: "one", Body: "pending"}})
+	v.Resize(25, 7)
+	normal := strings.Split(ansi.Strip(v.Render(nil)), "\n")
+	failed := strings.Split(ansi.Strip(v.Render(fmt.Errorf("storage failed\n%s", strings.Repeat("x", 60)))), "\n")
+	if len(failed) != len(normal) || strings.Join(failed[:5], "\n") != strings.Join(normal[:5], "\n") {
+		t.Fatal("error changed the screen body or height")
+	}
+	if !strings.HasPrefix(failed[5], "storage failed ") || ansi.StringWidth(failed[5]) != 25 || !strings.Contains(v.Render(nil), "j/k move") {
+		t.Fatalf("error footer=%q", failed[5])
 	}
 }
