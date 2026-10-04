@@ -21,12 +21,12 @@ func (m model) updateComments(name string) (tea.Model, tea.Cmd) {
 		m.quitting = true
 		return m, tea.Quit
 	case "j", "down":
-		m.commentList.Move(1)
+		m.commentView.Move(1)
 	case "k", "up":
-		m.commentList.Move(-1)
+		m.commentView.Move(-1)
 	case "enter", "e":
 		if len(m.comments.items) > 0 {
-			selected, ok := m.commentList.Selected()
+			selected, ok := m.commentView.Selected()
 			if !ok {
 				return m, nil
 			}
@@ -43,7 +43,7 @@ func (m model) updateComments(name string) (tea.Model, tea.Cmd) {
 		}
 	case "D":
 		if len(m.comments.items) > 0 {
-			if selected, ok := m.commentList.Selected(); ok {
+			if selected, ok := m.commentView.Selected(); ok {
 				m.deleteComment(m.commentIndex(selected))
 			}
 		}
@@ -52,7 +52,7 @@ func (m model) updateComments(name string) (tea.Model, tea.Cmd) {
 }
 
 func (m *model) beginComment() (tea.Cmd, error) {
-	file, lines, ok := m.diff.Selected()
+	file, lines, ok := m.diffView.Selected()
 	if !ok {
 		return nil, fmt.Errorf("select code lines before commenting")
 	}
@@ -73,7 +73,7 @@ func (m *model) finishCommentEdit() {
 			m.deleteComment(m.edit.index)
 		}
 		m.clearCommentEdit()
-		m.diff.ClearSelection()
+		m.diffView.ClearSelection()
 		return
 	}
 	if m.save == nil {
@@ -98,14 +98,14 @@ func (m *model) finishCommentEdit() {
 		m.comments.items[m.edit.index] = saved
 	} else {
 		m.comments.items = append(m.comments.items, saved)
-		m.commentList.Update(m.comments.items)
-		m.commentList.Move(len(m.comments.items))
+		m.commentView.Update(m.comments.items)
+		m.commentView.Move(len(m.comments.items))
 	}
 	m.comments.revision++
-	m.commentList.Update(m.comments.items)
+	m.commentView.Update(m.comments.items)
 	m.clearCommentEdit()
 	m.err = nil
-	m.diff.ClearSelection()
+	m.diffView.ClearSelection()
 }
 
 func (m *model) deleteComment(index int) {
@@ -121,7 +121,7 @@ func (m *model) deleteComment(index int) {
 		return
 	}
 	m.comments.items = append(m.comments.items[:index], m.comments.items[index+1:]...)
-	m.commentList.Update(m.comments.items)
+	m.commentView.Update(m.comments.items)
 	m.comments.revision++
 	m.err = nil
 }
@@ -141,7 +141,7 @@ func (m model) openCurrentLine() (tea.Cmd, error) {
 }
 
 func (m model) sourceLocation() (string, int, error) {
-	file, line, ok := m.diff.Current()
+	file, line, ok := m.diffView.Current()
 	if !ok {
 		return "", 0, fmt.Errorf("select a code line to open in $EDITOR")
 	}
