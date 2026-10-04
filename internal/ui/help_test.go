@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/eskelinenantti/review-my-slop/internal/comments"
 	patchscreen "github.com/eskelinenantti/review-my-slop/internal/ui/patch"
 )
@@ -30,8 +31,8 @@ func TestShellHelpShowsBindingsAndCloses(t *testing.T) {
 		}
 	}
 	lines := strings.Split(help, "\n")
-	if strings.TrimSpace(lines[len(lines)-2]) != "? or Esc closes help" {
-		t.Fatalf("help footer is not at the bottom: %q", lines[len(lines)-2])
+	if footer := strings.TrimSpace(ansi.Strip(lines[len(lines)-2])); footer != "? or Esc closes help" {
+		t.Fatalf("help footer is not at the bottom: %q", footer)
 	}
 	model.Update(tea.KeyPressMsg(tea.Key{Code: tea.KeyEsc}))
 	if strings.Contains(model.Render(), "review-my-slop help") {
