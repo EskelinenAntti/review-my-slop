@@ -18,28 +18,28 @@ func (m *model) toggleSideBySide() {
 
 func (m *model) setSideBySide(enabled bool) {
 	m.diffOptions.SideBySide = enabled
-	m.diff.Configure(m.diffOptions)
+	m.diffView.Configure(m.diffOptions)
 }
 
 func (m model) updateSearch(name string, key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	switch name {
 	case "esc":
-		m.diff.CancelSearch()
+		m.diffView.CancelSearch()
 		m.mode = modeBrowse
 		m.searchQuery = nil
 	case "enter":
-		m.diff.AcceptSearch()
+		m.diffView.AcceptSearch()
 		m.mode = modeBrowse
 		m.searchQuery = nil
 	case "backspace":
 		if len(m.searchQuery) > 0 {
 			m.searchQuery = m.searchQuery[:len(m.searchQuery)-1]
 		}
-		m.diff.PreviewSearch(string(m.searchQuery))
+		m.diffView.PreviewSearch(string(m.searchQuery))
 	default:
 		if key.Text != "" {
 			m.searchQuery = append(m.searchQuery, []rune(key.Text)...)
-			m.diff.PreviewSearch(string(m.searchQuery))
+			m.diffView.PreviewSearch(string(m.searchQuery))
 		}
 	}
 	return m, nil

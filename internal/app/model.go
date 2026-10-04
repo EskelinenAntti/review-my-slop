@@ -85,8 +85,8 @@ type commentEdit struct {
 type model struct {
 	ctx context.Context
 
-	diff        *diffscreen.View
-	commentList *commentscreen.View
+	diffView    *diffscreen.View
+	commentView *commentscreen.View
 	width       int
 	height      int
 	mode        mode
@@ -117,7 +117,7 @@ func newModel(p patch.Patch, comments []comments.Comment, save saveCommentFunc, 
 		ctx:          context.Background(),
 		currentPatch: p,
 		comments:     commentState{items: comments},
-		commentList:  commentscreen.New(comments),
+		commentView:  commentscreen.New(comments),
 		edit:         commentEdit{index: -1},
 		width:        size.Width,
 		height:       size.Height,
@@ -133,7 +133,7 @@ func newModel(p patch.Patch, comments []comments.Comment, save saveCommentFunc, 
 			keymap.Sequence{Prefix: "ctrl+w", Keys: []string{"h", "l", "ctrl+w"}},
 		),
 	}
-	m.diff = diffscreen.New(p, m.diffOptions)
+	m.diffView = diffscreen.New(p, m.diffOptions)
 	m.resizeScreens()
 	return m
 }
@@ -181,7 +181,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.BackgroundColorMsg:
 		if dark := msg.IsDark(); dark != m.diffOptions.Dark {
 			m.diffOptions.Dark = dark
-			m.diff.Configure(m.diffOptions)
+			m.diffView.Configure(m.diffOptions)
 		}
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
@@ -202,7 +202,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.err = fmt.Errorf("refresh comments: %w", msg.err)
 		} else {
 			m.comments.items = msg.comments
-			m.commentList.Update(m.comments.items)
+			m.commentView.Update(m.comments.items)
 			m.err = nil
 		}
 	case sourceEditorFinishedMsg:
@@ -250,11 +250,11 @@ func (m model) loadComments() tea.Cmd {
 
 func (m *model) updatePatch(p patch.Patch) {
 	m.currentPatch = p
-	m.diff.Update(p)
+	m.diffView.Update(p)
 }
 func (m *model) resizeScreens() {
-	m.diff.Resize(m.width, m.height)
-	m.commentList.Resize(m.width, m.height)
+	m.diffView.Resize(m.width, m.height)
+	m.commentView.Resize(m.width, m.height)
 }
 
 func (m model) updateKey(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
@@ -280,54 +280,54 @@ func (m model) updateKey(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	case "?":
 		m.mode = modeHelp
 	case "/":
-		m.diff.ClearSelection()
+		m.diffView.ClearSelection()
 		m.mode = modeSearch
 		m.searchQuery = nil
-		m.diff.BeginSearch()
+		m.diffView.BeginSearch()
 	case "n":
-		m.diff.Find(diffscreen.Forward)
+		m.diffView.Find(diffscreen.Forward)
 	case "N":
-		m.diff.Find(diffscreen.Backward)
+		m.diffView.Find(diffscreen.Backward)
 	case "j", "down":
-		m.diff.Move(diffscreen.NextLine)
+		m.diffView.Move(diffscreen.NextLine)
 	case "k", "up":
-		m.diff.Move(diffscreen.PreviousLine)
+		m.diffView.Move(diffscreen.PreviousLine)
 	case "h", "left":
-		m.diff.ScrollHorizontal(-horizontalScrollStep)
+		m.diffView.ScrollHorizontal(-horizontalScrollStep)
 	case "l", "right":
-		m.diff.ScrollHorizontal(horizontalScrollStep)
+		m.diffView.ScrollHorizontal(horizontalScrollStep)
 	case "0":
-		m.diff.ScrollHorizontal(-int(^uint(0) >> 1))
+		m.diffView.ScrollHorizontal(-int(^uint(0) >> 1))
 	case "$":
-		m.diff.ScrollHorizontal(int(^uint(0) >> 1))
+		m.diffView.ScrollHorizontal(int(^uint(0) >> 1))
 	case "ctrl+d":
-		m.diff.Move(diffscreen.NextPage)
+		m.diffView.Move(diffscreen.NextPage)
 	case "ctrl+u":
-		m.diff.Move(diffscreen.PreviousPage)
+		m.diffView.Move(diffscreen.PreviousPage)
 	case "g g":
-		m.diff.Move(diffscreen.FirstLine)
+		m.diffView.Move(diffscreen.FirstLine)
 	case "G":
-		m.diff.Move(diffscreen.LastLine)
+		m.diffView.Move(diffscreen.LastLine)
 	case "] f":
-		m.diff.Move(diffscreen.NextFile)
+		m.diffView.Move(diffscreen.NextFile)
 	case "[ f":
-		m.diff.Move(diffscreen.PreviousFile)
+		m.diffView.Move(diffscreen.PreviousFile)
 	case "z z":
-		m.diff.Align(diffscreen.Center)
+		m.diffView.Align(diffscreen.Center)
 	case "z t":
-		m.diff.Align(diffscreen.Top)
+		m.diffView.Align(diffscreen.Top)
 	case "z b":
-		m.diff.Align(diffscreen.Bottom)
+		m.diffView.Align(diffscreen.Bottom)
 	case "ctrl+w h":
-		m.diff.Move(diffscreen.OldPane)
+		m.diffView.Move(diffscreen.OldPane)
 	case "ctrl+w l":
-		m.diff.Move(diffscreen.NewPane)
+		m.diffView.Move(diffscreen.NewPane)
 	case "ctrl+w ctrl+w":
-		m.diff.Move(diffscreen.OtherPane)
+		m.diffView.Move(diffscreen.OtherPane)
 	case "v":
-		m.diff.ToggleSelection()
+		m.diffView.ToggleSelection()
 	case "esc":
-		m.diff.ClearSelection()
+		m.diffView.ClearSelection()
 	case "c":
 		cmd, err := m.beginComment()
 		if err != nil {
@@ -344,7 +344,7 @@ func (m model) updateKey(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return m, cmd
 	case "C":
 		m.mode = modeComments
-		m.commentList.Update(m.comments.items)
+		m.commentView.Update(m.comments.items)
 		return m, m.loadComments()
 	case "R":
 		return m, m.loadRefresh()
@@ -357,7 +357,7 @@ func (m model) updateKey(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		} else {
 			m.kind = patch.Unstaged
 		}
-		m.diff.ClearSelection()
+		m.diffView.ClearSelection()
 		return m, m.loadRefresh()
 	case "t":
 		m.toggleSideBySide()

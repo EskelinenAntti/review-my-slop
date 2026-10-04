@@ -102,18 +102,18 @@ func TestSideBySideToggleStillSavesPreference(t *testing.T) {
 
 func TestRefreshTranslatesCursorAndSelection(t *testing.T) {
 	m := testModel(modelPatch(), nil, nil)
-	m.diff.Move(diffscreen.NextLine)
-	m.diff.ToggleSelection()
-	m.diff.Move(diffscreen.NextLine)
-	_, want, _ := m.diff.Current()
+	m.diffView.Move(diffscreen.NextLine)
+	m.diffView.ToggleSelection()
+	m.diffView.Move(diffscreen.NextLine)
+	_, want, _ := m.diffView.Current()
 	refreshed := modelPatch()
 	refreshed.Files[0].Metadata = []string{"new metadata"}
 	m.updatePatch(refreshed)
-	_, got, ok := m.diff.Current()
+	_, got, ok := m.diffView.Current()
 	if !ok || got != want {
 		t.Fatalf("focused line=%#v, want %#v", got, want)
 	}
-	_, lines, ok := m.diff.Selected()
+	_, lines, ok := m.diffView.Selected()
 	if !ok || len(lines) != 2 {
 		t.Fatalf("selection=%#v", lines)
 	}
@@ -124,15 +124,15 @@ func TestUnchangedRefreshPreservesStateAndClearsError(t *testing.T) {
 	p.Files[0].OldPath, p.Files[0].NewPath = "long.go", "long.go"
 	m := newModel(p, nil, nil, initialLayout{size: size{Width: 40, Height: 8}})
 	for range 8 {
-		m.diff.Move(diffscreen.NextLine)
+		m.diffView.Move(diffscreen.NextLine)
 	}
-	m.diff.ToggleSelection()
-	m.diff.Move(diffscreen.NextLine)
-	m.diff.ScrollHorizontal(12)
-	before := m.diff.Render()
+	m.diffView.ToggleSelection()
+	m.diffView.Move(diffscreen.NextLine)
+	m.diffView.ScrollHorizontal(12)
+	before := m.diffView.Render()
 	m.err = fmt.Errorf("previous refresh failed")
 	m = updateModel(t, m, refreshDiffMsg{patch: p})
-	if got := m.diff.Render(); got != before {
+	if got := m.diffView.Render(); got != before {
 		t.Fatal("refresh changed presentation state")
 	}
 	if m.err != nil {
@@ -142,9 +142,9 @@ func TestUnchangedRefreshPreservesStateAndClearsError(t *testing.T) {
 
 func TestRefreshFailureRetainsView(t *testing.T) {
 	m := testModel(modelPatch(), nil, nil)
-	before := m.diff.Render()
+	before := m.diffView.Render()
 	m = updateModel(t, m, refreshDiffMsg{err: fmt.Errorf("git failed")})
-	if m.err == nil || m.diff.Render() != before || m.currentPatch.Root != "/repo" {
+	if m.err == nil || m.diffView.Render() != before || m.currentPatch.Root != "/repo" {
 		t.Fatalf("patch=%#v error=%v", m.currentPatch, m.err)
 	}
 }
@@ -152,11 +152,11 @@ func TestRefreshFailureRetainsView(t *testing.T) {
 func TestViewSwitchPreservesSemanticCursor(t *testing.T) {
 	m := testModel(modelPatch(), nil, nil)
 	m = updateModel(t, m, tea.WindowSizeMsg{Width: 120, Height: 30})
-	m.diff.Move(diffscreen.NextLine)
-	m.diff.Move(diffscreen.NextLine)
-	_, want, _ := m.diff.Current()
+	m.diffView.Move(diffscreen.NextLine)
+	m.diffView.Move(diffscreen.NextLine)
+	_, want, _ := m.diffView.Current()
 	m.setSideBySide(true)
-	_, got, ok := m.diff.Current()
+	_, got, ok := m.diffView.Current()
 	if !ok || got != want {
 		t.Fatalf("focused line=%#v, want %#v", got, want)
 	}
@@ -241,7 +241,7 @@ func TestCommentsMenuScrollsWithinScreenBody(t *testing.T) {
 	m.width, m.height = 80, 7
 	m.mode = modeComments
 	m.resizeScreens()
-	m.commentList.Move(len(items))
+	m.commentView.Move(len(items))
 
 	rendered := strings.Split(ansi.Strip(m.render()), "\n")
 	if !strings.Contains(strings.Join(rendered[1:m.height-2], "\n"), "comment 9") {
