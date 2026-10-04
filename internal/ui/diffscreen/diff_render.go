@@ -73,11 +73,15 @@ func (v *diffView) renderFileRow(path string, width int) string {
 }
 
 func (v *diffView) renderSplitRow(current entry, y int, viewport diffViewport, cursor diffCursor, selection *diffSelection) string {
-	leftWidth := max(20, (viewport.Width-3)/2)
-	rightWidth := max(20, viewport.Width-3-leftWidth)
+	leftWidth, rightWidth := splitPaneWidths(viewport.Width)
 	left := v.renderPane(current, y, left, leftWidth, viewport.LeftColumn, cursor, selection)
 	right := v.renderPane(current, y, right, rightWidth, viewport.LeftColumn, cursor, selection)
 	return left + " │ " + right
+}
+
+func splitPaneWidths(width int) (int, int) {
+	left := max(20, (width-3)/2)
+	return left, max(20, width-3-left)
 }
 
 func (v *diffView) renderPane(current entry, y int, pane diffPane, width, offset int, cursor diffCursor, selection *diffSelection) string {
