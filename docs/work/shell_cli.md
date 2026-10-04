@@ -5,6 +5,10 @@
 - Status: shell and CLI implementation integrated into `feature/package-split`
 - Validation: `/workspace/toolchains/go/bin/go test ./cmd/review-my-slop ./internal/ui` passed
 
+The root task owner ran the combined acceptance checks at `2195b47`; `go test ./...`,
+`go test -race ./...`, `go vet ./...`, and `go build ./cmd/review-my-slop` all
+passed. The subsequent branch changes were documentation only.
+
 ## Legacy UI test migration
 
 The old root UI implementation and test files are removed only after their
