@@ -28,16 +28,16 @@ func TestSplitRowsPairOnlyAdjacentChangeBlocks(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			p := patch.Patch{Files: []patch.File{{DisplayPath: "file.go", Hunks: []patch.Hunk{{Header: "@@", Lines: tc.lines}}}}}
-			v := newSideBySideView(p, true)
+			v := splitProjection(p, true)
 			var got [][2]string
-			for row, entry := range v.rows {
-				if entry.kind != lineRow {
+			for row, displayRow := range v.rows {
+				if displayRow.kind != lineRow {
 					continue
 				}
 				var texts [2]string
 				for _, pane := range []diffPane{left, right} {
 					if cursor, ok := v.cursorAt(row, pane); ok {
-						line, _ := v.line(cursor)
+						line := v.sourceAt(cursor).line
 						texts[pane] = line.Text
 					}
 				}
@@ -59,9 +59,9 @@ func TestCursorRestorationPrioritizesIdentityBeforeDistance(t *testing.T) {
 	makePatch := func(lines []patch.Line) patch.Patch {
 		return patch.Patch{Files: []patch.File{{OldPath: "file.go", NewPath: "file.go", Hunks: []patch.Hunk{{Header: "@@", Lines: lines}}}}}
 	}
-	old := newUnifiedView(makePatch([]patch.Line{context, target}), true)
-	cursor, _ := old.last()
-	identity := identify(old, cursor)
+	old := unifiedProjection(makePatch([]patch.Line{context, target}), true)
+	cursor, _ := old.lastCursor()
+	identity := old.sourceAt(cursor)
 	for _, tc := range []struct {
 		name  string
 		lines []patch.Line
@@ -70,14 +70,14 @@ func TestCursorRestorationPrioritizesIdentityBeforeDistance(t *testing.T) {
 		{"numbers before text", []patch.Line{code(patch.Addition, "target", 20), code(patch.Addition, "changed text", 10)}, code(patch.Addition, "changed text", 10)},
 		{"text before distance", []patch.Line{code(patch.Addition, "target", 20), code(patch.Addition, "different", 21)}, code(patch.Addition, "target", 20)},
 		{"kind before distance", []patch.Line{code(patch.Addition, "different", 20), context}, code(patch.Addition, "different", 20)},
-		{"nearest matching text", []patch.Line{code(patch.Addition, "target", 20), code(patch.Addition, "target", 21)}, code(patch.Addition, "target", 21)},
+		{"nearestVisibleCursor matching text", []patch.Line{code(patch.Addition, "target", 20), code(patch.Addition, "target", 21)}, code(patch.Addition, "target", 21)},
 		{"equidistant matching text", []patch.Line{code(patch.Addition, "target", 20), context, code(patch.Addition, "target", 22)}, code(patch.Addition, "target", 20)},
-		{"nearest remaining line", []patch.Line{context, code(patch.Context, "nearby", 2)}, code(patch.Context, "nearby", 2)},
+		{"nearestVisibleCursor remaining line", []patch.Line{context, code(patch.Context, "nearby", 2)}, code(patch.Context, "nearby", 2)},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			next := newUnifiedView(makePatch(tc.lines), true)
-			restored, ok := next.findCursor(identity)
-			line, _ := next.line(restored)
+			next := unifiedProjection(makePatch(tc.lines), true)
+			restored, ok := next.restoreCursor(identity)
+			line := next.sourceAt(restored).line
 			if !ok || line != tc.want {
 				t.Fatalf("restored=%#v, want %#v", line, tc.want)
 			}

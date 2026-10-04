@@ -10,48 +10,48 @@ import (
 )
 
 func TestUnifiedNavigationSearchAndFileJumps(t *testing.T) {
-	v := newUnifiedView(testPatch(), true)
-	first, ok := v.first()
+	v := unifiedProjection(testPatch(), true)
+	first, ok := v.firstCursor()
 	if !ok {
 		t.Fatal("First returned no cursor")
 	}
-	line, _ := v.line(first)
+	line := v.sourceAt(first).line
 	if line.Text != "before" {
 		t.Fatalf("first line = %q", line.Text)
 	}
-	next, ok := v.move(first, forward)
+	next, ok := v.stepCursor(first, Forward)
 	if !ok {
 		t.Fatal("Move returned no cursor")
 	}
-	line, _ = v.line(next)
+	line = v.sourceAt(next).line
 	if line.Kind != patch.Deletion {
 		t.Fatalf("next kind = %v", line.Kind)
 	}
-	match, ok := v.search("added", first, forward)
+	match, ok := v.findMatch("added", first, Forward)
 	if !ok {
 		t.Fatal("Search returned no cursor")
 	}
-	line, _ = v.line(match)
+	line = v.sourceAt(match).line
 	if line.Text != "added one" {
 		t.Fatalf("match = %q", line.Text)
 	}
-	jumped, ok := v.jumpFile(first, forward)
+	jumped, ok := v.jumpFile(first, Forward)
 	if !ok {
 		t.Fatal("JumpFile returned no cursor")
 	}
-	file, _ := v.file(jumped)
+	file := v.sourceAt(jumped).file
 	if file.DisplayPath != "second.go" {
 		t.Fatalf("jumped file = %q", file.DisplayPath)
 	}
-	if _, ok := v.jumpFile(jumped, forward); ok {
+	if _, ok := v.jumpFile(jumped, Forward); ok {
 		t.Fatal("JumpFile wrapped unexpectedly")
 	}
 }
 
 func TestSplitPairsChangeBlocksAndSupportsEmptyPanes(t *testing.T) {
-	v := newSideBySideView(testPatch(), true)
-	first, _ := v.first()
-	removed, _ := v.move(first, forward)
+	v := splitProjection(testPatch(), true)
+	first, _ := v.firstCursor()
+	removed, _ := v.stepCursor(first, Forward)
 	if removed.pane != right {
 		t.Fatalf("initial pane = %v", removed.pane)
 	}
@@ -59,7 +59,7 @@ func TestSplitPairsChangeBlocksAndSupportsEmptyPanes(t *testing.T) {
 	if !ok {
 		t.Fatal("could not switch to deletion pane")
 	}
-	line, _ := v.line(removed)
+	line := v.sourceAt(removed).line
 	if line.Text != "removed one" {
 		t.Fatalf("left line = %q", line.Text)
 	}
@@ -67,17 +67,17 @@ func TestSplitPairsChangeBlocksAndSupportsEmptyPanes(t *testing.T) {
 	if !ok {
 		t.Fatal("paired addition missing")
 	}
-	line, _ = v.line(added)
+	line = v.sourceAt(added).line
 	if line.Text != "added one" {
 		t.Fatalf("right line = %q", line.Text)
 	}
-	secondRemoved, _ := v.move(removed, forward)
+	secondRemoved, _ := v.stepCursor(removed, Forward)
 	if _, ok := v.switchPane(secondRemoved, right); !ok {
 		t.Fatal("pane switch should find a nearby right line")
 	}
 
 	viewport := v.newViewport(100, 20)
-	rendered := v.render(viewport, added, nil)
+	rendered := v.renderBody(viewport, added, nil)
 	if !strings.Contains(rendered, "removed one") || !strings.Contains(rendered, "added one") {
 		t.Fatalf("paired render missing lines: %q", rendered)
 	}
@@ -89,39 +89,39 @@ func TestSplitPairsChangeBlocksAndSupportsEmptyPanes(t *testing.T) {
 }
 
 func TestSelectionLines(t *testing.T) {
-	v := newUnifiedView(testPatch(), true)
-	first, _ := v.first()
-	last, _ := v.move(first, forward)
-	last, _ = v.move(last, forward)
-	selection := v.beginSelection(first)
+	v := unifiedProjection(testPatch(), true)
+	first, _ := v.firstCursor()
+	last, _ := v.stepCursor(first, Forward)
+	last, _ = v.stepCursor(last, Forward)
+	selection := diffSelection{First: first, Last: first}
 	selection, ok := v.extendSelection(selection, last)
 	if !ok {
 		t.Fatal("selection extension failed")
 	}
-	lines := v.lines(selection)
+	lines := v.selectedLines(selection)
 	if len(lines) != 3 {
 		t.Fatalf("selected lines = %d", len(lines))
 	}
 
-	nextFile, _ := v.jumpFile(first, forward)
+	nextFile, _ := v.jumpFile(first, Forward)
 	if _, ok := v.extendSelection(selection, nextFile); ok {
 		t.Fatal("selection crossed a hunk")
 	}
 }
 
 func TestViewportAlignmentResizeAndScrolling(t *testing.T) {
-	v := newUnifiedView(longPatch(), true)
-	first, _ := v.first()
+	v := unifiedProjection(longPatch(), true)
+	first, _ := v.firstCursor()
 	cursor := first
 	for range 8 {
-		cursor, _ = v.move(cursor, forward)
+		cursor, _ = v.stepCursor(cursor, Forward)
 	}
 	viewport := v.newViewport(30, 5)
 	viewport = v.keepVisible(viewport, cursor)
 	if cursor.row < viewport.top || cursor.row >= viewport.top+viewport.Height {
 		t.Fatalf("cursor not visible: %#v %#v", cursor, viewport)
 	}
-	viewport = v.align(viewport, cursor, middle)
+	viewport = v.align(viewport, cursor, Center)
 	headerHeight := 0
 	if v.hasStickyHeader(viewport.top, viewport.Height) {
 		headerHeight = 1
@@ -138,19 +138,19 @@ func TestViewportAlignmentResizeAndScrolling(t *testing.T) {
 		t.Fatalf("resize = %#v", viewport)
 	}
 	before := cursor
-	viewport, cursor = v.scrollHalfPage(viewport, cursor, forward)
+	viewport, cursor = v.scrollHalfPage(viewport, cursor, Forward)
 	if cursor.row < before.row {
-		t.Fatalf("half page moved backward: %#v -> %#v", before, cursor)
+		t.Fatalf("half page moved Backward: %#v -> %#v", before, cursor)
 	}
 }
 
 func TestViewportProgressUsesVisibleBottom(t *testing.T) {
-	v := newUnifiedView(longPatch(), true)
+	v := unifiedProjection(longPatch(), true)
 	viewport := v.newViewport(30, 5)
 	if progress := v.viewportProgress(viewport); progress <= 0 || progress >= 100 {
 		t.Fatalf("initial progress=%d", progress)
 	}
-	last, _ := v.last()
+	last, _ := v.lastCursor()
 	viewport = v.keepVisible(viewport, last)
 	if progress := v.viewportProgress(viewport); progress != 100 {
 		t.Fatalf("final progress=%d", progress)
@@ -158,21 +158,21 @@ func TestViewportProgressUsesVisibleBottom(t *testing.T) {
 }
 
 func TestHalfPageScrollingMovesCursorToFileBoundaries(t *testing.T) {
-	v := newUnifiedView(longPatch(), true)
-	first, _ := v.first()
-	last, _ := v.last()
+	v := unifiedProjection(longPatch(), true)
+	first, _ := v.firstCursor()
+	last, _ := v.lastCursor()
 	viewport := v.newViewport(30, 5)
 	cursor := first
 
 	for range len(longPatch().Files[0].Hunks[0].Lines) {
-		viewport, cursor = v.scrollHalfPage(viewport, cursor, forward)
+		viewport, cursor = v.scrollHalfPage(viewport, cursor, Forward)
 	}
 	if cursor != last {
 		t.Fatalf("cursor after scrolling down = %#v, want %#v", cursor, last)
 	}
 
 	for range len(longPatch().Files[0].Hunks[0].Lines) {
-		viewport, cursor = v.scrollHalfPage(viewport, cursor, backward)
+		viewport, cursor = v.scrollHalfPage(viewport, cursor, Backward)
 	}
 	if cursor != first {
 		t.Fatalf("cursor after scrolling up = %#v, want %#v", cursor, first)
@@ -181,20 +181,20 @@ func TestHalfPageScrollingMovesCursorToFileBoundaries(t *testing.T) {
 
 func TestFindCursorUsesSemanticIdentityAcrossChangedCoordinates(t *testing.T) {
 	original := testPatch()
-	oldView := newUnifiedView(original, true)
-	cursor, _ := oldView.search("added one", mustFirst(t, oldView), forward)
-	line, _ := oldView.line(cursor)
+	oldView := unifiedProjection(original, true)
+	cursor, _ := oldView.findMatch("added one", mustFirst(t, oldView), Forward)
+	line := oldView.sourceAt(cursor).line
 	changed := testPatch()
 	changed.Files[0].Metadata = []string{"mode changed", "more metadata"}
-	newView := newUnifiedView(changed, true)
-	translated, ok := newView.findCursor(identify(oldView, cursor))
+	newView := unifiedProjection(changed, true)
+	translated, ok := newView.restoreCursor(oldView.sourceAt(cursor))
 	if !ok {
 		t.Fatal("semantic cursor was not found")
 	}
 	if translated.row == cursor.row {
 		t.Fatal("cursor coordinate was reused after rows shifted")
 	}
-	translatedLine, _ := newView.line(translated)
+	translatedLine := newView.sourceAt(translated).line
 	if translatedLine != line {
 		t.Fatalf("translated line = %#v, want %#v", translatedLine, line)
 	}
@@ -202,12 +202,12 @@ func TestFindCursorUsesSemanticIdentityAcrossChangedCoordinates(t *testing.T) {
 
 func TestSplitViewWithOnlyDeletionsStartsInLeftPane(t *testing.T) {
 	p := patch.Patch{Files: []patch.File{{DisplayPath: "deleted.go", Hunks: []patch.Hunk{{Header: "@@", Lines: []patch.Line{{Kind: patch.Deletion, Text: "gone", OldNumber: 1}}}}}}}
-	v := newSideBySideView(p, true)
-	cursor, ok := v.first()
+	v := splitProjection(p, true)
+	cursor, ok := v.firstCursor()
 	if !ok || cursor.pane != left {
 		t.Fatalf("first cursor = %#v, %v", cursor, ok)
 	}
-	line, _ := v.line(cursor)
+	line := v.sourceAt(cursor).line
 	if line.Text != "gone" {
 		t.Fatalf("first line = %q", line.Text)
 	}
@@ -215,24 +215,24 @@ func TestSplitViewWithOnlyDeletionsStartsInLeftPane(t *testing.T) {
 
 func TestFindCursorFallsBackNearRemovedLine(t *testing.T) {
 	original := testPatch()
-	oldView := newUnifiedView(original, true)
-	cursor, _ := oldView.search("removed two", mustFirst(t, oldView), forward)
+	oldView := unifiedProjection(original, true)
+	cursor, _ := oldView.findMatch("removed two", mustFirst(t, oldView), Forward)
 	changed := testPatch()
 	changed.Files[0].Hunks[0].Lines = changed.Files[0].Hunks[0].Lines[:2]
-	newView := newUnifiedView(changed, true)
-	fallback, ok := newView.findCursor(identify(oldView, cursor))
+	newView := unifiedProjection(changed, true)
+	fallback, ok := newView.restoreCursor(oldView.sourceAt(cursor))
 	if !ok {
 		t.Fatal("nearby cursor was not found")
 	}
-	fallbackLine, _ := newView.line(fallback)
+	fallbackLine := newView.sourceAt(fallback).line
 	if fallbackLine.Kind != patch.Deletion {
 		t.Fatalf("fallback kind = %v", fallbackLine.Kind)
 	}
 }
 
-func mustFirst(t *testing.T, v *diffView) diffCursor {
+func mustFirst(t *testing.T, v *projection) diffCursor {
 	t.Helper()
-	cursor, ok := v.first()
+	cursor, ok := v.firstCursor()
 	if !ok {
 		t.Fatal("no first cursor")
 	}
@@ -260,10 +260,10 @@ func longPatch() patch.Patch {
 	return patch.Patch{Files: []patch.File{{DisplayPath: "long.go", Hunks: []patch.Hunk{{Header: "@@", Lines: lines}}}}}
 }
 
-func newUnifiedView(p patch.Patch, dark bool) *diffView {
-	return newDiffView(p, false, dark)
+func unifiedProjection(p patch.Patch, dark bool) *projection {
+	return buildProjection(p, false, dark)
 }
 
-func newSideBySideView(p patch.Patch, dark bool) *diffView {
-	return newDiffView(p, true, dark)
+func splitProjection(p patch.Patch, dark bool) *projection {
+	return buildProjection(p, true, dark)
 }
