@@ -154,7 +154,7 @@ func (m Model) openCurrentLine() (tea.Cmd, error) {
 		return nil, fmt.Errorf("current line has no editable working-tree location")
 	}
 	if !filepath.IsAbs(path) {
-		path = filepath.Join(m.review.patch.Repository, filepath.FromSlash(path))
+		path = filepath.Join(m.review.patch.Root, filepath.FromSlash(path))
 	}
 	return tea.ExecProcess(SourceCommand(editorCommand, path, int(number)), func(err error) tea.Msg {
 		return sourceEditorFinishedMsg{err: err}

@@ -67,7 +67,6 @@ func TestRefreshTranslatesCursorAndSelection(t *testing.T) {
 	m.move(1)
 	want, _ := m.review.view.Line(m.review.cursor)
 	refreshed := modelPatch()
-	refreshed.Fingerprint = "new"
 	refreshed.Files[0].Metadata = []string{"new metadata"}
 	m.rebuildView(refreshed)
 	got, ok := m.review.view.Line(m.review.cursor)
@@ -76,6 +75,42 @@ func TestRefreshTranslatesCursorAndSelection(t *testing.T) {
 	}
 	if m.review.selection == nil || len(m.review.view.Lines(*m.review.selection)) != 2 {
 		t.Fatalf("selection was not translated: %#v", m.review.selection)
+	}
+}
+
+func TestUnchangedRefreshRebuildsAndPreservesState(t *testing.T) {
+	p := longPatch()
+	p.Files[0].OldPath, p.Files[0].NewPath = "long.go", "long.go"
+	m := New(p, nil, nil, InitialLayout{Size: Size{Width: 40, Height: 8}})
+	for range 8 {
+		m.move(Forward)
+	}
+	selection := m.review.view.BeginSelection(m.review.cursor)
+	m.review.selection = &selection
+	m.move(Forward)
+	m.review.viewport = m.review.view.ScrollHorizontal(m.review.viewport, 12)
+	oldView := m.review.view
+	wantCursor, wantViewport, wantSelection := m.review.cursor, m.review.viewport, *m.review.selection
+	m.err = fmt.Errorf("previous refresh failed")
+
+	m = updateModel(t, m, refreshDiffMsg{patch: p})
+	if m.review.view == oldView {
+		t.Fatal("unchanged refresh did not rebuild")
+	}
+	if m.review.cursor != wantCursor || m.review.viewport != wantViewport || m.review.selection == nil || *m.review.selection != wantSelection {
+		t.Fatalf("state after refresh: cursor=%#v viewport=%#v selection=%#v", m.review.cursor, m.review.viewport, m.review.selection)
+	}
+	if m.err != nil {
+		t.Fatalf("refresh did not clear error: %v", m.err)
+	}
+}
+
+func TestRefreshFailureRetainsView(t *testing.T) {
+	m := testModel(modelPatch(), nil, nil)
+	oldView, oldCursor := m.review.view, m.review.cursor
+	m = updateModel(t, m, refreshDiffMsg{err: fmt.Errorf("git failed")})
+	if m.err == nil || m.review.view != oldView || m.review.cursor != oldCursor || m.review.patch.Root != "/repo" {
+		t.Fatalf("view=%v cursor=%#v patch=%#v error=%v", m.review.view, m.review.cursor, m.review.patch, m.err)
 	}
 }
 
@@ -106,7 +141,7 @@ func TestCommentSaveUsesPatchAndPreservesAnchor(t *testing.T) {
 	m.comments.body = "comment"
 	m.comments.editAnchor = comments.Anchor{FilePath: "main.go"}
 	m.finishCommentEdit()
-	if savedPatch.Repository != "/repo" || len(m.comments.items) != 1 || m.comments.items[0].Anchor.FilePath != "main.go" {
+	if savedPatch.Root != "/repo" || len(m.comments.items) != 1 || m.comments.items[0].Anchor.FilePath != "main.go" {
 		t.Fatalf("saved patch/comments = %#v %#v", savedPatch, m.comments.items)
 	}
 }
@@ -191,5 +226,5 @@ func TestCommentDraftRoundTrip(t *testing.T) {
 }
 
 func modelPatch() patch.Patch {
-	return patch.Patch{Repository: "/repo", Fingerprint: "old", Files: []patch.File{{DisplayPath: "main.go", OldPath: "main.go", NewPath: "main.go", Hunks: []patch.Hunk{{Header: "@@ -1,2 +1,2 @@", Lines: []patch.Line{{Kind: patch.Context, Text: "keep()", OldNumber: 1, NewNumber: 1}, {Kind: patch.Deletion, Text: "old()", OldNumber: 2}, {Kind: patch.Addition, Text: "new()", NewNumber: 2}}}}}}}
+	return patch.Patch{Root: "/repo", Files: []patch.File{{DisplayPath: "main.go", OldPath: "main.go", NewPath: "main.go", Hunks: []patch.Hunk{{Header: "@@ -1,2 +1,2 @@", Lines: []patch.Line{{Kind: patch.Context, Text: "keep()", OldNumber: 1, NewNumber: 1}, {Kind: patch.Deletion, Text: "old()", OldNumber: 2}, {Kind: patch.Addition, Text: "new()", NewNumber: 2}}}}}}}
 }

@@ -63,7 +63,11 @@ func (v *diffView) Anchor(selection Selection) (comments.Anchor, error) {
 	first := v.rows[selection.First.Coordinate.Y]
 	file := v.patch.Files[first.file]
 	hunk := file.Hunks[first.hunk]
-	anchor := comments.Anchor{FilePath: file.Path()}
+	path := file.NewPath
+	if path == "" {
+		path = file.OldPath
+	}
+	anchor := comments.Anchor{FilePath: path}
 	start, end := selection.First.Coordinate.Y, selection.Last.Coordinate.Y
 	if start > end {
 		start, end = end, start

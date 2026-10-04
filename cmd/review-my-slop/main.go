@@ -2,9 +2,13 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/term"
@@ -40,24 +44,16 @@ func run(ctx context.Context, args []string, output io.Writer) error {
 }
 
 func runCode(ctx context.Context) error {
-	current, err := os.Getwd()
-	if err != nil {
-		return err
-	}
 	store, err := comments.OpenDefault()
 	if err != nil {
 		return err
 	}
-	currentReview := review.New(ctx, current, patch.Loader{}, store)
-	loaded, err := currentReview.Load("")
+	currentReview := review.New(ctx, patch.Get, store)
+	loaded, err := currentReview.Load(patch.Unstaged)
 	if err != nil {
 		return err
 	}
 	pending, err := currentReview.Comments(loaded)
-	if err != nil {
-		return err
-	}
-	defaultBranch, err := currentReview.DefaultBranch()
 	if err != nil {
 		return err
 	}
@@ -66,7 +62,6 @@ func runCode(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	model.SetDefaultBranch(defaultBranch)
 	program := tea.NewProgram(model, tea.WithWindowSize(size.Width, size.Height))
 	_, err = program.Run()
 	return err
@@ -83,26 +78,42 @@ func initialTerminalSize() ui.Size {
 }
 
 func runComments(ctx context.Context, output io.Writer) error {
-	current, err := os.Getwd()
-	if err != nil {
-		return err
-	}
-	return runCommentsAt(ctx, current, output)
-}
-
-func runCommentsAt(ctx context.Context, current string, output io.Writer) error {
 	store, err := comments.OpenDefault()
 	if err != nil {
 		return err
 	}
-	currentReview := review.New(ctx, current, patch.Loader{}, store)
-	root, err := currentReview.Repository()
+	root, err := repositoryRoot(ctx)
 	if err != nil {
 		return err
 	}
-	pending, err := currentReview.ExportRepository(output, root)
+	pending, err := store.List(root)
 	if err != nil {
 		return err
 	}
-	return currentReview.AcknowledgeRepository(root, pending)
+	if err := comments.WritePrompt(output, pending); err != nil {
+		return err
+	}
+	ids := make([]string, len(pending))
+	for i, comment := range pending {
+		ids[i] = comment.ID
+	}
+	return store.Acknowledge(root, ids)
+}
+
+func repositoryRoot(ctx context.Context) (string, error) {
+	out, err := exec.CommandContext(ctx, "git", "rev-parse", "--show-toplevel").Output()
+	if ctx.Err() != nil {
+		return "", fmt.Errorf("resolve repository root: %w", ctx.Err())
+	}
+	if err != nil {
+		if exitErr, ok := errors.AsType[*exec.ExitError](err); ok {
+			return "", fmt.Errorf("resolve repository root: %s", strings.TrimSpace(string(exitErr.Stderr)))
+		}
+		return "", fmt.Errorf("resolve repository root: %w", err)
+	}
+	root, err := filepath.EvalSymlinks(strings.TrimSpace(string(out)))
+	if err != nil {
+		return "", fmt.Errorf("resolve repository root: %w", err)
+	}
+	return root, nil
 }

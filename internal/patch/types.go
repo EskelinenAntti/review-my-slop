@@ -1,12 +1,26 @@
 package patch
 
+// Kind selects which changes to review.
+type Kind uint8
+
+const (
+	// Unstaged compares the index to the working tree and includes untracked files.
+	Unstaged Kind = iota
+	// Branch compares the default branch's merge base to the working tree and includes untracked files.
+	Branch
+)
+
+// Patch is a fully loaded snapshot. Its data belongs to the caller and is
+// treated as read-only; exported fields do not enforce immutability.
 type Patch struct {
-	Repository  string
-	Fingerprint string
-	Files       []File
+	Root   string
+	Kind   Kind
+	Branch string // Discovered default branch, or empty if unavailable.
+	Files  []File
 }
 
 type File struct {
+	// Paths are repository-relative; empty means absent on that side.
 	OldPath     string
 	NewPath     string
 	DisplayPath string
@@ -14,13 +28,6 @@ type File struct {
 	NewSource   string
 	Metadata    []string
 	Hunks       []Hunk
-}
-
-func (f File) Path() string {
-	if f.NewPath != "" {
-		return f.NewPath
-	}
-	return f.OldPath
 }
 
 type Hunk struct {
@@ -35,6 +42,7 @@ type Line struct {
 	NewNumber LineNumber
 }
 
+// LineNumber is one-based; zero means absent on that side.
 type LineNumber int
 
 type LineKind uint8

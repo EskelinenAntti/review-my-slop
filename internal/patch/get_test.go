@@ -2,14 +2,16 @@ package patch
 
 import (
 	"context"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 )
 
-func TestLoaderIncludesUnstagedAndUntrackedButNotStagedOnly(t *testing.T) {
+func TestGetIncludesUnstagedAndUntrackedButNotStagedOnly(t *testing.T) {
 	repo := newRepository(t)
 	writeFile(t, repo, "modified.go", "package main\n\nfunc value() int { return 1 }\n")
 	writeFile(t, repo, "staged.txt", "before\n")
@@ -21,13 +23,14 @@ func TestLoaderIncludesUnstagedAndUntrackedButNotStagedOnly(t *testing.T) {
 	git(t, repo, "add", "staged.txt")
 	writeFile(t, repo, "new.py", "def hello():\n    return 'world'\n")
 
-	got, err := (Loader{}).Load(context.Background(), repo)
+	t.Chdir(repo)
+	got, err := Get(context.Background(), Unstaged)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	if got.Repository != repo {
-		t.Fatalf("repository = %q, want %q", got.Repository, repo)
+	if got.Root != repo || got.Kind != Unstaged {
+		t.Fatalf("root = %q, kind = %v", got.Root, got.Kind)
 	}
 	if len(got.Files) != 2 {
 		t.Fatalf("files = %d, want 2: %#v", len(got.Files), got.Files)
@@ -51,9 +54,6 @@ func TestLoaderIncludesUnstagedAndUntrackedButNotStagedOnly(t *testing.T) {
 			}
 		}
 	}
-	if got.Fingerprint == "" {
-		t.Fatal("fingerprint is empty")
-	}
 }
 
 func TestAddedFileKeepsRawAndDisplayPathsSeparate(t *testing.T) {
@@ -66,7 +66,81 @@ func TestAddedFileKeepsRawAndDisplayPathsSeparate(t *testing.T) {
 	}
 }
 
-func TestLoaderShowsBinaryMetadataWithoutBinaryDiffLines(t *testing.T) {
+func TestGetFromSubdirectoryKeepsRawUntrackedPaths(t *testing.T) {
+	repo := newRepository(t)
+	writeFile(t, repo, "nested/odd\nname.go", "package main\n")
+	t.Chdir(filepath.Join(repo, "nested"))
+
+	got, err := Get(context.Background(), Unstaged)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Root != repo || len(got.Files) != 1 {
+		t.Fatalf("patch = %#v", got)
+	}
+	file := got.Files[0]
+	if file.OldPath != "" || file.NewPath != "nested/odd\nname.go" || file.DisplayPath != `nested/odd\nname.go` {
+		t.Fatalf("file paths = %#v", file)
+	}
+}
+
+func TestGetReportsUnavailableBranchAndInvalidKind(t *testing.T) {
+	t.Chdir(newRepository(t))
+	local, err := Get(context.Background(), Unstaged)
+	if err != nil || local.Branch != "" {
+		t.Fatalf("local patch = %#v, error = %v", local, err)
+	}
+	for _, test := range []struct {
+		kind    Kind
+		message string
+	}{
+		{Branch, "default branch is unavailable"},
+		{Kind(255), "unknown patch kind"},
+	} {
+		got, err := Get(context.Background(), test.kind)
+		if err == nil || !strings.Contains(err.Error(), test.message) || !reflect.DeepEqual(got, Patch{}) {
+			t.Fatalf("kind %v: patch = %#v, error = %v", test.kind, got, err)
+		}
+	}
+}
+
+func TestGetOutsideRepositoryReturnsZeroPatch(t *testing.T) {
+	t.Chdir(t.TempDir())
+	got, err := Get(context.Background(), Unstaged)
+	if err == nil || !reflect.DeepEqual(got, Patch{}) {
+		t.Fatalf("patch = %#v, error = %v", got, err)
+	}
+}
+
+func TestGetHonorsCanceledContext(t *testing.T) {
+	t.Chdir(newRepository(t))
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	got, err := Get(ctx, Unstaged)
+	if !errors.Is(err, context.Canceled) || !reflect.DeepEqual(got, Patch{}) {
+		t.Fatalf("patch = %#v, error = %v", got, err)
+	}
+}
+
+func TestGetOmitsLargeUntrackedContents(t *testing.T) {
+	repo := newRepository(t)
+	writeFile(t, repo, "large.txt", strings.Repeat("x", maxFileBytes+1))
+	t.Chdir(repo)
+	got, err := Get(context.Background(), Unstaged)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Files) != 1 {
+		t.Fatalf("files = %#v", got.Files)
+	}
+	file := got.Files[0]
+	if file.OldPath != "" || file.NewPath != "large.txt" || file.NewSource != "" || len(file.Hunks) != 0 ||
+		!strings.Contains(strings.Join(file.Metadata, "\n"), "exceeds 2 MiB") {
+		t.Fatalf("large file = %#v", file)
+	}
+}
+
+func TestGetShowsBinaryMetadataWithoutBinaryDiffLines(t *testing.T) {
 	repo := newRepository(t)
 	writeFile(t, repo, "tracked.bin", "\x00old")
 	git(t, repo, "add", "tracked.bin")
@@ -74,7 +148,8 @@ func TestLoaderShowsBinaryMetadataWithoutBinaryDiffLines(t *testing.T) {
 	writeFile(t, repo, "tracked.bin", "\x00new")
 	writeFile(t, repo, "untracked.bin", "\x00content")
 
-	got, err := (Loader{}).Load(context.Background(), repo)
+	t.Chdir(repo)
+	got, err := Get(context.Background(), Unstaged)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -82,6 +157,9 @@ func TestLoaderShowsBinaryMetadataWithoutBinaryDiffLines(t *testing.T) {
 		t.Fatalf("files = %d, want 2: %#v", len(got.Files), got.Files)
 	}
 	for _, file := range got.Files {
+		if file.NewPath != file.DisplayPath || (file.DisplayPath == "tracked.bin" && file.OldPath != "tracked.bin") {
+			t.Errorf("binary paths = %#v", file)
+		}
 		if len(file.Hunks) != 0 {
 			t.Fatalf("binary file %q has diff lines: %#v", file.DisplayPath, file.Hunks)
 		}
@@ -91,7 +169,7 @@ func TestLoaderShowsBinaryMetadataWithoutBinaryDiffLines(t *testing.T) {
 	}
 }
 
-func TestLoadBranchIncludesCommittedStagedUnstagedAndUntrackedChanges(t *testing.T) {
+func TestGetBranchIncludesCommittedStagedUnstagedAndUntrackedChanges(t *testing.T) {
 	repo := newRepository(t)
 	git(t, repo, "branch", "-M", "main")
 	writeFile(t, repo, "committed.txt", "base\n")
@@ -109,9 +187,14 @@ func TestLoadBranchIncludesCommittedStagedUnstagedAndUntrackedChanges(t *testing
 	writeFile(t, repo, "mixed.txt", "unstaged on feature\n")
 	writeFile(t, repo, "untracked.txt", "untracked on feature\n")
 
-	got, err := (Loader{}).LoadBranch(context.Background(), repo, "main")
+	t.Chdir(repo)
+	got, err := Get(context.Background(), Branch)
 	if err != nil {
 		t.Fatal(err)
+	}
+
+	if got.Root != repo || got.Kind != Branch || got.Branch != "main" {
+		t.Fatalf("patch metadata = %#v", got)
 	}
 
 	want := []string{"committed.txt", "mixed.txt", "staged.txt", "untracked.txt"}
@@ -152,7 +235,7 @@ func TestDefaultBranchFallbacks(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			root := t.TempDir()
 			runner := &defaultBranchRunner{root: root, originHEAD: tt.originHEAD, available: tt.available}
-			got, err := (Loader{Runner: runner}).DefaultBranch(context.Background(), root)
+			got, err := defaultBranch(context.Background(), runner, root)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -165,6 +248,46 @@ func TestDefaultBranchFallbacks(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestGetBranchKeepsPathsForAdditionsDeletionsAndRenames(t *testing.T) {
+	repo := newRepository(t)
+	git(t, repo, "branch", "-M", "main")
+	writeFile(t, repo, "deleted.txt", "delete this\n")
+	writeFile(t, repo, "old.go", "package main\n\nfunc example() {}\n")
+	git(t, repo, "add", ".")
+	git(t, repo, "commit", "-m", "base")
+	git(t, repo, "switch", "-c", "feature")
+	git(t, repo, "mv", "old.go", "new.go")
+	git(t, repo, "rm", "deleted.txt")
+	writeFile(t, repo, "added.txt", "new content\n")
+	git(t, repo, "add", ".")
+	git(t, repo, "commit", "-m", "changes")
+	writeFile(t, repo, "untracked.txt", "untracked content\n")
+	t.Chdir(repo)
+	got, err := Get(context.Background(), Branch)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []struct {
+		display string
+		old     string
+		new     string
+	}{
+		{"added.txt", "", "added.txt"},
+		{"deleted.txt", "deleted.txt", ""},
+		{"new.go", "old.go", "new.go"},
+		{"untracked.txt", "", "untracked.txt"},
+	}
+	if len(got.Files) != len(want) {
+		t.Fatalf("files = %#v", got.Files)
+	}
+	for i, paths := range want {
+		file := got.Files[i]
+		if file.DisplayPath != paths.display || file.OldPath != paths.old || file.NewPath != paths.new {
+			t.Errorf("file %d paths = %#v, want %#v", i, file, paths)
+		}
 	}
 }
 
@@ -190,7 +313,7 @@ func (r *defaultBranchRunner) Run(_ context.Context, _ string, args ...string) (
 	}
 }
 
-func TestLoaderDoesNotFollowUntrackedSymlink(t *testing.T) {
+func TestGetDoesNotFollowUntrackedSymlink(t *testing.T) {
 	repo := newRepository(t)
 	outside := filepath.Join(t.TempDir(), "secret")
 	if err := os.WriteFile(outside, []byte("do not read"), 0o600); err != nil {
@@ -200,7 +323,8 @@ func TestLoaderDoesNotFollowUntrackedSymlink(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	got, err := (Loader{}).Load(context.Background(), repo)
+	t.Chdir(repo)
+	got, err := Get(context.Background(), Unstaged)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -209,6 +333,9 @@ func TestLoaderDoesNotFollowUntrackedSymlink(t *testing.T) {
 	}
 	if got.Files[0].NewSource != outside {
 		t.Fatalf("symlink source = %q, want link target %q", got.Files[0].NewSource, outside)
+	}
+	if got.Files[0].OldPath != "" || got.Files[0].NewPath != "link" {
+		t.Fatalf("symlink paths = %#v", got.Files[0])
 	}
 	if strings.Contains(got.Files[0].NewSource, "do not read") {
 		t.Fatal("symlink target contents were read")

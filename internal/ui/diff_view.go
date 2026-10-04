@@ -120,7 +120,10 @@ func (v *diffView) buildSplit() {
 }
 
 func (v *diffView) highlight(file *patch.File) Pair {
-	return Sources(file.Path(), file.OldSource, file.NewSource, v.dark)
+	return Pair{
+		Old: render(file.OldPath, file.OldSource, v.dark),
+		New: render(file.NewPath, file.NewSource, v.dark),
+	}
 }
 
 func hunkHeader(header string) string {

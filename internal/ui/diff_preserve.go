@@ -14,6 +14,7 @@ type cursorIdentity struct {
 // from state where next contains it.
 func Preserve(old View, state State, next View) State {
 	result := State{Viewport: next.NewViewport(state.Viewport.Width, state.Viewport.Height)}
+	result.Viewport = next.ScrollHorizontal(result.Viewport, state.Viewport.LeftColumn)
 	rowsAbove := 0
 	if state.Cursor != nil {
 		rowsAbove = state.Cursor.Coordinate.Y - state.Viewport.Top.Y

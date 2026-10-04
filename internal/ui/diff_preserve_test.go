@@ -57,4 +57,20 @@ func TestPreserveReturnsEmptyStateForEmptyView(t *testing.T) {
 	}
 }
 
+func TestPreserveClampsHorizontalOffsetForShorterLines(t *testing.T) {
+	p := longPatch()
+	p.Files[0].OldPath, p.Files[0].NewPath = "long.go", "long.go"
+	old := NewUnifiedView(p, true)
+	cursor := mustFirst(t, old)
+	viewport := old.ScrollHorizontal(old.NewViewport(40, 10), 30)
+	if viewport.LeftColumn == 0 {
+		t.Fatal("fixture does not scroll horizontally")
+	}
+	short := modelPatch()
+	preserved := Preserve(old, State{Cursor: &cursor, Viewport: viewport}, NewUnifiedView(short, true))
+	if preserved.Viewport.LeftColumn != 0 {
+		t.Fatalf("horizontal offset = %d", preserved.Viewport.LeftColumn)
+	}
+}
+
 func ptr[T any](value T) *T { return &value }

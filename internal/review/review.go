@@ -8,15 +8,6 @@ import (
 	"github.com/eskelinenantti/review-my-slop/internal/patch"
 )
 
-// PatchSource is the review-level seam for obtaining the patch under review.
-// The Git implementation lives in patch; review only needs these operations.
-type PatchSource interface {
-	Root(context.Context, string) (string, error)
-	Load(context.Context, string) (patch.Patch, error)
-	LoadBranch(context.Context, string, string) (patch.Patch, error)
-	DefaultBranch(context.Context, string) (string, error)
-}
-
 // CommentStore is the review-level seam for comment persistence.
 type CommentStore interface {
 	Add(comments.Comment) (comments.Comment, error)
@@ -28,7 +19,7 @@ type CommentStore interface {
 
 // Actions is the narrow interface a human-facing UI needs to drive a review.
 type Actions interface {
-	Load(string) (patch.Patch, error)
+	Load(patch.Kind) (patch.Patch, error)
 	Comments(patch.Patch) ([]comments.Comment, error)
 	SaveComment(comments.Comment, patch.Patch) (comments.Comment, error)
 	DeleteComment(comments.Comment, patch.Patch) error
@@ -36,39 +27,27 @@ type Actions interface {
 
 // Review coordinates the patch and comments that make up one review.
 type Review struct {
-	context   context.Context
-	directory string
-	patches   PatchSource
-	comments  CommentStore
+	context  context.Context
+	get      func(context.Context, patch.Kind) (patch.Patch, error)
+	comments CommentStore
 }
 
 var _ Actions = Review{}
 
-func New(ctx context.Context, directory string, patches PatchSource, comments CommentStore) Review {
-	return Review{context: ctx, directory: directory, patches: patches, comments: comments}
+func New(ctx context.Context, get func(context.Context, patch.Kind) (patch.Patch, error), comments CommentStore) Review {
+	return Review{context: ctx, get: get, comments: comments}
 }
 
-func (r Review) Repository() (string, error) {
-	return r.patches.Root(r.context, r.directory)
-}
-
-func (r Review) Load(branch string) (patch.Patch, error) {
-	if branch == "" {
-		return r.patches.Load(r.context, r.directory)
-	}
-	return r.patches.LoadBranch(r.context, r.directory, branch)
-}
-
-func (r Review) DefaultBranch() (string, error) {
-	return r.patches.DefaultBranch(r.context, r.directory)
+func (r Review) Load(kind patch.Kind) (patch.Patch, error) {
+	return r.get(r.context, kind)
 }
 
 func (r Review) Comments(p patch.Patch) ([]comments.Comment, error) {
-	return r.comments.List(p.Repository)
+	return r.comments.List(p.Root)
 }
 
 func (r Review) SaveComment(comment comments.Comment, p patch.Patch) (comments.Comment, error) {
-	comment.Repository = p.Repository
+	comment.Repository = p.Root
 	if comment.ID != "" {
 		if err := r.comments.Update(comment); err != nil {
 			return comments.Comment{}, err
@@ -79,7 +58,7 @@ func (r Review) SaveComment(comment comments.Comment, p patch.Patch) (comments.C
 }
 
 func (r Review) DeleteComment(comment comments.Comment, p patch.Patch) error {
-	return r.comments.Delete(p.Repository, comment.ID)
+	return r.comments.Delete(p.Root, comment.ID)
 }
 
 func (r Review) ExportComments(w io.Writer, p patch.Patch) ([]comments.Comment, error) {
@@ -93,26 +72,10 @@ func (r Review) ExportComments(w io.Writer, p patch.Patch) ([]comments.Comment, 
 	return pending, nil
 }
 
-func (r Review) ExportRepository(w io.Writer, repository string) ([]comments.Comment, error) {
-	return r.ExportComments(w, patch.Patch{Repository: repository})
-}
-
 func (r Review) Acknowledge(p patch.Patch, pending []comments.Comment) error {
 	ids := make([]string, len(pending))
 	for index, comment := range pending {
 		ids[index] = comment.ID
 	}
-	return r.comments.Acknowledge(p.Repository, ids)
-}
-
-func (r Review) AcknowledgeRepository(repository string, pending []comments.Comment) error {
-	return r.comments.Acknowledge(repository, commentIDs(pending))
-}
-
-func commentIDs(pending []comments.Comment) []string {
-	ids := make([]string, len(pending))
-	for index, comment := range pending {
-		ids[index] = comment.ID
-	}
-	return ids
+	return r.comments.Acknowledge(p.Root, ids)
 }
