@@ -234,6 +234,14 @@ func TestMovementAndPaneSwitchSkipEmptySides(t *testing.T) {
 	}
 }
 
+func TestFirstStartsInLeftPaneForPureDeletions(t *testing.T) {
+	p := patch.Patch{Files: []patch.File{{DisplayPath: "deleted", Hunks: []patch.Hunk{{Header: "@@", Lines: []patch.Line{{Kind: patch.Deletion, Text: "gone", OldNumber: 1}}}}}}}
+	n := New(layout.Build(p, layout.Split), 80, 5)
+	if n.cursor == nil || n.cursor.Pane != layout.Left {
+		t.Fatalf("initial cursor for deletion-only Patch = %#v", n.cursor)
+	}
+}
+
 func TestSwitchPaneNoTargetLeavesCursorUnchanged(t *testing.T) {
 	p := patch.Patch{Files: []patch.File{{DisplayPath: "added", Hunks: []patch.Hunk{{Header: "@@", Lines: []patch.Line{
 		{Kind: patch.Addition, Text: "one", NewNumber: 1}, {Kind: patch.Addition, Text: "two", NewNumber: 2},
@@ -305,11 +313,35 @@ func TestViewportAlignmentStickyRowsProgressAndHorizontalClamp(t *testing.T) {
 	if n.viewport.LeftColumn != 0 {
 		t.Fatalf("horizontal start clamp=%d", n.viewport.LeftColumn)
 	}
+	n.Resize(20, 3)
+	if n.viewport.Width != 20 || n.viewport.Height != 3 {
+		t.Fatalf("resized viewport = %#v", n.viewport)
+	}
+	if last.Row < n.viewport.Top || last.Row >= n.viewport.Top+n.contentHeight(n.viewport) {
+		t.Fatalf("resize hid cursor: %#v cursor=%#v", n.viewport, last)
+	}
 
 	n.viewport.Top = 4
 	n.viewport = n.clamp(n.viewport)
 	if !n.hasSticky(n.viewport.Top, n.viewport.Height) || n.contentHeight(n.viewport) != n.viewport.Height-1 {
 		t.Fatalf("sticky header not counted in viewport: %#v", n.viewport)
+	}
+}
+
+func TestHalfPageUsesPairedVisualRowsInSplitLayout(t *testing.T) {
+	lines := []patch.Line{
+		{Kind: patch.Deletion, Text: "d1", OldNumber: 1}, {Kind: patch.Addition, Text: "a1", NewNumber: 1},
+		{Kind: patch.Context, Text: "c1", OldNumber: 2, NewNumber: 2},
+		{Kind: patch.Deletion, Text: "d2", OldNumber: 3}, {Kind: patch.Addition, Text: "a2", NewNumber: 3},
+		{Kind: patch.Context, Text: "c2", OldNumber: 4, NewNumber: 4},
+	}
+	p := patch.Patch{Files: []patch.File{{DisplayPath: "paired", Hunks: []patch.Hunk{{Header: "@@", Lines: lines}}}}}
+	d := layout.Build(p, layout.Split)
+	n := New(d, 120, 4)
+	start := *n.cursor
+	n.HalfPage(layout.Forward)
+	if n.cursor == nil || n.cursor.Row <= start.Row {
+		t.Fatalf("half page did not move through split visual rows: %#v", n.Snapshot())
 	}
 }
 
