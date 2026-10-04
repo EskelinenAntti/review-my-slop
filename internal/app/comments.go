@@ -1,4 +1,4 @@
-package ui
+package app
 
 import (
 	"fmt"
@@ -9,6 +9,7 @@ import (
 
 	"github.com/eskelinenantti/review-my-slop/internal/comments"
 	"github.com/eskelinenantti/review-my-slop/internal/editor"
+	"github.com/eskelinenantti/review-my-slop/internal/patch"
 )
 
 func (m model) updateComments(name string) (tea.Model, tea.Cmd) {
@@ -20,16 +21,16 @@ func (m model) updateComments(name string) (tea.Model, tea.Cmd) {
 		m.quitting = true
 		return m, tea.Quit
 	case "j", "down":
-		if m.comments.row < len(m.comments.items)-1 {
-			m.comments.row++
-		}
+		m.comments.view.Move(1)
 	case "k", "up":
-		if m.comments.row > 0 {
-			m.comments.row--
-		}
+		m.comments.view.Move(-1)
 	case "enter", "e":
 		if len(m.comments.items) > 0 {
-			m.comments.editIndex = m.comments.row
+			selected, ok := m.comments.view.Selected()
+			if !ok {
+				return m, nil
+			}
+			m.comments.editIndex = m.commentIndex(selected)
 			m.comments.body = m.comments.items[m.comments.editIndex].Body
 			m.comments.editAnchor = m.comments.items[m.comments.editIndex].Anchor
 			cmd, err := m.openCommentEditor()
@@ -42,22 +43,20 @@ func (m model) updateComments(name string) (tea.Model, tea.Cmd) {
 		}
 	case "D":
 		if len(m.comments.items) > 0 {
-			m.deleteComment(m.comments.row)
+			if selected, ok := m.comments.view.Selected(); ok {
+				m.deleteComment(m.commentIndex(selected))
+			}
 		}
 	}
 	return m, nil
 }
 
 func (m *model) beginComment() (tea.Cmd, error) {
-	selection := m.review.selection
-	if selection == nil {
-		current := m.review.view.beginSelection(m.review.cursor)
-		selection = &current
+	file, lines, ok := m.review.view.Selected()
+	if !ok {
+		return nil, fmt.Errorf("select code lines before commenting")
 	}
-	anchor, err := m.review.view.anchor(*selection)
-	if err != nil {
-		return nil, err
-	}
+	anchor := commentAnchor(file, lines)
 	m.comments.body, m.comments.editIndex, m.comments.editAnchor = "", -1, anchor
 	cmd, err := m.openCommentEditor()
 	if err != nil {
@@ -99,9 +98,11 @@ func (m *model) finishCommentEdit() {
 		m.comments.items[m.comments.editIndex] = saved
 	} else {
 		m.comments.items = append(m.comments.items, saved)
-		m.comments.row = len(m.comments.items) - 1
+		m.comments.view.Update(m.comments.items)
+		m.comments.view.Move(len(m.comments.items))
 	}
 	m.comments.revision++
+	m.comments.view.Update(m.comments.items)
 	m.clearCommentEdit()
 	m.err = nil
 	m.cancelSelection()
@@ -120,7 +121,7 @@ func (m *model) deleteComment(index int) {
 		return
 	}
 	m.comments.items = append(m.comments.items[:index], m.comments.items[index+1:]...)
-	m.comments.row = min(m.comments.row, max(0, len(m.comments.items)-1))
+	m.comments.view.Update(m.comments.items)
 	m.comments.revision++
 	m.err = nil
 }
@@ -131,7 +132,7 @@ func (m *model) clearCommentEdit() {
 	m.comments.editAnchor = comments.Anchor{}
 }
 
-func (m *model) cancelSelection() { m.review.selection = nil }
+func (m *model) cancelSelection() { m.review.view.ClearSelection() }
 
 func (m model) openCurrentLine() (tea.Cmd, error) {
 	path, number, err := m.sourceLocation()
@@ -144,9 +145,8 @@ func (m model) openCurrentLine() (tea.Cmd, error) {
 }
 
 func (m model) sourceLocation() (string, int, error) {
-	file, fileOK := m.review.view.file(m.review.cursor)
-	line, lineOK := m.review.view.line(m.review.cursor)
-	if !fileOK || !lineOK {
+	file, line, ok := m.review.view.Current()
+	if !ok {
 		return "", 0, fmt.Errorf("select a code line to open in $EDITOR")
 	}
 	path, number := file.NewPath, line.NewNumber
@@ -169,4 +169,45 @@ func (m model) openCommentEditor() (tea.Cmd, error) {
 	return editor.EditComment(m.ctx, m.comments.body, m.comments.editAnchor, func(body string, err error) tea.Msg {
 		return commentEditorFinishedMsg{body: body, err: err}
 	})
+}
+
+func (m model) commentIndex(selected comments.Comment) int {
+	for index, item := range m.comments.items {
+		if selected.ID != "" && item.ID == selected.ID || selected.ID == "" && item.Body == selected.Body && item.Anchor.FilePath == selected.Anchor.FilePath {
+			return index
+		}
+	}
+	return -1
+}
+
+func commentAnchor(file patch.File, lines []patch.Line) comments.Anchor {
+	path := file.NewPath
+	if path == "" {
+		path = file.OldPath
+	}
+	anchor := comments.Anchor{FilePath: path}
+	for _, line := range lines {
+		prefix := " "
+		if line.Kind == patch.Addition {
+			prefix = "+"
+		}
+		if line.Kind == patch.Deletion {
+			prefix = "-"
+		}
+		anchor.QuotedLines = append(anchor.QuotedLines, prefix+line.Text)
+		accumulateRange(&anchor.OldStart, &anchor.OldEnd, int(line.OldNumber))
+		accumulateRange(&anchor.NewStart, &anchor.NewEnd, int(line.NewNumber))
+	}
+	return anchor
+}
+func accumulateRange(start, end *int, value int) {
+	if value == 0 {
+		return
+	}
+	if *start == 0 || value < *start {
+		*start = value
+	}
+	if value > *end {
+		*end = value
+	}
 }

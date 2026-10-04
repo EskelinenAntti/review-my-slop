@@ -1,4 +1,4 @@
-package ui
+package diffscreen
 
 import "github.com/eskelinenantti/review-my-slop/internal/patch"
 
@@ -12,7 +12,7 @@ type cursorIdentity struct {
 
 // preserve returns fresh viewState for next by retaining the meaningful position
 // from state where next contains it.
-func preserve(old reviewView, state viewState, next reviewView) viewState {
+func preserve(old *diffView, state viewState, next *diffView) viewState {
 	result := viewState{viewport: next.newViewport(state.viewport.Width, state.viewport.Height)}
 	result.viewport = next.scrollHorizontal(result.viewport, state.viewport.LeftColumn)
 	rowsAbove := 0
@@ -42,7 +42,7 @@ func preserve(old reviewView, state viewState, next reviewView) viewState {
 	return result
 }
 
-func identify(v reviewView, cursor *diffCursor) cursorIdentity {
+func identify(v *diffView, cursor *diffCursor) cursorIdentity {
 	if cursor == nil {
 		return cursorIdentity{}
 	}
@@ -52,7 +52,7 @@ func identify(v reviewView, cursor *diffCursor) cursorIdentity {
 	return cursorIdentity{file: file, hunk: hunk, line: line, cursor: *cursor, valid: fileOK && hunkOK && lineOK}
 }
 
-func preserveSelection(old reviewView, selection *diffSelection, next reviewView) (diffSelection, bool) {
+func preserveSelection(old *diffView, selection *diffSelection, next *diffView) (diffSelection, bool) {
 	if selection == nil {
 		return diffSelection{}, false
 	}

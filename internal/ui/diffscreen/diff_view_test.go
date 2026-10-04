@@ -1,4 +1,4 @@
-package ui
+package diffscreen
 
 import (
 	"reflect"
@@ -96,7 +96,7 @@ func TestSplitPairsChangeBlocksAndSupportsEmptyPanes(t *testing.T) {
 	}
 }
 
-func TestSelectionLinesAndAnchor(t *testing.T) {
+func TestSelectionLines(t *testing.T) {
 	v := newUnifiedView(testPatch(), true)
 	first, _ := v.first()
 	last, _ := v.move(first, forward)
@@ -109,16 +109,6 @@ func TestSelectionLinesAndAnchor(t *testing.T) {
 	lines := v.lines(selection)
 	if len(lines) != 3 {
 		t.Fatalf("selected lines = %d", len(lines))
-	}
-	anchor, err := v.anchor(selection)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if anchor.FilePath != "first.go" {
-		t.Fatalf("anchor = %#v", anchor)
-	}
-	if got := strings.Join(anchor.QuotedLines, "|"); got != " before|-removed one|-removed two" {
-		t.Fatalf("quoted lines = %q", got)
 	}
 
 	nextFile, _ := v.jumpFile(first, forward)
@@ -141,7 +131,7 @@ func TestViewportAlignmentResizeAndScrolling(t *testing.T) {
 	}
 	viewport = v.align(viewport, cursor, middle)
 	headerHeight := 0
-	if v.(*diffView).hasStickyHeader(viewport.top, viewport.Height) {
+	if v.hasStickyHeader(viewport.top, viewport.Height) {
 		headerHeight = 1
 	}
 	if headerHeight+cursor.coordinate.Y-viewport.top.Y != viewport.Height/2 {
@@ -253,7 +243,7 @@ func TestFindCursorFallsBackNearRemovedLine(t *testing.T) {
 	}
 }
 
-func mustFirst(t *testing.T, v reviewView) diffCursor {
+func mustFirst(t *testing.T, v *diffView) diffCursor {
 	t.Helper()
 	cursor, ok := v.first()
 	if !ok {
@@ -273,31 +263,6 @@ func testPatch() patch.Patch {
 		}}}},
 		{DisplayPath: "second.go", OldPath: "second.go", NewPath: "second.go", Hunks: []patch.Hunk{{Header: "@@ -1 +1 @@", Lines: []patch.Line{{Kind: patch.Addition, Text: "other", NewNumber: 1}}}}},
 	}}
-}
-
-func TestAnchorChoosesNewPathUnlessFileIsDeleted(t *testing.T) {
-	for _, test := range []struct {
-		name    string
-		oldPath string
-		newPath string
-		want    string
-	}{
-		{"added", "", "added.go", "added.go"},
-		{"modified", "file.go", "file.go", "file.go"},
-		{"renamed", "old.go", "new.go", "new.go"},
-		{"deleted", "deleted.go", "", "deleted.go"},
-	} {
-		t.Run(test.name, func(t *testing.T) {
-			p := modelPatch()
-			p.Files[0].OldPath, p.Files[0].NewPath = test.oldPath, test.newPath
-			v := newUnifiedView(p, true)
-			cursor := mustFirst(t, v)
-			anchor, err := v.anchor(v.beginSelection(cursor))
-			if err != nil || anchor.FilePath != test.want {
-				t.Fatalf("anchor = %#v, error = %v", anchor, err)
-			}
-		})
-	}
 }
 
 func longPatch() patch.Patch {

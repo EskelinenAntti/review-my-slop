@@ -1,4 +1,4 @@
-package ui
+package diffscreen
 
 import (
 	"charm.land/lipgloss/v2"
@@ -78,6 +78,7 @@ func alignmentOffset(height int, alignment verticalAlignment) int {
 }
 
 func (v *diffView) scrollHorizontal(viewport diffViewport, columns int) diffViewport {
+	columns = max(-viewport.LeftColumn, min(columns, v.maxHorizontalOffset(viewport.Width)-viewport.LeftColumn))
 	viewport.LeftColumn += columns
 	return v.clampViewport(viewport)
 }

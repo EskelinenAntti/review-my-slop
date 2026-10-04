@@ -1,4 +1,4 @@
-package ui
+package app
 
 import (
 	"fmt"
@@ -11,6 +11,7 @@ import (
 
 	"github.com/eskelinenantti/review-my-slop/internal/comments"
 	"github.com/eskelinenantti/review-my-slop/internal/patch"
+	"github.com/eskelinenantti/review-my-slop/internal/ui/diffscreen"
 )
 
 func TestVisualSelectionCreatesMappedAnchorAndSubmits(t *testing.T) {
@@ -73,7 +74,7 @@ func TestOpenCurrentLineUsesEditorWithWorkingTreeLocation(t *testing.T) {
 	t.Setenv("EDITOR", "printf")
 	m := testModel(coveragePatch(), nil, nil)
 	m.review.patch.Root = "/tmp/repo with spaces"
-	m.review.cursor = findLine(t, m, "new()")
+	focusLine(t, &m, "new()")
 	cmd, err := m.openCurrentLine()
 	if err != nil || cmd == nil {
 		t.Fatalf("command=%v err=%v", cmd, err)
@@ -166,8 +167,8 @@ func TestCommentDeleteFailureKeepsCommentAndShowsError(t *testing.T) {
 	m.setDelete(func(comments.Comment, patch.Patch) error { return fmt.Errorf("delete failed") })
 	m = updateModel(t, m, textKey("C"))
 	m = updateModel(t, m, textKey("D"))
-	if len(m.comments.items) != 1 || !strings.Contains(ansi.Strip(m.renderComments()), "delete failed") {
-		t.Fatalf("comments=%#v render=%q", m.comments.items, m.renderComments())
+	if len(m.comments.items) != 1 || !strings.Contains(ansi.Strip(m.render()), "delete failed") {
+		t.Fatalf("comments=%#v render=%q", m.comments.items, m.render())
 	}
 }
 
@@ -177,7 +178,7 @@ func TestSelectionCannotCrossHunk(t *testing.T) {
 	for range 10 {
 		m = updateModel(t, m, textKey("j"))
 	}
-	line, _ := m.review.view.line(m.review.cursor)
+	_, line, _ := m.review.view.Current()
 	if line.Text == "more()" {
 		t.Fatal("diffSelection crossed hunk")
 	}
@@ -189,15 +190,13 @@ func TestVimSequencesAndLayoutToggle(t *testing.T) {
 	m.configureSideBySide(false, func(enabled bool) error { saved = append(saved, enabled); return nil })
 	m = updateModel(t, m, tea.WindowSizeMsg{Width: 120, Height: 20})
 	m = updateModel(t, m, textKey("G"))
-	last, _ := m.review.view.last()
-	if m.review.cursor != last {
-		t.Fatalf("G diffCursor = %#v", m.review.cursor)
+	if lineText(m) != "more()" {
+		t.Fatalf("G line=%q", lineText(m))
 	}
 	m = updateModel(t, m, textKey("g"))
 	m = updateModel(t, m, textKey("g"))
-	first, _ := m.review.view.first()
-	if m.review.cursor != first {
-		t.Fatalf("gg diffCursor = %#v", m.review.cursor)
+	if lineText(m) != "package main" {
+		t.Fatalf("gg line=%q", lineText(m))
 	}
 	m = updateModel(t, m, textKey("t"))
 	if !m.review.sideBySide || !strings.Contains(m.render(), "│") {
@@ -205,7 +204,7 @@ func TestVimSequencesAndLayoutToggle(t *testing.T) {
 	}
 	m = updateModel(t, m, textKey("t"))
 	if m.review.sideBySide || !slices.Equal(saved, []bool{true, false}) {
-		t.Fatalf("sideBySide=%v saved=%v", m.review.sideBySide, saved)
+		t.Fatalf("saved=%v", saved)
 	}
 }
 
@@ -220,35 +219,39 @@ func TestSavedSideBySideCanBeDisabledInNarrowTerminal(t *testing.T) {
 	}
 }
 
-func TestResizeAcrossSideBySideThresholdPreservesCursorScreenRow(t *testing.T) {
+func TestResizeAcrossSideBySideThresholdPreservesFocusedLine(t *testing.T) {
 	m := testModel(coveragePatch(), nil, nil)
 	m.configureSideBySide(true, nil)
-	m.review.cursor = findLine(t, m, "keep()")
-	m.review.viewport = m.review.view.align(m.review.viewport, m.review.cursor, middle)
-	before := m.review.cursor.coordinate.Y - m.review.viewport.top.Y
+	focusLine(t, &m, "keep()")
+	_, before, _ := m.review.view.Current()
 	m = updateModel(t, m, tea.WindowSizeMsg{Width: 80, Height: 20})
 	m = updateModel(t, m, tea.WindowSizeMsg{Width: 120, Height: 20})
-	if got := m.review.cursor.coordinate.Y - m.review.viewport.top.Y; got != before {
-		t.Fatalf("screen row = %d, want %d", got, before)
+	_, got, ok := m.review.view.Current()
+	if !ok || got != before {
+		t.Fatalf("focused line=%#v, want %#v", got, before)
 	}
 }
 
 func TestZSequencesPositionCurrentLineInViewport(t *testing.T) {
-	m := testModel(longModelPatch(), nil, nil)
-	for range 10 {
-		m.move(forward)
-	}
-	m.height = 9
-	m.review.viewport = m.review.view.resize(m.review.viewport, m.width, m.screenBodyHeight())
 	for _, test := range []struct {
 		key       string
-		alignment verticalAlignment
-	}{{"z", middle}, {"t", top}, {"b", bottom}} {
+		alignment diffscreen.Alignment
+	}{
+		{"z", diffscreen.Center}, {"t", diffscreen.Top}, {"b", diffscreen.Bottom},
+	} {
+		m := testModel(longModelPatch(), nil, nil)
+		m = updateModel(t, m, tea.WindowSizeMsg{Width: 100, Height: 9})
+		want := diffscreen.New(longModelPatch(), diffscreen.Options{Dark: true})
+		want.Resize(100, 9)
+		for range 10 {
+			m.review.view.Move(diffscreen.NextLine)
+			want.Move(diffscreen.NextLine)
+		}
+		want.Align(test.alignment)
 		m = updateModel(t, m, textKey("z"))
 		m = updateModel(t, m, textKey(test.key))
-		want := m.review.view.align(m.review.viewport, m.review.cursor, test.alignment)
-		if m.review.viewport.top != want.top {
-			t.Errorf("z%s top=%v want=%v", test.key, m.review.viewport.top, want.top)
+		if m.review.view.Render() != want.Render() {
+			t.Fatalf("z%s did not align view", test.key)
 		}
 	}
 }
@@ -256,23 +259,22 @@ func TestZSequencesPositionCurrentLineInViewport(t *testing.T) {
 func TestPendingKeyIsConsumedByNextKey(t *testing.T) {
 	m := testModel(coveragePatch(), nil, nil)
 	m = updateModel(t, m, textKey("G"))
-	last := m.review.cursor
+	last := lineText(m)
 	m = updateModel(t, m, textKey("g"))
 	m = updateModel(t, m, textKey("h"))
 	m = updateModel(t, m, textKey("g"))
-	if m.review.cursor != last {
-		t.Fatalf("pending prefix moved cursor: %#v", m.review.cursor)
+	if lineText(m) != last {
+		t.Fatal("pending prefix moved focus")
 	}
 	m = updateModel(t, m, textKey("g"))
-	first, _ := m.review.view.first()
-	if m.review.cursor != first {
-		t.Fatalf("completed gg cursor=%#v, want %#v", m.review.cursor, first)
+	if lineText(m) != "package main" {
+		t.Fatalf("gg line=%q", lineText(m))
 	}
 }
 
 func TestStatusShowsBasicBindingsAndHelpShowsCompleteKeyMap(t *testing.T) {
 	m := testModel(coveragePatch(), nil, nil)
-	status := ansi.Strip(m.renderStatus())
+	status := ansi.Strip(strings.Split(m.render(), "\n")[m.height-2])
 	if !strings.HasPrefix(status, "j/k/h/l move") || !strings.HasSuffix(status, "local changes") {
 		t.Fatalf("status=%q", status)
 	}
@@ -287,78 +289,74 @@ func TestStatusShowsBasicBindingsAndHelpShowsCompleteKeyMap(t *testing.T) {
 func TestStatusShowsProgressOnlyAfterViewportMoves(t *testing.T) {
 	m := testModel(longModelPatch(), nil, nil)
 	m = updateModel(t, m, tea.WindowSizeMsg{Width: 80, Height: 9})
-	if label := m.viewLabel(); label != "local changes" {
-		t.Fatalf("initial label=%q", label)
+	if strings.Contains(m.render(), "%") {
+		t.Fatal("initial view shows progress")
 	}
 	m = updateModel(t, m, textKey("l"))
-	if label := m.viewLabel(); label != "local changes" {
-		t.Fatalf("horizontal-scroll label=%q", label)
+	if strings.Contains(m.render(), "%") {
+		t.Fatal("horizontal scroll shows progress")
 	}
-	for m.review.viewport.top.Y == 0 {
+	for range 10 {
 		m = updateModel(t, m, textKey("j"))
 	}
-	if label := m.viewLabel(); !strings.HasPrefix(label, "local changes (") || !strings.HasSuffix(label, "%)") {
-		t.Fatalf("scrolled label=%q", label)
+	if !strings.Contains(m.render(), "%)") {
+		t.Fatal("scrolled view hides progress")
 	}
 	m = updateModel(t, m, textKey("G"))
-	if label := m.viewLabel(); label != "local changes (100%)" {
-		t.Fatalf("final label=%q", label)
+	if !strings.Contains(m.render(), "local changes (100%)") {
+		t.Fatal("final view hides progress")
 	}
 }
 
 func TestStatusHidesProgressWhenDiffFitsViewport(t *testing.T) {
 	m := testModel(coveragePatch(), nil, nil)
 	m = updateModel(t, m, tea.WindowSizeMsg{Width: 100, Height: 100})
-	if label := m.viewLabel(); label != "local changes" {
-		t.Fatalf("label=%q", label)
-	}
-}
-
-func TestRenderKeyBindingsAlignsDescriptions(t *testing.T) {
-	lines := renderKeyBindings([]keyBinding{{keys: "x", description: "short"}, {keys: "long", description: "wide"}})
-	if strings.Index(lines[0], "short") != strings.Index(lines[1], "wide") {
-		t.Fatalf("lines are not aligned: %#v", lines)
+	if strings.Contains(m.render(), "%)") {
+		t.Fatal("fitting diff shows progress")
 	}
 }
 
 func TestSideBySidePaneSwitchingUsesCtrlWSequences(t *testing.T) {
 	m := testModel(coveragePatch(), nil, nil)
-	m.width = 120
+	m = updateModel(t, m, tea.WindowSizeMsg{Width: 120, Height: 30})
 	m.setSideBySide(true)
-	m.review.cursor = findLine(t, m, "new()")
+	focusLine(t, &m, "new()")
 	m = updateModel(t, m, controlKey('w'))
 	m = updateModel(t, m, textKey("h"))
-	if m.review.cursor.pane != left || lineText(m) != "old()" {
-		t.Fatalf("left diffCursor=%#v line=%q", m.review.cursor, lineText(m))
+	if lineText(m) != "old()" {
+		t.Fatalf("old pane line=%q", lineText(m))
 	}
 	m = updateModel(t, m, controlKey('w'))
 	m = updateModel(t, m, controlKey('w'))
-	if m.review.cursor.pane != right || lineText(m) != "new()" {
-		t.Fatalf("right diffCursor=%#v line=%q", m.review.cursor, lineText(m))
+	if lineText(m) != "new()" {
+		t.Fatalf("new pane line=%q", lineText(m))
 	}
 }
 
 func TestHorizontalScrollKeysMoveByStepAndReset(t *testing.T) {
 	m := testModel(longModelPatch(), nil, nil)
-	m.width = 37
-	m.review.viewport = m.review.view.resize(m.review.viewport, m.width, m.screenBodyHeight())
+	m = updateModel(t, m, tea.WindowSizeMsg{Width: 37, Height: 30})
+	initial := m.review.view.Render()
+	want := diffscreen.New(longModelPatch(), diffscreen.Options{Dark: true})
+	want.Resize(37, 30)
+	want.ScrollHorizontal(2 * horizontalScrollStep)
 	m = updateModel(t, m, textKey("l"))
 	m = updateModel(t, m, tea.KeyPressMsg(tea.Key{Code: tea.KeyRight}))
-	if m.review.viewport.LeftColumn != 2*horizontalScrollStep {
-		t.Fatalf("right offset=%d", m.review.viewport.LeftColumn)
+	if m.review.view.Render() != want.Render() {
+		t.Fatal("right keys did not scroll by two steps")
 	}
 	m = updateModel(t, m, textKey("h"))
 	m = updateModel(t, m, tea.KeyPressMsg(tea.Key{Code: tea.KeyLeft}))
-	if m.review.viewport.LeftColumn != 0 {
-		t.Fatalf("left offset=%d", m.review.viewport.LeftColumn)
+	if m.review.view.Render() != initial {
+		t.Fatal("left keys did not restore initial offset")
 	}
 	m = updateModel(t, m, textKey("$"))
-	if m.review.viewport.LeftColumn == 0 {
-		t.Fatal("$ did not move to end")
+	if m.review.view.Render() == initial {
+		t.Fatal("$ did not scroll")
 	}
 	m = updateModel(t, m, textKey("0"))
-	if m.review.viewport.LeftColumn != 0 {
-		t.Fatalf("0 offset=%d", m.review.viewport.LeftColumn)
+	if m.review.view.Render() != initial {
+		t.Fatal("0 did not restore initial offset")
 	}
 }
 
@@ -417,63 +415,63 @@ func TestHeaderShowsAddedAndRemovedLineCounts(t *testing.T) {
 
 func TestSearchMovesIncrementallyRepeatsAndRestoresOrigin(t *testing.T) {
 	m := testModel(coveragePatch(), nil, nil)
-	origin := m.review.cursor
+	origin := screenBody(m.review.view.Render())
 	m = updateModel(t, m, textKey("/"))
 	m = updateModel(t, m, textKey("keep"))
-	first := m.review.cursor
+	first := screenBody(m.review.view.Render())
 	if m.mode != modeSearch || lineText(m) != "keep()" {
 		t.Fatalf("mode=%v line=%q", m.mode, lineText(m))
 	}
 	m = updateModel(t, m, specialKey(tea.KeyEnter))
 	m = updateModel(t, m, textKey("n"))
-	if m.review.cursor == first || lineText(m) != "keep()" {
-		t.Fatalf("next=%#v", m.review.cursor)
+	if screenBody(m.review.view.Render()) == first || lineText(m) != "keep()" {
+		t.Fatalf("next=%#v", screenBody(m.review.view.Render()))
 	}
 	m = updateModel(t, m, textKey("N"))
-	if m.review.cursor != first {
-		t.Fatalf("previous=%#v", m.review.cursor)
+	if screenBody(m.review.view.Render()) != first {
+		t.Fatalf("previous=%#v", screenBody(m.review.view.Render()))
 	}
 	m = updateModel(t, m, textKey("/"))
 	m = updateModel(t, m, textKey("missing"))
-	if !m.search.miss {
+	if !strings.Contains(m.render(), "no matches") {
 		t.Fatal("missing search did not miss")
 	}
 	m = updateModel(t, m, specialKey(tea.KeyEsc))
-	if m.review.cursor != first {
-		t.Fatalf("cancel=%#v origin=%#v", m.review.cursor, origin)
+	if screenBody(m.review.view.Render()) != first {
+		t.Fatalf("cancel=%#v origin=%#v", screenBody(m.review.view.Render()), origin)
 	}
 }
 
 func TestSearchMatchesFileNamesAndBackspaceRestoresOrigin(t *testing.T) {
 	m := testModel(coveragePatch(), nil, nil)
-	origin := m.review.cursor
+	origin := screenBody(m.review.view.Render())
 	m = updateModel(t, m, textKey("/"))
 	m = updateModel(t, m, textKey("main.go"))
-	file, _ := m.review.view.file(m.review.cursor)
+	file, _, _ := m.review.view.Current()
 	if file.DisplayPath != "main.go" {
 		t.Fatalf("file=%q", file.DisplayPath)
 	}
 	for range len("main.go") {
 		m = updateModel(t, m, specialKey(tea.KeyBackspace))
 	}
-	if m.review.cursor != origin || len(m.search.query) != 0 {
-		t.Fatalf("diffCursor=%#v query=%q", m.review.cursor, m.search.query)
+	if screenBody(m.review.view.Render()) != origin || len(m.search.query) != 0 {
+		t.Fatalf("diffCursor=%#v query=%q", screenBody(m.review.view.Render()), m.search.query)
 	}
 }
 
 func TestSideBySideSearchActivatesPaneAndCancelRestoresIt(t *testing.T) {
 	m := testModel(coveragePatch(), nil, nil)
-	m.width = 120
+	m = updateModel(t, m, tea.WindowSizeMsg{Width: 120, Height: 30})
 	m.setSideBySide(true)
-	origin := m.review.cursor
+	origin := screenBody(m.review.view.Render())
 	m = updateModel(t, m, textKey("/"))
 	m = updateModel(t, m, textKey("old()"))
-	if m.review.cursor.pane != left || lineText(m) != "old()" {
-		t.Fatalf("diffCursor=%#v line=%q", m.review.cursor, lineText(m))
+	if lineText(m) != "old()" {
+		t.Fatalf("diffCursor=%#v line=%q", screenBody(m.review.view.Render()), lineText(m))
 	}
 	m = updateModel(t, m, specialKey(tea.KeyEsc))
-	if m.review.cursor != origin {
-		t.Fatalf("cancel=%#v want=%#v", m.review.cursor, origin)
+	if screenBody(m.review.view.Render()) != origin {
+		t.Fatalf("cancel=%#v want=%#v", screenBody(m.review.view.Render()), origin)
 	}
 }
 
@@ -518,18 +516,16 @@ func TestTabDoesNothingWithoutDefaultBranch(t *testing.T) {
 
 func TestDiffRefreshFallbackAndEmptyDiff(t *testing.T) {
 	m := testModel(patch.Patch{}, nil, nil)
-	refreshed := coveragePatch()
-	m = updateModel(t, m, refreshDiffMsg{patch: refreshed})
-	first, ok := m.review.view.first()
-	if !ok || m.review.cursor != first {
-		t.Fatalf("diffCursor=%#v first=%#v", m.review.cursor, first)
+	m = updateModel(t, m, refreshDiffMsg{patch: coveragePatch()})
+	if lineText(m) != "package main" {
+		t.Fatalf("initial focus=%q", lineText(m))
 	}
-	m.review.cursor = findLine(t, m, "new()")
+	focusLine(t, &m, "new()")
 	changed := coveragePatch()
 	changed.Files[0].Hunks[0].Lines[2].Text = "different()"
 	m = updateModel(t, m, refreshDiffMsg{patch: changed})
-	if _, ok := m.review.view.line(m.review.cursor); !ok {
-		t.Fatal("refresh fallback lost diffCursor")
+	if _, _, ok := m.review.view.Current(); !ok {
+		t.Fatal("refresh lost focus")
 	}
 }
 
@@ -575,26 +571,30 @@ func controlKey(code rune) tea.KeyPressMsg {
 	return tea.KeyPressMsg(tea.Key{Code: code, Mod: tea.ModCtrl})
 }
 
-func findLine(t *testing.T, m model, text string) diffCursor {
+func focusLine(t *testing.T, m *model, text string) {
 	t.Helper()
-	position, ok := m.review.view.first()
-	if !ok {
-		t.Fatal("no position")
+	m.review.view.Move(diffscreen.FirstLine)
+	count := 0
+	for _, file := range m.review.patch.Files {
+		for _, hunk := range file.Hunks {
+			count += len(hunk.Lines)
+		}
 	}
-	for {
-		line, _ := m.review.view.line(position)
-		if line.Text == text {
-			return position
+	for range count {
+		if lineText(*m) == text {
+			return
 		}
-		position, ok = m.review.view.move(position, forward)
-		if !ok {
-			break
-		}
+		m.review.view.Move(diffscreen.NextLine)
 	}
 	t.Fatalf("line %q not found", text)
-	return diffCursor{}
 }
-func lineText(m model) string { line, _ := m.review.view.line(m.review.cursor); return line.Text }
+
+func lineText(m model) string { _, line, _ := m.review.view.Current(); return line.Text }
+
+func screenBody(rendered string) string {
+	lines := strings.Split(rendered, "\n")
+	return strings.Join(lines[1:len(lines)-2], "\n")
+}
 
 func coveragePatch() patch.Patch {
 	return patch.Patch{Root: "/repo", Files: []patch.File{{DisplayPath: "main.go", OldPath: "main.go", NewPath: "main.go", OldSource: "package main\nold()\nkeep()\n", NewSource: "package main\nnew()\nkeep()\nmore()\n", Hunks: []patch.Hunk{

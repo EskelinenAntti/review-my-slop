@@ -1,4 +1,4 @@
-package ui
+package app
 
 import (
 	"fmt"
@@ -12,6 +12,7 @@ import (
 
 	"github.com/eskelinenantti/review-my-slop/internal/comments"
 	"github.com/eskelinenantti/review-my-slop/internal/patch"
+	"github.com/eskelinenantti/review-my-slop/internal/ui/diffscreen"
 )
 
 func testModel(p patch.Patch, comments []comments.Comment, save saveCommentFunc) model {
@@ -62,8 +63,8 @@ func TestNewUsesSavedSideBySideForWideInitialSize(t *testing.T) {
 		SideBySide: true,
 		size:       size{Width: 120, Height: 30},
 	})
-	if !m.review.sideBySide || !m.sideBySideActive() || !strings.Contains(m.render(), "│") {
-		t.Fatalf("sideBySide=%v active=%v render=%q", m.review.sideBySide, m.sideBySideActive(), m.render())
+	if !m.review.sideBySide || !strings.Contains(m.render(), "│") {
+		t.Fatalf("sideBySide=%v render=%q", m.review.sideBySide, m.render())
 	}
 }
 
@@ -72,13 +73,13 @@ func TestNewKeepsSavedSideBySideInactiveForNarrowInitialSize(t *testing.T) {
 		SideBySide: true,
 		size:       size{Width: 80, Height: 30},
 	})
-	if !m.review.sideBySide || m.sideBySideActive() || strings.Contains(m.render(), "│") {
-		t.Fatalf("sideBySide=%v active=%v render=%q", m.review.sideBySide, m.sideBySideActive(), m.render())
+	if !m.review.sideBySide || strings.Contains(m.render(), "│") {
+		t.Fatalf("sideBySide=%v render=%q", m.review.sideBySide, m.render())
 	}
 
 	m = updateModel(t, m, tea.WindowSizeMsg{Width: 120, Height: 30})
-	if !m.review.sideBySide || !m.sideBySideActive() || !strings.Contains(m.render(), "│") {
-		t.Fatalf("sideBySide=%v active=%v render=%q", m.review.sideBySide, m.sideBySideActive(), m.render())
+	if !m.review.sideBySide || !strings.Contains(m.render(), "│") {
+		t.Fatalf("sideBySide=%v render=%q", m.review.sideBySide, m.render())
 	}
 }
 
@@ -101,44 +102,38 @@ func TestSideBySideToggleStillSavesPreference(t *testing.T) {
 
 func TestRefreshTranslatesCursorAndSelection(t *testing.T) {
 	m := testModel(modelPatch(), nil, nil)
-	m.move(1)
-	diffSelection := m.review.view.beginSelection(m.review.cursor)
-	m.review.selection = &diffSelection
-	m.move(1)
-	want, _ := m.review.view.line(m.review.cursor)
+	m.review.view.Move(diffscreen.NextLine)
+	m.review.view.ToggleSelection()
+	m.review.view.Move(diffscreen.NextLine)
+	_, want, _ := m.review.view.Current()
 	refreshed := modelPatch()
 	refreshed.Files[0].Metadata = []string{"new metadata"}
 	m.rebuildView(refreshed)
-	got, ok := m.review.view.line(m.review.cursor)
+	_, got, ok := m.review.view.Current()
 	if !ok || got != want {
-		t.Fatalf("diffCursor line = %#v, want %#v", got, want)
+		t.Fatalf("focused line=%#v, want %#v", got, want)
 	}
-	if m.review.selection == nil || len(m.review.view.lines(*m.review.selection)) != 2 {
-		t.Fatalf("diffSelection was not translated: %#v", m.review.selection)
+	_, lines, ok := m.review.view.Selected()
+	if !ok || len(lines) != 2 {
+		t.Fatalf("selection=%#v", lines)
 	}
 }
 
-func TestUnchangedRefreshRebuildsAndPreservesState(t *testing.T) {
-	p := longPatch()
+func TestUnchangedRefreshPreservesStateAndClearsError(t *testing.T) {
+	p := longModelPatch()
 	p.Files[0].OldPath, p.Files[0].NewPath = "long.go", "long.go"
 	m := newModel(p, nil, nil, initialLayout{size: size{Width: 40, Height: 8}})
 	for range 8 {
-		m.move(forward)
+		m.review.view.Move(diffscreen.NextLine)
 	}
-	diffSelection := m.review.view.beginSelection(m.review.cursor)
-	m.review.selection = &diffSelection
-	m.move(forward)
-	m.review.viewport = m.review.view.scrollHorizontal(m.review.viewport, 12)
-	oldView := m.review.view
-	wantCursor, wantViewport, wantSelection := m.review.cursor, m.review.viewport, *m.review.selection
+	m.review.view.ToggleSelection()
+	m.review.view.Move(diffscreen.NextLine)
+	m.review.view.ScrollHorizontal(12)
+	before := m.review.view.Render()
 	m.err = fmt.Errorf("previous refresh failed")
-
 	m = updateModel(t, m, refreshDiffMsg{patch: p})
-	if m.review.view == oldView {
-		t.Fatal("unchanged refresh did not rebuild")
-	}
-	if m.review.cursor != wantCursor || m.review.viewport != wantViewport || m.review.selection == nil || *m.review.selection != wantSelection {
-		t.Fatalf("viewState after refresh: diffCursor=%#v diffViewport=%#v diffSelection=%#v", m.review.cursor, m.review.viewport, m.review.selection)
+	if got := m.review.view.Render(); got != before {
+		t.Fatal("refresh changed presentation state")
 	}
 	if m.err != nil {
 		t.Fatalf("refresh did not clear error: %v", m.err)
@@ -147,27 +142,23 @@ func TestUnchangedRefreshRebuildsAndPreservesState(t *testing.T) {
 
 func TestRefreshFailureRetainsView(t *testing.T) {
 	m := testModel(modelPatch(), nil, nil)
-	oldView, oldCursor := m.review.view, m.review.cursor
+	before := m.review.view.Render()
 	m = updateModel(t, m, refreshDiffMsg{err: fmt.Errorf("git failed")})
-	if m.err == nil || m.review.view != oldView || m.review.cursor != oldCursor || m.review.patch.Root != "/repo" {
-		t.Fatalf("view=%v diffCursor=%#v patch=%#v error=%v", m.review.view, m.review.cursor, m.review.patch, m.err)
+	if m.err == nil || m.review.view.Render() != before || m.review.patch.Root != "/repo" {
+		t.Fatalf("patch=%#v error=%v", m.review.patch, m.err)
 	}
 }
 
 func TestViewSwitchPreservesSemanticCursor(t *testing.T) {
 	m := testModel(modelPatch(), nil, nil)
-	m.width = 120
-	m.move(1)
-	m.move(1)
-	want, _ := m.review.view.line(m.review.cursor)
-	oldCoordinate := m.review.cursor.coordinate
+	m = updateModel(t, m, tea.WindowSizeMsg{Width: 120, Height: 30})
+	m.review.view.Move(diffscreen.NextLine)
+	m.review.view.Move(diffscreen.NextLine)
+	_, want, _ := m.review.view.Current()
 	m.setSideBySide(true)
-	got, ok := m.review.view.line(m.review.cursor)
+	_, got, ok := m.review.view.Current()
 	if !ok || got != want {
-		t.Fatalf("diffCursor line after switch = %#v", got)
-	}
-	if m.review.cursor.coordinate == oldCoordinate {
-		t.Fatal("layout switch reused the old coordinate")
+		t.Fatalf("focused line=%#v, want %#v", got, want)
 	}
 }
 
@@ -189,7 +180,8 @@ func TestCommentSaveUsesPatchAndPreservesAnchor(t *testing.T) {
 func TestRenderingAndKeyBindingsRemainAvailable(t *testing.T) {
 	m := testModel(modelPatch(), nil, nil)
 	m.width, m.height = 80, 10
-	m.review.viewport = m.review.view.resize(m.review.viewport, m.width, m.screenBodyHeight())
+	m.resizeScreens()
+	m.resizeScreens()
 	rendered := m.render()
 	for _, value := range []string{"review-my-slop", "+1-1", "old()", "new()", "local changes"} {
 		if !strings.Contains(rendered, value) {
@@ -205,6 +197,7 @@ func TestRenderingAndKeyBindingsRemainAvailable(t *testing.T) {
 func TestEmptyViewKeepsKeyboardHintAtBottom(t *testing.T) {
 	m := testModel(patch.Patch{}, nil, nil)
 	m.width, m.height = 80, 10
+	m.resizeScreens()
 
 	lines := strings.Split(m.render(), "\n")
 	if got, want := lines[m.height-2], "j/k/h/l move"; !strings.Contains(got, want) {
@@ -218,6 +211,7 @@ func TestEmptyViewKeepsKeyboardHintAtBottom(t *testing.T) {
 func TestMenuKeyboardHintsStayAtBottom(t *testing.T) {
 	m := testModel(modelPatch(), []comments.Comment{{Body: "first", Anchor: comments.Anchor{FilePath: "main.go", NewStart: 2}}}, nil)
 	m.width, m.height = 80, 10
+	m.resizeScreens()
 
 	tests := []struct {
 		name string
@@ -246,7 +240,8 @@ func TestCommentsMenuScrollsWithinScreenBody(t *testing.T) {
 	m := testModel(modelPatch(), items, nil)
 	m.width, m.height = 80, 7
 	m.mode = modeComments
-	m.comments.row = len(items) - 1
+	m.resizeScreens()
+	m.comments.view.Move(len(items))
 
 	rendered := strings.Split(ansi.Strip(m.render()), "\n")
 	if !strings.Contains(strings.Join(rendered[1:m.height-2], "\n"), "comment 9") {
@@ -259,4 +254,20 @@ func TestCommentsMenuScrollsWithinScreenBody(t *testing.T) {
 
 func modelPatch() patch.Patch {
 	return patch.Patch{Root: "/repo", Files: []patch.File{{DisplayPath: "main.go", OldPath: "main.go", NewPath: "main.go", Hunks: []patch.Hunk{{Header: "@@ -1,2 +1,2 @@", Lines: []patch.Line{{Kind: patch.Context, Text: "keep()", OldNumber: 1, NewNumber: 1}, {Kind: patch.Deletion, Text: "old()", OldNumber: 2}, {Kind: patch.Addition, Text: "new()", NewNumber: 2}}}}}}}
+}
+
+func TestNarrowLayoutToggleSavesPreferenceWithoutApplicationGeometryRules(t *testing.T) {
+	var saved []bool
+	m := newModel(modelPatch(), nil, nil, initialLayout{
+		size:           size{Width: 80, Height: 30},
+		SaveSideBySide: func(enabled bool) error { saved = append(saved, enabled); return nil },
+	})
+	m = updateModel(t, m, textKey("t"))
+	if m.err != nil || !slices.Equal(saved, []bool{true}) || strings.Contains(m.render(), " │ ") {
+		t.Fatalf("narrow toggle: saved=%v err=%v render=%q", saved, m.err, m.render())
+	}
+	m = updateModel(t, m, tea.WindowSizeMsg{Width: 120, Height: 30})
+	if !strings.Contains(m.render(), " │ ") {
+		t.Fatal("widening did not activate preferred layout")
+	}
 }
