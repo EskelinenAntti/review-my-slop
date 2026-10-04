@@ -36,7 +36,7 @@ func TestReloadRejectsOlderGenerationAndKeepsSelectionByID(t *testing.T) {
 	load := m.Update(Show{})
 	m.row = 0 // selection moves while the request is in flight
 	m.Update(load())
-	if m.row != 0 || m.items[m.row].ID != "b" {
+	if m.row != 1 || m.items[m.row].ID != "a" {
 		t.Fatalf("selection = %d / %q", m.row, m.items[m.row].ID)
 	}
 }
@@ -58,14 +58,16 @@ func TestReloadResultIsRejectedAfterDeleteMutation(t *testing.T) {
 func TestEditorCapturesAnchorAndBlankNewCompositionCancelsPatchSelection(t *testing.T) {
 	t.Setenv("EDITOR", "true")
 	original := patch.Anchor{FilePath: "a.go", QuotedLines: []string{"+return true"}}
+	captured := cloneAnchor(original)
 	m := New(Initial{}, Dependencies{})
 	if cmd := m.Begin(original); cmd == nil {
 		t.Fatal("Begin returned no process command")
 	}
 	path := strings.TrimSuffix(strings.TrimPrefix(m.edit.Command().Args[2], "true '"), "'")
 	original.QuotedLines[0] = "+mutated"
-	if got := m.editAnchor.QuotedLines[0]; got != "+return true" {
-		t.Fatalf("captured anchor changed: %q", got)
+	draft, err := os.ReadFile(path)
+	if err != nil || !strings.Contains(string(draft), captured.QuotedLines[0][1:]) {
+		t.Fatalf("draft did not keep captured anchor: %q, %v", draft, err)
 	}
 	if err := os.WriteFile(path, nil, 0o600); err != nil {
 		t.Fatal(err)
@@ -73,7 +75,7 @@ func TestEditorCapturesAnchorAndBlankNewCompositionCancelsPatchSelection(t *test
 	if _, err := m.edit.Finish(nil); err != nil {
 		t.Fatal(err)
 	}
-	msg := editFinished{body: " \n", anchor: m.editAnchor, fromPatch: true, generation: m.editGeneration, reservation: m.editReservation}
+	msg := editFinished{body: " \n", anchor: captured, fromPatch: true, generation: m.editGeneration, reservation: pendingReservation(m, "")}
 	cmd := m.Update(msg)
 	if cmd == nil {
 		t.Fatal("empty composition did not signal completion")
@@ -99,7 +101,7 @@ func TestEditorAndStorageFailuresFromPatchAreRouted(t *testing.T) {
 	if _, err := m.edit.Finish(nil); err != nil {
 		t.Fatal(err)
 	}
-	cmd = m.Update(editFinished{body: "feedback", fromPatch: true, generation: m.editGeneration, reservation: m.editReservation})
+	cmd = m.Update(editFinished{body: "feedback", fromPatch: true, generation: m.editGeneration, reservation: pendingReservation(m, "")})
 	if cmd == nil {
 		t.Fatal("save callback was not scheduled")
 	}
@@ -129,7 +131,7 @@ func TestSameCommentCannotHaveOverlappingMutation(t *testing.T) {
 	if cmd := m.delete("one", false); cmd != nil {
 		t.Fatal("same ID delete overlapped active edit")
 	}
-	cmd := m.Update(editFinished{body: "after", id: "one", generation: m.editGeneration, reservation: m.editReservation})
+	cmd := m.Update(editFinished{body: "after", id: "one", generation: m.editGeneration, reservation: pendingReservation(m, "one")})
 	second := m.delete("one", false)
 	if second != nil {
 		t.Fatal("same ID delete overlapped active save")
@@ -152,7 +154,7 @@ func TestEmptyEditedCommentDeletesByCapturedID(t *testing.T) {
 	if _, err := m.edit.Finish(nil); err != nil {
 		t.Fatal(err)
 	}
-	cmd := m.Update(editFinished{body: "\n", id: "captured", generation: m.editGeneration, reservation: m.editReservation})
+	cmd := m.Update(editFinished{body: "\n", id: "captured", generation: m.editGeneration, reservation: pendingReservation(m, "captured")})
 	if cmd == nil {
 		t.Fatal("delete was not scheduled")
 	}
@@ -195,7 +197,7 @@ func TestCommentListRenderingEditingDeletionAndRoutingKeys(t *testing.T) {
 	if _, err := m.edit.Finish(nil); err != nil {
 		t.Fatal(err)
 	}
-	cmd := m.Update(editFinished{body: "new body", id: "one", anchor: m.editAnchor, generation: m.editGeneration, reservation: m.editReservation})
+	cmd := m.Update(editFinished{body: "new body", id: "one", anchor: patch.Anchor{FilePath: "one.go", NewStart: 4}, generation: m.editGeneration, reservation: pendingReservation(m, "one")})
 	if cmd == nil {
 		t.Fatal("edit did not schedule save")
 	}
@@ -276,7 +278,7 @@ func TestSaveAndDeleteFailuresKeepCurrentItem(t *testing.T) {
 	if _, err := m.edit.Finish(nil); err != nil {
 		t.Fatal(err)
 	}
-	cmd := m.Update(editFinished{body: "edited", id: "one", generation: m.editGeneration, reservation: m.editReservation})
+	cmd := m.Update(editFinished{body: "edited", id: "one", generation: m.editGeneration, reservation: pendingReservation(m, "one")})
 	m.Update(cmd())
 	if len(m.items) != 1 || m.items[0].Body != "keep" || m.err == nil || m.err.Error() != "save failed" {
 		t.Fatalf("after save failure: items=%#v err=%v", m.items, m.err)
@@ -297,7 +299,7 @@ func TestPatchOriginatedSaveEmitsSaved(t *testing.T) {
 	if _, err := m.edit.Finish(nil); err != nil {
 		t.Fatal(err)
 	}
-	cmd := m.Update(editFinished{body: "feedback", anchor: patch.Anchor{FilePath: "a.go"}, fromPatch: true, generation: m.editGeneration, reservation: m.editReservation})
+	cmd := m.Update(editFinished{body: "feedback", anchor: patch.Anchor{FilePath: "a.go"}, fromPatch: true, generation: m.editGeneration, reservation: pendingReservation(m, "")})
 	if cmd == nil {
 		t.Fatal("save was not scheduled")
 	}
@@ -308,4 +310,12 @@ func TestPatchOriginatedSaveEmitsSaved(t *testing.T) {
 	if event, ok := cmd().(Saved); !ok || !event.FromPatch {
 		t.Fatalf("save event = %#v", cmd())
 	}
+}
+
+func pendingReservation(m *Model, id string) uint64 {
+	key := id
+	if key == "" {
+		key = "\x00new"
+	}
+	return m.pending[key]
 }

@@ -45,12 +45,8 @@ type Model struct {
 	editGeneration     uint64
 	reservationID      uint64
 	pending            map[string]uint64
-	editReservation    uint64
 
-	edit          *editor.Edit
-	editID        string
-	editAnchor    patch.Anchor
-	editFromPatch bool
+	edit *editor.Edit
 }
 
 func New(initial Initial, dependencies Dependencies) *Model {
@@ -85,7 +81,10 @@ func (m *Model) Update(msg tea.Msg) tea.Cmd {
 			m.err = fmt.Errorf("refresh comments: %w", msg.err)
 			return nil
 		}
-		selected := msg.selected
+		selected := ""
+		if m.row >= 0 && m.row < len(m.items) {
+			selected = m.items[m.row].ID
+		}
 		m.items = append([]comments.Comment(nil), msg.items...)
 		m.row = indexOf(m.items, selected)
 		if m.row < 0 {
@@ -101,7 +100,6 @@ func (m *Model) Update(msg tea.Msg) tea.Cmd {
 		m.edit = nil
 		if msg.err != nil {
 			m.release(msg.id, msg.reservation)
-			m.clearEdit()
 			if msg.fromPatch {
 				return func() tea.Msg { return Failed{Err: msg.err} }
 			}
@@ -112,18 +110,15 @@ func (m *Model) Update(msg tea.Msg) tea.Cmd {
 		if body == "" {
 			if msg.id == "" {
 				m.release(msg.id, msg.reservation)
-				m.clearEdit()
 				if msg.fromPatch {
 					return func() tea.Msg { return Cancelled{FromPatch: true} }
 				}
 				return nil
 			}
-			m.clearEdit()
 			return m.deleteReserved(msg.id, msg.fromPatch, msg.reservation)
 		}
 		if m.deps.Save == nil {
 			m.release(msg.id, msg.reservation)
-			m.clearEdit()
 			err := fmt.Errorf("comment storage is unavailable")
 			if msg.fromPatch {
 				return func() tea.Msg { return Failed{Err: err} }
@@ -134,7 +129,6 @@ func (m *Model) Update(msg tea.Msg) tea.Cmd {
 		draft := comments.Draft{ID: msg.id, Anchor: cloneAnchor(msg.anchor), Body: body}
 		m.mutationGeneration++
 		m.reloadGeneration++
-		m.clearEdit()
 		return func() tea.Msg {
 			saved, err := m.deps.Save(draft)
 			return saveFinished{saved: saved, id: draft.ID, reservation: msg.reservation, fromPatch: msg.fromPatch, err: err}
@@ -203,13 +197,9 @@ func (m *Model) reload() tea.Cmd {
 	}
 	m.reloadGeneration++
 	generation, mutation := m.reloadGeneration, m.mutationGeneration
-	selected := ""
-	if m.row >= 0 && m.row < len(m.items) {
-		selected = m.items[m.row].ID
-	}
 	return func() tea.Msg {
 		items, err := m.deps.List()
-		return loadFinished{items: items, generation: generation, mutation: mutation, selected: selected, err: err}
+		return loadFinished{items: items, generation: generation, mutation: mutation, err: err}
 	}
 }
 
@@ -279,8 +269,6 @@ func (m *Model) begin(id string, anchor patch.Anchor, body string, fromPatch boo
 		return nil
 	}
 	m.edit = draft
-	m.editID, m.editAnchor, m.editFromPatch = id, cloneAnchor(anchor), fromPatch
-	m.editReservation = reservation
 	m.editGeneration++
 	generation := m.editGeneration
 	return tea.ExecProcess(draft.Command(), func(processErr error) tea.Msg {
@@ -322,15 +310,6 @@ func (m *Model) deleteReserved(id string, fromPatch bool, reservation uint64) te
 	}
 }
 
-func (m *Model) cancelEdit() {
-	if m.edit != nil {
-		_ = m.edit.Close()
-		m.release(m.editID, m.editReservation)
-	}
-	m.edit = nil
-	m.editGeneration++
-}
-
 func (m *Model) reserve(id string) (uint64, bool) {
 	if m.pending == nil {
 		m.pending = make(map[string]uint64)
@@ -357,16 +336,9 @@ func (m *Model) release(id string, reservation uint64) {
 	}
 }
 
-func (m *Model) clearEdit() {
-	m.editID = ""
-	m.editAnchor = patch.Anchor{}
-	m.editFromPatch = false
-}
-
 type loadFinished struct {
 	items                []comments.Comment
 	generation, mutation uint64
-	selected             string
 	err                  error
 }
 type editFinished struct {
