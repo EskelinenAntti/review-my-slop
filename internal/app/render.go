@@ -24,9 +24,9 @@ func (m model) render() string {
 	case modeHelp:
 		return m.renderHelp()
 	case modeComments:
-		rendered = m.comments.view.Render()
+		rendered = m.commentList.Render()
 	default:
-		rendered = m.review.view.Render()
+		rendered = m.diff.Render()
 	}
 	if m.err != nil {
 		lines := strings.Split(rendered, "\n")

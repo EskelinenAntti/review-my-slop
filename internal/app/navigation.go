@@ -7,44 +7,40 @@ import (
 )
 
 func (m *model) toggleSideBySide() {
-	enabled := !m.review.sideBySide
+	enabled := !m.diffOptions.SideBySide
 	m.setSideBySide(enabled)
 	if m.saveLayout != nil {
-		if err := m.saveLayout(m.review.sideBySide); err != nil {
+		if err := m.saveLayout(m.diffOptions.SideBySide); err != nil {
 			m.err = fmt.Errorf("save side-by-side preference: %w", err)
 		}
 	}
 }
 
 func (m *model) setSideBySide(enabled bool) {
-	m.review.sideBySide = enabled
-	m.configureDiff()
+	m.diffOptions.SideBySide = enabled
+	m.diff.Configure(m.diffOptions)
 }
 
 func (m model) updateSearch(name string, key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	switch name {
 	case "esc":
-		m.review.view.CancelSearch()
+		m.diff.CancelSearch()
 		m.mode = modeBrowse
-		m.search.query = nil
+		m.searchQuery = nil
 	case "enter":
-		m.review.view.AcceptSearch()
+		m.diff.AcceptSearch()
 		m.mode = modeBrowse
-		m.search.query = nil
+		m.searchQuery = nil
 	case "backspace":
-		if len(m.search.query) > 0 {
-			m.search.query = m.search.query[:len(m.search.query)-1]
+		if len(m.searchQuery) > 0 {
+			m.searchQuery = m.searchQuery[:len(m.searchQuery)-1]
 		}
-		m.updateIncrementalSearch()
+		m.diff.PreviewSearch(string(m.searchQuery))
 	default:
 		if key.Text != "" {
-			m.search.query = append(m.search.query, []rune(key.Text)...)
-			m.updateIncrementalSearch()
+			m.searchQuery = append(m.searchQuery, []rune(key.Text)...)
+			m.diff.PreviewSearch(string(m.searchQuery))
 		}
 	}
 	return m, nil
-}
-
-func (m *model) updateIncrementalSearch() {
-	m.review.view.PreviewSearch(string(m.search.query))
 }
