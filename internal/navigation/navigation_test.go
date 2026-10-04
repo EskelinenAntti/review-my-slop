@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/charmbracelet/x/ansi"
 	"github.com/eskelinenantti/review-my-slop/internal/layout"
 	"github.com/eskelinenantti/review-my-slop/internal/patch"
 )
@@ -325,6 +326,17 @@ func TestViewportAlignmentStickyRowsProgressAndHorizontalClamp(t *testing.T) {
 	n.viewport = n.clamp(n.viewport)
 	if !n.hasSticky(n.viewport.Top, n.viewport.Height) || n.contentHeight(n.viewport) != n.viewport.Height-1 {
 		t.Fatalf("sticky header not counted in viewport: %#v", n.viewport)
+	}
+}
+
+func TestUnicodeHorizontalLimitMatchesTerminalCellWidth(t *testing.T) {
+	text := strings.Repeat("界e\u0301👩‍👩‍👧‍👦", 3) + "\tend"
+	p := patch.Patch{Files: []patch.File{{DisplayPath: "unicode", Hunks: []patch.Hunk{{Header: "@@", Lines: []patch.Line{{Kind: patch.Context, Text: text, OldNumber: 1, NewNumber: 1}}}}}}}
+	n := New(layout.Build(p, layout.Unified), 22, 1)
+	expected := max(0, ansi.StringWidth(strings.ReplaceAll(text, "\t", "    "))-8)
+	n.ScrollHorizontal(10000)
+	if n.viewport.LeftColumn != expected {
+		t.Fatalf("Unicode horizontal limit=%d, terminal cell width expects %d", n.viewport.LeftColumn, expected)
 	}
 }
 

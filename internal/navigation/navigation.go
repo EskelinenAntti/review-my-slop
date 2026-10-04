@@ -4,9 +4,9 @@ package navigation
 import (
 	"strings"
 
+	"github.com/charmbracelet/x/ansi"
 	"github.com/eskelinenantti/review-my-slop/internal/layout"
 	"github.com/eskelinenantti/review-my-slop/internal/patch"
-	"github.com/mattn/go-runewidth"
 )
 
 type Alignment uint8
@@ -350,7 +350,7 @@ func plainLongestLine(d *layout.Document) int {
 				continue
 			}
 			line := p.Files[r.File].Hunks[r.Hunk].Lines[index]
-			longest = max(longest, runewidth.StringWidth(strings.ReplaceAll(line.Text, "\t", "    ")))
+			longest = max(longest, ansi.StringWidth(strings.ReplaceAll(line.Text, "\t", "    ")))
 		}
 	}
 	return longest
