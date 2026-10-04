@@ -40,11 +40,10 @@ func initialTerminalSize() size {
 }
 
 func discoverTerminalSize(getSize func(uintptr) (int, int, error)) size {
-	if width, height, err := getSize(os.Stdin.Fd()); err == nil {
-		return size{Width: width, Height: height}
-	}
-	if width, height, err := getSize(os.Stdout.Fd()); err == nil {
-		return size{Width: width, Height: height}
+	for _, file := range []*os.File{os.Stdin, os.Stdout} {
+		if width, height, err := getSize(file.Fd()); err == nil {
+			return size{Width: width, Height: height}
+		}
 	}
 	return defaultSize
 }

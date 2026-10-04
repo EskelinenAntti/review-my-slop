@@ -102,24 +102,14 @@ func (s Store) Update(comment Comment) error {
 		return fmt.Errorf("encode comment: %w", err)
 	}
 	return s.update(func(bucket *bolt.Bucket) error {
-		cursor := bucket.Cursor()
-		for key, value := cursor.First(); key != nil; key, value = cursor.Next() {
-			stored, err := decodeComment(value)
-			if err != nil {
-				return err
-			}
-			if stored.Repository != comment.Repository || stored.ID != comment.ID {
-				continue
-			}
-			oldKey := append([]byte(nil), key...)
-			if !bytes.Equal(oldKey, []byte(comment.ID)) {
-				if err := bucket.Delete(oldKey); err != nil {
+		return withComment(bucket, comment.Repository, comment.ID, func(key []byte) error {
+			if !bytes.Equal(key, []byte(comment.ID)) {
+				if err := bucket.Delete(key); err != nil {
 					return err
 				}
 			}
 			return bucket.Put([]byte(comment.ID), data)
-		}
-		return errors.New("comment is no longer in the comments")
+		})
 	})
 }
 
@@ -128,19 +118,23 @@ func (s Store) Delete(repository, id string) error {
 		return errors.New("repository and comment ID are required")
 	}
 	return s.update(func(bucket *bolt.Bucket) error {
-		cursor := bucket.Cursor()
-		for key, value := cursor.First(); key != nil; key, value = cursor.Next() {
-			comment, err := decodeComment(value)
-			if err != nil {
-				return err
-			}
-			if comment.Repository != repository || comment.ID != id {
-				continue
-			}
-			return bucket.Delete(key)
-		}
-		return errors.New("comment is no longer in the comments")
+		return withComment(bucket, repository, id, bucket.Delete)
 	})
+}
+
+// withComment finds the first matching record, including legacy storage keys.
+func withComment(bucket *bolt.Bucket, repository, id string, fn func([]byte) error) error {
+	cursor := bucket.Cursor()
+	for key, value := cursor.First(); key != nil; key, value = cursor.Next() {
+		comment, err := decodeComment(value)
+		if err != nil {
+			return err
+		}
+		if comment.Repository == repository && comment.ID == id {
+			return fn(append([]byte(nil), key...))
+		}
+	}
+	return errors.New("comment is no longer in the comments")
 }
 
 func (s Store) Acknowledge(repository string, ids []string) error {
@@ -210,17 +204,13 @@ func decodeComment(data []byte) (Comment, error) {
 }
 
 func (s Store) update(fn func(*bolt.Bucket) error) error {
-	return s.updateBucket(messagesBucket, fn)
-}
-
-func (s Store) updateBucket(name []byte, fn func(*bolt.Bucket) error) error {
 	db, err := s.open()
 	if err != nil {
 		return err
 	}
 	defer db.Close()
 	return db.Update(func(tx *bolt.Tx) error {
-		bucket, err := tx.CreateBucketIfNotExists(name)
+		bucket, err := tx.CreateBucketIfNotExists(messagesBucket)
 		if err != nil {
 			return err
 		}
@@ -229,10 +219,6 @@ func (s Store) updateBucket(name []byte, fn func(*bolt.Bucket) error) error {
 }
 
 func (s Store) view(fn func(*bolt.Bucket) error) error {
-	return s.viewBucket(messagesBucket, fn)
-}
-
-func (s Store) viewBucket(name []byte, fn func(*bolt.Bucket) error) error {
 	db, err := s.open()
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
@@ -242,7 +228,7 @@ func (s Store) viewBucket(name []byte, fn func(*bolt.Bucket) error) error {
 	}
 	defer db.Close()
 	return db.View(func(tx *bolt.Tx) error {
-		bucket := tx.Bucket(name)
+		bucket := tx.Bucket(messagesBucket)
 		if bucket == nil {
 			return nil
 		}

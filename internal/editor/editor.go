@@ -41,50 +41,38 @@ func commentDraft(body string, anchor comments.Anchor) string {
 	if len(anchor.QuotedLines) == 0 {
 		return body
 	}
-	lines := suggestionLines(anchor.QuotedLines)
-	var draft strings.Builder
-	draft.WriteString(body)
 	if body != "" && !strings.HasSuffix(body, "\n") {
-		draft.WriteByte('\n')
+		body += "\n"
 	}
-	draft.WriteByte('\n')
-	fence := contextFence(lines)
-	draft.WriteString(fence)
-	draft.WriteString("suggestion\n")
-	for _, line := range lines {
-		draft.WriteString(line)
-		draft.WriteByte('\n')
-	}
-	draft.WriteString(fence)
-	draft.WriteByte('\n')
-	return draft.String()
+	return body + "\n" + suggestionBlock(anchor.QuotedLines) + "\n"
 }
 
 func stripUnchangedSuggestion(body string, quoted []string) string {
 	if len(quoted) == 0 {
 		return body
 	}
-	lines := suggestionLines(quoted)
-	fence := contextFence(lines)
-	var suggestion strings.Builder
-	suggestion.WriteString(fence)
-	suggestion.WriteString("suggestion\n")
-	for _, line := range lines {
-		suggestion.WriteString(line)
-		suggestion.WriteByte('\n')
-	}
-	suggestion.WriteString(fence)
-	start := strings.Index(body, suggestion.String())
+	suggestion := suggestionBlock(quoted)
+	start := strings.Index(body, suggestion)
 	if start < 0 {
 		return body
 	}
-	end := start + suggestion.Len()
+	end := start + len(suggestion)
 	before := strings.TrimRight(body[:start], "\n")
 	after := body[end:]
 	if strings.TrimSpace(after) == "" {
 		return before
 	}
 	return before + "\n" + strings.TrimLeft(after, "\n")
+}
+
+func suggestionBlock(quoted []string) string {
+	lines := suggestionLines(quoted)
+	fence := contextFence(lines)
+	content := ""
+	if len(lines) > 0 {
+		content = strings.Join(lines, "\n") + "\n"
+	}
+	return fence + "suggestion\n" + content + fence
 }
 
 func commentCommand(ctx context.Context, editor, path string) *exec.Cmd {

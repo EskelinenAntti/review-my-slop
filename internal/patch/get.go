@@ -309,14 +309,7 @@ func parseHunkBody(oldLine, newLine int32, body []byte) ([]Line, error) {
 }
 
 func readIndex(ctx context.Context, run runner, root, path string) string {
-	if path == "" || path == "/dev/null" {
-		return ""
-	}
-	out, err := run.Run(ctx, root, "show", ":"+path)
-	if err != nil || len(out) > maxFileBytes || bytes.IndexByte(out, 0) >= 0 {
-		return ""
-	}
-	return visibleSource(string(out))
+	return readRevision(ctx, run, root, "", path)
 }
 
 func readRevision(ctx context.Context, run runner, root, revision, path string) string {
