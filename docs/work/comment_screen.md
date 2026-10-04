@@ -11,4 +11,4 @@ Migrated behavior coverage from `internal/ui/tui_behavior_test.go`:
 - Suggestion fence sizing, stripping unchanged suggestions, and retaining edited suggestions (`internal/ui/comments/model_test.go`).
 - Captured anchor immutability, blank new comment discard/selection cancellation, and empty edited comment deletion by ID.
 - Editor and storage failure routing, same-ID overlapping mutation prevention, and stale reload rejection after newer reloads or mutations.
-- Existing comments screen appearance/listing/edit/delete behavior remains in the same renderer structure; shell integration owns full terminal/PTY checks.
+- Comments screen appearance, list scrolling within the body, footer placement, editing, and deletion are covered; shell integration owns full terminal/PTY checks.
