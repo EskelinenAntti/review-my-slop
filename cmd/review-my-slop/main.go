@@ -2,13 +2,9 @@ package main
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
-	"path/filepath"
-	"strings"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/term"
@@ -82,11 +78,11 @@ func runComments(ctx context.Context, output io.Writer) error {
 	if err != nil {
 		return err
 	}
-	root, err := repositoryRoot(ctx)
+	p, err := patch.Get(ctx, patch.Unstaged)
 	if err != nil {
 		return err
 	}
-	pending, err := store.List(root)
+	pending, err := store.List(p.Root)
 	if err != nil {
 		return err
 	}
@@ -97,23 +93,5 @@ func runComments(ctx context.Context, output io.Writer) error {
 	for i, comment := range pending {
 		ids[i] = comment.ID
 	}
-	return store.Acknowledge(root, ids)
-}
-
-func repositoryRoot(ctx context.Context) (string, error) {
-	out, err := exec.CommandContext(ctx, "git", "rev-parse", "--show-toplevel").Output()
-	if ctx.Err() != nil {
-		return "", fmt.Errorf("resolve repository root: %w", ctx.Err())
-	}
-	if err != nil {
-		if exitErr, ok := errors.AsType[*exec.ExitError](err); ok {
-			return "", fmt.Errorf("resolve repository root: %s", strings.TrimSpace(string(exitErr.Stderr)))
-		}
-		return "", fmt.Errorf("resolve repository root: %w", err)
-	}
-	root, err := filepath.EvalSymlinks(strings.TrimSpace(string(out)))
-	if err != nil {
-		return "", fmt.Errorf("resolve repository root: %w", err)
-	}
-	return root, nil
+	return store.Acknowledge(p.Root, ids)
 }
