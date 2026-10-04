@@ -5,6 +5,8 @@ import (
 	"fmt"
 
 	"github.com/eskelinenantti/review-my-slop/internal/comments"
+	"github.com/eskelinenantti/review-my-slop/internal/settings"
+	"github.com/eskelinenantti/review-my-slop/internal/ui/keymap"
 
 	tea "charm.land/bubbletea/v2"
 
@@ -108,7 +110,7 @@ type model struct {
 	refresh    refreshDiffFunc
 	err        error
 	quitting   bool
-	pendingKey string
+	keys       keymap.Matcher
 	saveLayout saveSideBySideFunc
 	kind       patch.Kind
 	dark       bool
@@ -129,6 +131,13 @@ func newModel(p patch.Patch, comments []comments.Comment, save saveCommentFunc, 
 		saveLayout: layout.SaveSideBySide,
 		dark:       true,
 		kind:       p.Kind,
+		keys: keymap.New(
+			keymap.Sequence{Prefix: "g", Keys: []string{"g"}, RetryUnmatched: true},
+			keymap.Sequence{Prefix: "z", Keys: []string{"z", "t", "b"}},
+			keymap.Sequence{Prefix: "[", Keys: []string{"f"}},
+			keymap.Sequence{Prefix: "]", Keys: []string{"f"}},
+			keymap.Sequence{Prefix: "ctrl+w", Keys: []string{"h", "l", "ctrl+w"}},
+		),
 	}
 	m.review.sideBySide = layout.SideBySide
 	m.review.view = m.newReviewView(p)
@@ -138,7 +147,7 @@ func newModel(p patch.Patch, comments []comments.Comment, save saveCommentFunc, 
 }
 
 func newWithStore(store commentStore, p patch.Patch, items []comments.Comment, size size) (model, error) {
-	sideBySide, err := loadLayoutSettings()
+	preferences, err := settings.Load()
 	if err != nil {
 		return model{}, err
 	}
@@ -152,8 +161,8 @@ func newWithStore(store commentStore, p patch.Patch, items []comments.Comment, s
 		}
 		return store.Add(comment)
 	}, initialLayout{
-		SideBySide:     sideBySide,
-		SaveSideBySide: saveLayoutSettings,
+		SideBySide:     preferences.SideBySide,
+		SaveSideBySide: func(enabled bool) error { return settings.Save(settings.Preferences{SideBySide: enabled}) },
 		size:           size,
 	})
 	m.setDelete(func(comment comments.Comment, current patch.Patch) error {
@@ -292,39 +301,7 @@ func (m model) updateKey(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return m.updateSearch(name, key)
 	}
 	m.err = nil
-	pending := m.pendingKey
-	m.pendingKey = ""
-	if pending == "[" || pending == "]" {
-		if pending+name == "]f" {
-			m.jumpFile(forward)
-		}
-		if pending+name == "[f" {
-			m.jumpFile(backward)
-		}
-		return m, nil
-	}
-	if pending == "z" {
-		switch name {
-		case "z":
-			m.review.viewport = m.review.view.align(m.review.viewport, m.review.cursor, middle)
-		case "t":
-			m.review.viewport = m.review.view.align(m.review.viewport, m.review.cursor, top)
-		case "b":
-			m.review.viewport = m.review.view.align(m.review.viewport, m.review.cursor, bottom)
-		}
-		return m, nil
-	}
-	if pending == "ctrl+w" {
-		switch name {
-		case "h":
-			m.switchPane(left)
-		case "l":
-			m.switchPane(right)
-		case "ctrl+w":
-			m.switchPane(m.review.cursor.pane.other())
-		}
-		return m, nil
-	}
+	name = m.keys.Feed(name)
 	switch name {
 	case "ctrl+c", "q":
 		m.quitting = true
@@ -357,24 +334,30 @@ func (m model) updateKey(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		m.halfPage(forward)
 	case "ctrl+u":
 		m.halfPage(backward)
-	case "ctrl+w":
-		m.pendingKey = name
-	case "g":
-		if pending == "g" {
-			if cursor, ok := m.review.view.first(); ok {
-				m.setCursor(cursor)
-			}
-		} else {
-			m.pendingKey = "g"
+	case "g g":
+		if cursor, ok := m.review.view.first(); ok {
+			m.setCursor(cursor)
 		}
 	case "G":
 		if cursor, ok := m.review.view.last(); ok {
 			m.setCursor(cursor)
 		}
-	case "z":
-		m.pendingKey = "z"
-	case "]", "[":
-		m.pendingKey = name
+	case "] f":
+		m.jumpFile(forward)
+	case "[ f":
+		m.jumpFile(backward)
+	case "z z":
+		m.review.viewport = m.review.view.align(m.review.viewport, m.review.cursor, middle)
+	case "z t":
+		m.review.viewport = m.review.view.align(m.review.viewport, m.review.cursor, top)
+	case "z b":
+		m.review.viewport = m.review.view.align(m.review.viewport, m.review.cursor, bottom)
+	case "ctrl+w h":
+		m.switchPane(left)
+	case "ctrl+w l":
+		m.switchPane(right)
+	case "ctrl+w ctrl+w":
+		m.switchPane(m.review.cursor.pane.other())
 	case "v":
 		if m.review.selection == nil {
 			selection := m.review.view.beginSelection(m.review.cursor)

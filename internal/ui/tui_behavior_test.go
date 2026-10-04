@@ -260,8 +260,13 @@ func TestPendingKeyIsConsumedByNextKey(t *testing.T) {
 	m = updateModel(t, m, textKey("g"))
 	m = updateModel(t, m, textKey("h"))
 	m = updateModel(t, m, textKey("g"))
-	if m.review.cursor != last || m.pendingKey != "g" {
-		t.Fatalf("diffCursor=%#v pending=%q", m.review.cursor, m.pendingKey)
+	if m.review.cursor != last {
+		t.Fatalf("pending prefix moved cursor: %#v", m.review.cursor)
+	}
+	m = updateModel(t, m, textKey("g"))
+	first, _ := m.review.view.first()
+	if m.review.cursor != first {
+		t.Fatalf("completed gg cursor=%#v, want %#v", m.review.cursor, first)
 	}
 }
 
