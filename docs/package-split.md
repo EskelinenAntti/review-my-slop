@@ -206,6 +206,7 @@ type CommentsRequested struct{}
 type HelpRequested struct{}
 type QuitRequested struct{}
 type CommentSaved struct{}
+type Failure struct { Err error }
 ```
 
 Key handlers emit routing events as tea.Cmd results. The Patch screen owns source
@@ -227,6 +228,8 @@ type Show struct{}
 type BackRequested struct{}
 type QuitRequested struct{}
 type Saved struct { FromPatch bool }
+type Cancelled struct { FromPatch bool }
+type Failed struct { Err error }
 func (m *Model) Begin(anchor patch.Anchor) tea.Cmd
 ```
 
@@ -295,11 +298,11 @@ Each worker copies/adapts relevant behavior tests into its own packages without
 editing old root ui tests. Shell/CLI owner removes old source/tests after
 confirming coverage migration. Claim records are disjoint files. Each feature
 worker integrates its own claim and implementation commits onto the shared
-feature branch while holding `/tmp/review-my-slop-integration.lock`; coordinate
-integration windows and keep the shell/CLI worktree clean before another worker
-integrates. The shell/CLI owner handles final fixes, full checks and the final
-branch validation. Any contract change is coordinated explicitly. Workers can
-read each other's worktrees but never edit them.
+feature branch while holding `/tmp/review-my-slop-integration.lock`. The
+shell/CLI owner removes old source/tests after confirming coverage migration.
+The root task owner handles combined branch fixes and final checks. Any contract
+change is coordinated explicitly. Workers can read each other's worktrees but
+never edit them.
 
 ## Acceptance
 

@@ -10,8 +10,9 @@ import (
 	"github.com/charmbracelet/x/term"
 
 	"github.com/eskelinenantti/review-my-slop/internal/comments"
+	"github.com/eskelinenantti/review-my-slop/internal/git"
 	"github.com/eskelinenantti/review-my-slop/internal/patch"
-	"github.com/eskelinenantti/review-my-slop/internal/review"
+	"github.com/eskelinenantti/review-my-slop/internal/prompt"
 	"github.com/eskelinenantti/review-my-slop/internal/ui"
 )
 
@@ -44,29 +45,51 @@ func runCode(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	return runCodeAt(ctx, current)
+}
+
+func runCodeAt(ctx context.Context, current string) error {
+	repository, err := git.Open(ctx, current)
+	if err != nil {
+		return err
+	}
 	store, err := comments.OpenDefault()
 	if err != nil {
 		return err
 	}
-	currentReview := review.New(ctx, current, patch.Loader{}, store)
-	loaded, err := currentReview.Load("")
+	queue := comments.Bind(store, repository.Root())
+	loaded, err := repository.Load(ctx, "")
 	if err != nil {
 		return err
 	}
-	pending, err := currentReview.Comments(loaded)
+	pending, err := queue.List()
 	if err != nil {
 		return err
 	}
-	defaultBranch, err := currentReview.DefaultBranch()
+	defaultBranch, err := repository.DefaultBranch(ctx)
 	if err != nil {
 		return err
 	}
 	size := initialTerminalSize()
-	model, err := ui.NewWithReview(currentReview, loaded, pending, size)
+	sideBySide, err := loadLayoutSettings()
 	if err != nil {
 		return err
 	}
-	model.SetDefaultBranch(defaultBranch)
+	model := ui.New(ui.Initial{
+		Patch:         loaded,
+		Comments:      pending,
+		DefaultBranch: defaultBranch,
+		SideBySide:    sideBySide,
+		Size:          size,
+	}, ui.Dependencies{
+		Load: func(base string) (patch.Patch, error) {
+			return repository.Load(ctx, base)
+		},
+		List:       queue.List,
+		Save:       queue.Save,
+		Delete:     queue.Delete,
+		SaveLayout: saveLayoutSettings,
+	})
 	program := tea.NewProgram(model, tea.WithWindowSize(size.Width, size.Height))
 	_, err = program.Run()
 	return err
@@ -91,18 +114,21 @@ func runComments(ctx context.Context, output io.Writer) error {
 }
 
 func runCommentsAt(ctx context.Context, current string, output io.Writer) error {
+	repository, err := git.Open(ctx, current)
+	if err != nil {
+		return err
+	}
 	store, err := comments.OpenDefault()
 	if err != nil {
 		return err
 	}
-	currentReview := review.New(ctx, current, patch.Loader{}, store)
-	root, err := currentReview.Repository()
+	queue := comments.Bind(store, repository.Root())
+	pending, err := queue.List()
 	if err != nil {
 		return err
 	}
-	pending, err := currentReview.ExportRepository(output, root)
-	if err != nil {
+	if err := prompt.Write(output, pending); err != nil {
 		return err
 	}
-	return currentReview.AcknowledgeRepository(root, pending)
+	return queue.Acknowledge(pending)
 }

@@ -1,3 +1,3 @@
-// Package ui contains the terminal client for review. It owns layout, cursor
-// state, rendering, and the user's external-editor interaction.
+// Package ui routes terminal events between the Patch and Comment screens and
+// owns application-level help and quit behavior.
 package ui
