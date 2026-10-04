@@ -14,12 +14,16 @@ func (v *diffView) resize(viewport diffViewport, width, height int) diffViewport
 	return v.clampViewport(viewport)
 }
 
-func (v *diffView) clampViewport(viewport diffViewport) diffViewport {
-	maxTop := max(0, len(v.rows)-viewport.Height)
-	if v.hasStickyHeader(maxTop, viewport.Height) {
-		maxTop++
+func (v *diffView) maxTop(height int) int {
+	end := max(0, len(v.rows)-height)
+	if v.hasStickyHeader(end, height) {
+		end++
 	}
-	viewport.top = max(0, min(viewport.top, maxTop))
+	return end
+}
+
+func (v *diffView) clampViewport(viewport diffViewport) diffViewport {
+	viewport.top = max(0, min(viewport.top, v.maxTop(viewport.Height)))
 	viewport.LeftColumn = max(0, min(viewport.LeftColumn, v.maxHorizontalOffset(viewport.Width)))
 	return viewport
 }
@@ -83,11 +87,26 @@ func (v *diffView) scrollHorizontal(viewport diffViewport, columns int) diffView
 	return v.clampViewport(viewport)
 }
 
-func (v *diffView) scrollVertical(viewport diffViewport, rows int) diffViewport {
-	end := v.clampViewport(diffViewport{Width: viewport.Width, Height: viewport.Height, top: len(v.rows)}).top
-	rows = max(-viewport.top, min(rows, end-viewport.top))
+func (v *diffView) scrollVertical(viewport diffViewport, cursor diffCursor, rows int) (diffViewport, diffCursor) {
+	rows = max(-viewport.top, min(rows, v.maxTop(viewport.Height)-viewport.top))
 	viewport.top += rows
-	return v.clampViewport(viewport)
+	viewport = v.clampViewport(viewport)
+	if !v.valid(cursor) || v.cursorVisible(viewport, cursor) {
+		return viewport, cursor
+	}
+	target := max(viewport.top, min(cursor.row, viewport.top+v.contentHeight(viewport)-1))
+	d := forward
+	if cursor.row > target {
+		d = backward
+	}
+	candidate, ok := v.nearest(target, cursor.pane, d, viewport)
+	if !ok && v.split {
+		candidate, ok = v.nearest(target, cursor.pane.other(), d, viewport)
+	}
+	if ok {
+		cursor = candidate
+	}
+	return viewport, cursor
 }
 
 func (v *diffView) cursorVisible(viewport diffViewport, cursor diffCursor) bool {

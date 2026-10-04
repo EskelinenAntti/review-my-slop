@@ -157,12 +157,8 @@ func (v *View) move(direction direction) {
 	if !ok {
 		return
 	}
-	if v.selection != nil {
-		selection, ok := v.view.extendSelection(*v.selection, next)
-		if !ok {
-			return
-		}
-		v.selection = &selection
+	if !v.extendSelectionTo(next) {
+		return
 	}
 	v.setCursor(next)
 }
@@ -172,14 +168,23 @@ func (v *View) setCursor(cursor diffCursor) {
 }
 func (v *View) halfPage(direction direction) {
 	viewport, cursor := v.view.scrollHalfPage(v.viewport, v.cursor, direction)
-	if v.selection != nil {
-		selection, ok := v.view.extendSelection(*v.selection, cursor)
-		if !ok {
-			return
-		}
-		v.selection = &selection
+	if !v.extendSelectionTo(cursor) {
+		return
 	}
 	v.viewport, v.cursor = viewport, cursor
+}
+
+// extendSelectionTo accepts unrestricted movement when no range is active.
+// An active range changes only when its endpoint remains in the original hunk.
+func (v *View) extendSelectionTo(cursor diffCursor) bool {
+	if v.selection == nil {
+		return true
+	}
+	selection, ok := v.view.extendSelection(*v.selection, cursor)
+	if ok {
+		v.selection = &selection
+	}
+	return ok
 }
 func (v *View) jumpFile(direction direction) {
 	v.ClearSelection()
@@ -224,28 +229,9 @@ func (v *View) ScrollHorizontal(columns int) {
 // visible code. Like keyboard movement, it extends selection within its hunk.
 func (v *View) ScrollVertical(rows int) {
 	v.search.repeatMiss = false
-	viewport := v.view.scrollVertical(v.viewport, rows)
-	cursor := v.cursor
-	if v.view.valid(cursor) && !v.view.cursorVisible(viewport, cursor) {
-		target := max(viewport.top, min(cursor.row, viewport.top+v.view.contentHeight(viewport)-1))
-		d := forward
-		if cursor.row > target {
-			d = backward
-		}
-		candidate, ok := v.view.nearest(target, cursor.pane, d, viewport)
-		if !ok && v.view.split {
-			candidate, ok = v.view.nearest(target, cursor.pane.other(), d, viewport)
-		}
-		if ok {
-			cursor = candidate
-		}
-	}
-	if v.selection != nil && cursor != v.cursor {
-		selection, ok := v.view.extendSelection(*v.selection, cursor)
-		if !ok {
-			return
-		}
-		v.selection = &selection
+	viewport, cursor := v.view.scrollVertical(v.viewport, v.cursor, rows)
+	if cursor != v.cursor && !v.extendSelectionTo(cursor) {
+		return
 	}
 	v.viewport, v.cursor = viewport, cursor
 }
