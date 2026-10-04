@@ -70,41 +70,42 @@ const horizontalScrollStep = 4
 
 var defaultSize = size{Width: 80, Height: 30}
 
-type reviewState struct {
-	patch      patch.Patch
-	view       *diffscreen.View
-	sideBySide bool
-}
-
+// commentState pairs stored comments with the revision used to reject stale loads.
 type commentState struct {
-	items      []comments.Comment
-	view       *commentscreen.View
-	body       string
-	editIndex  int
-	editAnchor comments.Anchor
-	revision   uint64
+	items    []comments.Comment
+	revision uint64
 }
 
-type searchState struct{ query []rune }
+type commentEdit struct {
+	body   string
+	index  int
+	anchor comments.Anchor
+}
 
 type model struct {
-	ctx        context.Context
-	review     reviewState
-	comments   commentState
-	search     searchState
-	width      int
-	height     int
-	mode       mode
+	ctx context.Context
+
+	diff        *diffscreen.View
+	commentList *commentscreen.View
+	width       int
+	height      int
+	mode        mode
+	keys        keymap.Matcher
+
+	currentPatch patch.Patch
+	kind         patch.Kind
+	diffOptions  diffscreen.Options
+	comments     commentState
+	edit         commentEdit
+	searchQuery  []rune
+
 	save       saveCommentFunc
 	delete     deleteCommentFunc
 	load       loadCommentsFunc
 	refresh    refreshDiffFunc
+	saveLayout saveSideBySideFunc
 	err        error
 	quitting   bool
-	keys       keymap.Matcher
-	saveLayout saveSideBySideFunc
-	kind       patch.Kind
-	dark       bool
 }
 
 func newModel(p patch.Patch, comments []comments.Comment, save saveCommentFunc, layout initialLayout) model {
@@ -113,15 +114,17 @@ func newModel(p patch.Patch, comments []comments.Comment, save saveCommentFunc, 
 		size = defaultSize
 	}
 	m := model{
-		ctx:        context.Background(),
-		review:     reviewState{patch: p},
-		comments:   commentState{items: comments, view: commentscreen.New(comments), editIndex: -1},
-		width:      size.Width,
-		height:     size.Height,
-		save:       save,
-		saveLayout: layout.SaveSideBySide,
-		dark:       true,
-		kind:       p.Kind,
+		ctx:          context.Background(),
+		currentPatch: p,
+		comments:     commentState{items: comments},
+		commentList:  commentscreen.New(comments),
+		edit:         commentEdit{index: -1},
+		width:        size.Width,
+		height:       size.Height,
+		save:         save,
+		saveLayout:   layout.SaveSideBySide,
+		diffOptions:  diffscreen.Options{SideBySide: layout.SideBySide, Dark: true},
+		kind:         p.Kind,
 		keys: keymap.New(
 			keymap.Sequence{Prefix: "g", Keys: []string{"g"}, RetryUnmatched: true},
 			keymap.Sequence{Prefix: "z", Keys: []string{"z", "t", "b"}},
@@ -130,8 +133,7 @@ func newModel(p patch.Patch, comments []comments.Comment, save saveCommentFunc, 
 			keymap.Sequence{Prefix: "ctrl+w", Keys: []string{"h", "l", "ctrl+w"}},
 		),
 	}
-	m.review.sideBySide = layout.SideBySide
-	m.review.view = diffscreen.New(p, diffscreen.Options{SideBySide: layout.SideBySide, Dark: m.dark})
+	m.diff = diffscreen.New(p, m.diffOptions)
 	m.resizeScreens()
 	return m
 }
@@ -177,9 +179,9 @@ func (m model) Init() tea.Cmd { return func() tea.Msg { return tea.RequestBackgr
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.BackgroundColorMsg:
-		if dark := msg.IsDark(); dark != m.dark {
-			m.dark = dark
-			m.configureDiff()
+		if dark := msg.IsDark(); dark != m.diffOptions.Dark {
+			m.diffOptions.Dark = dark
+			m.diff.Configure(m.diffOptions)
 		}
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
@@ -189,7 +191,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.err = msg.err
 			m.clearCommentEdit()
 		} else {
-			m.comments.body = msg.body
+			m.edit.body = msg.body
 			m.finishCommentEdit()
 		}
 	case commentsLoadedMsg:
@@ -200,7 +202,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.err = fmt.Errorf("refresh comments: %w", msg.err)
 		} else {
 			m.comments.items = msg.comments
-			m.comments.view.Update(m.comments.items)
+			m.commentList.Update(m.comments.items)
 			m.err = nil
 		}
 	case sourceEditorFinishedMsg:
@@ -218,7 +220,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.err != nil {
 			m.err = fmt.Errorf("refresh diff: %w", msg.err)
 		} else {
-			m.rebuildView(msg.patch)
+			m.updatePatch(msg.patch)
 			m.err = nil
 		}
 	case tea.KeyPressMsg:
@@ -246,16 +248,13 @@ func (m model) loadComments() tea.Cmd {
 	}
 }
 
-func (m *model) rebuildView(p patch.Patch) {
-	m.review.patch = p
-	m.review.view.Update(p)
-}
-func (m *model) configureDiff() {
-	m.review.view.Configure(diffscreen.Options{SideBySide: m.review.sideBySide, Dark: m.dark})
+func (m *model) updatePatch(p patch.Patch) {
+	m.currentPatch = p
+	m.diff.Update(p)
 }
 func (m *model) resizeScreens() {
-	m.review.view.Resize(m.width, m.height)
-	m.comments.view.Resize(m.width, m.height)
+	m.diff.Resize(m.width, m.height)
+	m.commentList.Resize(m.width, m.height)
 }
 
 func (m model) updateKey(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
@@ -281,54 +280,54 @@ func (m model) updateKey(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	case "?":
 		m.mode = modeHelp
 	case "/":
-		m.cancelSelection()
+		m.diff.ClearSelection()
 		m.mode = modeSearch
-		m.search.query = nil
-		m.review.view.BeginSearch()
+		m.searchQuery = nil
+		m.diff.BeginSearch()
 	case "n":
-		m.review.view.Find(diffscreen.Forward)
+		m.diff.Find(diffscreen.Forward)
 	case "N":
-		m.review.view.Find(diffscreen.Backward)
+		m.diff.Find(diffscreen.Backward)
 	case "j", "down":
-		m.review.view.Move(diffscreen.NextLine)
+		m.diff.Move(diffscreen.NextLine)
 	case "k", "up":
-		m.review.view.Move(diffscreen.PreviousLine)
+		m.diff.Move(diffscreen.PreviousLine)
 	case "h", "left":
-		m.review.view.ScrollHorizontal(-horizontalScrollStep)
+		m.diff.ScrollHorizontal(-horizontalScrollStep)
 	case "l", "right":
-		m.review.view.ScrollHorizontal(horizontalScrollStep)
+		m.diff.ScrollHorizontal(horizontalScrollStep)
 	case "0":
-		m.review.view.ScrollHorizontal(-int(^uint(0) >> 1))
+		m.diff.ScrollHorizontal(-int(^uint(0) >> 1))
 	case "$":
-		m.review.view.ScrollHorizontal(int(^uint(0) >> 1))
+		m.diff.ScrollHorizontal(int(^uint(0) >> 1))
 	case "ctrl+d":
-		m.review.view.Move(diffscreen.NextPage)
+		m.diff.Move(diffscreen.NextPage)
 	case "ctrl+u":
-		m.review.view.Move(diffscreen.PreviousPage)
+		m.diff.Move(diffscreen.PreviousPage)
 	case "g g":
-		m.review.view.Move(diffscreen.FirstLine)
+		m.diff.Move(diffscreen.FirstLine)
 	case "G":
-		m.review.view.Move(diffscreen.LastLine)
+		m.diff.Move(diffscreen.LastLine)
 	case "] f":
-		m.review.view.Move(diffscreen.NextFile)
+		m.diff.Move(diffscreen.NextFile)
 	case "[ f":
-		m.review.view.Move(diffscreen.PreviousFile)
+		m.diff.Move(diffscreen.PreviousFile)
 	case "z z":
-		m.review.view.Align(diffscreen.Center)
+		m.diff.Align(diffscreen.Center)
 	case "z t":
-		m.review.view.Align(diffscreen.Top)
+		m.diff.Align(diffscreen.Top)
 	case "z b":
-		m.review.view.Align(diffscreen.Bottom)
+		m.diff.Align(diffscreen.Bottom)
 	case "ctrl+w h":
-		m.review.view.Move(diffscreen.OldPane)
+		m.diff.Move(diffscreen.OldPane)
 	case "ctrl+w l":
-		m.review.view.Move(diffscreen.NewPane)
+		m.diff.Move(diffscreen.NewPane)
 	case "ctrl+w ctrl+w":
-		m.review.view.Move(diffscreen.OtherPane)
+		m.diff.Move(diffscreen.OtherPane)
 	case "v":
-		m.review.view.ToggleSelection()
+		m.diff.ToggleSelection()
 	case "esc":
-		m.cancelSelection()
+		m.diff.ClearSelection()
 	case "c":
 		cmd, err := m.beginComment()
 		if err != nil {
@@ -345,12 +344,12 @@ func (m model) updateKey(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return m, cmd
 	case "C":
 		m.mode = modeComments
-		m.comments.view.Update(m.comments.items)
+		m.commentList.Update(m.comments.items)
 		return m, m.loadComments()
 	case "R":
 		return m, m.loadRefresh()
 	case "tab":
-		if m.review.patch.Branch == "" {
+		if m.currentPatch.Branch == "" {
 			return m, nil
 		}
 		if m.kind == patch.Unstaged {
@@ -358,7 +357,7 @@ func (m model) updateKey(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		} else {
 			m.kind = patch.Unstaged
 		}
-		m.cancelSelection()
+		m.diff.ClearSelection()
 		return m, m.loadRefresh()
 	case "t":
 		m.toggleSideBySide()

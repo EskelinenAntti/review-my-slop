@@ -27,8 +27,8 @@ func TestStoreBackedCommentLifecycle(t *testing.T) {
 		t.Fatal(err)
 	}
 	anchor := comments.Anchor{FilePath: "main.go", NewStart: 2, QuotedLines: []string{"+new()"}}
-	m.comments.body = "check this"
-	m.comments.editAnchor = anchor
+	m.edit.body = "check this"
+	m.edit.anchor = anchor
 	m.finishCommentEdit()
 	if m.err != nil {
 		t.Fatal(m.err)
@@ -38,8 +38,8 @@ func TestStoreBackedCommentLifecycle(t *testing.T) {
 		t.Fatalf("loaded = %#v, error = %v", loaded, err)
 	}
 	id := loaded[0].ID
-	m.comments.editIndex = 0
-	m.comments.body = "edited"
+	m.edit.index = 0
+	m.edit.body = "edited"
 	m.finishCommentEdit()
 	if m.err != nil {
 		t.Fatal(m.err)
@@ -63,8 +63,8 @@ func TestNewUsesSavedSideBySideForWideInitialSize(t *testing.T) {
 		SideBySide: true,
 		size:       size{Width: 120, Height: 30},
 	})
-	if !m.review.sideBySide || !strings.Contains(m.render(), "│") {
-		t.Fatalf("sideBySide=%v render=%q", m.review.sideBySide, m.render())
+	if !m.diffOptions.SideBySide || !strings.Contains(m.render(), "│") {
+		t.Fatalf("sideBySide=%v render=%q", m.diffOptions.SideBySide, m.render())
 	}
 }
 
@@ -73,13 +73,13 @@ func TestNewKeepsSavedSideBySideInactiveForNarrowInitialSize(t *testing.T) {
 		SideBySide: true,
 		size:       size{Width: 80, Height: 30},
 	})
-	if !m.review.sideBySide || strings.Contains(m.render(), "│") {
-		t.Fatalf("sideBySide=%v render=%q", m.review.sideBySide, m.render())
+	if !m.diffOptions.SideBySide || strings.Contains(m.render(), "│") {
+		t.Fatalf("sideBySide=%v render=%q", m.diffOptions.SideBySide, m.render())
 	}
 
 	m = updateModel(t, m, tea.WindowSizeMsg{Width: 120, Height: 30})
-	if !m.review.sideBySide || !strings.Contains(m.render(), "│") {
-		t.Fatalf("sideBySide=%v render=%q", m.review.sideBySide, m.render())
+	if !m.diffOptions.SideBySide || !strings.Contains(m.render(), "│") {
+		t.Fatalf("sideBySide=%v render=%q", m.diffOptions.SideBySide, m.render())
 	}
 }
 
@@ -102,18 +102,18 @@ func TestSideBySideToggleStillSavesPreference(t *testing.T) {
 
 func TestRefreshTranslatesCursorAndSelection(t *testing.T) {
 	m := testModel(modelPatch(), nil, nil)
-	m.review.view.Move(diffscreen.NextLine)
-	m.review.view.ToggleSelection()
-	m.review.view.Move(diffscreen.NextLine)
-	_, want, _ := m.review.view.Current()
+	m.diff.Move(diffscreen.NextLine)
+	m.diff.ToggleSelection()
+	m.diff.Move(diffscreen.NextLine)
+	_, want, _ := m.diff.Current()
 	refreshed := modelPatch()
 	refreshed.Files[0].Metadata = []string{"new metadata"}
-	m.rebuildView(refreshed)
-	_, got, ok := m.review.view.Current()
+	m.updatePatch(refreshed)
+	_, got, ok := m.diff.Current()
 	if !ok || got != want {
 		t.Fatalf("focused line=%#v, want %#v", got, want)
 	}
-	_, lines, ok := m.review.view.Selected()
+	_, lines, ok := m.diff.Selected()
 	if !ok || len(lines) != 2 {
 		t.Fatalf("selection=%#v", lines)
 	}
@@ -124,15 +124,15 @@ func TestUnchangedRefreshPreservesStateAndClearsError(t *testing.T) {
 	p.Files[0].OldPath, p.Files[0].NewPath = "long.go", "long.go"
 	m := newModel(p, nil, nil, initialLayout{size: size{Width: 40, Height: 8}})
 	for range 8 {
-		m.review.view.Move(diffscreen.NextLine)
+		m.diff.Move(diffscreen.NextLine)
 	}
-	m.review.view.ToggleSelection()
-	m.review.view.Move(diffscreen.NextLine)
-	m.review.view.ScrollHorizontal(12)
-	before := m.review.view.Render()
+	m.diff.ToggleSelection()
+	m.diff.Move(diffscreen.NextLine)
+	m.diff.ScrollHorizontal(12)
+	before := m.diff.Render()
 	m.err = fmt.Errorf("previous refresh failed")
 	m = updateModel(t, m, refreshDiffMsg{patch: p})
-	if got := m.review.view.Render(); got != before {
+	if got := m.diff.Render(); got != before {
 		t.Fatal("refresh changed presentation state")
 	}
 	if m.err != nil {
@@ -142,21 +142,21 @@ func TestUnchangedRefreshPreservesStateAndClearsError(t *testing.T) {
 
 func TestRefreshFailureRetainsView(t *testing.T) {
 	m := testModel(modelPatch(), nil, nil)
-	before := m.review.view.Render()
+	before := m.diff.Render()
 	m = updateModel(t, m, refreshDiffMsg{err: fmt.Errorf("git failed")})
-	if m.err == nil || m.review.view.Render() != before || m.review.patch.Root != "/repo" {
-		t.Fatalf("patch=%#v error=%v", m.review.patch, m.err)
+	if m.err == nil || m.diff.Render() != before || m.currentPatch.Root != "/repo" {
+		t.Fatalf("patch=%#v error=%v", m.currentPatch, m.err)
 	}
 }
 
 func TestViewSwitchPreservesSemanticCursor(t *testing.T) {
 	m := testModel(modelPatch(), nil, nil)
 	m = updateModel(t, m, tea.WindowSizeMsg{Width: 120, Height: 30})
-	m.review.view.Move(diffscreen.NextLine)
-	m.review.view.Move(diffscreen.NextLine)
-	_, want, _ := m.review.view.Current()
+	m.diff.Move(diffscreen.NextLine)
+	m.diff.Move(diffscreen.NextLine)
+	_, want, _ := m.diff.Current()
 	m.setSideBySide(true)
-	_, got, ok := m.review.view.Current()
+	_, got, ok := m.diff.Current()
 	if !ok || got != want {
 		t.Fatalf("focused line=%#v, want %#v", got, want)
 	}
@@ -169,8 +169,8 @@ func TestCommentSaveUsesPatchAndPreservesAnchor(t *testing.T) {
 		stored.ID = "1"
 		return stored, nil
 	})
-	m.comments.body = "comment"
-	m.comments.editAnchor = comments.Anchor{FilePath: "main.go"}
+	m.edit.body = "comment"
+	m.edit.anchor = comments.Anchor{FilePath: "main.go"}
 	m.finishCommentEdit()
 	if savedPatch.Root != "/repo" || len(m.comments.items) != 1 || m.comments.items[0].Anchor.FilePath != "main.go" {
 		t.Fatalf("saved patch/comments = %#v %#v", savedPatch, m.comments.items)
@@ -241,7 +241,7 @@ func TestCommentsMenuScrollsWithinScreenBody(t *testing.T) {
 	m.width, m.height = 80, 7
 	m.mode = modeComments
 	m.resizeScreens()
-	m.comments.view.Move(len(items))
+	m.commentList.Move(len(items))
 
 	rendered := strings.Split(ansi.Strip(m.render()), "\n")
 	if !strings.Contains(strings.Join(rendered[1:m.height-2], "\n"), "comment 9") {
