@@ -1,3 +1,3 @@
-// Package patch represents and loads the repository change set being reviewed.
-// Repository and Git details stay behind this package's loading API.
+// Package patch defines repository change values, content references, anchors,
+// and working-tree source locations. Git discovery and patch loading live in git.
 package patch
