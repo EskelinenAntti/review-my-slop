@@ -252,7 +252,7 @@ func TestSelectionBackgroundKeepsDefaultWeight(t *testing.T) {
 }
 
 func TestSyntaxHighlightingSurvivesDiffStyling(t *testing.T) {
-	p := patch.Patch{Files: []patch.File{{DisplayPath: "main.go", NewPath: "main.go", OldSource: "package main\nold()\n", NewSource: "package main\nnew()\n", Hunks: []patch.Hunk{{Header: "@@", Lines: []patch.Line{{Kind: patch.Deletion, Text: "old()", OldNumber: 2}, {Kind: patch.Addition, Text: "new()", NewNumber: 2}}}}}}}
+	p := patch.Patch{Files: []patch.File{{DisplayPath: "main.go", OldPath: "main.go", NewPath: "main.go", OldSource: "package main\nold()\n", NewSource: "package main\nnew()\n", Hunks: []patch.Hunk{{Header: "@@", Lines: []patch.Line{{Kind: patch.Deletion, Text: "old()", OldNumber: 2}, {Kind: patch.Addition, Text: "new()", NewNumber: 2}}}}}}}
 	v := NewUnifiedView(p, true)
 	first := mustFirst(t, v)
 	added, _ := v.Search("new()", first, Forward)

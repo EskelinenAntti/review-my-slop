@@ -135,7 +135,7 @@ func TestEmptyNewCommentIsDiscarded(t *testing.T) {
 func TestOpenCurrentLineUsesEditorWithWorkingTreeLocation(t *testing.T) {
 	t.Setenv("EDITOR", "printf")
 	m := testModel(coveragePatch(), nil, nil)
-	m.review.patch.Repository = "/tmp/repo with spaces"
+	m.review.patch.Root = "/tmp/repo with spaces"
 	m.review.cursor = findLine(t, m, "new()")
 	cmd, err := m.openCurrentLine()
 	if err != nil || cmd == nil {
@@ -421,13 +421,14 @@ func TestHorizontalScrollKeysMoveByStepAndReset(t *testing.T) {
 
 func TestFocusAndManualRefreshLoadCurrentView(t *testing.T) {
 	m := testModel(coveragePatch(), nil, nil)
-	m.SetDefaultBranch("main")
-	m.showDefault = true
-	var requested []string
-	m.SetRefresh(func(parent string) (patch.Patch, error) {
-		requested = append(requested, parent)
+	m.review.patch.Branch = "main"
+	m.kind = patch.Branch
+	var requested []patch.Kind
+	m.SetRefresh(func(kind patch.Kind) (patch.Patch, error) {
+		requested = append(requested, kind)
 		p := coveragePatch()
-		p.Fingerprint = fmt.Sprintf("refresh-%d", len(requested))
+		p.Kind, p.Branch = kind, "main"
+		p.Files[0].Metadata = []string{fmt.Sprintf("refresh-%d", len(requested))}
 		return p, nil
 	})
 	next, cmd := m.Update(tea.FocusMsg{})
@@ -442,16 +443,16 @@ func TestFocusAndManualRefreshLoadCurrentView(t *testing.T) {
 		t.Fatal("R did not refresh")
 	}
 	m = updateModel(t, m, cmd())
-	if !slices.Equal(requested, []string{"main", "main"}) || m.review.patch.Fingerprint != "refresh-2" {
-		t.Fatalf("requested=%v fingerprint=%q", requested, m.review.patch.Fingerprint)
+	if !slices.Equal(requested, []patch.Kind{patch.Branch, patch.Branch}) || !slices.Equal(m.review.patch.Files[0].Metadata, []string{"refresh-2"}) {
+		t.Fatalf("requested=%v metadata=%q", requested, m.review.patch.Files[0].Metadata)
 	}
 }
 
 func TestSourceEditorCompletionRefreshesDiff(t *testing.T) {
 	m := testModel(coveragePatch(), nil, nil)
 	refreshed := coveragePatch()
-	refreshed.Fingerprint = "after-editor"
-	m.SetRefresh(func(string) (patch.Patch, error) { return refreshed, nil })
+	refreshed.Files[0].Metadata = []string{"after-editor"}
+	m.SetRefresh(func(patch.Kind) (patch.Patch, error) { return refreshed, nil })
 
 	next, cmd := m.Update(sourceEditorFinishedMsg{})
 	m = next.(Model)
@@ -459,8 +460,8 @@ func TestSourceEditorCompletionRefreshesDiff(t *testing.T) {
 		t.Fatal("editor completion did not refresh")
 	}
 	m = updateModel(t, m, cmd())
-	if m.review.patch.Fingerprint != "after-editor" {
-		t.Fatalf("fingerprint=%q", m.review.patch.Fingerprint)
+	if !slices.Equal(m.review.patch.Files[0].Metadata, []string{"after-editor"}) {
+		t.Fatalf("metadata=%q", m.review.patch.Files[0].Metadata)
 	}
 }
 
@@ -535,43 +536,46 @@ func TestSideBySideSearchActivatesPaneAndCancelRestoresIt(t *testing.T) {
 
 func TestTabTogglesDefaultBranchAndIgnoresStaleRefresh(t *testing.T) {
 	m := testModel(coveragePatch(), nil, nil)
-	m.SetDefaultBranch("main")
-	m.SetRefresh(func(string) (patch.Patch, error) { return coveragePatch(), nil })
+	m.review.patch.Branch = "main"
+	m.SetRefresh(func(kind patch.Kind) (patch.Patch, error) {
+		p := coveragePatch()
+		p.Kind, p.Branch = kind, "main"
+		return p, nil
+	})
 	next, _ := m.Update(textKey("tab"))
 	m = next.(Model)
-	if m.currentBranch() != "main" {
-		t.Fatalf("branch=%q", m.currentBranch())
+	if m.kind != patch.Branch {
+		t.Fatalf("kind=%v", m.kind)
 	}
 	stale := coveragePatch()
-	stale.Fingerprint = "stale"
+	stale.Files[0].Metadata = []string{"stale"}
 	m = updateModel(t, m, refreshDiffMsg{patch: stale})
-	if m.review.patch.Fingerprint == "stale" {
+	if slices.Equal(m.review.patch.Files[0].Metadata, []string{"stale"}) {
 		t.Fatal("stale refresh applied")
 	}
 	m = updateModel(t, m, textKey("tab"))
-	if m.currentBranch() != "" {
-		t.Fatalf("branch=%q after toggling back to local", m.currentBranch())
+	if m.kind != patch.Unstaged {
+		t.Fatalf("kind=%v after toggling back to local", m.kind)
 	}
 }
 
 func TestTabDoesNothingWithoutDefaultBranch(t *testing.T) {
 	m := testModel(coveragePatch(), nil, nil)
 	refreshed := false
-	m.SetRefresh(func(string) (patch.Patch, error) {
+	m.SetRefresh(func(patch.Kind) (patch.Patch, error) {
 		refreshed = true
 		return coveragePatch(), nil
 	})
 	next, cmd := m.Update(textKey("tab"))
 	m = next.(Model)
-	if cmd != nil || refreshed || m.showDefault {
-		t.Fatalf("tab changed model without default branch: cmd=%v refreshed=%v showDefault=%v", cmd != nil, refreshed, m.showDefault)
+	if cmd != nil || refreshed || m.kind != patch.Unstaged {
+		t.Fatalf("tab changed model without default branch: cmd=%v refreshed=%v kind=%v", cmd != nil, refreshed, m.kind)
 	}
 }
 
 func TestDiffRefreshFallbackAndEmptyDiff(t *testing.T) {
 	m := testModel(patch.Patch{}, nil, nil)
 	refreshed := coveragePatch()
-	refreshed.Fingerprint = "new"
 	m = updateModel(t, m, refreshDiffMsg{patch: refreshed})
 	first, ok := m.review.view.First()
 	if !ok || m.review.cursor != first {
@@ -579,7 +583,6 @@ func TestDiffRefreshFallbackAndEmptyDiff(t *testing.T) {
 	}
 	m.review.cursor = findLine(t, m, "new()")
 	changed := coveragePatch()
-	changed.Fingerprint = "changed"
 	changed.Files[0].Hunks[0].Lines[2].Text = "different()"
 	m = updateModel(t, m, refreshDiffMsg{patch: changed})
 	if _, ok := m.review.view.Line(m.review.cursor); !ok {
@@ -595,12 +598,12 @@ func TestCommentAfterRefreshUsesCurrentPatch(t *testing.T) {
 		return stored, nil
 	})
 	refreshed := coveragePatch()
-	refreshed.Fingerprint = "refreshed"
+	refreshed.Files[0].Metadata = []string{"refreshed"}
 	m = updateModel(t, m, refreshDiffMsg{patch: refreshed})
 	m = updateModel(t, m, textKey("c"))
 	_ = updateModel(t, m, commentEditorFinishedMsg{body: "comment"})
-	if saved.Fingerprint != "refreshed" {
-		t.Fatalf("fingerprint=%q", saved.Fingerprint)
+	if !slices.Equal(saved.Files[0].Metadata, []string{"refreshed"}) {
+		t.Fatalf("metadata=%q", saved.Files[0].Metadata)
 	}
 }
 
@@ -651,7 +654,7 @@ func findLine(t *testing.T, m Model, text string) Cursor {
 func lineText(m Model) string { line, _ := m.review.view.Line(m.review.cursor); return line.Text }
 
 func coveragePatch() patch.Patch {
-	return patch.Patch{Repository: "/repo", Fingerprint: "fingerprint", Files: []patch.File{{DisplayPath: "main.go", OldPath: "main.go", NewPath: "main.go", OldSource: "package main\nold()\nkeep()\n", NewSource: "package main\nnew()\nkeep()\nmore()\n", Hunks: []patch.Hunk{
+	return patch.Patch{Root: "/repo", Files: []patch.File{{DisplayPath: "main.go", OldPath: "main.go", NewPath: "main.go", OldSource: "package main\nold()\nkeep()\n", NewSource: "package main\nnew()\nkeep()\nmore()\n", Hunks: []patch.Hunk{
 		{Header: "@@ -1,3 +1,3 @@", Lines: []patch.Line{{Kind: patch.Context, Text: "package main", OldNumber: 1, NewNumber: 1}, {Kind: patch.Deletion, Text: "old()", OldNumber: 2}, {Kind: patch.Addition, Text: "new()", NewNumber: 2}, {Kind: patch.Context, Text: "keep()", OldNumber: 3, NewNumber: 3}}},
 		{Header: "@@ -3,1 +3,2 @@", Lines: []patch.Line{{Kind: patch.Context, Text: "keep()", OldNumber: 3, NewNumber: 3}, {Kind: patch.Addition, Text: "more()", NewNumber: 4}}},
 	}}}}

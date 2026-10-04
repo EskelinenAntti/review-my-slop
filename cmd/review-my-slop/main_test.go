@@ -14,6 +14,11 @@ import (
 
 func TestRunCommentsPrintsAndConsumesCurrentRepositoryFeedback(t *testing.T) {
 	repo := initRepository(t)
+	nested := filepath.Join(repo, "nested")
+	if err := os.Mkdir(nested, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(nested)
 	data := t.TempDir()
 	t.Setenv("XDG_DATA_HOME", data)
 	store, err := comments.OpenDefault()
@@ -29,7 +34,7 @@ func TestRunCommentsPrintsAndConsumesCurrentRepositoryFeedback(t *testing.T) {
 	}
 
 	var output bytes.Buffer
-	if err := runCommentsAt(context.Background(), repo, &output); err != nil {
+	if err := runComments(context.Background(), &output); err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(output.String(), "Check this error.") {
@@ -43,7 +48,7 @@ func TestRunCommentsPrintsAndConsumesCurrentRepositoryFeedback(t *testing.T) {
 	}
 
 	var empty bytes.Buffer
-	if err := runCommentsAt(context.Background(), repo, &empty); err != nil {
+	if err := runComments(context.Background(), &empty); err != nil {
 		t.Fatal(err)
 	}
 	if strings.TrimSpace(empty.String()) != "No pending review comments." {
@@ -61,6 +66,7 @@ func TestRunCommentsPrintsAndConsumesCurrentRepositoryFeedback(t *testing.T) {
 
 func TestRunCommentsPreservesFeedbackWhenOutputFails(t *testing.T) {
 	repo := initRepository(t)
+	t.Chdir(repo)
 	t.Setenv("XDG_DATA_HOME", t.TempDir())
 	store, err := comments.OpenDefault()
 	if err != nil {
@@ -74,7 +80,7 @@ func TestRunCommentsPreservesFeedbackWhenOutputFails(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := runCommentsAt(context.Background(), repo, failingWriter{}); err == nil {
+	if err := runComments(context.Background(), failingWriter{}); err == nil {
 		t.Fatal("output failure was ignored")
 	}
 	comments, err := store.List(repo)

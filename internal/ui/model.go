@@ -14,7 +14,7 @@ import (
 type SaveCommentFunc func(comments.Comment, patch.Patch) (comments.Comment, error)
 type DeleteCommentFunc func(comments.Comment, patch.Patch) error
 type LoadCommentsFunc func() ([]comments.Comment, error)
-type RefreshDiffFunc func(parent string) (patch.Patch, error)
+type RefreshDiffFunc func(patch.Kind) (patch.Patch, error)
 type SaveSideBySideFunc func(bool) error
 
 type Size struct {
@@ -29,9 +29,9 @@ type InitialLayout struct {
 }
 
 type refreshDiffMsg struct {
-	patch  patch.Patch
-	branch string
-	err    error
+	patch patch.Patch
+	kind  patch.Kind
+	err   error
 }
 
 type commentEditorFinishedMsg struct {
@@ -87,23 +87,22 @@ type searchState struct {
 }
 
 type Model struct {
-	review        reviewState
-	comments      commentState
-	search        searchState
-	width         int
-	height        int
-	mode          mode
-	save          SaveCommentFunc
-	delete        DeleteCommentFunc
-	load          LoadCommentsFunc
-	refresh       RefreshDiffFunc
-	err           error
-	quitting      bool
-	pendingKey    string
-	saveLayout    SaveSideBySideFunc
-	defaultBranch string
-	showDefault   bool
-	dark          bool
+	review     reviewState
+	comments   commentState
+	search     searchState
+	width      int
+	height     int
+	mode       mode
+	save       SaveCommentFunc
+	delete     DeleteCommentFunc
+	load       LoadCommentsFunc
+	refresh    RefreshDiffFunc
+	err        error
+	quitting   bool
+	pendingKey string
+	saveLayout SaveSideBySideFunc
+	kind       patch.Kind
+	dark       bool
 }
 
 func New(p patch.Patch, comments []comments.Comment, save SaveCommentFunc, layout InitialLayout) Model {
@@ -119,6 +118,7 @@ func New(p patch.Patch, comments []comments.Comment, save SaveCommentFunc, layou
 		save:       save,
 		saveLayout: layout.SaveSideBySide,
 		dark:       true,
+		kind:       p.Kind,
 	}
 	m.review.sideBySide = layout.SideBySide
 	m.review.view = m.newReviewView(p)
@@ -141,21 +141,13 @@ func NewWithReview(actions review.Actions, p patch.Patch, items []comments.Comme
 	m.SetLoadComments(func() ([]comments.Comment, error) {
 		return actions.Comments(m.review.patch)
 	})
-	m.SetRefresh(func(branch string) (patch.Patch, error) {
-		return actions.Load(branch)
-	})
+	m.SetRefresh(actions.Load)
 	return m, nil
 }
 
 func (m *Model) SetRefresh(refresh RefreshDiffFunc)    { m.refresh = refresh }
 func (m *Model) SetDelete(delete DeleteCommentFunc)    { m.delete = delete }
 func (m *Model) SetLoadComments(load LoadCommentsFunc) { m.load = load }
-func (m *Model) SetDefaultBranch(branch string) {
-	m.defaultBranch = branch
-	if branch == "" {
-		m.showDefault = false
-	}
-}
 func (m *Model) SetSideBySide(enabled bool, save SaveSideBySideFunc) {
 	m.saveLayout = save
 	m.setSideBySide(enabled)
@@ -207,12 +199,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.FocusMsg:
 		return m, m.loadRefresh()
 	case refreshDiffMsg:
-		if msg.branch != m.currentBranch() {
+		if msg.kind != m.kind {
 			return m, nil
 		}
 		if msg.err != nil {
 			m.err = fmt.Errorf("refresh diff: %w", msg.err)
-		} else if msg.patch.Fingerprint != m.review.patch.Fingerprint {
+		} else {
 			m.rebuildView(msg.patch)
 			m.err = nil
 		}
@@ -226,8 +218,8 @@ func (m Model) loadRefresh() tea.Cmd {
 	if m.refresh == nil {
 		return nil
 	}
-	branch := m.currentBranch()
-	return func() tea.Msg { p, err := m.refresh(branch); return refreshDiffMsg{patch: p, branch: branch, err: err} }
+	kind := m.kind
+	return func() tea.Msg { p, err := m.refresh(kind); return refreshDiffMsg{patch: p, kind: kind, err: err} }
 }
 
 func (m Model) loadComments() tea.Cmd {
@@ -393,10 +385,14 @@ func (m Model) updateKey(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	case "R":
 		return m, m.loadRefresh()
 	case "tab":
-		if m.defaultBranch == "" {
+		if m.review.patch.Branch == "" {
 			return m, nil
 		}
-		m.showDefault = !m.showDefault
+		if m.kind == patch.Unstaged {
+			m.kind = patch.Branch
+		} else {
+			m.kind = patch.Unstaged
+		}
 		m.cancelSelection()
 		return m, m.loadRefresh()
 	case "t":
@@ -405,10 +401,4 @@ func (m Model) updateKey(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m Model) currentBranch() string {
-	if !m.showDefault {
-		return ""
-	}
-	return m.defaultBranch
-}
 func (m Model) screenBodyHeight() int { return max(1, m.height-3) }

@@ -3,8 +3,6 @@ package patch
 import (
 	"bytes"
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"os"
@@ -18,13 +16,13 @@ import (
 
 const maxFileBytes = 2 << 20
 
-type Runner interface {
+type runner interface {
 	Run(ctx context.Context, dir string, args ...string) ([]byte, error)
 }
 
-type ExecRunner struct{}
+type execRunner struct{}
 
-func (ExecRunner) Run(ctx context.Context, dir string, args ...string) ([]byte, error) {
+func (execRunner) Run(ctx context.Context, dir string, args ...string) ([]byte, error) {
 	cmd := exec.CommandContext(ctx, "git", args...)
 	cmd.Dir = dir
 	cmd.Env = append(os.Environ(),
@@ -33,6 +31,9 @@ func (ExecRunner) Run(ctx context.Context, dir string, args ...string) ([]byte, 
 		"GIT_CONFIG_NOSYSTEM=1",
 	)
 	out, err := cmd.Output()
+	if ctx.Err() != nil {
+		return nil, fmt.Errorf("git %s: %w", strings.Join(args, " "), ctx.Err())
+	}
 	if err == nil {
 		return out, nil
 	}
@@ -42,15 +43,56 @@ func (ExecRunner) Run(ctx context.Context, dir string, args ...string) ([]byte, 
 	return nil, fmt.Errorf("git %s: %w", strings.Join(args, " "), err)
 }
 
-type Loader struct {
-	Runner Runner
+// Get retrieves a complete snapshot from the current working directory.
+// Unknown kinds and unavailable branch comparisons return a zero Patch and an error.
+func Get(ctx context.Context, kind Kind) (Patch, error) {
+	directory, err := os.Getwd()
+	if err != nil {
+		return Patch{}, fmt.Errorf("resolve working directory: %w", err)
+	}
+	return get(ctx, directory, kind, execRunner{})
 }
 
-func (l Loader) Root(ctx context.Context, dir string) (string, error) {
-	if l.Runner == nil {
-		l.Runner = ExecRunner{}
+func get(ctx context.Context, directory string, kind Kind, run runner) (Patch, error) {
+	if kind != Unstaged && kind != Branch {
+		return Patch{}, fmt.Errorf("unknown patch kind %d", kind)
 	}
-	rootBytes, err := l.Runner.Run(ctx, dir, "rev-parse", "--show-toplevel")
+	if err := ctx.Err(); err != nil {
+		return Patch{}, err
+	}
+	root, err := repositoryRoot(ctx, run, directory)
+	if err != nil {
+		return Patch{}, err
+	}
+	branch, err := defaultBranch(ctx, run, root)
+	if err != nil {
+		return Patch{}, fmt.Errorf("discover default branch: %w", err)
+	}
+	readOld := readIndex
+	var revisions []string
+	if kind == Branch {
+		if branch == "" {
+			return Patch{}, errors.New("default branch is unavailable")
+		}
+		baseBytes, err := run.Run(ctx, root, "merge-base", branch, "HEAD")
+		if err != nil {
+			return Patch{}, fmt.Errorf("find branch point with %s: %w", branch, err)
+		}
+		base := strings.TrimSpace(string(baseBytes))
+		revisions = []string{base}
+		readOld = func(ctx context.Context, run runner, root, path string) string {
+			return readRevision(ctx, run, root, base, path)
+		}
+	}
+	raw, err := gitDiff(ctx, run, root, revisions...)
+	if err != nil {
+		return Patch{}, err
+	}
+	return build(ctx, run, root, kind, branch, raw, readOld)
+}
+
+func repositoryRoot(ctx context.Context, run runner, directory string) (string, error) {
+	rootBytes, err := run.Run(ctx, directory, "rev-parse", "--show-toplevel")
 	if err != nil {
 		return "", err
 	}
@@ -61,57 +103,7 @@ func (l Loader) Root(ctx context.Context, dir string) (string, error) {
 	return root, nil
 }
 
-func (l Loader) Load(ctx context.Context, dir string) (Patch, error) {
-	if l.Runner == nil {
-		l.Runner = ExecRunner{}
-	}
-	root, err := l.Root(ctx, dir)
-	if err != nil {
-		return Patch{}, err
-	}
-
-	raw, err := l.diff(ctx, root)
-	if err != nil {
-		return Patch{}, err
-	}
-	return l.build(ctx, root, "", raw, readIndex)
-}
-
-func (l Loader) LoadBranch(ctx context.Context, dir, branch string) (Patch, error) {
-	if l.Runner == nil {
-		l.Runner = ExecRunner{}
-	}
-	root, err := l.Root(ctx, dir)
-	if err != nil {
-		return Patch{}, err
-	}
-	baseBytes, err := l.Runner.Run(ctx, root, "merge-base", branch, "HEAD")
-	if err != nil {
-		return Patch{}, fmt.Errorf("find branch point with %s: %w", branch, err)
-	}
-	base := strings.TrimSpace(string(baseBytes))
-	raw, err := l.diff(ctx, root, base)
-	if err != nil {
-		return Patch{}, err
-	}
-	readBase := func(ctx context.Context, runner Runner, root, path string) string {
-		return readRevision(ctx, runner, root, base, path)
-	}
-	return l.build(ctx, root, branch, raw, readBase)
-}
-
-func (l Loader) DefaultBranch(ctx context.Context, dir string) (string, error) {
-	if l.Runner == nil {
-		l.Runner = ExecRunner{}
-	}
-	root, err := l.Root(ctx, dir)
-	if err != nil {
-		return "", err
-	}
-	return l.defaultBranch(ctx, root), nil
-}
-
-func (l Loader) diff(ctx context.Context, root string, revisions ...string) ([]byte, error) {
+func gitDiff(ctx context.Context, run runner, root string, revisions ...string) ([]byte, error) {
 	args := []string{
 		"-c", "core.quotepath=false",
 		"-c", "diff.external=",
@@ -120,51 +112,56 @@ func (l Loader) diff(ctx context.Context, root string, revisions ...string) ([]b
 	}
 	args = append(args, revisions...)
 	args = append(args, "--")
-	return l.Runner.Run(ctx, root, args...)
+	return run.Run(ctx, root, args...)
 }
 
-type sourceReader func(context.Context, Runner, string, string) string
+type sourceReader func(context.Context, runner, string, string) string
 
-func (l Loader) build(ctx context.Context, root, base string, raw []byte, readOld sourceReader) (Patch, error) {
-	files, err := parseTracked(ctx, l.Runner, root, raw, readOld)
+func build(ctx context.Context, run runner, root string, kind Kind, branch string, raw []byte, readOld sourceReader) (Patch, error) {
+	files, err := parseTracked(ctx, run, root, raw, readOld)
 	if err != nil {
 		return Patch{}, err
 	}
-	untracked, err := l.loadUntracked(ctx, root)
+	untracked, err := loadUntracked(ctx, run, root)
 	if err != nil {
 		return Patch{}, err
 	}
 	files = append(files, untracked...)
 	sort.SliceStable(files, func(i, j int) bool { return files[i].DisplayPath < files[j].DisplayPath })
 
-	hash := sha256.New()
-	_, _ = hash.Write([]byte(base))
-	_, _ = hash.Write(raw)
-	for _, file := range untracked {
-		_, _ = hash.Write([]byte(file.NewPath))
-		_, _ = hash.Write([]byte(file.NewSource))
+	if err := ctx.Err(); err != nil {
+		return Patch{}, err
 	}
 
 	return Patch{
-		Repository:  root,
-		Fingerprint: hex.EncodeToString(hash.Sum(nil)),
-		Files:       files,
+		Root:   root,
+		Kind:   kind,
+		Branch: branch,
+		Files:  files,
 	}, nil
 }
 
-func (l Loader) defaultBranch(ctx context.Context, root string) string {
-	if out, err := l.Runner.Run(ctx, root, "symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD"); err == nil {
-		return strings.TrimSpace(string(out))
+func defaultBranch(ctx context.Context, run runner, root string) (string, error) {
+	out, err := run.Run(ctx, root, "symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD")
+	if ctx.Err() != nil {
+		return "", ctx.Err()
+	}
+	if err == nil {
+		return strings.TrimSpace(string(out)), nil
 	}
 	for _, candidate := range []string{"origin/main", "main", "origin/master", "master"} {
-		if _, err := l.Runner.Run(ctx, root, "rev-parse", "--verify", "--quiet", candidate+"^{commit}"); err == nil {
-			return candidate
+		_, err := run.Run(ctx, root, "rev-parse", "--verify", "--quiet", candidate+"^{commit}")
+		if ctx.Err() != nil {
+			return "", ctx.Err()
+		}
+		if err == nil {
+			return candidate, nil
 		}
 	}
-	return ""
+	return "", nil
 }
 
-func parseTracked(ctx context.Context, runner Runner, root string, raw []byte, readOld sourceReader) ([]File, error) {
+func parseTracked(ctx context.Context, run runner, root string, raw []byte, readOld sourceReader) ([]File, error) {
 	if len(bytes.TrimSpace(raw)) == 0 {
 		return nil, nil
 	}
@@ -174,6 +171,9 @@ func parseTracked(ctx context.Context, runner Runner, root string, raw []byte, r
 	}
 	files := make([]File, 0, len(parsed))
 	for _, fd := range parsed {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
 		oldPath := cleanDiffPath(fd.OrigName)
 		newPath := cleanDiffPath(fd.NewName)
 		display := newPath
@@ -186,7 +186,7 @@ func parseTracked(ctx context.Context, runner Runner, root string, raw []byte, r
 			DisplayPath: visibleText(display),
 			Metadata:    visibleStrings(fd.Extended),
 		}
-		file.OldSource = readOld(ctx, runner, root, oldPath)
+		file.OldSource = readOld(ctx, run, root, oldPath)
 		file.NewSource = readWorkingTree(root, newPath)
 		for _, h := range fd.Hunks {
 			lines, parseErr := parseHunkBody(h.OrigStartLine, h.NewStartLine, h.Body)
@@ -203,13 +203,16 @@ func parseTracked(ctx context.Context, runner Runner, root string, raw []byte, r
 	return files, nil
 }
 
-func (l Loader) loadUntracked(ctx context.Context, root string) ([]File, error) {
-	out, err := l.Runner.Run(ctx, root, "ls-files", "--others", "--exclude-standard", "-z")
+func loadUntracked(ctx context.Context, run runner, root string) ([]File, error) {
+	out, err := run.Run(ctx, root, "ls-files", "--others", "--exclude-standard", "-z")
 	if err != nil {
 		return nil, err
 	}
 	var files []File
 	for rawPath := range bytes.SplitSeq(out, []byte{0}) {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
 		if len(rawPath) == 0 {
 			continue
 		}
@@ -251,7 +254,7 @@ func (l Loader) loadUntracked(ctx context.Context, root string) ([]File, error) 
 			})
 			continue
 		}
-		files = append(files, addedFile(display, visibleSource(string(content))))
+		files = append(files, addedFile(path, visibleSource(string(content))))
 	}
 	return files, nil
 }
@@ -305,22 +308,22 @@ func parseHunkBody(oldLine, newLine int32, body []byte) ([]Line, error) {
 	return lines, nil
 }
 
-func readIndex(ctx context.Context, runner Runner, root, path string) string {
+func readIndex(ctx context.Context, run runner, root, path string) string {
 	if path == "" || path == "/dev/null" {
 		return ""
 	}
-	out, err := runner.Run(ctx, root, "show", ":"+path)
+	out, err := run.Run(ctx, root, "show", ":"+path)
 	if err != nil || len(out) > maxFileBytes || bytes.IndexByte(out, 0) >= 0 {
 		return ""
 	}
 	return visibleSource(string(out))
 }
 
-func readRevision(ctx context.Context, runner Runner, root, revision, path string) string {
+func readRevision(ctx context.Context, run runner, root, revision, path string) string {
 	if path == "" || path == "/dev/null" {
 		return ""
 	}
-	out, err := runner.Run(ctx, root, "show", revision+":"+path)
+	out, err := run.Run(ctx, root, "show", revision+":"+path)
 	if err != nil || len(out) > maxFileBytes || bytes.IndexByte(out, 0) >= 0 {
 		return ""
 	}

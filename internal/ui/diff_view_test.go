@@ -263,7 +263,7 @@ func mustFirst(t *testing.T, v View) Cursor {
 }
 
 func testPatch() patch.Patch {
-	return patch.Patch{Repository: "/repo", Files: []patch.File{
+	return patch.Patch{Root: "/repo", Files: []patch.File{
 		{DisplayPath: "first.go", OldPath: "first.go", NewPath: "first.go", Hunks: []patch.Hunk{{Header: "@@ -1,3 +1,3 @@", Lines: []patch.Line{
 			{Kind: patch.Context, Text: "before", OldNumber: 1, NewNumber: 1},
 			{Kind: patch.Deletion, Text: "removed one", OldNumber: 2},
@@ -273,6 +273,31 @@ func testPatch() patch.Patch {
 		}}}},
 		{DisplayPath: "second.go", OldPath: "second.go", NewPath: "second.go", Hunks: []patch.Hunk{{Header: "@@ -1 +1 @@", Lines: []patch.Line{{Kind: patch.Addition, Text: "other", NewNumber: 1}}}}},
 	}}
+}
+
+func TestAnchorChoosesNewPathUnlessFileIsDeleted(t *testing.T) {
+	for _, test := range []struct {
+		name    string
+		oldPath string
+		newPath string
+		want    string
+	}{
+		{"added", "", "added.go", "added.go"},
+		{"modified", "file.go", "file.go", "file.go"},
+		{"renamed", "old.go", "new.go", "new.go"},
+		{"deleted", "deleted.go", "", "deleted.go"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			p := modelPatch()
+			p.Files[0].OldPath, p.Files[0].NewPath = test.oldPath, test.newPath
+			v := NewUnifiedView(p, true)
+			cursor := mustFirst(t, v)
+			anchor, err := v.Anchor(v.BeginSelection(cursor))
+			if err != nil || anchor.FilePath != test.want {
+				t.Fatalf("anchor = %#v, error = %v", anchor, err)
+			}
+		})
+	}
 }
 
 func longPatch() patch.Patch {

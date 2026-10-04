@@ -3,7 +3,20 @@ package ui
 import (
 	"strings"
 	"testing"
+
+	"github.com/eskelinenantti/review-my-slop/internal/patch"
 )
+
+func TestRenamedFileHighlightsEachSideUsingItsOwnPath(t *testing.T) {
+	source := "package main\n\nfunc example() {}\n"
+	file := patch.File{OldPath: "old.go", NewPath: "new.txt", OldSource: source, NewSource: source}
+	view := &diffView{dark: true}
+	pair := view.highlight(&file)
+	old, new := strings.Join(pair.Old, "\n"), strings.Join(pair.New, "\n")
+	if old == new || stripANSI(old) != strings.TrimSuffix(source, "\n") || stripANSI(new) != strings.TrimSuffix(source, "\n") {
+		t.Fatalf("highlighted old=%q new=%q", old, new)
+	}
+}
 
 func TestLicenseHighlightFixture(t *testing.T) {
 	lines := render("LICENSE", `MIT License
