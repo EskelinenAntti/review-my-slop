@@ -23,7 +23,7 @@ func TestSelectedDefaultsToCurrentAndMovementExtendsRange(t *testing.T) {
 	for range 20 {
 		v.Move(NextLine)
 	}
-	if v.cursor.coordinate.Y < before.coordinate.Y {
+	if v.cursor.row < before.row {
 		t.Fatal("selection moved backward")
 	}
 	file, _, _ = v.Selected()
@@ -79,7 +79,7 @@ func TestNarrowLayoutFallbackPreservesPreferenceAndPosition(t *testing.T) {
 		v.Move(NextLine)
 	}
 	v.Align(Center)
-	offset := v.cursor.coordinate.Y - v.viewport.top.Y
+	offset := v.cursor.row - v.viewport.top
 	_, want, _ := v.Current()
 	v.Resize(80, 10)
 	if strings.Contains(v.Render(nil), " │ ") {
@@ -87,7 +87,7 @@ func TestNarrowLayoutFallbackPreservesPreferenceAndPosition(t *testing.T) {
 	}
 	v.Resize(120, 10)
 	_, got, _ := v.Current()
-	if got != want || v.cursor.coordinate.Y-v.viewport.top.Y != offset {
+	if got != want || v.cursor.row-v.viewport.top != offset {
 		t.Fatal("resize lost meaningful position")
 	}
 	if !strings.Contains(v.Render(nil), " │ ") {

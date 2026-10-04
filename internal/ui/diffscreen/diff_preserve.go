@@ -10,62 +10,65 @@ type cursorIdentity struct {
 	valid  bool
 }
 
-// preserve returns fresh viewState for next by retaining the meaningful position
-// from state where next contains it.
-func preserve(old *diffView, state viewState, next *diffView) viewState {
-	result := viewState{viewport: next.newViewport(state.viewport.Width, state.viewport.Height)}
-	result.viewport = next.scrollHorizontal(result.viewport, state.viewport.LeftColumn)
-	rowsAbove := 0
-	if state.cursor != nil {
-		rowsAbove = state.cursor.coordinate.Y - state.viewport.top.Y
+// replaceView translates interactive state before replacing the row projection.
+// Source identity is shared by focus, selection endpoints, and the search origin.
+func (v *View) replaceView(next *diffView) {
+	old := v.view
+	leftColumn := v.viewport.LeftColumn
+	rowsAbove := v.cursor.row - v.viewport.top
+	cursor := identify(old, v.cursor)
+	origin := identify(old, v.search.from)
+	v.viewport = next.newViewport(v.viewport.Width, v.viewport.Height)
+	v.viewport = next.scrollHorizontal(v.viewport, leftColumn)
+	translated, ok := next.findCursor(cursor)
+	if !ok {
+		translated, _ = next.first()
 	}
-
-	cursor := identify(old, state.cursor)
-	if cursor.valid {
-		if translated, ok := next.findCursor(cursor.file, cursor.hunk, cursor.line, cursor.cursor.coordinate, cursor.cursor.pane); ok {
-			result.cursor = &translated
+	v.cursor = translated
+	v.selection = preserveSelection(old, v.selection, next)
+	v.view = next
+	if next.valid(v.cursor) {
+		v.viewport.top = max(0, v.cursor.row-rowsAbove)
+		v.viewport = next.keepVisible(v.viewport, v.cursor)
+	}
+	if v.search.active {
+		v.search.from = v.cursor
+		if translated, ok := next.findCursor(origin); ok {
+			v.search.from = translated
 		}
+		v.previewSearch(v.search.query)
 	}
-	if result.cursor == nil {
-		if first, ok := next.first(); ok {
-			result.cursor = &first
-		}
-	}
-
-	if selection, ok := preserveSelection(old, state.selection, next); ok {
-		result.selection = &selection
-	}
-	if result.cursor != nil {
-		result.viewport.top.Y = max(0, result.cursor.coordinate.Y-rowsAbove)
-		result.viewport = next.keepVisible(result.viewport, *result.cursor)
-	}
-	return result
 }
 
-func identify(v *diffView, cursor *diffCursor) cursorIdentity {
-	if cursor == nil {
+func identify(v *diffView, cursor diffCursor) cursorIdentity {
+	if !v.valid(cursor) {
 		return cursorIdentity{}
 	}
-	file, fileOK := v.file(*cursor)
-	hunk, hunkOK := v.hunk(*cursor)
-	line, lineOK := v.line(*cursor)
-	return cursorIdentity{file: file, hunk: hunk, line: line, cursor: *cursor, valid: fileOK && hunkOK && lineOK}
+	row := v.rows[cursor.row]
+	file := v.patch.Files[row.file]
+	hunk := file.Hunks[row.hunk]
+	line := hunk.Lines[v.lineIndex(row, cursor.pane)]
+	return cursorIdentity{file: file, hunk: hunk, line: line, cursor: cursor, valid: true}
 }
 
-func preserveSelection(old *diffView, selection *diffSelection, next *diffView) (diffSelection, bool) {
+func preserveSelection(old *diffView, selection *diffSelection, next *diffView) *diffSelection {
 	if selection == nil {
-		return diffSelection{}, false
+		return nil
 	}
-	first := identify(old, &selection.First)
-	last := identify(old, &selection.Last)
+	first := identify(old, selection.First)
+	last := identify(old, selection.Last)
 	if !first.valid || !last.valid {
-		return diffSelection{}, false
+		return nil
 	}
-	translatedFirst, firstOK := next.findCursor(first.file, first.hunk, first.line, first.cursor.coordinate, first.cursor.pane)
-	translatedLast, lastOK := next.findCursor(last.file, last.hunk, last.line, last.cursor.coordinate, last.cursor.pane)
+	translatedFirst, firstOK := next.findCursor(first)
+	translatedLast, lastOK := next.findCursor(last)
 	if !firstOK || !lastOK || !sameFile(first.file, last.file) || first.hunk.Header != last.hunk.Header {
-		return diffSelection{}, false
+		return nil
 	}
 	translated := next.beginSelection(translatedFirst)
-	return next.extendSelection(translated, translatedLast)
+	translated, ok := next.extendSelection(translated, translatedLast)
+	if !ok {
+		return nil
+	}
+	return &translated
 }

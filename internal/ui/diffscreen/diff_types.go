@@ -1,9 +1,5 @@
 package diffscreen
 
-type coordinate struct {
-	Y int
-}
-
 type diffPane uint8
 
 const (
@@ -19,12 +15,12 @@ func (pane diffPane) other() diffPane {
 }
 
 type diffCursor struct {
-	coordinate coordinate
-	pane       diffPane
+	row  int
+	pane diffPane
 }
 
 type diffViewport struct {
-	top        coordinate
+	top        int
 	LeftColumn int
 	Width      int
 	Height     int
@@ -33,14 +29,6 @@ type diffViewport struct {
 type diffSelection struct {
 	First diffCursor
 	Last  diffCursor
-}
-
-// viewState is the cursor, selection, and viewport associated with a diff projection.
-// diffCursor and diffSelection are nil when the diff projection has no selectable line.
-type viewState struct {
-	cursor    *diffCursor
-	selection *diffSelection
-	viewport  diffViewport
 }
 
 type direction int8

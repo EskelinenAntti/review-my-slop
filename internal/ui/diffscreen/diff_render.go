@@ -16,11 +16,11 @@ func (v *diffView) render(viewport diffViewport, cursor diffCursor, selection *d
 	viewport = v.clampViewport(viewport)
 	lines := make([]string, 0, viewport.Height)
 	if v.hasStickyHeader(viewport.top, viewport.Height) {
-		current := v.rows[viewport.top.Y]
+		current := v.rows[viewport.top]
 		lines = append(lines, v.renderFileRow(v.patch.Files[current.file].DisplayPath, viewport.Width))
 	}
-	end := min(len(v.rows), viewport.top.Y+v.contentHeight(viewport))
-	for y := viewport.top.Y; y < end; y++ {
+	end := min(len(v.rows), viewport.top+v.contentHeight(viewport))
+	for y := viewport.top; y < end; y++ {
 		current := v.rows[y]
 		if v.split && current.kind == lineRow {
 			lines = append(lines, v.renderSplitRow(current, y, viewport, cursor, selection))
@@ -56,11 +56,11 @@ func (v *diffView) renderUnifiedRow(current entry, y int, viewport diffViewport,
 		value := gutter + fitANSIWindow(current.text, viewport.LeftColumn, width-lipgloss.Width(gutter))
 		style := lineStyle(line.Kind, v.dark)
 		strip := false
-		candidate := diffCursor{coordinate: coordinate{Y: y}, pane: cursor.pane}
+		candidate := diffCursor{row: y, pane: cursor.pane}
 		if selected(selection, candidate) {
 			style, strip = selectionRowStyle(v.dark), true
 		}
-		if cursor.coordinate.Y == y {
+		if cursor.row == y {
 			style, strip = cursorStyle, true
 		}
 		return renderStyledRow(style, value, width, strip)
@@ -102,7 +102,7 @@ func (v *diffView) renderPane(current entry, y int, pane diffPane, width, offset
 	value := gutter + fitANSIWindow(prefix+text, offset, width-lipgloss.Width(gutter))
 	style := lineStyle(line.Kind, v.dark)
 	strip := false
-	candidate := diffCursor{coordinate: coordinate{Y: y}, pane: pane}
+	candidate := diffCursor{row: y, pane: pane}
 	if selected(selection, candidate) {
 		style, strip = selectionRowStyle(v.dark), true
 	}
@@ -116,9 +116,9 @@ func selected(selection *diffSelection, cursor diffCursor) bool {
 	if selection == nil {
 		return false
 	}
-	first, last := selection.First.coordinate.Y, selection.Last.coordinate.Y
+	first, last := selection.First.row, selection.Last.row
 	if first == last && selection.First.pane != selection.Last.pane {
-		return cursor.coordinate.Y == first && (cursor.pane == selection.First.pane || cursor.pane == selection.Last.pane)
+		return cursor.row == first && (cursor.pane == selection.First.pane || cursor.pane == selection.Last.pane)
 	}
 	if selection.First.pane != cursor.pane {
 		return false
@@ -126,7 +126,7 @@ func selected(selection *diffSelection, cursor diffCursor) bool {
 	if first > last {
 		first, last = last, first
 	}
-	return cursor.coordinate.Y >= first && cursor.coordinate.Y <= last
+	return cursor.row >= first && cursor.row <= last
 }
 
 func lineStyle(kind patch.LineKind, dark bool) lipgloss.Style {
