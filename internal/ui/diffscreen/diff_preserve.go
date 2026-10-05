@@ -57,9 +57,6 @@ func preserveSelection(old *diffView, selection *diffSelection, next *diffView) 
 	}
 	first := identify(old, selection.First)
 	last := identify(old, selection.Last)
-	if !first.valid || !last.valid {
-		return nil
-	}
 	translatedFirst, firstOK := next.findCursor(first)
 	translatedLast, lastOK := next.findCursor(last)
 	if !firstOK || !lastOK || !sameFile(first.file, last.file) || first.hunk.Header != last.hunk.Header {

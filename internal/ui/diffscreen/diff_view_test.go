@@ -19,7 +19,7 @@ func TestUnifiedNavigationSearchAndFileJumps(t *testing.T) {
 	if line.Text != "before" {
 		t.Fatalf("first line = %q", line.Text)
 	}
-	next, ok := v.move(first, forward)
+	next, ok := v.move(first, Forward)
 	if !ok {
 		t.Fatal("Move returned no cursor")
 	}
@@ -27,7 +27,7 @@ func TestUnifiedNavigationSearchAndFileJumps(t *testing.T) {
 	if line.Kind != patch.Deletion {
 		t.Fatalf("next kind = %v", line.Kind)
 	}
-	match, ok := v.search("added", first, forward)
+	match, ok := v.search("added", first, Forward)
 	if !ok {
 		t.Fatal("Search returned no cursor")
 	}
@@ -35,7 +35,7 @@ func TestUnifiedNavigationSearchAndFileJumps(t *testing.T) {
 	if line.Text != "added one" {
 		t.Fatalf("match = %q", line.Text)
 	}
-	jumped, ok := v.jumpFile(first, forward)
+	jumped, ok := v.jumpFile(first, Forward)
 	if !ok {
 		t.Fatal("JumpFile returned no cursor")
 	}
@@ -43,7 +43,7 @@ func TestUnifiedNavigationSearchAndFileJumps(t *testing.T) {
 	if file.DisplayPath != "second.go" {
 		t.Fatalf("jumped file = %q", file.DisplayPath)
 	}
-	if _, ok := v.jumpFile(jumped, forward); ok {
+	if _, ok := v.jumpFile(jumped, Forward); ok {
 		t.Fatal("JumpFile wrapped unexpectedly")
 	}
 }
@@ -51,7 +51,7 @@ func TestUnifiedNavigationSearchAndFileJumps(t *testing.T) {
 func TestSplitPairsChangeBlocksAndSupportsEmptyPanes(t *testing.T) {
 	v := newSideBySideView(testPatch(), true)
 	first, _ := v.first()
-	removed, _ := v.move(first, forward)
+	removed, _ := v.move(first, Forward)
 	if removed.pane != right {
 		t.Fatalf("initial pane = %v", removed.pane)
 	}
@@ -71,7 +71,7 @@ func TestSplitPairsChangeBlocksAndSupportsEmptyPanes(t *testing.T) {
 	if line.Text != "added one" {
 		t.Fatalf("right line = %q", line.Text)
 	}
-	secondRemoved, _ := v.move(removed, forward)
+	secondRemoved, _ := v.move(removed, Forward)
 	if _, ok := v.switchPane(secondRemoved, right); !ok {
 		t.Fatal("pane switch should find a nearby right line")
 	}
@@ -91,8 +91,8 @@ func TestSplitPairsChangeBlocksAndSupportsEmptyPanes(t *testing.T) {
 func TestSelectionLines(t *testing.T) {
 	v := newUnifiedView(testPatch(), true)
 	first, _ := v.first()
-	last, _ := v.move(first, forward)
-	last, _ = v.move(last, forward)
+	last, _ := v.move(first, Forward)
+	last, _ = v.move(last, Forward)
 	selection := v.beginSelection(first)
 	selection, ok := v.extendSelection(selection, last)
 	if !ok {
@@ -103,7 +103,7 @@ func TestSelectionLines(t *testing.T) {
 		t.Fatalf("selected lines = %d", len(lines))
 	}
 
-	nextFile, _ := v.jumpFile(first, forward)
+	nextFile, _ := v.jumpFile(first, Forward)
 	if _, ok := v.extendSelection(selection, nextFile); ok {
 		t.Fatal("selection crossed a hunk")
 	}
@@ -114,14 +114,14 @@ func TestViewportAlignmentResizeAndScrolling(t *testing.T) {
 	first, _ := v.first()
 	cursor := first
 	for range 8 {
-		cursor, _ = v.move(cursor, forward)
+		cursor, _ = v.move(cursor, Forward)
 	}
 	viewport := v.newViewport(30, 5)
 	viewport = v.keepVisible(viewport, cursor)
 	if cursor.row < viewport.top || cursor.row >= viewport.top+viewport.Height {
 		t.Fatalf("cursor not visible: %#v %#v", cursor, viewport)
 	}
-	viewport = v.align(viewport, cursor, middle)
+	viewport = v.align(viewport, cursor, Center)
 	headerHeight := 0
 	if v.hasStickyHeader(viewport.top, viewport.Height) {
 		headerHeight = 1
@@ -138,7 +138,7 @@ func TestViewportAlignmentResizeAndScrolling(t *testing.T) {
 		t.Fatalf("resize = %#v", viewport)
 	}
 	before := cursor
-	viewport, cursor = v.scrollHalfPage(viewport, cursor, forward)
+	viewport, cursor = v.scrollHalfPage(viewport, cursor, Forward)
 	if cursor.row < before.row {
 		t.Fatalf("half page moved backward: %#v -> %#v", before, cursor)
 	}
@@ -165,14 +165,14 @@ func TestHalfPageScrollingMovesCursorToFileBoundaries(t *testing.T) {
 	cursor := first
 
 	for range len(longPatch().Files[0].Hunks[0].Lines) {
-		viewport, cursor = v.scrollHalfPage(viewport, cursor, forward)
+		viewport, cursor = v.scrollHalfPage(viewport, cursor, Forward)
 	}
 	if cursor != last {
 		t.Fatalf("cursor after scrolling down = %#v, want %#v", cursor, last)
 	}
 
 	for range len(longPatch().Files[0].Hunks[0].Lines) {
-		viewport, cursor = v.scrollHalfPage(viewport, cursor, backward)
+		viewport, cursor = v.scrollHalfPage(viewport, cursor, Backward)
 	}
 	if cursor != first {
 		t.Fatalf("cursor after scrolling up = %#v, want %#v", cursor, first)
@@ -182,7 +182,7 @@ func TestHalfPageScrollingMovesCursorToFileBoundaries(t *testing.T) {
 func TestFindCursorUsesSemanticIdentityAcrossChangedCoordinates(t *testing.T) {
 	original := testPatch()
 	oldView := newUnifiedView(original, true)
-	cursor, _ := oldView.search("added one", mustFirst(t, oldView), forward)
+	cursor, _ := oldView.search("added one", mustFirst(t, oldView), Forward)
 	line, _ := oldView.line(cursor)
 	changed := testPatch()
 	changed.Files[0].Metadata = []string{"mode changed", "more metadata"}
@@ -216,7 +216,7 @@ func TestSplitViewWithOnlyDeletionsStartsInLeftPane(t *testing.T) {
 func TestFindCursorFallsBackNearRemovedLine(t *testing.T) {
 	original := testPatch()
 	oldView := newUnifiedView(original, true)
-	cursor, _ := oldView.search("removed two", mustFirst(t, oldView), forward)
+	cursor, _ := oldView.search("removed two", mustFirst(t, oldView), Forward)
 	changed := testPatch()
 	changed.Files[0].Hunks[0].Lines = changed.Files[0].Hunks[0].Lines[:2]
 	newView := newUnifiedView(changed, true)

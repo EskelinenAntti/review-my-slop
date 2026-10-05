@@ -14,9 +14,7 @@ func BodyRow(x, y, width, height int) (int, bool) {
 
 func Render(header string, body []string, footer string, height int) string {
 	bodyHeight := BodyHeight(height)
-	lines := make([]string, 0, bodyHeight+3)
-	lines = append(lines, header)
-	lines = append(lines, body[:min(len(body), bodyHeight)]...)
+	lines := append([]string{header}, body[:min(len(body), bodyHeight)]...)
 	for len(lines) < bodyHeight+1 {
 		lines = append(lines, "")
 	}

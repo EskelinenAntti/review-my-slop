@@ -226,3 +226,59 @@ func testComment(repository, body string) Comment {
 		Body:       body,
 	}
 }
+
+func TestDeleteLegacyStorageKey(t *testing.T) {
+	store := Store{Path: filepath.Join(t.TempDir(), "comments.db")}
+	legacy := []byte(`{"id":"legacy","repository":"/repo","comment":{"body":"old"}}`)
+	if err := store.update(func(bucket *bolt.Bucket) error {
+		return bucket.Put([]byte{0, 0, 0, 1}, legacy)
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Delete("/other", "legacy"); err == nil {
+		t.Fatal("deleted a comment belonging to another repository")
+	}
+	if err := store.Delete("/repo", "legacy"); err != nil {
+		t.Fatal(err)
+	}
+	items, err := store.List("/repo")
+	if err != nil || len(items) != 0 {
+		t.Fatalf("items = %#v, err = %v", items, err)
+	}
+}
+
+func TestCommentMutationStopsAtCorruptRecord(t *testing.T) {
+	for _, operation := range []string{"update", "delete"} {
+		t.Run(operation, func(t *testing.T) {
+			store := Store{Path: filepath.Join(t.TempDir(), "comments.db")}
+			comment := testComment("/repo", "z-last")
+			if _, err := store.Add(comment); err != nil {
+				t.Fatal(err)
+			}
+			if err := store.update(func(bucket *bolt.Bucket) error {
+				return bucket.Put([]byte("a-first"), []byte("invalid JSON"))
+			}); err != nil {
+				t.Fatal(err)
+			}
+			var err error
+			if operation == "update" {
+				comment.Body = "edited"
+				err = store.Update(comment)
+			} else {
+				err = store.Delete(comment.Repository, comment.ID)
+			}
+			if err == nil || !strings.HasPrefix(err.Error(), "decode comment:") {
+				t.Fatalf("err = %v, want decode error", err)
+			}
+			if err := store.view(func(bucket *bolt.Bucket) error {
+				stored, err := decodeComment(bucket.Get([]byte(comment.ID)))
+				if err != nil || stored.Body != "z-last" {
+					t.Fatalf("stored = %#v, err = %v", stored, err)
+				}
+				return nil
+			}); err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+}

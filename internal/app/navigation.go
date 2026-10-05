@@ -7,8 +7,7 @@ import (
 )
 
 func (m *model) toggleSideBySide() {
-	enabled := !m.diffOptions.SideBySide
-	m.setSideBySide(enabled)
+	m.setSideBySide(!m.diffOptions.SideBySide)
 	if m.saveLayout != nil {
 		if err := m.saveLayout(m.diffOptions.SideBySide); err != nil {
 			m.err = fmt.Errorf("save side-by-side preference: %w", err)

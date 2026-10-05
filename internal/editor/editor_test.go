@@ -77,3 +77,30 @@ func TestCommentDraftRoundTrip(t *testing.T) {
 		t.Fatalf("unchanged suggestion result = %q", got)
 	}
 }
+
+func TestCommentDraftEmptySuggestionAndSpacing(t *testing.T) {
+	for _, tc := range []struct {
+		name, body string
+		quoted     []string
+		want       string
+	}{
+		{"no anchor", "body\n", nil, "body\n"},
+		{"only deletions", "body", []string{"-old"}, "body\n\n```suggestion\n```\n"},
+		{"empty body", "", []string{"+new"}, "\n```suggestion\nnew\n```\n"},
+		{"blank addition", "body\n", []string{"+"}, "body\n\n```suggestion\n\n```\n"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			draft := commentDraft(tc.body, comments.Anchor{QuotedLines: tc.quoted})
+			if draft != tc.want {
+				t.Fatalf("draft = %q, want %q", draft, tc.want)
+			}
+			wantBody := tc.body
+			if len(tc.quoted) > 0 {
+				wantBody = strings.TrimRight(wantBody, "\n")
+			}
+			if got := stripUnchangedSuggestion(draft, tc.quoted); got != wantBody {
+				t.Fatalf("body = %q, want %q", got, wantBody)
+			}
+		})
+	}
+}

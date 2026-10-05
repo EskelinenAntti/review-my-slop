@@ -45,25 +45,10 @@ func (v *diffView) renderUnifiedRow(current entry, y int, viewport diffViewport,
 		return hunkStyle.Render(current.text)
 	case lineRow:
 		line := v.patch.Files[current.file].Hunks[current.hunk].Lines[current.rightLine]
-		prefix := " "
-		if line.Kind == patch.Addition {
-			prefix = addedStyle.Render("+")
-		}
-		if line.Kind == patch.Deletion {
-			prefix = removedStyle.Render("-")
-		}
+		prefix := linePrefix(line.Kind)
 		gutter := fmt.Sprintf("%5s %5s %s ", number(line.OldNumber), number(line.NewNumber), prefix)
 		value := gutter + fitANSIWindow(current.text, viewport.LeftColumn, width-lipgloss.Width(gutter))
-		style := lineStyle(line.Kind, v.dark)
-		strip := false
-		candidate := diffCursor{row: y, pane: cursor.pane}
-		if selected(selection, candidate) {
-			style, strip = selectionRowStyle(v.dark), true
-		}
-		if cursor.row == y {
-			style, strip = cursorStyle, true
-		}
-		return renderStyledRow(style, value, width, strip)
+		return v.renderCodeRow(line.Kind, value, width, diffCursor{row: y, pane: cursor.pane}, cursor, selection)
 	}
 	return ""
 }
@@ -95,18 +80,25 @@ func (v *diffView) renderPane(current entry, y int, pane diffPane, width, offset
 	if pane == left {
 		text, numberValue = current.left, line.OldNumber
 	}
-	prefix := "  "
-	if line.Kind == patch.Addition {
-		prefix = addedStyle.Render("+") + " "
-	}
-	if line.Kind == patch.Deletion {
-		prefix = removedStyle.Render("-") + " "
-	}
+	prefix := linePrefix(line.Kind) + " "
 	gutter := fmt.Sprintf("%5s ", number(numberValue))
 	value := gutter + fitANSIWindow(prefix+text, offset, width-lipgloss.Width(gutter))
-	style := lineStyle(line.Kind, v.dark)
-	strip := false
-	candidate := diffCursor{row: y, pane: pane}
+	return v.renderCodeRow(line.Kind, value, width, diffCursor{row: y, pane: pane}, cursor, selection)
+}
+
+func linePrefix(kind patch.LineKind) string {
+	switch kind {
+	case patch.Addition:
+		return addedStyle.Render("+")
+	case patch.Deletion:
+		return removedStyle.Render("-")
+	default:
+		return " "
+	}
+}
+
+func (v *diffView) renderCodeRow(kind patch.LineKind, value string, width int, candidate, cursor diffCursor, selection *diffSelection) string {
+	style, strip := lineStyle(kind, v.dark), false
 	if selected(selection, candidate) {
 		style, strip = selectionRowStyle(v.dark), true
 	}
@@ -127,9 +119,7 @@ func selected(selection *diffSelection, cursor diffCursor) bool {
 	if selection.First.pane != cursor.pane {
 		return false
 	}
-	if first > last {
-		first, last = last, first
-	}
+	first, last = min(first, last), max(first, last)
 	return cursor.row >= first && cursor.row <= last
 }
 
@@ -157,13 +147,10 @@ func number(value patch.LineNumber) string {
 }
 
 func renderStyledRow(style lipgloss.Style, value string, width int, stripForeground bool) string {
-	value = filterANSIColors(value, stripForeground)
-	fitted := fitANSIWindow(value, 0, width)
+	fitted := fitANSIWindow(filterANSIColors(value, stripForeground), 0, width)
 	prefix := stylePrefix(style)
-	if prefix != "" {
-		fitted = strings.ReplaceAll(fitted, "\x1b[0m", "\x1b[0m"+prefix)
-		fitted = strings.ReplaceAll(fitted, "\x1b[m", "\x1b[m"+prefix)
-	}
+	fitted = strings.ReplaceAll(fitted, "\x1b[0m", "\x1b[0m"+prefix)
+	fitted = strings.ReplaceAll(fitted, "\x1b[m", "\x1b[m"+prefix)
 	return style.Render(fitted)
 }
 
@@ -214,10 +201,7 @@ func fitANSIWindow(value string, offset, width int) string {
 		value = ansi.TruncateLeft(value, offset, "")
 	}
 	value = ansi.Truncate(value, width, "")
-	if padding := width - lipgloss.Width(value); padding > 0 {
-		value += strings.Repeat(" ", padding)
-	}
-	return value
+	return value + strings.Repeat(" ", max(0, width-lipgloss.Width(value)))
 }
 
 func expandTabs(value string) string { return strings.ReplaceAll(value, "\t", "    ") }

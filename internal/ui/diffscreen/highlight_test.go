@@ -10,9 +10,22 @@ import (
 func TestRenamedFileHighlightsEachSideUsingItsOwnPath(t *testing.T) {
 	source := "package main\n\nfunc example() {}\n"
 	file := patch.File{OldPath: "old.go", NewPath: "new.txt", OldSource: source, NewSource: source}
-	view := &diffView{dark: true}
-	pair := view.highlight(&file)
-	old, new := strings.Join(pair.Old, "\n"), strings.Join(pair.New, "\n")
+	var hunk patch.Hunk
+	for _, kind := range []patch.LineKind{patch.Deletion, patch.Addition} {
+		for index, text := range strings.Split(strings.TrimSuffix(source, "\n"), "\n") {
+			hunk.Lines = append(hunk.Lines, patch.Line{Kind: kind, Text: text, OldNumber: patch.LineNumber(index + 1), NewNumber: patch.LineNumber(index + 1)})
+		}
+	}
+	file.Hunks = []patch.Hunk{hunk}
+	view := newDiffView(patch.Patch{Files: []patch.File{file}}, true, true)
+	var oldLines, newLines []string
+	for _, row := range view.rows {
+		if row.kind == lineRow {
+			oldLines = append(oldLines, row.left)
+			newLines = append(newLines, row.right)
+		}
+	}
+	old, new := strings.Join(oldLines, "\n"), strings.Join(newLines, "\n")
 	if old == new || stripANSI(old) != strings.TrimSuffix(source, "\n") || stripANSI(new) != strings.TrimSuffix(source, "\n") {
 		t.Fatalf("highlighted old=%q new=%q", old, new)
 	}

@@ -25,27 +25,22 @@ func (m model) updateComments(name string) (tea.Model, tea.Cmd) {
 	case "k", "up":
 		m.commentView.Move(-1)
 	case "enter", "e":
-		if len(m.comments.items) > 0 {
-			selected, ok := m.commentView.Selected()
-			if !ok {
-				return m, nil
-			}
-			m.edit.index = m.commentIndex(selected)
-			m.edit.body = m.comments.items[m.edit.index].Body
-			m.edit.anchor = m.comments.items[m.edit.index].Anchor
-			cmd, err := m.openCommentEditor()
-			if err != nil {
-				m.err = err
-				m.clearCommentEdit()
-				return m, nil
-			}
-			return m, cmd
+		selected, ok := m.commentView.Selected()
+		if !ok {
+			break
 		}
+		m.edit.index = m.commentIndex(selected)
+		m.edit.body = m.comments.items[m.edit.index].Body
+		m.edit.anchor = m.comments.items[m.edit.index].Anchor
+		cmd, err := m.openCommentEditor()
+		if err != nil {
+			m.err = err
+			return m, nil
+		}
+		return m, cmd
 	case "D":
-		if len(m.comments.items) > 0 {
-			if selected, ok := m.commentView.Selected(); ok {
-				m.deleteComment(m.commentIndex(selected))
-			}
+		if selected, ok := m.commentView.Selected(); ok {
+			m.deleteComment(m.commentIndex(selected))
 		}
 	}
 	return m, nil
@@ -58,40 +53,33 @@ func (m *model) beginComment() (tea.Cmd, error) {
 	}
 	anchor := commentAnchor(file, lines)
 	m.edit.body, m.edit.index, m.edit.anchor = "", -1, anchor
-	cmd, err := m.openCommentEditor()
-	if err != nil {
-		m.clearCommentEdit()
-		return nil, err
-	}
-	return cmd, nil
+	return m.openCommentEditor()
 }
 
 func (m *model) finishCommentEdit() {
+	defer m.clearCommentEdit()
 	body := strings.TrimSpace(m.edit.body)
 	if body == "" {
 		if m.edit.index >= 0 {
 			m.deleteComment(m.edit.index)
 		}
-		m.clearCommentEdit()
 		m.diffView.ClearSelection()
 		return
 	}
 	if m.save == nil {
 		m.err = fmt.Errorf("comment storage is unavailable")
-		m.clearCommentEdit()
 		return
 	}
 	var comment comments.Comment
 	if m.edit.index >= 0 {
 		comment = m.comments.items[m.edit.index]
-		comment.Body = body
 	} else {
-		comment = comments.Comment{Anchor: m.edit.anchor, Body: body}
+		comment.Anchor = m.edit.anchor
 	}
+	comment.Body = body
 	saved, err := m.save(comment, m.currentPatch)
 	if err != nil {
 		m.err = err
-		m.clearCommentEdit()
 		return
 	}
 	if m.edit.index >= 0 {
@@ -103,7 +91,6 @@ func (m *model) finishCommentEdit() {
 	}
 	m.comments.revision++
 	m.commentView.Update(m.comments.items)
-	m.clearCommentEdit()
 	m.err = nil
 	m.diffView.ClearSelection()
 }
@@ -126,9 +113,7 @@ func (m *model) deleteComment(index int) {
 	m.err = nil
 }
 
-func (m *model) clearCommentEdit() {
-	m.edit = commentEdit{index: -1}
-}
+func (m *model) clearCommentEdit() { m.edit = commentEdit{index: -1} }
 
 func (m model) openCurrentLine() (tea.Cmd, error) {
 	path, number, err := m.sourceLocation()
@@ -161,10 +146,14 @@ func (m model) sourceLocation() (string, int, error) {
 	return path, int(number), nil
 }
 
-func (m model) openCommentEditor() (tea.Cmd, error) {
-	return editor.EditComment(m.ctx, m.edit.body, m.edit.anchor, func(body string, err error) tea.Msg {
+func (m *model) openCommentEditor() (tea.Cmd, error) {
+	cmd, err := editor.EditComment(m.ctx, m.edit.body, m.edit.anchor, func(body string, err error) tea.Msg {
 		return commentEditorFinishedMsg{body: body, err: err}
 	})
+	if err != nil {
+		m.clearCommentEdit()
+	}
+	return cmd, err
 }
 
 func (m model) commentIndex(selected comments.Comment) int {

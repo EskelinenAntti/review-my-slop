@@ -3,6 +3,7 @@ package commentscreen
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 
 	"charm.land/lipgloss/v2"
@@ -32,11 +33,8 @@ func (v *View) Update(items []comments.Comment) {
 	v.items = append([]comments.Comment(nil), items...)
 	v.row = min(v.row, max(0, len(items)-1))
 	if ok && selected.ID != "" {
-		for index, item := range items {
-			if item.ID == selected.ID {
-				v.row = index
-				break
-			}
+		if index := slices.IndexFunc(items, func(item comments.Comment) bool { return item.ID == selected.ID }); index >= 0 {
+			v.row = index
 		}
 	}
 	v.keepVisible()
@@ -78,8 +76,7 @@ func (v *View) startRow(height int) int {
 
 func (v *View) keepVisible() {
 	height := frame.BodyHeight(v.height)
-	v.top = min(v.top, v.row)
-	v.top = max(v.top, v.row-height+1)
+	v.top = max(min(v.top, v.row), v.row-height+1)
 	v.top = v.startRow(height)
 }
 

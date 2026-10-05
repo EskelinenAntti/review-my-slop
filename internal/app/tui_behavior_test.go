@@ -102,7 +102,7 @@ func TestCommentsCanBeViewedEditedAndDeleted(t *testing.T) {
 		persisted = stored
 		return stored, nil
 	})
-	m.setDelete(func(stored comments.Comment, _ patch.Patch) error { deleted = stored; return nil })
+	m.delete = func(stored comments.Comment, _ patch.Patch) error { deleted = stored; return nil }
 	m = updateModel(t, m, textKey("C"))
 	if m.mode != modeComments || !strings.Contains(m.render(), "old body") {
 		t.Fatal("comments did not open")
@@ -124,7 +124,7 @@ func TestCommentsCanBeViewedEditedAndDeleted(t *testing.T) {
 
 func TestOpeningCommentsReloadsPendingComments(t *testing.T) {
 	m := testModel(coveragePatch(), []comments.Comment{{ID: "read", Body: "already read"}}, nil)
-	m.setLoadComments(func() ([]comments.Comment, error) { return nil, nil })
+	m.load = func() ([]comments.Comment, error) { return nil, nil }
 
 	next, cmd := m.Update(textKey("C"))
 	m = next.(model)
@@ -139,7 +139,7 @@ func TestOpeningCommentsReloadsPendingComments(t *testing.T) {
 
 func TestCommentReloadFailurePreservesCurrentComments(t *testing.T) {
 	m := testModel(coveragePatch(), []comments.Comment{{ID: "keep", Body: "keep"}}, nil)
-	m.setLoadComments(func() ([]comments.Comment, error) { return nil, fmt.Errorf("storage unavailable") })
+	m.load = func() ([]comments.Comment, error) { return nil, fmt.Errorf("storage unavailable") }
 
 	next, cmd := m.Update(textKey("C"))
 	m = next.(model)
@@ -153,7 +153,7 @@ func TestEmptyEditedCommentIsDeleted(t *testing.T) {
 	t.Setenv("EDITOR", "true")
 	m := testModel(coveragePatch(), []comments.Comment{{ID: "one", Body: "old"}}, nil)
 	deleted := false
-	m.setDelete(func(comments.Comment, patch.Patch) error { deleted = true; return nil })
+	m.delete = func(comments.Comment, patch.Patch) error { deleted = true; return nil }
 	m = updateModel(t, m, textKey("C"))
 	m = updateModel(t, m, specialKey(tea.KeyEnter))
 	m = updateModel(t, m, commentEditorFinishedMsg{body: "\n"})
@@ -164,7 +164,7 @@ func TestEmptyEditedCommentIsDeleted(t *testing.T) {
 
 func TestCommentDeleteFailureKeepsCommentAndShowsError(t *testing.T) {
 	m := testModel(coveragePatch(), []comments.Comment{{ID: "one", Body: "keep"}}, nil)
-	m.setDelete(func(comments.Comment, patch.Patch) error { return fmt.Errorf("delete failed") })
+	m.delete = func(comments.Comment, patch.Patch) error { return fmt.Errorf("delete failed") }
 	m = updateModel(t, m, textKey("C"))
 	m = updateModel(t, m, textKey("D"))
 	if len(m.comments.items) != 1 || !strings.Contains(ansi.Strip(m.render()), "delete failed") {
@@ -187,7 +187,8 @@ func TestSelectionCannotCrossHunk(t *testing.T) {
 func TestVimSequencesAndLayoutToggle(t *testing.T) {
 	m := testModel(coveragePatch(), nil, nil)
 	var saved []bool
-	m.configureSideBySide(false, func(enabled bool) error { saved = append(saved, enabled); return nil })
+	m.saveLayout = func(enabled bool) error { saved = append(saved, enabled); return nil }
+	m.setSideBySide(false)
 	m = updateModel(t, m, tea.WindowSizeMsg{Width: 120, Height: 20})
 	m = updateModel(t, m, textKey("G"))
 	if lineText(m) != "more()" {
@@ -211,7 +212,8 @@ func TestVimSequencesAndLayoutToggle(t *testing.T) {
 func TestSavedSideBySideCanBeDisabledInNarrowTerminal(t *testing.T) {
 	m := testModel(coveragePatch(), nil, nil)
 	var saved []bool
-	m.configureSideBySide(true, func(enabled bool) error { saved = append(saved, enabled); return nil })
+	m.saveLayout = func(enabled bool) error { saved = append(saved, enabled); return nil }
+	m.setSideBySide(true)
 	m = updateModel(t, m, tea.WindowSizeMsg{Width: 80, Height: 20})
 	m = updateModel(t, m, textKey("t"))
 	if m.diffOptions.SideBySide || !slices.Equal(saved, []bool{false}) {
@@ -221,7 +223,8 @@ func TestSavedSideBySideCanBeDisabledInNarrowTerminal(t *testing.T) {
 
 func TestResizeAcrossSideBySideThresholdPreservesFocusedLine(t *testing.T) {
 	m := testModel(coveragePatch(), nil, nil)
-	m.configureSideBySide(true, nil)
+	m.saveLayout = nil
+	m.setSideBySide(true)
 	focusLine(t, &m, "keep()")
 	_, before, _ := m.diffView.Current()
 	m = updateModel(t, m, tea.WindowSizeMsg{Width: 80, Height: 20})
@@ -365,13 +368,13 @@ func TestFocusAndManualRefreshLoadCurrentView(t *testing.T) {
 	m.currentPatch.Branch = "main"
 	m.kind = patch.Branch
 	var requested []patch.Kind
-	m.setRefresh(func(kind patch.Kind) (patch.Patch, error) {
+	m.refresh = func(kind patch.Kind) (patch.Patch, error) {
 		requested = append(requested, kind)
 		p := coveragePatch()
 		p.Kind, p.Branch = kind, "main"
 		p.Files[0].Metadata = []string{fmt.Sprintf("refresh-%d", len(requested))}
 		return p, nil
-	})
+	}
 	next, cmd := m.Update(tea.FocusMsg{})
 	m = next.(model)
 	if cmd == nil {
@@ -393,7 +396,7 @@ func TestSourceEditorCompletionRefreshesDiff(t *testing.T) {
 	m := testModel(coveragePatch(), nil, nil)
 	refreshed := coveragePatch()
 	refreshed.Files[0].Metadata = []string{"after-editor"}
-	m.setRefresh(func(patch.Kind) (patch.Patch, error) { return refreshed, nil })
+	m.refresh = func(patch.Kind) (patch.Patch, error) { return refreshed, nil }
 
 	next, cmd := m.Update(sourceEditorFinishedMsg{})
 	m = next.(model)
@@ -478,11 +481,11 @@ func TestSideBySideSearchActivatesPaneAndCancelRestoresIt(t *testing.T) {
 func TestTabTogglesDefaultBranchAndIgnoresStaleRefresh(t *testing.T) {
 	m := testModel(coveragePatch(), nil, nil)
 	m.currentPatch.Branch = "main"
-	m.setRefresh(func(kind patch.Kind) (patch.Patch, error) {
+	m.refresh = func(kind patch.Kind) (patch.Patch, error) {
 		p := coveragePatch()
 		p.Kind, p.Branch = kind, "main"
 		return p, nil
-	})
+	}
 	next, _ := m.Update(textKey("tab"))
 	m = next.(model)
 	if m.kind != patch.Branch {
@@ -503,10 +506,10 @@ func TestTabTogglesDefaultBranchAndIgnoresStaleRefresh(t *testing.T) {
 func TestTabDoesNothingWithoutDefaultBranch(t *testing.T) {
 	m := testModel(coveragePatch(), nil, nil)
 	refreshed := false
-	m.setRefresh(func(patch.Kind) (patch.Patch, error) {
+	m.refresh = func(patch.Kind) (patch.Patch, error) {
 		refreshed = true
 		return coveragePatch(), nil
-	})
+	}
 	next, cmd := m.Update(textKey("tab"))
 	m = next.(model)
 	if cmd != nil || refreshed || m.kind != patch.Unstaged {

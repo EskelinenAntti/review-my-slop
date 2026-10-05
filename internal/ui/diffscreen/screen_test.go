@@ -329,3 +329,16 @@ func TestSearchEditingOwnsUnicodeQueryAcrossUpdates(t *testing.T) {
 		t.Fatal("new search retained the previous query")
 	}
 }
+
+func TestRenderCountsOnlyAdditionsAndDeletions(t *testing.T) {
+	p := patch.Patch{Files: []patch.File{{Hunks: []patch.Hunk{{Lines: []patch.Line{
+		{Kind: patch.Context, Text: "unchanged"},
+		{Kind: patch.Addition, Text: "new"},
+		{Kind: patch.Deletion, Text: "old"},
+		{Kind: patch.LineKind(255), Text: "unknown"},
+	}}}}}}
+	v := New(p, Options{})
+	if got := stripANSI(v.Render(nil)); !strings.Contains(got, "+1-1") {
+		t.Fatalf("render does not count only changed lines: %q", got)
+	}
+}
