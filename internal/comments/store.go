@@ -1,3 +1,6 @@
+// Package comments owns review feedback, its anchors, persistence, and delivery.
+// WritePending exports feedback and acknowledges it after successful output.
+// It has no knowledge of terminal layout or input handling.
 package comments
 
 import (
@@ -33,10 +36,7 @@ func DefaultPath() (string, error) {
 
 func OpenDefault() (Store, error) {
 	path, err := DefaultPath()
-	if err != nil {
-		return Store{}, err
-	}
-	return Store{Path: path}, nil
+	return Store{Path: path}, err
 }
 
 func (s Store) Add(comment Comment) (Comment, error) {
@@ -141,9 +141,9 @@ func (s Store) Acknowledge(repository string, ids []string) error {
 	if len(ids) == 0 {
 		return nil
 	}
-	wanted := make(map[string]struct{}, len(ids))
+	wanted := make(map[string]bool, len(ids))
 	for _, id := range ids {
-		wanted[id] = struct{}{}
+		wanted[id] = true
 	}
 	return s.update(func(bucket *bolt.Bucket) error {
 		var keys [][]byte
@@ -152,10 +152,8 @@ func (s Store) Acknowledge(repository string, ids []string) error {
 			if err != nil {
 				return err
 			}
-			if comment.Repository == repository {
-				if _, ok := wanted[comment.ID]; ok {
-					keys = append(keys, append([]byte(nil), key...))
-				}
+			if comment.Repository == repository && wanted[comment.ID] {
+				keys = append(keys, append([]byte(nil), key...))
 			}
 			return nil
 		}); err != nil {

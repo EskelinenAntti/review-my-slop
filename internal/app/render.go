@@ -26,7 +26,7 @@ func (m model) render() string {
 	}
 }
 func (m model) renderHelp() string {
-	bindings := []helpscreen.Binding{
+	return helpscreen.Render([]helpscreen.Binding{
 		{Keys: "j/k, arrows", Description: "move"},
 		{Keys: "h/l, left/right", Description: "scroll horizontally"},
 		{Keys: "Mouse wheel", Description: "scroll content"},
@@ -47,7 +47,5 @@ func (m model) renderHelp() string {
 		{Keys: "Tab", Description: "toggle local/branch changes"},
 		{Keys: "t", Description: "toggle unified/side-by-side"},
 		{Keys: "q", Description: "quit"},
-	}
-
-	return helpscreen.Render(bindings, m.width, m.height)
+	}, m.width, m.height)
 }

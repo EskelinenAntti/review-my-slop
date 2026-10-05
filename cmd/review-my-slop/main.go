@@ -19,23 +19,16 @@ func main() {
 }
 
 func run(ctx context.Context, args []string, output io.Writer) error {
-	if len(args) == 0 {
-		return runCode(ctx)
-	}
 	if len(args) > 1 {
 		return fmt.Errorf("usage: review-my-slop [code|comments]")
 	}
-	switch args[0] {
-	case "code":
-		return runCode(ctx)
-	case "comments":
-		return runComments(ctx, output)
-	default:
-		return fmt.Errorf("unknown subcommand %q; usage: review-my-slop [code|comments]", args[0])
+	command := "code"
+	if len(args) == 1 {
+		command = args[0]
 	}
-}
-
-func runCode(ctx context.Context) error {
+	if command != "code" && command != "comments" {
+		return fmt.Errorf("unknown subcommand %q; usage: review-my-slop [code|comments]", command)
+	}
 	commentStore, err := comments.OpenDefault()
 	if err != nil {
 		return err
@@ -43,18 +36,13 @@ func runCode(ctx context.Context) error {
 	currentPatch, err := patch.Get(ctx, patch.Unstaged)
 	if err != nil {
 		return err
+	}
+	if command == "comments" {
+		return commentStore.WritePending(output, currentPatch.Root)
 	}
 	return app.Run(ctx, currentPatch, commentStore, patch.Get)
 }
 
 func runComments(ctx context.Context, output io.Writer) error {
-	commentStore, err := comments.OpenDefault()
-	if err != nil {
-		return err
-	}
-	currentPatch, err := patch.Get(ctx, patch.Unstaged)
-	if err != nil {
-		return err
-	}
-	return commentStore.WritePending(output, currentPatch.Root)
+	return run(ctx, []string{"comments"}, output)
 }

@@ -122,42 +122,34 @@ func (v *View) newReviewView(p patch.Patch) *diffView {
 func (v *View) Move(motion Motion) {
 	v.EndDrag()
 	v.search.repeatMiss = false
-	switch motion {
-	case PreviousLine:
-		v.move(backward)
-	case NextLine:
-		v.move(forward)
-	case PreviousPage:
-		v.halfPage(backward)
-	case NextPage:
-		v.halfPage(forward)
-	case FirstLine:
-		if cursor, ok := v.view.first(); ok {
-			v.setCursor(cursor)
-		}
-	case LastLine:
-		if cursor, ok := v.view.last(); ok {
-			v.setCursor(cursor)
-		}
-	case PreviousFile:
-		v.jumpFile(backward)
-	case NextFile:
-		v.jumpFile(forward)
-	case OldPane:
-		v.switchPane(left)
-	case NewPane:
-		v.switchPane(right)
-	case OtherPane:
-		v.switchPane(v.cursor.pane.other())
+	if action := motionActions[motion]; action != nil {
+		action(v)
 	}
 }
 
-func (v *View) move(direction direction) {
-	next, ok := v.view.move(v.cursor, direction)
-	if !ok {
-		return
+var motionActions = map[Motion]func(*View){
+	PreviousLine: func(v *View) { v.move(Backward) },
+	NextLine:     func(v *View) { v.move(Forward) },
+	PreviousPage: func(v *View) { v.halfPage(Backward) },
+	NextPage:     func(v *View) { v.halfPage(Forward) },
+	FirstLine:    func(v *View) { v.setCursorIfValid(v.view.first()) },
+	LastLine:     func(v *View) { v.setCursorIfValid(v.view.last()) },
+	PreviousFile: func(v *View) { v.jumpFile(Backward) },
+	NextFile:     func(v *View) { v.jumpFile(Forward) },
+	OldPane:      func(v *View) { v.switchPane(left) },
+	NewPane:      func(v *View) { v.switchPane(right) },
+	OtherPane:    func(v *View) { v.switchPane(v.cursor.pane.other()) },
+}
+
+func (v *View) setCursorIfValid(cursor diffCursor, ok bool) {
+	if ok {
+		v.setCursor(cursor)
 	}
-	if !v.extendSelectionTo(next) {
+}
+
+func (v *View) move(direction Direction) {
+	next, ok := v.view.move(v.cursor, direction)
+	if !ok || !v.extendSelectionTo(next) {
 		return
 	}
 	v.setCursor(next)
@@ -166,7 +158,7 @@ func (v *View) setCursor(cursor diffCursor) {
 	v.cursor = cursor
 	v.viewport = v.view.keepVisible(v.viewport, cursor)
 }
-func (v *View) halfPage(direction direction) {
+func (v *View) halfPage(direction Direction) {
 	viewport, cursor := v.view.scrollHalfPage(v.viewport, v.cursor, direction)
 	if !v.extendSelectionTo(cursor) {
 		return
@@ -186,11 +178,9 @@ func (v *View) extendSelectionTo(cursor diffCursor) bool {
 	}
 	return ok
 }
-func (v *View) jumpFile(direction direction) {
+func (v *View) jumpFile(direction Direction) {
 	v.ClearSelection()
-	if cursor, ok := v.view.jumpFile(v.cursor, direction); ok {
-		v.setCursor(cursor)
-	}
+	v.setCursorIfValid(v.view.jumpFile(v.cursor, direction))
 }
 func (v *View) switchPane(pane diffPane) {
 	cursor, ok := v.view.switchPane(v.cursor, pane)
@@ -215,10 +205,10 @@ func (v *View) switchPane(pane diffPane) {
 
 func (v *View) Align(alignment Alignment) {
 	v.search.repeatMiss = false
-	if _, ok := v.view.line(v.cursor); !ok {
+	if !v.view.valid(v.cursor) {
 		return
 	}
-	v.viewport = v.view.align(v.viewport, v.cursor, verticalAlignment(alignment))
+	v.viewport = v.view.align(v.viewport, v.cursor, alignment)
 }
 func (v *View) ScrollHorizontal(columns int) {
 	v.search.repeatMiss = false
@@ -241,7 +231,7 @@ func (v *View) ToggleSelection() {
 		v.ClearSelection()
 		return
 	}
-	if _, ok := v.view.line(v.cursor); ok {
+	if v.view.valid(v.cursor) {
 		selection := v.view.beginSelection(v.cursor)
 		v.selection = &selection
 	}
@@ -251,28 +241,24 @@ func (v *View) ClearSelection() { v.EndDrag(); v.selection = nil; v.search.repea
 // Selected returns the focused line when no explicit range is selected.
 // The bool is false when the patch has no selectable code.
 func (v *View) Selected() (patch.File, []patch.Line, bool) {
-	selection := v.selection
-	if selection == nil {
-		current := v.view.beginSelection(v.cursor)
-		selection = &current
+	selection := v.view.beginSelection(v.cursor)
+	if v.selection != nil {
+		selection = *v.selection
 	}
 	file, ok := v.view.file(selection.First)
-	lines := v.view.lines(*selection)
+	lines := v.view.lines(selection)
 	return file, lines, ok && len(lines) > 0
 }
 
 // Current returns the focused source line, independent of any selected range.
 func (v *View) Current() (patch.File, patch.Line, bool) {
-	file, fileOK := v.view.file(v.cursor)
-	line, lineOK := v.view.line(v.cursor)
-	return file, line, fileOK && lineOK
+	current := identify(v.view, v.cursor)
+	return current.file, current.line, current.valid
 }
 
 func (v *View) BeginSearch() {
 	v.ClearSelection()
-	v.search.active = true
-	v.search.query, v.search.miss, v.search.repeatMiss = "", false, false
-	v.search.from = v.cursor
+	v.search = searchState{active: true, term: v.search.term, from: v.cursor}
 }
 
 // InsertSearch appends text to the query and previews from the search origin.
@@ -304,11 +290,9 @@ func (v *View) previewSearch(query string) {
 		v.search.miss = false
 		return
 	}
-	cursor, ok := v.view.search(query, v.search.from, forward)
+	cursor, ok := v.view.search(query, v.search.from, Forward)
 	v.search.miss = !ok
-	if ok {
-		v.setCursor(cursor)
-	}
+	v.setCursorIfValid(cursor, ok)
 }
 func (v *View) AcceptSearch() {
 	if !v.search.active {
@@ -317,29 +301,22 @@ func (v *View) AcceptSearch() {
 	if v.search.query != "" && !v.search.miss {
 		v.search.term = v.search.query
 	}
-	v.search.active, v.search.miss = false, false
-	v.search.query = ""
+	v.search.active, v.search.miss, v.search.query = false, false, ""
 }
 func (v *View) CancelSearch() {
 	if !v.search.active {
 		return
 	}
 	v.setCursor(v.search.from)
-	v.search.active, v.search.miss = false, false
-	v.search.query = ""
+	v.search.active, v.search.miss, v.search.query = false, false, ""
 }
 func (v *View) Find(d Direction) bool {
-	if v.search.term == "" {
+	if v.search.term == "" || d != Forward && d != Backward {
 		return false
 	}
-	if d != Forward && d != Backward {
-		return false
-	}
-	cursor, ok := v.view.search(v.search.term, v.cursor, direction(d))
+	cursor, ok := v.view.search(v.search.term, v.cursor, d)
 	v.search.repeatMiss = !ok
-	if ok {
-		v.setCursor(cursor)
-	}
+	v.setCursorIfValid(cursor, ok)
 	return ok
 }
 
@@ -391,20 +368,18 @@ func (v *View) renderFooter(value string) string {
 	value = ansi.Truncate(value, max(0, width-lipgloss.Width(right)-1), "")
 	return value + strings.Repeat(" ", max(1, width-lipgloss.Width(value)-lipgloss.Width(right))) + right
 }
-func patchLineCounts(p patch.Patch) (added, removed int) {
+func patchLineCounts(p patch.Patch) (int, int) {
+	var counts [patch.Deletion + 1]int
 	for _, file := range p.Files {
 		for _, hunk := range file.Hunks {
 			for _, line := range hunk.Lines {
-				if line.Kind == patch.Addition {
-					added++
-				}
-				if line.Kind == patch.Deletion {
-					removed++
+				if line.Kind <= patch.Deletion {
+					counts[line.Kind]++
 				}
 			}
 		}
 	}
-	return
+	return counts[patch.Addition], counts[patch.Deletion]
 }
 
 var (

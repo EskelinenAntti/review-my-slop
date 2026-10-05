@@ -47,18 +47,14 @@ func (v *diffView) keepVisible(viewport diffViewport, cursor diffCursor) diffVie
 	viewport = v.clampViewport(viewport)
 	for range 2 {
 		height := v.contentHeight(viewport)
-		if cursor.row < viewport.top {
-			viewport.top = cursor.row
-		}
-		if cursor.row >= viewport.top+height {
-			viewport.top = cursor.row - height + 1
-		}
+		viewport.top = min(viewport.top, cursor.row)
+		viewport.top = max(viewport.top, cursor.row-height+1)
 		viewport = v.clampViewport(viewport)
 	}
 	return viewport
 }
 
-func (v *diffView) align(viewport diffViewport, cursor diffCursor, alignment verticalAlignment) diffViewport {
+func (v *diffView) align(viewport diffViewport, cursor diffCursor, alignment Alignment) diffViewport {
 	headerHeight := 0
 	if viewport.Height > 1 {
 		headerHeight = 1
@@ -71,11 +67,11 @@ func (v *diffView) align(viewport diffViewport, cursor diffCursor, alignment ver
 	return v.clampViewport(viewport)
 }
 
-func alignmentOffset(height int, alignment verticalAlignment) int {
-	if alignment == middle {
+func alignmentOffset(height int, alignment Alignment) int {
+	if alignment == Center {
 		return height / 2
 	}
-	if alignment == bottom {
+	if alignment == Bottom {
 		return height - 1
 	}
 	return 0
@@ -95,9 +91,9 @@ func (v *diffView) scrollVertical(viewport diffViewport, cursor diffCursor, rows
 		return viewport, cursor
 	}
 	target := max(viewport.top, min(cursor.row, viewport.top+v.contentHeight(viewport)-1))
-	d := forward
+	d := Forward
 	if cursor.row > target {
-		d = backward
+		d = Backward
 	}
 	candidate, ok := v.nearest(target, cursor.pane, d, viewport)
 	if !ok && v.split {
@@ -113,7 +109,7 @@ func (v *diffView) cursorVisible(viewport diffViewport, cursor diffCursor) bool 
 	return v.valid(cursor) && cursor.row >= viewport.top && cursor.row < viewport.top+v.contentHeight(viewport)
 }
 
-func (v *diffView) scrollHalfPage(viewport diffViewport, cursor diffCursor, direction direction) (diffViewport, diffCursor) {
+func (v *diffView) scrollHalfPage(viewport diffViewport, cursor diffCursor, direction Direction) (diffViewport, diffCursor) {
 	if !v.valid(cursor) {
 		return viewport, cursor
 	}
@@ -135,7 +131,7 @@ func (v *diffView) viewportProgress(viewport diffViewport) int {
 	return bottom * 100 / len(v.rows)
 }
 
-func (v *diffView) nearest(target int, pane diffPane, direction direction, viewport diffViewport) (diffCursor, bool) {
+func (v *diffView) nearest(target int, pane diffPane, direction Direction, viewport diffViewport) (diffCursor, bool) {
 	height := v.contentHeight(viewport)
 	for distance := 0; distance < height; distance++ {
 		for _, y := range []int{target + int(direction)*distance, target - int(direction)*distance} {

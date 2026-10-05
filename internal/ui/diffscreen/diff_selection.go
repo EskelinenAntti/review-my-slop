@@ -26,9 +26,7 @@ func (v *diffView) lines(selection diffSelection) []patch.Line {
 		return nil
 	}
 	first, last := selection.First.row, selection.Last.row
-	if first > last {
-		first, last = last, first
-	}
+	first, last = min(first, last), max(first, last)
 	lines := make([]patch.Line, 0, last-first+1)
 	if first == last && selection.First.pane != selection.Last.pane {
 		current := v.rows[first]
@@ -109,12 +107,7 @@ func sameFile(candidate, target patch.File) bool {
 		candidate.NewPath != "" && candidate.NewPath == target.NewPath
 }
 
-func abs(value int) int {
-	if value < 0 {
-		return -value
-	}
-	return value
-}
+func abs(value int) int { return max(value, -value) }
 
 func highlightedLine(lines []string, number patch.LineNumber, fallback string) string {
 	if number <= 0 || int(number) > len(lines) {

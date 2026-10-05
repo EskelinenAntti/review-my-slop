@@ -1,3 +1,4 @@
+// Package app coordinates review workflows and terminal UI screens.
 package app
 
 import (
@@ -30,14 +31,12 @@ func run(ctx context.Context, currentPatch patch.Patch, store commentStore, refr
 	}
 	m.ctx = ctx
 	if refresh != nil {
-		m.setRefresh(func(kind patch.Kind) (patch.Patch, error) { return refresh(ctx, kind) })
+		m.refresh = func(kind patch.Kind) (patch.Patch, error) { return refresh(ctx, kind) }
 	}
 	return start(m, tea.WithContext(ctx), tea.WithWindowSize(dimensions.Width, dimensions.Height))
 }
 
-func initialTerminalSize() size {
-	return discoverTerminalSize(term.GetSize)
-}
+func initialTerminalSize() size { return discoverTerminalSize(term.GetSize) }
 
 func discoverTerminalSize(getSize func(uintptr) (int, int, error)) size {
 	for _, file := range []*os.File{os.Stdin, os.Stdout} {

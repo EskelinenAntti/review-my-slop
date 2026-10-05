@@ -38,8 +38,8 @@ func TestSplitPairsUnequalChangeBlocksAndKeepsHunksSeparate(t *testing.T) {
 func TestSplitSelectionOnlyIncludesActivePane(t *testing.T) {
 	v := newSideBySideView(testPatch(), true)
 	first := mustFirst(t, v)
-	removed, _ := v.search("removed one", first, forward)
-	added, _ := v.search("added one", first, forward)
+	removed, _ := v.search("removed one", first, Forward)
+	added, _ := v.search("added one", first, Forward)
 	left := v.beginSelection(removed)
 	left, ok := v.extendSelection(left, removed)
 	if !ok || len(v.lines(left)) != 1 || v.lines(left)[0].Kind != patch.Deletion {
@@ -92,13 +92,13 @@ func TestSplitVerticalMovementSkipsEmptyActivePane(t *testing.T) {
 	v := newSideBySideView(p, true)
 	first := mustFirst(t, v)
 	left, _ := v.switchPane(first, left)
-	nextLeft, _ := v.move(left, forward)
+	nextLeft, _ := v.move(left, Forward)
 	line, _ := v.line(nextLeft)
 	if line.Text != "two" {
 		t.Fatalf("left movement = %q", line.Text)
 	}
 	rightAtContext, _ := v.switchPane(nextLeft, right)
-	nextRight, _ := v.move(rightAtContext, forward)
+	nextRight, _ := v.move(rightAtContext, Forward)
 	line, _ = v.line(nextRight)
 	if line.Text != "three" {
 		t.Fatalf("right movement = %q", line.Text)
@@ -116,11 +116,11 @@ func TestSplitVerticalMovementAndHalfPageUseVisualRows(t *testing.T) {
 	viewport := v.newViewport(120, 4)
 	viewport = v.keepVisible(viewport, cursor)
 	originalTop := viewport.top
-	viewport, moved := v.scrollHalfPage(viewport, cursor, forward)
+	viewport, moved := v.scrollHalfPage(viewport, cursor, Forward)
 	if viewport.top <= originalTop || moved.row <= cursor.row {
 		t.Fatalf("viewport=%#v cursor=%#v", viewport, moved)
 	}
-	viewport, moved = v.scrollHalfPage(viewport, moved, backward)
+	viewport, moved = v.scrollHalfPage(viewport, moved, Backward)
 	if viewport.top != originalTop || moved.row != cursor.row {
 		t.Fatalf("round trip viewport=%#v cursor=%#v", viewport, moved)
 	}
@@ -229,8 +229,8 @@ func TestHorizontalScrollStartAndEndClamp(t *testing.T) {
 func TestDiffMarkersUseTerminalColorsAndCursorFillsWidth(t *testing.T) {
 	v := newUnifiedView(testPatch(), true)
 	first := mustFirst(t, v)
-	added, _ := v.search("added one", first, forward)
-	removed, _ := v.search("removed one", first, forward)
+	added, _ := v.search("added one", first, Forward)
+	removed, _ := v.search("removed one", first, Forward)
 	addedRender := renderTarget(v, added, first, 80, nil)
 	removedRender := renderTarget(v, removed, first, 80, nil)
 	if !strings.Contains(addedRender, "\x1b[32m+\x1b[m") || !strings.Contains(removedRender, "\x1b[31m-\x1b[m") {
@@ -242,7 +242,7 @@ func TestDiffMarkersUseTerminalColorsAndCursorFillsWidth(t *testing.T) {
 func TestSelectionBackgroundKeepsDefaultWeight(t *testing.T) {
 	v := newUnifiedView(testPatch(), false)
 	first := mustFirst(t, v)
-	removed, _ := v.search("removed one", first, forward)
+	removed, _ := v.search("removed one", first, Forward)
 	selection := v.beginSelection(removed)
 	rendered := renderTarget(v, removed, first, 72, &selection)
 	if strings.Contains(rendered, "\x1b[1m") {
@@ -255,7 +255,7 @@ func TestSyntaxHighlightingSurvivesDiffStyling(t *testing.T) {
 	p := patch.Patch{Files: []patch.File{{DisplayPath: "main.go", OldPath: "main.go", NewPath: "main.go", OldSource: "package main\nold()\n", NewSource: "package main\nnew()\n", Hunks: []patch.Hunk{{Header: "@@", Lines: []patch.Line{{Kind: patch.Deletion, Text: "old()", OldNumber: 2}, {Kind: patch.Addition, Text: "new()", NewNumber: 2}}}}}}}
 	v := newUnifiedView(p, true)
 	first := mustFirst(t, v)
-	added, _ := v.search("new()", first, forward)
+	added, _ := v.search("new()", first, Forward)
 	for _, cursor := range []diffCursor{first, added} {
 		rendered := renderTarget(v, cursor, diffCursor{}, 80, nil)
 		if !strings.Contains(rendered, "[38;2;") {
@@ -275,7 +275,7 @@ func TestRenderedCodeRowsHaveExactTerminalWidth(t *testing.T) {
 			if width := lipgloss.Width(renderOne(v, cursor, test.width, nil)); width != test.width {
 				t.Fatalf("width = %d", width)
 			}
-			next, ok := v.move(cursor, forward)
+			next, ok := v.move(cursor, Forward)
 			if !ok {
 				break
 			}

@@ -9,7 +9,7 @@ import (
 func TestPreserveTranslatesCursorSelectionAndViewport(t *testing.T) {
 	old := newUnifiedView(testPatch(), true)
 	first := mustFirst(t, old)
-	cursor, ok := old.search("added one", first, forward)
+	cursor, ok := old.search("added one", first, Forward)
 	if !ok {
 		t.Fatal("cursor not found")
 	}
@@ -19,7 +19,7 @@ func TestPreserveTranslatesCursorSelectionAndViewport(t *testing.T) {
 		t.Fatal("selection not created")
 	}
 	viewport := old.newViewport(100, 4)
-	viewport = old.align(viewport, cursor, middle)
+	viewport = old.align(viewport, cursor, Center)
 	screen := &View{view: old, cursor: cursor, selection: &selection, viewport: viewport}
 
 	next := newSideBySideView(testPatch(), true)

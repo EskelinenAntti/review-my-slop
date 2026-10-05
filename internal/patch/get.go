@@ -1,3 +1,6 @@
+// Package patch retrieves the Patch under review from the current working
+// directory. Git execution, repository discovery, parsing, and source reads
+// stay behind Get. Returned snapshots own their data and are treated as read-only.
 package patch
 
 import (
@@ -133,12 +136,7 @@ func build(ctx context.Context, run runner, root string, kind Kind, branch strin
 		return Patch{}, err
 	}
 
-	return Patch{
-		Root:   root,
-		Kind:   kind,
-		Branch: branch,
-		Files:  files,
-	}, nil
+	return Patch{Root: root, Kind: kind, Branch: branch, Files: files}, nil
 }
 
 func defaultBranch(ctx context.Context, run runner, root string) (string, error) {
@@ -193,10 +191,7 @@ func parseTracked(ctx context.Context, run runner, root string, raw []byte, read
 			if parseErr != nil {
 				return nil, fmt.Errorf("%s: %w", display, parseErr)
 			}
-			file.Hunks = append(file.Hunks, Hunk{
-				Header: formatHunkHeader(h),
-				Lines:  lines,
-			})
+			file.Hunks = append(file.Hunks, Hunk{Header: formatHunkHeader(h), Lines: lines})
 		}
 		files = append(files, file)
 	}
@@ -217,7 +212,6 @@ func loadUntracked(ctx context.Context, run runner, root string) ([]File, error)
 			continue
 		}
 		path := string(rawPath)
-		display := visibleText(path)
 		full := filepath.Join(root, filepath.FromSlash(path))
 		info, statErr := os.Lstat(full)
 		if statErr != nil {
@@ -234,12 +228,10 @@ func loadUntracked(ctx context.Context, run runner, root string) ([]File, error)
 		if !info.Mode().IsRegular() {
 			continue
 		}
+		file := File{NewPath: path, DisplayPath: visibleText(path)}
 		if info.Size() > maxFileBytes {
-			files = append(files, File{
-				NewPath:     path,
-				DisplayPath: display,
-				Metadata:    []string{"untracked file", "content omitted: file exceeds 2 MiB"},
-			})
+			file.Metadata = []string{"untracked file", "content omitted: file exceeds 2 MiB"}
+			files = append(files, file)
 			continue
 		}
 		content, readErr := os.ReadFile(full)
@@ -247,11 +239,8 @@ func loadUntracked(ctx context.Context, run runner, root string) ([]File, error)
 			return nil, fmt.Errorf("read untracked %q: %w", path, readErr)
 		}
 		if bytes.IndexByte(content, 0) >= 0 {
-			files = append(files, File{
-				NewPath:     path,
-				DisplayPath: display,
-				Metadata:    []string{"untracked binary file"},
-			})
+			file.Metadata = []string{"untracked binary file"}
+			files = append(files, file)
 			continue
 		}
 		files = append(files, addedFile(path, visibleSource(string(content))))

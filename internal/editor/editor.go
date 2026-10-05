@@ -96,14 +96,8 @@ func suggestionLines(quoted []string) []string {
 func contextFence(lines []string) string {
 	longest := 0
 	for _, line := range lines {
-		run := 0
-		for _, char := range line {
-			if char == '`' {
-				run++
-				longest = max(longest, run)
-			} else {
-				run = 0
-			}
+		for _, run := range strings.FieldsFunc(line, func(r rune) bool { return r != '`' }) {
+			longest = max(longest, len(run))
 		}
 	}
 	return strings.Repeat("`", max(3, longest+1))

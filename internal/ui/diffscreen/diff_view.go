@@ -16,11 +16,10 @@ const (
 )
 
 type entry struct {
-	kind              rowKind
-	file, hunk        int
-	leftLine          int
-	rightLine         int
-	text, left, right string
+	kind                rowKind
+	file, hunk          int
+	leftLine, rightLine int
+	text, left, right   string
 }
 
 type diffView struct {
@@ -37,7 +36,10 @@ func newDiffView(p patch.Patch, split, dark bool) *diffView {
 		for _, metadata := range file.Metadata {
 			v.rows = append(v.rows, entry{kind: metadataRow, file: fileIndex, hunk: -1, leftLine: -1, rightLine: -1, text: metadata})
 		}
-		highlighted := v.highlight(&file)
+		highlighted := pair{
+			Old: render(file.OldPath, file.OldSource, dark),
+			New: render(file.NewPath, file.NewSource, dark),
+		}
 		for hunkIndex, hunk := range file.Hunks {
 			v.rows = append(v.rows, entry{kind: hunkRow, file: fileIndex, hunk: hunkIndex, leftLine: -1, rightLine: -1, text: hunkHeader(hunk.Header)})
 			for _, indices := range lineRows(hunk.Lines, split) {
@@ -102,13 +104,6 @@ func sourceText(highlighted pair, line patch.Line) string {
 		return highlightedLine(highlighted.Old, line.OldNumber, line.Text)
 	}
 	return highlightedLine(highlighted.New, line.NewNumber, line.Text)
-}
-
-func (v *diffView) highlight(file *patch.File) pair {
-	return pair{
-		Old: render(file.OldPath, file.OldSource, v.dark),
-		New: render(file.NewPath, file.NewSource, v.dark),
-	}
 }
 
 func hunkHeader(header string) string {

@@ -45,3 +45,12 @@ func TestRelativeXDGDataDirectoryIsIgnored(t *testing.T) {
 		t.Fatalf("data directory = %q, want %q", data, want)
 	}
 }
+
+func TestOpenDefaultReturnsZeroStoreOnPathError(t *testing.T) {
+	t.Setenv("XDG_DATA_HOME", "relative-data")
+	t.Setenv("HOME", "")
+	store, err := OpenDefault()
+	if err == nil || store != (Store{}) {
+		t.Fatalf("store = %#v, err = %v; want zero store and path error", store, err)
+	}
+}

@@ -24,10 +24,7 @@ func (v *View) DragTo(x, y int) {
 		return
 	}
 	cursor, ok := v.cursorAtPoint(x, y)
-	if !ok || cursor.pane != v.drag.pane {
-		return
-	}
-	if cursor == *v.drag && v.selection == nil {
+	if !ok || cursor.pane != v.drag.pane || cursor == *v.drag && v.selection == nil {
 		return
 	}
 	selection, ok := v.view.extendSelection(v.view.beginSelection(*v.drag), cursor)
@@ -42,13 +39,10 @@ func (v *View) EndDrag() { v.drag = nil }
 
 func (v *View) cursorAtPoint(x, y int) (diffCursor, bool) {
 	row, ok := frame.BodyRow(x, y, v.width, v.height)
-	if !ok {
-		return diffCursor{}, false
-	}
 	if v.view.hasStickyHeader(v.viewport.top, v.viewport.Height) {
 		row--
 	}
-	if row < 0 || row >= v.view.contentHeight(v.viewport) {
+	if !ok || row < 0 || row >= v.view.contentHeight(v.viewport) {
 		return diffCursor{}, false
 	}
 	pane := right

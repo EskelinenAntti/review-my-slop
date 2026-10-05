@@ -119,9 +119,7 @@ func selected(selection *diffSelection, cursor diffCursor) bool {
 	if selection.First.pane != cursor.pane {
 		return false
 	}
-	if first > last {
-		first, last = last, first
-	}
+	first, last = min(first, last), max(first, last)
 	return cursor.row >= first && cursor.row <= last
 }
 
@@ -149,13 +147,10 @@ func number(value patch.LineNumber) string {
 }
 
 func renderStyledRow(style lipgloss.Style, value string, width int, stripForeground bool) string {
-	value = filterANSIColors(value, stripForeground)
-	fitted := fitANSIWindow(value, 0, width)
+	fitted := fitANSIWindow(filterANSIColors(value, stripForeground), 0, width)
 	prefix := stylePrefix(style)
-	if prefix != "" {
-		fitted = strings.ReplaceAll(fitted, "\x1b[0m", "\x1b[0m"+prefix)
-		fitted = strings.ReplaceAll(fitted, "\x1b[m", "\x1b[m"+prefix)
-	}
+	fitted = strings.ReplaceAll(fitted, "\x1b[0m", "\x1b[0m"+prefix)
+	fitted = strings.ReplaceAll(fitted, "\x1b[m", "\x1b[m"+prefix)
 	return style.Render(fitted)
 }
 
@@ -206,10 +201,7 @@ func fitANSIWindow(value string, offset, width int) string {
 		value = ansi.TruncateLeft(value, offset, "")
 	}
 	value = ansi.Truncate(value, width, "")
-	if padding := width - lipgloss.Width(value); padding > 0 {
-		value += strings.Repeat(" ", padding)
-	}
-	return value
+	return value + strings.Repeat(" ", max(0, width-lipgloss.Width(value)))
 }
 
 func expandTabs(value string) string { return strings.ReplaceAll(value, "\t", "    ") }

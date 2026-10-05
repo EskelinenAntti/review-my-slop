@@ -16,10 +16,6 @@ import (
 )
 
 type saveCommentFunc func(comments.Comment, patch.Patch) (comments.Comment, error)
-type deleteCommentFunc func(comments.Comment, patch.Patch) error
-type loadCommentsFunc func() ([]comments.Comment, error)
-type refreshDiffFunc func(patch.Kind) (patch.Patch, error)
-type saveSideBySideFunc func(bool) error
 
 // commentStore supplies the persistence operations used by the terminal client.
 type commentStore interface {
@@ -30,13 +26,12 @@ type commentStore interface {
 }
 
 type size struct {
-	Width  int
-	Height int
+	Width, Height int
 }
 
 type initialLayout struct {
 	SideBySide     bool
-	SaveSideBySide saveSideBySideFunc
+	SaveSideBySide func(bool) error
 	size           size
 }
 
@@ -86,12 +81,11 @@ type commentEdit struct {
 type model struct {
 	ctx context.Context
 
-	diffView    *diffscreen.View
-	commentView *commentscreen.View
-	width       int
-	height      int
-	mode        mode
-	keys        keymap.Matcher
+	diffView      *diffscreen.View
+	commentView   *commentscreen.View
+	width, height int
+	mode          mode
+	keys          keymap.Matcher
 
 	currentPatch patch.Patch
 	kind         patch.Kind
@@ -100,10 +94,10 @@ type model struct {
 	edit         commentEdit
 
 	save       saveCommentFunc
-	delete     deleteCommentFunc
-	load       loadCommentsFunc
-	refresh    refreshDiffFunc
-	saveLayout saveSideBySideFunc
+	delete     func(comments.Comment, patch.Patch) error
+	load       func() ([]comments.Comment, error)
+	refresh    func(patch.Kind) (patch.Patch, error)
+	saveLayout func(bool) error
 	err        error
 	quitting   bool
 }
@@ -157,21 +151,11 @@ func newWithStore(store commentStore, p patch.Patch, items []comments.Comment, s
 		SaveSideBySide: func(enabled bool) error { return settings.Save(settings.Preferences{SideBySide: enabled}) },
 		size:           size,
 	})
-	m.setDelete(func(comment comments.Comment, current patch.Patch) error {
+	m.delete = func(comment comments.Comment, current patch.Patch) error {
 		return store.Delete(current.Root, comment.ID)
-	})
-	m.setLoadComments(func() ([]comments.Comment, error) {
-		return store.List(p.Root)
-	})
+	}
+	m.load = func() ([]comments.Comment, error) { return store.List(p.Root) }
 	return m, nil
-}
-
-func (m *model) setRefresh(refresh refreshDiffFunc)    { m.refresh = refresh }
-func (m *model) setDelete(delete deleteCommentFunc)    { m.delete = delete }
-func (m *model) setLoadComments(load loadCommentsFunc) { m.load = load }
-func (m *model) configureSideBySide(enabled bool, save saveSideBySideFunc) {
-	m.saveLayout = save
-	m.setSideBySide(enabled)
 }
 
 func (m model) Init() tea.Cmd { return func() tea.Msg { return tea.RequestBackgroundColor() } }
