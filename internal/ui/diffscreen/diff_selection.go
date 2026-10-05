@@ -67,8 +67,8 @@ func (v *diffView) line(cursor diffCursor) (patch.Line, bool) {
 	return v.patch.Files[current.file].Hunks[current.hunk].Lines[v.lineIndex(current, cursor.pane)], true
 }
 
-// findCursor prioritizes line numbers, then matching text and kind, then kind,
-// then any line in the same hunk. Ties keep the closest row and preferred pane.
+// findCursor searches the file by line numbers, then matching text and kind,
+// then source proximity. Ties keep the preferred pane.
 func (v *diffView) findCursor(target cursorIdentity) (diffCursor, bool) {
 	if !target.valid {
 		return diffCursor{}, false
@@ -76,7 +76,7 @@ func (v *diffView) findCursor(target cursorIdentity) (diffCursor, bool) {
 	best := diffCursor{}
 	bestRank, bestDistance := 0, 0
 	for y, current := range v.rows {
-		if current.hunk < 0 || !sameFile(v.patch.Files[current.file], target.file) || v.patch.Files[current.file].Hunks[current.hunk].Header != target.hunk.Header {
+		if current.hunk < 0 || !sameFile(v.patch.Files[current.file], target.file) {
 			continue
 		}
 		for _, pane := range [2]diffPane{target.cursor.pane, target.cursor.pane.other()} {
@@ -90,12 +90,16 @@ func (v *diffView) findCursor(target cursorIdentity) (diffCursor, bool) {
 				if line.OldNumber == target.line.OldNumber && line.NewNumber == target.line.NewNumber {
 					return candidate, true
 				}
-				rank = 2
 				if line.Text == target.line.Text {
-					rank = 3
+					rank = 2
 				}
 			}
 			distance := abs(y - target.cursor.row)
+			if line.NewNumber > 0 && target.line.NewNumber > 0 {
+				distance = abs(int(line.NewNumber - target.line.NewNumber))
+			} else if line.OldNumber > 0 && target.line.OldNumber > 0 {
+				distance = abs(int(line.OldNumber - target.line.OldNumber))
+			}
 			if rank > bestRank || rank == bestRank && distance < bestDistance {
 				best, bestRank, bestDistance = candidate, rank, distance
 			}

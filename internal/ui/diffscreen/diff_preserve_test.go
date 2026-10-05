@@ -1,6 +1,7 @@
 package diffscreen
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/eskelinenantti/review-my-slop/internal/patch"
@@ -73,6 +74,63 @@ func TestPreserveClampsHorizontalOffsetForShorterLines(t *testing.T) {
 	preserved.replaceView(newUnifiedView(short, true))
 	if preserved.viewport.LeftColumn != 0 {
 		t.Fatalf("horizontal offset = %d", preserved.viewport.LeftColumn)
+	}
+}
+
+func TestUpdatePreservesCursorAfterLineDeletion(t *testing.T) {
+	early := patch.Hunk{Header: "@@ -1,0 +1 @@", Lines: []patch.Line{
+		{Kind: patch.Addition, Text: "early change", NewNumber: 1},
+	}}
+	before := patch.Line{Kind: patch.Context, Text: "before", OldNumber: 50, NewNumber: 50}
+	added := patch.Line{Kind: patch.Addition, Text: "removed addition", NewNumber: 51}
+	after := patch.Line{Kind: patch.Context, Text: "after", OldNumber: 51, NewNumber: 52}
+	target := patch.Line{Kind: patch.Addition, Text: "target", NewNumber: 53}
+	late := patch.Hunk{Header: "@@ -100,0 +100 @@", Lines: []patch.Line{
+		{Kind: patch.Addition, Text: "late change", NewNumber: 100},
+	}}
+	makePatch := func(hunks []patch.Hunk) patch.Patch {
+		return patch.Patch{Files: []patch.File{{OldPath: "file.go", NewPath: "file.go", Hunks: hunks}}}
+	}
+	original := makePatch([]patch.Hunk{early, {
+		Header: "@@ -50,2 +50,4 @@", Lines: []patch.Line{before, added, after, target},
+	}, late})
+	shiftedAfter, shiftedTarget := after, target
+	shiftedAfter.NewNumber--
+	shiftedTarget.NewNumber--
+	for _, split := range []bool{false, true} {
+		for _, tc := range []struct {
+			name  string
+			hunks []patch.Hunk
+			want  patch.Line
+		}{
+			{"line before cursor deleted", []patch.Hunk{early, {
+				Header: "@@ -50,2 +50,3 @@", Lines: []patch.Line{before, shiftedAfter, shiftedTarget},
+			}, late}, shiftedTarget},
+			{"cursor line deleted", []patch.Hunk{early, {
+				Header: "@@ -50,2 +50,3 @@", Lines: []patch.Line{before, added, after},
+			}, late}, after},
+			{"cursor hunk removed", []patch.Hunk{early, late}, late.Lines[0]},
+		} {
+			t.Run(fmt.Sprintf("%s/split=%v", tc.name, split), func(t *testing.T) {
+				v := New(original, Options{SideBySide: split})
+				v.Resize(120, 4)
+				v.BeginSearch()
+				v.InsertSearch("target")
+				v.AcceptSearch()
+				_, line, ok := v.Current()
+				if !ok || line != target {
+					t.Fatalf("initial cursor = %#v, ok=%v", line, ok)
+				}
+				v.Update(makePatch(tc.hunks))
+				_, line, ok = v.Current()
+				if !ok || line != tc.want {
+					t.Fatalf("restored cursor = %#v, ok=%v, want %#v", line, ok, tc.want)
+				}
+				if v.cursor.row < v.viewport.top || v.cursor.row >= v.viewport.top+v.view.contentHeight(v.viewport) {
+					t.Fatal("restored cursor is outside the viewport")
+				}
+			})
+		}
 	}
 }
 
