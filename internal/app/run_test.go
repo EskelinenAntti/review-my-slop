@@ -48,7 +48,7 @@ func TestRunLoadsCommentsAndWiresContext(t *testing.T) {
 			return p, nil
 		},
 
-		func() size { return size{Width: wideTestWidth, Height: forty} },
+		func() size { return size{Width: wideTestWidth, Height: 40} },
 
 		func(
 			m model,
@@ -58,9 +58,9 @@ func TestRunLoadsCommentsAndWiresContext(t *testing.T) {
 
 				t,
 
-				m.ctx == ctx && m.width == wideTestWidth && m.height == forty &&
+				m.ctx == ctx && m.width == wideTestWidth && m.height == 40 &&
 
-					len(m.comments.items) == one,
+					len(m.comments.items) == 1,
 
 				true,
 
@@ -124,7 +124,7 @@ func TestRunContextCancellation(t *testing.T) {
 }
 
 func TestTerminalSizeDiscoveryOrder(t *testing.T) {
-	for _, success := range []int{zero, one, two} {
+	for _, success := range []int{0, 1, 2} {
 		assertTerminalSizeDiscovery(t, success)
 	}
 }
@@ -186,29 +186,29 @@ func assertStartupFailure(t *testing.T, failure string) {
 }
 
 func assertTerminalSizeDiscovery(t *testing.T, success int) {
-	calls := zero
+	calls := 0
 	got := discoverTerminalSize(
 		func(fd uintptr) (int, int, error) {
 			expected := os.Stdin.Fd()
-			if calls == one {
+			if calls == 1 {
 				expected = os.Stdout.Fd()
 			}
 			requireEqual(t, fd, expected, "fd=%v want=%v", fd, expected)
 			current := calls
 			calls++
 			if current == success {
-				return wideTestWidth, forty, nil
+				return wideTestWidth, 40, nil
 			}
-			return zero, zero, errors.New("not a terminal")
+			return 0, 0, errors.New("not a terminal")
 		},
 	)
-	want := size{Width: wideTestWidth, Height: forty}
-	if success == two {
+	want := size{Width: wideTestWidth, Height: 40}
+	if success == 2 {
 		want = defaultSize
 	}
 	requireEqual(
 		t,
-		got == want && calls == min(success+one, two), true,
+		got == want && calls == min(success+1, 2), true,
 		"size=%v calls=%d",
 		got,
 		calls,

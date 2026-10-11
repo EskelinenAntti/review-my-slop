@@ -142,7 +142,7 @@ func TestMissingEditor(t *testing.T) {
 		)
 	}
 	{
-		cmd, err := OpenSource(context.Background(), "source", two, nil)
+		cmd, err := OpenSource(context.Background(), "source", 2, nil)
 		requireEqual(
 			t,
 			cmd == nil && err != nil,
@@ -179,7 +179,7 @@ func TestSourceArgumentsAndContext(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	{
-		err := sourceCommand(ctx, fixtureTrue, "source", two).Run()
+		err := sourceCommand(ctx, fixtureTrue, "source", 2).Run()
 		requireEqual(
 			t,
 			errors.Is(err, context.Canceled),

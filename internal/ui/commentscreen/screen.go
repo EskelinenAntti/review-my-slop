@@ -31,7 +31,7 @@ func New(items []comments.Comment) *View {
 func (v *View) Update(items []comments.Comment) {
 	selected, ok := v.Selected()
 	v.items = append([]comments.Comment(nil), items...)
-	v.row = min(v.row, max(zero, len(items)-one))
+	v.row = min(v.row, max(0, len(items)-1))
 	if ok && selected.ID != "" {
 		for index, item := range items {
 			if item.ID == selected.ID {
@@ -53,14 +53,14 @@ func (v *View) Resize(width, height int) {
 func (v *View) Move(initialDelta int) {
 	delta := initialDelta
 
-	delta = max(-v.row, min(delta, max(zero, len(v.items)-one)-v.row))
+	delta = max(-v.row, min(delta, max(0, len(v.items)-1)-v.row))
 	v.row += delta
 	v.keepVisible()
 }
 
 // Selected returns the currently selected comment.
 func (v *View) Selected() (comments.Comment, bool) {
-	if len(v.items) == zero {
+	if len(v.items) == 0 {
 		return comments.Comment{}, false
 	}
 	return v.items[v.row], true
@@ -82,13 +82,13 @@ func (v *View) Click(x, y int) bool {
 }
 
 func (v *View) startRow(height int) int {
-	return min(max(zero, v.top), max(zero, len(v.items)-height))
+	return min(max(0, v.top), max(0, len(v.items)-height))
 }
 
 func (v *View) keepVisible() {
 	height := frame.BodyHeight(v.height)
 	v.top = min(v.top, v.row)
-	v.top = max(v.top, v.row-height+one)
+	v.top = max(v.top, v.row-height+1)
 	v.top = v.startRow(height)
 }
 
@@ -97,10 +97,10 @@ func (v *View) Render(err error) string {
 	header := titleStyle.Render("comments") + "  " +
 		mutedStyle.Render(fmt.Sprintf("%d pending", len(v.items)))
 	height := frame.BodyHeight(v.height)
-	body := make([]string, zero, height)
-	if len(v.items) == zero {
+	body := make([]string, 0, height)
+	if len(v.items) == 0 {
 		body = make([]string, height)
-		body[min(one, height-one)] = mutedStyle.Render("No pending comments.")
+		body[min(1, height-1)] = mutedStyle.Render("No pending comments.")
 	} else {
 		start := v.startRow(height)
 		end := min(len(v.items), start+height)
@@ -133,9 +133,9 @@ func (v *View) renderComment(index int) string {
 		prefix, style = "> ", lipgloss.NewStyle().Reverse(true)
 	}
 	location := comment.Anchor.FilePath
-	if comment.Anchor.NewStart > zero {
+	if comment.Anchor.NewStart > 0 {
 		location += fmt.Sprintf(":%d", comment.Anchor.NewStart)
-	} else if comment.Anchor.OldStart > zero {
+	} else if comment.Anchor.OldStart > 0 {
 		location += fmt.Sprintf(":%d", comment.Anchor.OldStart)
 	}
 	text := strings.ReplaceAll(strings.TrimSpace(comment.Body), "\n", " ")

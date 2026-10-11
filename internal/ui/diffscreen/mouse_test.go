@@ -9,7 +9,7 @@ func TestClickAndDragSelectCode(t *testing.T) {
 	v.Resize(defaultWidth, minimumWidth)
 	requireEqual(
 		t,
-		v.BeginDrag(minimumWidth, four),
+		v.BeginDrag(minimumWidth, 4),
 		true,
 		fixtureV,
 		"code click was ignored",
@@ -22,26 +22,26 @@ func TestClickAndDragSelectCode(t *testing.T) {
 		fixtureV,
 		"click did not focus code without selecting a range",
 	)
-	v.DragTo(defaultHeight, six)
+	v.DragTo(defaultHeight, 6)
 	v.EndDrag()
 	_, lines, ok := v.Selected()
 	requireEqual(
 		t,
-		ok && len(lines) == three && lines[zero].Text == "removed one" &&
-			lines[two].Text == "added one",
+		ok && len(lines) == 3 && lines[0].Text == "removed one" &&
+			lines[2].Text == "added one",
 		true,
 		"drag selection = %#v",
 		lines,
 	)
 	end := v.cursor
-	v.DragTo(minimumWidth, three)
+	v.DragTo(minimumWidth, 3)
 	requireEqual(
 		t,
 		v.cursor, end,
 		fixtureV,
 		"motion after release changed selection",
 	)
-	clicked := v.BeginDrag(minimumWidth, six)
+	clicked := v.BeginDrag(minimumWidth, 6)
 	requireEqual(
 		t,
 		clicked && v.selection == nil,
@@ -49,19 +49,19 @@ func TestClickAndDragSelectCode(t *testing.T) {
 		fixtureV,
 		"new click did not clear old selection",
 	)
-	v.DragTo(minimumWidth, three)
+	v.DragTo(minimumWidth, 3)
 	_, lines, ok = v.Selected()
 	requireEqual(
 		t,
-		ok && len(lines) == four, true,
+		ok && len(lines) == 4, true,
 		"backward drag = %#v",
 		lines,
 	)
-	v.DragTo(minimumWidth, six)
+	v.DragTo(minimumWidth, 6)
 	_, lines, _ = v.Selected()
 	requireEqual(
 		t,
-		len(lines), one,
+		len(lines), 1,
 		fixtureV,
 		"drag back to origin did not shrink selection",
 	)
@@ -70,37 +70,37 @@ func TestClickAndDragSelectCode(t *testing.T) {
 func TestMouseHitTestingMatchesScrolledProjection(t *testing.T) {
 	for _, split := range []bool{false, true} {
 		v := New(longPatch(), Options{SideBySide: split})
-		v.Resize(oddTestWidth, ten)
-		v.ScrollVertical(five)
+		v.Resize(oddTestWidth, 10)
+		v.ScrollVertical(5)
 		v.ScrollHorizontal(minimumWidth)
-		for _, point := range [][two]int{
-			{zero, zero},
-			{zero, one},
-			{zero, eight},
-			{zero, nine},
-			{-one, three},
-			{oddTestWidth, three},
+		for _, point := range [][2]int{
+			{0, 0},
+			{0, 1},
+			{0, 8},
+			{0, 9},
+			{-1, 3},
+			{oddTestWidth, 3},
 		} {
 			requireEqual(
 				t,
-				!v.BeginDrag(point[zero], point[one]), true,
+				!v.BeginDrag(point[0], point[1]), true,
 				"non-code point %v accepted",
 				point,
 			)
 		}
-		clicked := v.BeginDrag(hundred, two)
+		clicked := v.BeginDrag(100, 2)
 		requireEqual(
 			t,
-			clicked && v.cursor.row == five && v.cursor.pane == right,
+			clicked && v.cursor.row == 5 && v.cursor.pane == right,
 			true,
 			fixtureV,
 			"click did not account for viewport and sticky header",
 		)
-		v.DragTo(hundred, four)
+		v.DragTo(100, 4)
 		_, lines, ok := v.Selected()
 		requireEqual(
 			t,
-			ok && len(lines) == three, true,
+			ok && len(lines) == 3, true,
 			"scrolled drag selection = %#v",
 			lines,
 		)
@@ -114,7 +114,7 @@ func TestSplitMouseRejectsDividerEmptyPaneAndCrossPaneDrag(t *testing.T) {
 	for x := dividerStart; x < dividerStart+paneDividerWidth; x++ {
 		requireEqual(
 			t,
-			!v.BeginDrag(x, three),
+			!v.BeginDrag(x, 3),
 			true,
 			fixtureV,
 			"divider accepted",
@@ -122,12 +122,12 @@ func TestSplitMouseRejectsDividerEmptyPaneAndCrossPaneDrag(t *testing.T) {
 	}
 	requireEqual(
 		t,
-		!v.BeginDrag(defaultWidth, five),
+		!v.BeginDrag(defaultWidth, 5),
 		true,
 		fixtureV,
 		"empty right pane accepted",
 	)
-	clicked := v.BeginDrag(ten, four)
+	clicked := v.BeginDrag(10, 4)
 	requireEqual(
 		t,
 		clicked && v.cursor.pane == left,
@@ -136,7 +136,7 @@ func TestSplitMouseRejectsDividerEmptyPaneAndCrossPaneDrag(t *testing.T) {
 		"deletion click did not focus old pane",
 	)
 	origin := v.cursor
-	v.DragTo(defaultWidth, four)
+	v.DragTo(defaultWidth, 4)
 	requireEqual(
 		t,
 		v.cursor == origin && v.selection == nil,
@@ -144,11 +144,11 @@ func TestSplitMouseRejectsDividerEmptyPaneAndCrossPaneDrag(t *testing.T) {
 		fixtureV,
 		"drag crossed panes",
 	)
-	v.DragTo(ten, five)
+	v.DragTo(10, 5)
 	_, lines, ok := v.Selected()
 	requireEqual(
 		t,
-		ok && len(lines) == two && lines[one].Text == "removed two", true,
+		ok && len(lines) == 2 && lines[1].Text == "removed two", true,
 		"old-pane drag = %#v",
 		lines,
 	)
@@ -157,10 +157,10 @@ func TestSplitMouseRejectsDividerEmptyPaneAndCrossPaneDrag(t *testing.T) {
 func TestDragRejectsOtherHunksAndCancelsOnStateChanges(t *testing.T) {
 	v := New(testPatch(), Options{})
 	v.Resize(defaultWidth, minimumWidth)
-	v.BeginDrag(ten, three)
-	v.DragTo(ten, four)
+	v.BeginDrag(10, 3)
+	v.DragTo(10, 4)
 	cursor, selection := v.cursor, *v.selection
-	v.DragTo(ten, ten)
+	v.DragTo(10, 10)
 	requireEqual(
 		t,
 		v.cursor == cursor && *v.selection == selection,
@@ -174,7 +174,7 @@ func TestDragRejectsOtherHunksAndCancelsOnStateChanges(t *testing.T) {
 		func() { v.Move(NextLine) },
 		func() { v.ClearSelection() },
 	} {
-		v.BeginDrag(ten, three)
+		v.BeginDrag(10, 3)
 		change()
 		requireEqual(
 			t,

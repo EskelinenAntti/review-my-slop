@@ -3,11 +3,6 @@
 package diffscreen
 
 import (
-	"fmt"
-	"strings"
-
-	"charm.land/lipgloss/v2"
-	"github.com/charmbracelet/x/ansi"
 	"github.com/eskelinenantti/review-my-slop/internal/patch"
 	"github.com/eskelinenantti/review-my-slop/internal/ui/internal/frame"
 )
@@ -69,13 +64,6 @@ type View struct {
 	search        searchState
 }
 
-type searchState struct {
-	active           bool
-	query, term      string
-	from             diffCursor
-	miss, repeatMiss bool
-}
-
 // New creates a view with default dimensions of 80 columns and 30 rows.
 func New(p patch.Patch, options Options) *View {
 	v := &View{options: options, width: defaultWidth, height: defaultHeight}
@@ -119,6 +107,7 @@ func (v *View) Resize(width, height int) {
 func (v *View) sideBySideActive() bool {
 	return v.options.SideBySide && v.width >= minimumSplitWidth
 }
+
 func (v *View) newReviewView(p patch.Patch) *diffView {
 	return newDiffView(
 		p,
@@ -156,10 +145,12 @@ func (v *View) moveLine(direction direction) {
 	}
 	v.setCursor(next)
 }
+
 func (v *View) setCursor(cursor diffCursor) {
 	v.cursor = cursor
 	v.viewport = v.view.keepVisible(v.viewport, cursor)
 }
+
 func (v *View) halfPage(direction direction) {
 	viewport, cursor := v.view.scrollHalfPage(v.viewport, v.cursor, direction)
 	if !v.extendSelectionTo(cursor) {
@@ -180,12 +171,14 @@ func (v *View) extendSelectionTo(cursor diffCursor) bool {
 	}
 	return ok
 }
+
 func (v *View) jumpFile(direction direction) {
 	v.ClearSelection()
 	if cursor, ok := v.view.jumpFile(v.cursor, direction); ok {
 		v.setCursor(cursor)
 	}
 }
+
 func (v *View) switchPane(pane diffPane) {
 	cursor, ok := v.view.switchPane(v.cursor, pane)
 	if !ok {
@@ -267,7 +260,7 @@ func (v *View) Selected() (patch.File, []patch.Line, bool) {
 	}
 	file, ok := v.view.file(selection.First)
 	lines := v.view.lines(*selection)
-	return file, lines, ok && len(lines) > zero
+	return file, lines, ok && len(lines) > 0
 }
 
 // Current returns the focused source line, independent of any selected range.
@@ -275,197 +268,6 @@ func (v *View) Current() (patch.File, patch.Line, bool) {
 	file, fileOK := v.view.file(v.cursor)
 	line, lineOK := v.view.line(v.cursor)
 	return file, line, fileOK && lineOK
-}
-
-// BeginSearch starts a search preview from the current cursor.
-func (v *View) BeginSearch() {
-	v.ClearSelection()
-	v.search.active = true
-	v.search.query, v.search.miss, v.search.repeatMiss = "", false, false
-	v.search.from = v.cursor
-}
-
-// InsertSearch appends text to the query and previews from the search origin.
-// It starts a search session if needed; a miss retains the last successful
-// focus.
-func (v *View) InsertSearch(text string) {
-	if !v.search.active {
-		v.BeginSearch()
-	}
-	v.previewSearch(v.search.query + text)
-}
-
-// BackspaceSearch removes the last Unicode code point from the active query.
-// An empty query restores the search origin. Outside a search it does nothing.
-func (v *View) BackspaceSearch() {
-	if !v.search.active {
-		return
-	}
-	query := []rune(v.search.query)
-	if len(query) > zero {
-		query = query[:len(query)-one]
-	}
-	v.previewSearch(string(query))
-}
-
-func (v *View) previewSearch(query string) {
-	v.search.query = query
-	if query == "" {
-		v.setCursor(v.search.from)
-		v.search.miss = false
-		return
-	}
-	cursor, ok := v.view.search(query, v.search.from, forward)
-	v.search.miss = !ok
-	if ok {
-		v.setCursor(cursor)
-	}
-}
-
-// AcceptSearch commits the search preview.
-func (v *View) AcceptSearch() {
-	if !v.search.active {
-		return
-	}
-	if v.search.query != "" && !v.search.miss {
-		v.search.term = v.search.query
-	}
-	v.search.active, v.search.miss = false, false
-	v.search.query = ""
-}
-
-// CancelSearch restores the cursor from before the search preview.
-func (v *View) CancelSearch() {
-	if !v.search.active {
-		return
-	}
-	v.setCursor(v.search.from)
-	v.search.active, v.search.miss = false, false
-	v.search.query = ""
-}
-
-// Find moves to the next matching search result.
-func (v *View) Find(d Direction) bool {
-	if v.search.term == "" {
-		return false
-	}
-	if d != Forward && d != Backward {
-		return false
-	}
-	cursor, ok := v.view.search(v.search.term, v.cursor, direction(d))
-	v.search.repeatMiss = !ok
-	if ok {
-		v.setCursor(cursor)
-	}
-	return ok
-}
-
-// Render returns the full screen, including its header, status footer, and
-// final blank line. A non-nil error replaces the status while retaining the
-// position label. Dimensions are configured through Resize.
-func (v *View) Render(err error) string {
-	added, removed := patchLineCounts(v.view.patch)
-	header := titleStyle.Render("review-my-slop") + "  " +
-		mutedStyle.Render(fmt.Sprintf("+%d-%d", added, removed))
-	body := v.renderBody()
-	status := v.renderStatus()
-	footer := mutedStyle.Render(status)
-	if v.search.repeatMiss {
-		footer = errorStyle.Render(
-			fmt.Sprintf("no matches for %q", v.search.term),
-		)
-	}
-	if err != nil {
-		footer = errorStyle.Render(
-			strings.ReplaceAll(err.Error(), "\n", space),
-		)
-	}
-	return frame.Render(header, body, v.renderFooter(footer), v.height)
-}
-func (v *View) renderFooter(initialValue string) string {
-	value := initialValue
-
-	label := "local changes"
-	if v.view.patch.Kind == patch.Branch {
-		label = "branch changes from " + v.view.patch.Branch
-	}
-	if v.viewport.top > zero {
-		label += fmt.Sprintf(" (%d%%)", v.view.viewportProgress(v.viewport))
-	}
-	right := mutedStyle.Render(label)
-	width := max(minimumWidth, v.width)
-	value = ansi.Truncate(
-		value,
-		max(zero, width-lipgloss.Width(right)-one),
-		"",
-	)
-	return value +
-		strings.Repeat(
-			space,
-			max(one, width-lipgloss.Width(value)-lipgloss.Width(right)),
-		) +
-		right
-}
-func patchLineCounts(p patch.Patch) (added, removed int) {
-	for _, file := range p.Files {
-		for _, hunk := range file.Hunks {
-			additions, deletions := hunkLineCounts(hunk)
-			added += additions
-			removed += deletions
-		}
-	}
-	return added, removed
-}
-
-func hunkLineCounts(hunk patch.Hunk) (added, removed int) {
-	for _, line := range hunk.Lines {
-		switch line.Kind {
-		case patch.Addition:
-			added++
-		case patch.Deletion:
-			removed++
-		default:
-			// Context lines do not contribute to the counts.
-		}
-	}
-	return added, removed
-}
-
-var (
-	titleStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Cyan)
-	mutedStyle = lipgloss.NewStyle().Faint(true)
-	errorStyle = lipgloss.NewStyle().Foreground(lipgloss.Red).Bold(true)
-)
-
-func (v *View) renderBody() []string {
-	var body []string
-	if len(v.view.patch.Files) == zero {
-		empty := "No unstaged or untracked changes."
-		if v.view.patch.Kind == patch.Branch {
-			empty = "No branch or worktree changes."
-		}
-		body = make([]string, frame.BodyHeight(v.height))
-		body[min(one, len(body)-one)] = mutedStyle.Render(empty)
-	} else {
-		body = strings.Split(
-			v.view.render(v.viewport, v.cursor, v.selection),
-			"\n",
-		)
-	}
-	return body
-}
-
-func (v *View) renderStatus() string {
-	status := "j/k/h/l move  c comment  ? help  q quit"
-	if v.search.active {
-		status = "/" + v.search.query + cursorStyle.Render(space)
-		if v.search.miss {
-			status += errorStyle.Render("  no matches")
-		}
-	} else if v.selection != nil {
-		status = "visual selection  j/k extend  c comment  Esc cancel"
-	}
-	return status
 }
 
 func (v *View) movePosition(motion Motion) {

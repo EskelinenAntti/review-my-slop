@@ -76,7 +76,7 @@ func assertPTYStartup(t *testing.T, binary string, args []string) {
 	defer terminal.Close()
 
 	var output lockedBuffer
-	readDone := make(chan error, one)
+	readDone := make(chan error, 1)
 	go func() {
 		_, readErr := io.Copy(&output, terminal)
 		readDone <- readErr

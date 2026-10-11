@@ -82,7 +82,7 @@ func TestRunCommentsPreservesFeedbackWhenOutputFails(t *testing.T) {
 	{
 		_, err := store.Add(comments.Comment{
 			Repository: repo,
-			Anchor:     comments.Anchor{FilePath: "main.go", NewStart: one},
+			Anchor:     comments.Anchor{FilePath: "main.go", NewStart: 1},
 			Body:       "Preserve me.",
 		})
 		requireEqual(t, err == nil, true, fixtureV, err)
@@ -102,7 +102,7 @@ func TestRunCommentsPreservesFeedbackWhenOutputFails(t *testing.T) {
 	requireEqual(t, err == nil, true, fixtureV, err)
 	requireEqual(
 		t,
-		len(items), one,
+		len(items), 1,
 		"pending comments = %d, want 1",
 		len(items),
 	)
@@ -126,7 +126,7 @@ func TestRunRejectsUnknownSubcommand(t *testing.T) {
 type failingWriter struct{}
 
 func (failingWriter) Write([]byte) (int, error) {
-	return zero, os.ErrClosed
+	return 0, os.ErrClosed
 }
 
 func initRepository(t *testing.T) string {

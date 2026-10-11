@@ -41,12 +41,12 @@ func newDiffView(p patch.Patch, options Options) *diffView {
 func (v *diffView) appendFileRows(fileIndex int, file patch.File) {
 	v.rows = append(
 		v.rows,
-		headingEntry(fileRow, fileIndex, -one, file.DisplayPath),
+		headingEntry(fileRow, fileIndex, -1, file.DisplayPath),
 	)
 	for _, metadata := range file.Metadata {
 		v.rows = append(
 			v.rows,
-			headingEntry(metadataRow, fileIndex, -one, metadata),
+			headingEntry(metadataRow, fileIndex, -1, metadata),
 		)
 	}
 	highlighted := v.highlight(&file)
@@ -69,8 +69,8 @@ func headingEntry(kind rowKind, file, hunk int, text string) entry {
 		kind:      kind,
 		file:      file,
 		hunk:      hunk,
-		leftLine:  -one,
-		rightLine: -one,
+		leftLine:  -1,
+		rightLine: -1,
 		text:      text,
 	}
 }
@@ -101,10 +101,10 @@ func (v *diffView) highlightRow(
 		row.text = sourceText(highlighted, lines[row.rightLine])
 		return row
 	}
-	if row.leftLine >= zero {
+	if row.leftLine >= 0 {
 		row.left = sourceText(highlighted, lines[row.leftLine])
 	}
-	if row.rightLine >= zero {
+	if row.rightLine >= 0 {
 		row.right = sourceText(highlighted, lines[row.rightLine])
 	}
 	return row
@@ -124,14 +124,14 @@ func lineRows(lines []patch.Line, options Options) [][paneCount]int {
 }
 
 func splitLineRows(lines []patch.Line) [][paneCount]int {
-	rows := make([][paneCount]int, zero, len(lines))
-	for index := zero; index < len(lines); {
+	rows := make([][paneCount]int, 0, len(lines))
+	for index := 0; index < len(lines); {
 		switch lines[index].Kind {
 		case patch.Context:
 			rows = append(rows, [paneCount]int{index, index})
 			index++
 		case patch.Addition:
-			rows = append(rows, [paneCount]int{-one, index})
+			rows = append(rows, [paneCount]int{-1, index})
 			index++
 		default:
 			removedStart := index
@@ -157,11 +157,11 @@ func changeBlockEnd(lines []patch.Line, start int, kind patch.LineKind) int {
 func pairedChangeRows(removedStart, addedStart, end int) [][paneCount]int {
 	rows := make(
 		[][paneCount]int,
-		zero,
+		0,
 		max(addedStart-removedStart, end-addedStart),
 	)
-	for offset := zero; offset < cap(rows); offset++ {
-		indices := [paneCount]int{-one, -one}
+	for offset := 0; offset < cap(rows); offset++ {
+		indices := [paneCount]int{-1, -1}
 		if removedStart+offset < addedStart {
 			indices[left] = removedStart + offset
 		}

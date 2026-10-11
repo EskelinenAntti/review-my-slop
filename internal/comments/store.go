@@ -151,7 +151,7 @@ func (s Store) Delete(repository, id string) error {
 
 // Acknowledge removes the comments successfully exported to the agent.
 func (s Store) Acknowledge(repository string, ids []string) error {
-	if len(ids) == zero {
+	if len(ids) == 0 {
 		return nil
 	}
 	wanted := make(map[string]struct{}, len(ids))
@@ -193,7 +193,7 @@ func acknowledgedKeys(
 }
 
 func validateComment(comment Comment) error {
-	if len(comment.Body) == zero {
+	if len(comment.Body) == 0 {
 		return errors.New("comment body is empty")
 	}
 	if len(comment.Body) > maxCommentBytes {

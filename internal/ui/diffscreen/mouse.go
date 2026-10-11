@@ -53,7 +53,7 @@ func (v *View) cursorAtPoint(x, y int) (diffCursor, bool) {
 	if v.view.hasStickyHeader(v.viewport.top, v.viewport.Height) {
 		row--
 	}
-	if row < zero || row >= v.view.contentHeight(v.viewport) {
+	if row < 0 || row >= v.view.contentHeight(v.viewport) {
 		return diffCursor{}, false
 	}
 	pane := right

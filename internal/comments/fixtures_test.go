@@ -11,6 +11,4 @@ const (
 	fixtureRepository         = "/repo"
 	fixtureV                  = "%v"
 	fixtureXDGDATAHOME        = "XDG_DATA_HOME"
-	ten                       = 10
-	two                       = 2
 )

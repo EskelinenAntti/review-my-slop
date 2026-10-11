@@ -13,20 +13,20 @@ import (
 )
 
 func main() {
-	if err := run(context.Background(), os.Args[one:], os.Stdout); err != nil {
+	if err := run(context.Background(), os.Args[1:], os.Stdout); err != nil {
 		_, _ = fmt.Fprintln(os.Stderr, "review-my-slop:", err)
-		os.Exit(one)
+		os.Exit(1)
 	}
 }
 
 func run(ctx context.Context, args []string, output io.Writer) error {
-	if len(args) == zero {
+	if len(args) == 0 {
 		return runCode(ctx)
 	}
-	if len(args) > one {
+	if len(args) > 1 {
 		return errors.New("usage: review-my-slop [code|comments]")
 	}
-	switch args[zero] {
+	switch args[0] {
 	case "code":
 		return runCode(ctx)
 	case "comments":
@@ -34,7 +34,7 @@ func run(ctx context.Context, args []string, output io.Writer) error {
 	default:
 		return fmt.Errorf(
 			"unknown subcommand %q; usage: review-my-slop [code|comments]",
-			args[zero],
+			args[0],
 		)
 	}
 }

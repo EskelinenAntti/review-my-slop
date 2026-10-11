@@ -6,7 +6,6 @@ const (
 	defaultHeight             = 30
 	defaultWidth              = 80
 	editorVariable            = "EDITOR"
-	eight                     = 8
 	fixtureG                  = "G"
 	fixtureH                  = "h"
 	fixtureHOME               = "HOME"
@@ -23,21 +22,13 @@ const (
 	fixtureT                  = "t"
 	fixtureTab                = "tab"
 	fixtureTrue               = "true"
-	forty                     = 40
-	four                      = 4
-	hundred                   = 100
 	keyG                      = "g"
 	keyJ                      = "j"
 	minimumWidth              = 20
 	newline                   = "\n"
-	nine                      = 9
 	progressSuffix            = "%)"
 	searchKey                 = "/"
 	selectionKey              = "v"
-	seven                     = 7
-	ten                       = 10
-	three                     = 3
-	two                       = 2
 	valueFormat               = "%v"
 	wideTestWidth             = 120
 )

@@ -34,7 +34,7 @@ func (v *diffView) lines(selection diffSelection) []patch.Line {
 	if first > last {
 		first, last = last, first
 	}
-	lines := make([]patch.Line, zero, last-first+one)
+	lines := make([]patch.Line, 0, last-first+1)
 	if first == last && selection.First.pane != selection.Last.pane {
 		return v.pairedSelectionLines(first, selection)
 	}
@@ -73,7 +73,7 @@ func (v *diffView) findCursor(target cursorIdentity) (diffCursor, bool) {
 	}
 	best := cursorMatch{}
 	for y, current := range v.rows {
-		if current.hunk < zero ||
+		if current.hunk < 0 ||
 			!sameFile(v.patch.Files[current.file], target.file) {
 			continue
 		}
@@ -152,10 +152,10 @@ func lineDistance(
 	line patch.Line,
 	target cursorIdentity,
 ) int {
-	if line.NewNumber > zero && target.line.NewNumber > zero {
+	if line.NewNumber > 0 && target.line.NewNumber > 0 {
 		return abs(int(line.NewNumber - target.line.NewNumber))
 	}
-	if line.OldNumber > zero && target.line.OldNumber > zero {
+	if line.OldNumber > 0 && target.line.OldNumber > 0 {
 		return abs(int(line.OldNumber - target.line.OldNumber))
 	}
 	return abs(cursor.row - target.cursor.row)
@@ -167,7 +167,7 @@ func sameFile(candidate, target patch.File) bool {
 }
 
 func abs(value int) int {
-	if value < zero {
+	if value < 0 {
 		return -value
 	}
 	return value
@@ -178,17 +178,17 @@ func highlightedLine(
 	number patch.LineNumber,
 	fallback string,
 ) string {
-	if number <= zero || int(number) > len(lines) {
+	if number <= 0 || int(number) > len(lines) {
 		return fallback
 	}
-	return lines[int(number)-one]
+	return lines[int(number)-1]
 }
 
 func (v *diffView) pairedSelectionLines(
 	rowIndex int,
 	selection diffSelection,
 ) []patch.Line {
-	lines := make([]patch.Line, zero, int(paneCount))
+	lines := make([]patch.Line, 0, int(paneCount))
 	current := v.rows[rowIndex]
 	sourceLines := v.patch.Files[current.file].Hunks[current.hunk].Lines
 	indices := []int{
@@ -196,10 +196,10 @@ func (v *diffView) pairedSelectionLines(
 		v.lineIndex(current, selection.Last.pane),
 	}
 	for _, index := range indices {
-		if index >= zero &&
+		if index >= 0 &&
 
-			(len(lines) == zero ||
-				lines[len(lines)-one] != sourceLines[index]) {
+			(len(lines) == 0 ||
+				lines[len(lines)-1] != sourceLines[index]) {
 			lines = append(lines, sourceLines[index])
 		}
 	}

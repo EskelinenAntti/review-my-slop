@@ -42,7 +42,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND.
 `, true)
 	requireEqual(
 		t,
-		len(lines), five,
+		len(lines), 5,
 		"highlighted lines = %d, want 5",
 		len(lines),
 	)
@@ -107,19 +107,19 @@ func stripANSI(initialValue string) string {
 	value := initialValue
 
 	var result strings.Builder
-	for len(value) > zero {
+	for len(value) > 0 {
 		start := strings.Index(value, "\x1b[")
-		if start < zero {
+		if start < 0 {
 			_, _ = result.WriteString(value)
 			break
 		}
 		_, _ = result.WriteString(value[:start])
 		end := strings.IndexByte(value[start:], 'm')
-		if end < zero {
+		if end < 0 {
 			_, _ = result.WriteString(value[start:])
 			break
 		}
-		value = value[start+end+one:]
+		value = value[start+end+1:]
 	}
 	return result.String()
 }

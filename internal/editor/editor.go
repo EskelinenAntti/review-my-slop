@@ -38,7 +38,7 @@ func readCommentFile(path string, anchor comments.Anchor) (string, error) {
 }
 
 func commentDraft(body string, anchor comments.Anchor) string {
-	if len(anchor.QuotedLines) == zero {
+	if len(anchor.QuotedLines) == 0 {
 		return body
 	}
 	lines := suggestionLines(anchor.QuotedLines)
@@ -61,7 +61,7 @@ func commentDraft(body string, anchor comments.Anchor) string {
 }
 
 func stripUnchangedSuggestion(body string, quoted []string) string {
-	if len(quoted) == zero {
+	if len(quoted) == 0 {
 		return body
 	}
 	lines := suggestionLines(quoted)
@@ -75,7 +75,7 @@ func stripUnchangedSuggestion(body string, quoted []string) string {
 	}
 	_, _ = suggestion.WriteString(fence)
 	start := strings.Index(body, suggestion.String())
-	if start < zero {
+	if start < 0 {
 		return body
 	}
 	end := start + suggestion.Len()
@@ -106,9 +106,9 @@ func sourceCommand(
 }
 
 func suggestionLines(quoted []string) []string {
-	lines := make([]string, zero, len(quoted))
+	lines := make([]string, 0, len(quoted))
 	for _, line := range quoted {
-		if line != "" && line[zero] != '-' {
+		if line != "" && line[0] != '-' {
 			lines = append(lines, line[1:])
 		}
 	}
@@ -116,15 +116,15 @@ func suggestionLines(quoted []string) []string {
 }
 
 func contextFence(lines []string) string {
-	longest := zero
+	longest := 0
 	for _, line := range lines {
-		run := zero
+		run := 0
 		for _, char := range line {
 			if char == '`' {
 				run++
 				longest = max(longest, run)
 			} else {
-				run = zero
+				run = 0
 			}
 		}
 	}

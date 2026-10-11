@@ -7,7 +7,7 @@ import (
 
 // BodyHeight returns the number of rows available for screen content.
 func BodyHeight(height int) int {
-	return max(one, height-headerRows-footerRows)
+	return max(1, height-headerRows-footerRows)
 }
 
 // BodyRow maps a terminal cell to a body row, excluding header and footer cells
@@ -15,13 +15,13 @@ func BodyHeight(height int) int {
 func BodyRow(x, y, width, height int) (int, bool) {
 	row := y - headerRows
 	return row, y < height-footerRows &&
-		(x >= zero && x < width && row >= zero && row < BodyHeight(height))
+		(x >= 0 && x < width && row >= 0 && row < BodyHeight(height))
 }
 
 // Render composes the header, body and footer for the terminal.
 func Render(header string, body []string, footer string, height int) string {
 	bodyHeight := BodyHeight(height)
-	lines := make([]string, zero, bodyHeight+headerRows+footerRows)
+	lines := make([]string, 0, bodyHeight+headerRows+footerRows)
 	lines = append(lines, header)
 	lines = append(lines, body[:min(len(body), bodyHeight)]...)
 	for len(lines) < bodyHeight+headerRows {

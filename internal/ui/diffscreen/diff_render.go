@@ -19,7 +19,7 @@ func (v *diffView) render(
 	viewport := initialViewport
 
 	viewport = v.clampViewport(viewport)
-	lines := make([]string, zero, viewport.Height)
+	lines := make([]string, 0, viewport.Height)
 	if v.hasStickyHeader(viewport.top, viewport.Height) {
 		current := v.rows[viewport.top]
 		lines = append(
@@ -119,7 +119,7 @@ func (v *diffView) renderPane(
 	selection *diffSelection,
 ) string {
 	index := v.lineIndex(current, pane)
-	if index < zero {
+	if index < 0 {
 		return strings.Repeat(space, width)
 	}
 	line := v.patch.Files[current.file].Hunks[current.hunk].Lines[index]
@@ -193,7 +193,7 @@ func selectionRowStyle(dark bool) lipgloss.Style {
 }
 
 func number(value patch.LineNumber) string {
-	if value == zero {
+	if value == 0 {
 		return ""
 	}
 	return strconv.Itoa(int(value))
@@ -208,7 +208,7 @@ func renderStyledRow(
 	value := initialValue
 
 	value = filterANSIColors(value, stripForeground)
-	fitted := fitANSIWindow(value, zero, width)
+	fitted := fitANSIWindow(value, 0, width)
 	prefix := stylePrefix(style)
 	if prefix != "" {
 		fitted = strings.ReplaceAll(fitted, "\x1b[0m", "\x1b[0m"+prefix)
@@ -225,13 +225,13 @@ func filterANSIColors(value string, stripForeground bool) string {
 type colorFilter struct{ foreground bool }
 
 func (f colorFilter) sequence(sequence string) string {
-	parameters := sequence[sgrPrefixLength : len(sequence)-one]
+	parameters := sequence[sgrPrefixLength : len(sequence)-1]
 	if parameters == "" {
 		return sequence
 	}
 	parts := strings.Split(parameters, ";")
 	filtered := f.filterParts(parts)
-	if len(filtered) == zero {
+	if len(filtered) == 0 {
 		return ""
 	}
 	return "\x1b[" + strings.Join(filtered, ";") + "m"
@@ -257,14 +257,14 @@ func foregroundCode(code int) bool {
 }
 
 func extendedColorEnd(parts []string, index int) int {
-	if index+one >= len(parts) {
+	if index+1 >= len(parts) {
 		return index
 	}
-	switch parts[index+one] {
+	switch parts[index+1] {
 	case "2":
-		return min(index+sgrRGBParameterCount, len(parts)-one)
+		return min(index+sgrRGBParameterCount, len(parts)-1)
 	case "5":
-		return min(index+sgrIndexedParameterCount, len(parts)-one)
+		return min(index+sgrIndexedParameterCount, len(parts)-1)
 	default:
 		return index
 	}
@@ -273,15 +273,15 @@ func extendedColorEnd(parts []string, index int) int {
 func fitANSIWindow(initialValue string, offset, width int) string {
 	value := initialValue
 
-	if width <= zero {
+	if width <= 0 {
 		return ""
 	}
 	value = expandTabs(value)
-	if offset > zero {
+	if offset > 0 {
 		value = ansi.TruncateLeft(value, offset, "")
 	}
 	value = ansi.Truncate(value, width, "")
-	if padding := width - lipgloss.Width(value); padding > zero {
+	if padding := width - lipgloss.Width(value); padding > 0 {
 		value += strings.Repeat(space, padding)
 	}
 	return value
@@ -295,7 +295,7 @@ func stylePrefix(style lipgloss.Style) string {
 	const marker = "\x00"
 	rendered := style.Render(marker)
 	index := strings.Index(rendered, marker)
-	if index < zero {
+	if index < 0 {
 		return ""
 	}
 	return rendered[:index]
@@ -361,8 +361,8 @@ func (v *diffView) renderUnifiedCode(
 }
 
 func (f colorFilter) filterParts(parts []string) []string {
-	filtered := make([]string, zero, len(parts))
-	for index := zero; index < len(parts); index++ {
+	filtered := make([]string, 0, len(parts))
+	for index := 0; index < len(parts); index++ {
 		code, err := strconv.Atoi(parts[index])
 		if err != nil {
 			filtered = append(filtered, parts[index])

@@ -15,7 +15,7 @@ func TestPreserveTranslatesCursorSelectionAndViewport(t *testing.T) {
 	selection := old.beginSelection(first)
 	selection, ok = old.extendSelection(selection, cursor)
 	requireEqual(t, ok, true, fixtureV, "selection not created")
-	viewport := old.newViewport(hundred, four)
+	viewport := old.newViewport(100, 4)
 	viewport = old.align(viewport, cursor, middle)
 	screen := &View{
 		view:      old,
@@ -74,7 +74,7 @@ func TestPreserveReturnsEmptyStateForEmptyView(t *testing.T) {
 		view:      old,
 		cursor:    cursor,
 		selection: ptr(old.beginSelection(cursor)),
-		viewport:  old.newViewport(defaultWidth, ten),
+		viewport:  old.newViewport(defaultWidth, 10),
 	}
 
 	screen.replaceView(newUnifiedView(patch.Patch{}, true))
@@ -91,16 +91,16 @@ func TestPreserveReturnsEmptyStateForEmptyView(t *testing.T) {
 
 func TestPreserveClampsHorizontalOffsetForShorterLines(t *testing.T) {
 	p := longPatch()
-	p.Files[zero].OldPath, p.Files[zero].NewPath = "long.go", "long.go"
+	p.Files[0].OldPath, p.Files[0].NewPath = "long.go", "long.go"
 	old := newUnifiedView(p, true)
 	cursor := mustFirst(t, old)
 	viewport := old.scrollHorizontal(
-		old.newViewport(forty, ten),
+		old.newViewport(40, 10),
 		defaultHeight,
 	)
 	requireEqual(
 		t,
-		viewport.LeftColumn != zero,
+		viewport.LeftColumn != 0,
 		true,
 		fixtureV,
 		"fixture does not scroll horizontally",
@@ -110,7 +110,7 @@ func TestPreserveClampsHorizontalOffsetForShorterLines(t *testing.T) {
 	preserved.replaceView(newUnifiedView(short, true))
 	requireEqual(
 		t,
-		preserved.viewport.LeftColumn, zero,
+		preserved.viewport.LeftColumn, 0,
 		"horizontal offset = %d",
 		preserved.viewport.LeftColumn,
 	)
@@ -193,7 +193,7 @@ func cursorDeletionCases() (patch.Patch, patch.Line, []deletionCase) {
 		{
 			"cursor hunk removed",
 			[]patch.Hunk{early, late},
-			late.Lines[zero],
+			late.Lines[0],
 		},
 	}
 }
@@ -214,7 +214,7 @@ func assertDeletedCursor(
 	options Options,
 ) {
 	v := New(original, options)
-	v.Resize(wideTestWidth, four)
+	v.Resize(wideTestWidth, 4)
 	v.BeginSearch()
 	v.InsertSearch("target")
 	v.AcceptSearch()
@@ -262,7 +262,7 @@ func deletionSource() deletionFixture {
 		targetSourceLine   = afterNewSourceLine + 1
 	)
 	early := patch.Hunk{Header: "@@ -1,0 +1 @@", Lines: []patch.Line{
-		{Kind: patch.Addition, Text: "early change", NewNumber: one},
+		{Kind: patch.Addition, Text: "early change", NewNumber: 1},
 	}}
 	before := patch.Line{
 		Kind:      patch.Context,
@@ -287,7 +287,7 @@ func deletionSource() deletionFixture {
 		NewNumber: targetSourceLine,
 	}
 	late := patch.Hunk{Header: "@@ -100,0 +100 @@", Lines: []patch.Line{
-		{Kind: patch.Addition, Text: "late change", NewNumber: hundred},
+		{Kind: patch.Addition, Text: "late change", NewNumber: 100},
 	}}
 
 	original := hunkPatch(

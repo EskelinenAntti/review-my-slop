@@ -62,7 +62,7 @@ func TestSplitPairsChangeBlocksAndSupportsEmptyPanes(t *testing.T) {
 		)
 	}
 
-	viewport := v.newViewport(hundred, minimumWidth)
+	viewport := v.newViewport(100, minimumWidth)
 	rendered := v.render(viewport, added, nil)
 	requireEqual(
 		t,
@@ -75,7 +75,7 @@ func TestSplitPairsChangeBlocksAndSupportsEmptyPanes(t *testing.T) {
 	for _, row := range strings.Split(rendered, "\n") {
 		requireEqual(
 			t,
-			!strings.Contains(row, " │ ") || lipgloss.Width(row) == hundred,
+			!strings.Contains(row, " │ ") || lipgloss.Width(row) == 100,
 			true,
 			"rendered width = %d",
 			lipgloss.Width(row),
@@ -92,7 +92,7 @@ func TestSelectionLines(t *testing.T) {
 	selection, ok := v.extendSelection(selection, last)
 	requireEqual(t, ok, true, fixtureV, "selection extension failed")
 	lines := v.lines(selection)
-	requireEqual(t, len(lines), three, "selected lines = %d", len(lines))
+	requireEqual(t, len(lines), 3, "selected lines = %d", len(lines))
 
 	nextFile, _ := v.jumpFile(first, forward)
 	{
@@ -105,10 +105,10 @@ func TestViewportAlignmentResizeAndScrolling(t *testing.T) {
 	v := newUnifiedView(longPatch(), true)
 	first, _ := v.first()
 	cursor := first
-	for range eight {
+	for range 8 {
 		cursor, _ = v.move(cursor, forward)
 	}
-	viewport := v.newViewport(defaultHeight, five)
+	viewport := v.newViewport(defaultHeight, 5)
 	viewport = v.keepVisible(viewport, cursor)
 	requireEqual(
 		t,
@@ -120,28 +120,28 @@ func TestViewportAlignmentResizeAndScrolling(t *testing.T) {
 		viewport,
 	)
 	viewport = v.align(viewport, cursor, middle)
-	headerHeight := zero
+	headerHeight := 0
 	if v.hasStickyHeader(viewport.top, viewport.Height) {
-		headerHeight = one
+		headerHeight = 1
 	}
 	requireEqual(
 		t,
-		headerHeight+cursor.row-viewport.top, viewport.Height/two,
+		headerHeight+cursor.row-viewport.top, viewport.Height/2,
 		"middle alignment = %#v",
 		viewport,
 	)
-	viewport = v.scrollHorizontal(viewport, four)
+	viewport = v.scrollHorizontal(viewport, 4)
 	requireEqual(
 		t,
-		viewport.LeftColumn != zero,
+		viewport.LeftColumn != 0,
 		true,
 		fixtureV,
 		"horizontal scroll did not move",
 	)
-	viewport = v.resize(viewport, minimumWidth, three)
+	viewport = v.resize(viewport, minimumWidth, 3)
 	requireEqual(
 		t,
-		viewport.Width == minimumWidth && viewport.Height == three, true,
+		viewport.Width == minimumWidth && viewport.Height == 3, true,
 		"resize = %#v",
 		viewport,
 	)
@@ -158,12 +158,12 @@ func TestViewportAlignmentResizeAndScrolling(t *testing.T) {
 
 func TestViewportProgressUsesVisibleBottom(t *testing.T) {
 	v := newUnifiedView(longPatch(), true)
-	viewport := v.newViewport(defaultHeight, five)
+	viewport := v.newViewport(defaultHeight, 5)
 	{
 		progress := v.viewportProgress(viewport)
 		requireEqual(
 			t,
-			progress > zero && progress < hundred,
+			progress > 0 && progress < 100,
 			true,
 			"initial progress=%d",
 			progress,
@@ -173,7 +173,7 @@ func TestViewportProgressUsesVisibleBottom(t *testing.T) {
 	viewport = v.keepVisible(viewport, last)
 	{
 		progress := v.viewportProgress(viewport)
-		requireEqual(t, progress, hundred, "final progress=%d", progress)
+		requireEqual(t, progress, 100, "final progress=%d", progress)
 	}
 }
 
@@ -181,10 +181,10 @@ func TestHalfPageScrollingMovesCursorToFileBoundaries(t *testing.T) {
 	v := newUnifiedView(longPatch(), true)
 	first, _ := v.first()
 	last, _ := v.last()
-	viewport := v.newViewport(defaultHeight, five)
+	viewport := v.newViewport(defaultHeight, 5)
 	cursor := first
 
-	for range len(longPatch().Files[zero].Hunks[zero].Lines) {
+	for range len(longPatch().Files[0].Hunks[0].Lines) {
 		viewport, cursor = v.scrollHalfPage(viewport, cursor, forward)
 	}
 	requireEqual(
@@ -195,7 +195,7 @@ func TestHalfPageScrollingMovesCursorToFileBoundaries(t *testing.T) {
 		last,
 	)
 
-	for range len(longPatch().Files[zero].Hunks[zero].Lines) {
+	for range len(longPatch().Files[0].Hunks[0].Lines) {
 		viewport, cursor = v.scrollHalfPage(viewport, cursor, backward)
 	}
 	requireEqual(
@@ -217,7 +217,7 @@ func TestFindCursorUsesSemanticIdentityAcrossChangedCoordinates(t *testing.T) {
 	)
 	line, _ := oldView.line(cursor)
 	changed := testPatch()
-	changed.Files[zero].Metadata = []string{"mode changed", "more metadata"}
+	changed.Files[0].Metadata = []string{"mode changed", "more metadata"}
 	newView := newUnifiedView(changed, true)
 	translated, ok := newView.findCursor(identify(oldView, cursor))
 	requireEqual(t, ok, true, fixtureV, "semantic cursor was not found")
@@ -250,7 +250,7 @@ func TestSplitViewWithOnlyDeletionsStartsInLeftPane(t *testing.T) {
 							{
 								Kind:      patch.Deletion,
 								Text:      "gone",
-								OldNumber: one,
+								OldNumber: 1,
 							},
 						},
 					},
@@ -276,8 +276,8 @@ func TestFindCursorFallsBackNearRemovedLine(t *testing.T) {
 	oldView := newUnifiedView(original, true)
 	cursor, _ := oldView.search("removed two", mustFirst(t, oldView), forward)
 	changed := testPatch()
-	hunk := &changed.Files[zero].Hunks[zero]
-	hunk.Lines = hunk.Lines[:two]
+	hunk := &changed.Files[0].Hunks[0]
+	hunk.Lines = hunk.Lines[:2]
 	newView := newUnifiedView(changed, true)
 	fallback, ok := newView.findCursor(identify(oldView, cursor))
 	requireEqual(t, ok, true, fixtureV, "nearby cursor was not found")
@@ -317,33 +317,33 @@ func testPatch() patch.Patch {
 							{
 								Kind:      patch.Context,
 								Text:      "before",
-								OldNumber: one,
-								NewNumber: one,
+								OldNumber: 1,
+								NewNumber: 1,
 							},
 
 							{
 								Kind:      patch.Deletion,
 								Text:      "removed one",
-								OldNumber: two,
+								OldNumber: 2,
 							},
 
 							{
 								Kind:      patch.Deletion,
 								Text:      "removed two",
-								OldNumber: three,
+								OldNumber: 3,
 							},
 
 							{
 								Kind:      patch.Addition,
 								Text:      fixtureAddedOne,
-								NewNumber: two,
+								NewNumber: 2,
 							},
 
 							{
 								Kind:      patch.Context,
 								Text:      "after",
-								OldNumber: four,
-								NewNumber: three,
+								OldNumber: 4,
+								NewNumber: 3,
 							},
 						},
 					},
@@ -361,7 +361,7 @@ func testPatch() patch.Patch {
 							{
 								Kind:      patch.Addition,
 								Text:      "other",
-								NewNumber: one,
+								NewNumber: 1,
 							},
 						},
 					},
@@ -377,8 +377,8 @@ func longPatch() patch.Patch {
 		lines[index] = patch.Line{
 			Kind:      patch.Context,
 			Text:      strings.Repeat("long", minimumWidth),
-			OldNumber: patch.LineNumber(index + one),
-			NewNumber: patch.LineNumber(index + one),
+			OldNumber: patch.LineNumber(index + 1),
+			NewNumber: patch.LineNumber(index + 1),
 		}
 	}
 	return patch.Patch{

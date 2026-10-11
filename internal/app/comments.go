@@ -20,13 +20,13 @@ func (m model) updateComments(name string) (tea.Model, tea.Cmd) {
 		m.quitting = true
 		return m, tea.Quit
 	case "j", "down":
-		m.commentView.Move(one)
+		m.commentView.Move(1)
 	case "k", "up":
-		m.commentView.Move(-one)
+		m.commentView.Move(-1)
 	case "enter", "e":
 		return m.editSelectedComment()
 	case "D":
-		if len(m.comments.items) > zero {
+		if len(m.comments.items) > 0 {
 			if selected, ok := m.commentView.Selected(); ok {
 				m.deleteComment(m.commentIndex(selected))
 			}
@@ -43,7 +43,7 @@ func (m *model) beginComment() (tea.Cmd, error) {
 		return nil, errors.New("select code lines before commenting")
 	}
 	anchor := commentAnchor(file, lines)
-	m.edit.body, m.edit.index, m.edit.anchor = "", -one, anchor
+	m.edit.body, m.edit.index, m.edit.anchor = "", -1, anchor
 	cmd, err := m.openCommentEditor()
 	if err != nil {
 		m.clearCommentEdit()
@@ -55,7 +55,7 @@ func (m *model) beginComment() (tea.Cmd, error) {
 func (m *model) finishCommentEdit() {
 	body := strings.TrimSpace(m.edit.body)
 	if body == "" {
-		if m.edit.index >= zero {
+		if m.edit.index >= 0 {
 			m.deleteComment(m.edit.index)
 		}
 		m.clearCommentEdit()
@@ -68,7 +68,7 @@ func (m *model) finishCommentEdit() {
 		return
 	}
 	var comment comments.Comment
-	if m.edit.index >= zero {
+	if m.edit.index >= 0 {
 		comment = m.comments.items[m.edit.index]
 		comment.Body = body
 	} else {
@@ -80,7 +80,7 @@ func (m *model) finishCommentEdit() {
 		m.clearCommentEdit()
 		return
 	}
-	if m.edit.index >= zero {
+	if m.edit.index >= 0 {
 		m.comments.items[m.edit.index] = saved
 	} else {
 		m.comments.items = append(m.comments.items, saved)
@@ -95,7 +95,7 @@ func (m *model) finishCommentEdit() {
 }
 
 func (m *model) deleteComment(index int) {
-	if index < zero || index >= len(m.comments.items) {
+	if index < 0 || index >= len(m.comments.items) {
 		return
 	}
 	if m.delete == nil {
@@ -108,7 +108,7 @@ func (m *model) deleteComment(index int) {
 	}
 	m.comments.items = append(
 		m.comments.items[:index],
-		m.comments.items[index+one:]...,
+		m.comments.items[index+1:]...,
 	)
 	m.commentView.Update(m.comments.items)
 	m.comments.revision++
@@ -116,7 +116,7 @@ func (m *model) deleteComment(index int) {
 }
 
 func (m *model) clearCommentEdit() {
-	m.edit = commentEdit{index: -one}
+	m.edit = commentEdit{index: -1}
 }
 
 func (m model) openCurrentLine() (tea.Cmd, error) {
@@ -132,17 +132,17 @@ func (m model) openCurrentLine() (tea.Cmd, error) {
 func (m model) sourceLocation() (string, int, error) {
 	file, line, ok := m.diffView.Current()
 	if !ok {
-		return "", zero, errors.New("select a code line to open in $EDITOR")
+		return "", 0, errors.New("select a code line to open in $EDITOR")
 	}
 	path, number := file.NewPath, line.NewNumber
 	if path == "" || path == "/dev/null" {
 		path = file.OldPath
 	}
-	if number == zero {
+	if number == 0 {
 		number = line.OldNumber
 	}
-	if path == "" || path == "/dev/null" || number < one {
-		return "", zero, errors.New(
+	if path == "" || path == "/dev/null" || number < 1 {
+		return "", 0, errors.New(
 			"current line has no editable working-tree location",
 		)
 	}
@@ -174,7 +174,7 @@ func (m model) commentIndex(selected comments.Comment) int {
 			return index
 		}
 	}
-	return -one
+	return -1
 }
 
 func commentAnchor(file patch.File, lines []patch.Line) comments.Anchor {
@@ -198,10 +198,10 @@ func commentAnchor(file patch.File, lines []patch.Line) comments.Anchor {
 	return anchor
 }
 func accumulateRange(start, end *int, value int) {
-	if value == zero {
+	if value == 0 {
 		return
 	}
-	if *start == zero || value < *start {
+	if *start == 0 || value < *start {
 		*start = value
 	}
 	if value > *end {
@@ -210,7 +210,7 @@ func accumulateRange(start, end *int, value int) {
 }
 
 func (m model) editSelectedComment() (tea.Model, tea.Cmd) {
-	if len(m.comments.items) > zero {
+	if len(m.comments.items) > 0 {
 		selected, ok := m.commentView.Selected()
 		if !ok {
 			return m, nil

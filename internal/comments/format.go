@@ -25,7 +25,7 @@ func (s Store) WritePending(w io.Writer, repository string) error {
 
 // WritePrompt formats review comments for the agent.
 func WritePrompt(w io.Writer, comments []Comment) error {
-	if len(comments) == zero {
+	if len(comments) == 0 {
 		_, err := fmt.Fprintln(w, "No pending review comments.")
 		return err
 	}
@@ -45,7 +45,7 @@ func writeComment(w io.Writer, index int, comment Comment) error {
 	_, err := fmt.Fprintf(
 		w,
 		"\n### %d. `%s` (%s)\n\n",
-		index+one,
+		index+1,
 		a.FilePath,
 		describeRange(a),
 	)
@@ -60,7 +60,7 @@ func writeComment(w io.Writer, index int, comment Comment) error {
 }
 
 func writeQuotedLines(w io.Writer, lines []string) error {
-	if len(lines) == zero {
+	if len(lines) == 0 {
 		return nil
 	}
 	if _, err := fmt.Fprintln(w, "```diff"); err != nil {
@@ -77,26 +77,26 @@ func writeQuotedLines(w io.Writer, lines []string) error {
 
 func describeRange(anchor Anchor) string {
 	var sides []string
-	if anchor.OldStart > zero {
+	if anchor.OldStart > 0 {
 		sides = append(
 			sides,
 			lineRange("old", anchor.OldStart, anchor.OldEnd),
 		)
 	}
-	if anchor.NewStart > zero {
+	if anchor.NewStart > 0 {
 		sides = append(
 			sides,
 			lineRange("new", anchor.NewStart, anchor.NewEnd),
 		)
 	}
-	if len(sides) == zero {
+	if len(sides) == 0 {
 		return "diff lines"
 	}
 	return strings.Join(sides, ", ")
 }
 
 func lineRange(side string, start, end int) string {
-	if end == zero || end == start {
+	if end == 0 || end == start {
 		return fmt.Sprintf("%s line %d", side, start)
 	}
 	return fmt.Sprintf("%s lines %d-%d", side, start, end)

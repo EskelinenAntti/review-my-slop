@@ -1,9 +1,6 @@
 package diffscreen
 
 const (
-	eight                  = 8
-	fifty                  = 50
-	five                   = 5
 	fixtureAddedOne        = "added one"
 	fixtureBoth            = "both"
 	fixtureFile            = "file"
@@ -29,12 +26,7 @@ const (
 	fixtureUnchanged       = "unchanged"
 	fixtureV               = "%v"
 	hunkMarker             = "@@"
-	nine                   = 9
 	oddTestWidth           = 121
 	paneDivider            = " │ "
-	seven                  = 7
-	six                    = 6
-	sixty                  = 60
-	ten                    = 10
 	wideTestWidth          = 120
 )

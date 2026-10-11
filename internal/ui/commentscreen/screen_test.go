@@ -13,7 +13,7 @@ func TestUpdatePreservesFocusByID(t *testing.T) {
 	first := comments.Comment{ID: fixtureFirst, Body: fixtureFirst}
 	second := comments.Comment{ID: "second", Body: "second"}
 	v := New([]comments.Comment{first, second})
-	v.Move(one)
+	v.Move(1)
 	v.Update([]comments.Comment{second, first})
 	selected, ok := v.Selected()
 	requireEqual(
@@ -42,7 +42,7 @@ func TestUpdatePreservesFocusByID(t *testing.T) {
 }
 
 func TestMovementKeepsSelectedCommentVisible(t *testing.T) {
-	items := make([]comments.Comment, ten)
+	items := make([]comments.Comment, 10)
 	for index := range items {
 		items[index] = comments.Comment{
 			ID:   fmt.Sprint(index),
@@ -50,13 +50,13 @@ func TestMovementKeepsSelectedCommentVisible(t *testing.T) {
 		}
 	}
 	v := New(items)
-	v.Resize(defaultWidth, seven)
-	v.Move(hundred)
+	v.Resize(defaultWidth, 7)
+	v.Move(100)
 	lines := strings.Split(ansi.Strip(v.Render(nil)), newline)
 	requireEqual(
 		t,
 		strings.Contains(
-			strings.Join(lines[one:five], newline),
+			strings.Join(lines[1:5], newline),
 			">   comment 9",
 		),
 		true,
@@ -65,11 +65,11 @@ func TestMovementKeepsSelectedCommentVisible(t *testing.T) {
 	)
 	requireEqual(
 		t,
-		strings.Contains(lines[five], "j/k move"), true,
+		strings.Contains(lines[5], "j/k move"), true,
 		"footer misplaced: %q",
 		lines,
 	)
-	v.Resize(defaultWidth, five)
+	v.Resize(defaultWidth, 5)
 	requireEqual(
 		t,
 		strings.Contains(v.Render(nil), "comment 9"),
@@ -77,15 +77,15 @@ func TestMovementKeepsSelectedCommentVisible(t *testing.T) {
 		fixtureV,
 		"resize hid selection",
 	)
-	v.Move(-hundred)
+	v.Move(-100)
 	selected, _ := v.Selected()
 	requireEqual(t, selected.ID, "0", "first selection=%#v", selected)
 }
 
 func TestEmptyListAndInputOwnership(t *testing.T) {
 	v := New(nil)
-	v.Move(hundred)
-	v.Move(-hundred)
+	v.Move(100)
+	v.Move(-100)
 	{
 		_, ok := v.Selected()
 		requireEqual(t, !ok, true, fixtureV, "empty list has a selection")
@@ -99,7 +99,7 @@ func TestEmptyListAndInputOwnership(t *testing.T) {
 	)
 	items := []comments.Comment{{ID: "one", Body: "original"}}
 	v.Update(items)
-	items[zero].Body = "changed outside view"
+	items[0].Body = "changed outside view"
 	selected, _ := v.Selected()
 	requireEqual(
 		t,
@@ -116,12 +116,12 @@ func TestEmptyListAndInputOwnership(t *testing.T) {
 
 func TestRenderErrorKeepsScreenLayout(t *testing.T) {
 	v := New([]comments.Comment{{ID: "one", Body: "pending"}})
-	v.Resize(narrowTestWidth, seven)
+	v.Resize(narrowTestWidth, 7)
 	normal := strings.Split(ansi.Strip(v.Render(nil)), newline)
 	failed := strings.Split(
 		ansi.Strip(
 			v.Render(
-				fmt.Errorf("storage failed\n%s", strings.Repeat("x", sixty)),
+				fmt.Errorf("storage failed\n%s", strings.Repeat("x", 60)),
 			),
 		),
 		newline,
@@ -129,8 +129,8 @@ func TestRenderErrorKeepsScreenLayout(t *testing.T) {
 	requireEqual(
 		t,
 		len(failed) == len(normal) &&
-			strings.Join(failed[:five], newline) == strings.Join(
-				normal[:five],
+			strings.Join(failed[:5], newline) == strings.Join(
+				normal[:5],
 				newline,
 			),
 		true,
@@ -139,26 +139,26 @@ func TestRenderErrorKeepsScreenLayout(t *testing.T) {
 	)
 	requireEqual(
 		t,
-		strings.HasPrefix(failed[five], "storage failed ") &&
-			ansi.StringWidth(failed[five]) == narrowTestWidth &&
+		strings.HasPrefix(failed[5], "storage failed ") &&
+			ansi.StringWidth(failed[5]) == narrowTestWidth &&
 			strings.Contains(v.Render(nil), "j/k move"),
 		true,
 		"error footer=%q",
-		failed[five],
+		failed[5],
 	)
 }
 
 func TestClickUsesVisibleRowsWithoutScrollingList(t *testing.T) {
-	items := make([]comments.Comment, ten)
+	items := make([]comments.Comment, 10)
 	for index := range items {
 		items[index] = comments.Comment{ID: fmt.Sprint(index)}
 	}
 	v := New(items)
-	v.Resize(defaultWidth, seven)
-	v.Move(hundred)
+	v.Resize(defaultWidth, 7)
+	v.Move(100)
 	requireEqual(
 		t,
-		v.Click(minimumWidth, one),
+		v.Click(minimumWidth, 1),
 		true,
 		fixtureV,
 		"visible comment click rejected",
@@ -166,14 +166,14 @@ func TestClickUsesVisibleRowsWithoutScrollingList(t *testing.T) {
 	selected, _ := v.Selected()
 	requireEqual(
 		t,
-		selected.ID == "6" && v.top == six,
+		selected.ID == "6" && v.top == 6,
 		true,
 		fixtureV,
 		"click did not preserve the visible list position",
 	)
 	requireEqual(
 		t,
-		v.Click(minimumWidth, four),
+		v.Click(minimumWidth, 4),
 		true,
 		fixtureV,
 		"last visible row click rejected",
@@ -185,24 +185,24 @@ func TestClickUsesVisibleRowsWithoutScrollingList(t *testing.T) {
 		fixtureV,
 		"last visible row mapped to wrong comment",
 	)
-	for _, point := range [][two]int{
-		{zero, zero},
-		{zero, five},
-		{zero, six},
-		{-one, one},
-		{defaultWidth, one},
+	for _, point := range [][2]int{
+		{0, 0},
+		{0, 5},
+		{0, 6},
+		{-1, 1},
+		{defaultWidth, 1},
 	} {
 		requireEqual(
 			t,
-			!v.Click(point[zero], point[one]), true,
+			!v.Click(point[0], point[1]), true,
 			"invalid point accepted: %v",
 			point,
 		)
 	}
-	v.Update(items[:one])
+	v.Update(items[:1])
 	requireEqual(
 		t,
-		!v.Click(minimumWidth, two),
+		!v.Click(minimumWidth, 2),
 		true,
 		fixtureV,
 		"blank row click accepted",
@@ -210,7 +210,7 @@ func TestClickUsesVisibleRowsWithoutScrollingList(t *testing.T) {
 	v.Update(nil)
 	requireEqual(
 		t,
-		!v.Click(minimumWidth, one),
+		!v.Click(minimumWidth, 1),
 		true,
 		fixtureV,
 		"empty list click accepted",

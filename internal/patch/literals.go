@@ -5,7 +5,5 @@ const (
 	firstPrintableASCII = 0x20
 	newline             = "\n"
 	nullPath            = "/dev/null"
-	one                 = 1
 	space               = " "
-	zero                = 0
 )

@@ -10,5 +10,4 @@ const (
 	fixtureTrue        = "true"
 	fixtureV           = "%v"
 	privateFileMode    = 0o600
-	two                = 2
 )

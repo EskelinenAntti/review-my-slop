@@ -13,7 +13,7 @@ func TestRenderAlignsBindingsAndKeepsHintAtBottom(t *testing.T) {
 			Render(
 				[]Binding{{"x", "short"}, {"long", "wide"}},
 				defaultWidth,
-				eight,
+				8,
 			),
 		),
 		"\n",
@@ -26,7 +26,7 @@ func TestRenderAlignsBindingsAndKeepsHintAtBottom(t *testing.T) {
 	)
 	requireEqual(
 		t,
-		len(lines) == eight &&
+		len(lines) == 8 &&
 			strings.Contains(lines[6], "? or Esc closes help"),
 		true,
 		"misplaced hint: %q",
@@ -35,7 +35,7 @@ func TestRenderAlignsBindingsAndKeepsHintAtBottom(t *testing.T) {
 }
 
 func TestRenderEmptyAndTruncatedBindings(t *testing.T) {
-	for _, height := range []int{one, four, eight} {
+	for _, height := range []int{1, 4, 8} {
 		result := Render(nil, defaultWidth, height)
 		requireEqual(
 			t,
@@ -47,7 +47,7 @@ func TestRenderEmptyAndTruncatedBindings(t *testing.T) {
 	result := Render(
 		[]Binding{{"one", "shown"}, {"two", "hidden"}},
 		defaultWidth,
-		five,
+		5,
 	)
 	requireEqual(
 		t,
@@ -63,7 +63,7 @@ func TestRenderClipsWideBindingText(t *testing.T) {
 	rendered := Render(
 		[]Binding{{"界", strings.Repeat("description", 10)}},
 		narrowTestWidth,
-		eight,
+		8,
 	)
 	for _, line := range strings.Split(rendered, "\n") {
 		requireEqual(

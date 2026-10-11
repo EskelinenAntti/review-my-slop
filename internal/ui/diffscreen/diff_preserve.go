@@ -31,7 +31,7 @@ func (v *View) replaceView(next *diffView) {
 	v.selection = preserveSelection(old, v.selection, next)
 	v.view = next
 	if next.valid(v.cursor) {
-		v.viewport.top = max(zero, v.cursor.row-rowsAbove)
+		v.viewport.top = max(0, v.cursor.row-rowsAbove)
 		v.viewport = next.keepVisible(v.viewport, v.cursor)
 	}
 	if v.search.active {

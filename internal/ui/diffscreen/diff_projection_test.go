@@ -44,8 +44,8 @@ func TestCursorRestorationPrioritizesIdentityBeforeDistance(t *testing.T) {
 	) patch.Line {
 		return patch.Line{Kind: kind, Text: text, NewNumber: number}
 	}
-	context := code(patch.Context, fixtureUnchanged, one)
-	target := code(patch.Addition, fixtureTarget, ten)
+	context := code(patch.Context, fixtureUnchanged, 1)
+	target := code(patch.Addition, fixtureTarget, 10)
 
 	old := newUnifiedView(linePatch([]patch.Line{context, target}), true)
 	cursor, _ := old.last()
@@ -63,7 +63,7 @@ func TestCursorRestorationPrioritizesIdentityBeforeDistance(t *testing.T) {
 type pairingCase struct {
 	name  string
 	lines []patch.Line
-	want  [][two]string
+	want  [][2]string
 }
 
 func pairingCases() []pairingCase {
@@ -84,31 +84,31 @@ func pairingCases() []pairingCase {
 		{
 			"additions",
 			[]patch.Line{a1, a2},
-			[][two]string{{"", fixtureNewA}, {"", fixtureNewB}},
+			[][2]string{{"", fixtureNewA}, {"", fixtureNewB}},
 		},
 
 		{
 			"deletions",
 			[]patch.Line{d1, d2},
-			[][two]string{{fixtureOldA, ""}, {fixtureOldB, ""}},
+			[][2]string{{fixtureOldA, ""}, {fixtureOldB, ""}},
 		},
 
 		{
 			"more deletions",
 			[]patch.Line{d1, d2, a1},
-			[][two]string{{fixtureOldA, fixtureNewA}, {fixtureOldB, ""}},
+			[][2]string{{fixtureOldA, fixtureNewA}, {fixtureOldB, ""}},
 		},
 
 		{
 			"more additions",
 			[]patch.Line{d1, a1, a2},
-			[][two]string{{fixtureOldA, fixtureNewA}, {"", fixtureNewB}},
+			[][2]string{{fixtureOldA, fixtureNewA}, {"", fixtureNewB}},
 		},
 
 		{
 			"context separates blocks",
 			[]patch.Line{d1, context, a1},
-			[][two]string{
+			[][2]string{
 				{fixtureOldA, ""},
 				{fixtureUnchanged, fixtureUnchanged},
 				{"", fixtureNewA},
@@ -118,18 +118,18 @@ func pairingCases() []pairingCase {
 		{
 			"addition before deletion",
 			[]patch.Line{a1, d1, a2},
-			[][two]string{{"", fixtureNewA}, {fixtureOldA, fixtureNewB}},
+			[][2]string{{"", fixtureNewA}, {fixtureOldA, fixtureNewB}},
 		},
 	}
 }
 
-func pairedTexts(v *diffView) [][two]string {
-	var got [][two]string
+func pairedTexts(v *diffView) [][2]string {
+	var got [][2]string
 	for row, entry := range v.rows {
 		if entry.kind != lineRow {
 			continue
 		}
-		var texts [two]string
+		var texts [2]string
 		for _, pane := range []diffPane{left, right} {
 			texts[pane] = paneText(v, row, pane)
 		}
@@ -159,9 +159,9 @@ func restorationCases(context patch.Line) []restorationCase {
 			"numbers before text",
 			[]patch.Line{
 				code(patch.Addition, fixtureTarget, minimumWidth),
-				code(patch.Addition, "changed text", ten),
+				code(patch.Addition, "changed text", 10),
 			},
-			code(patch.Addition, "changed text", ten),
+			code(patch.Addition, "changed text", 10),
 		},
 
 		{
@@ -194,17 +194,17 @@ func restorationCases(context patch.Line) []restorationCase {
 		{
 			"equidistant matching text",
 			[]patch.Line{
-				code(patch.Addition, fixtureTarget, eight),
+				code(patch.Addition, fixtureTarget, 8),
 				context,
 				code(patch.Addition, fixtureTarget, nearbySourceLine),
 			},
-			code(patch.Addition, fixtureTarget, eight),
+			code(patch.Addition, fixtureTarget, 8),
 		},
 
 		{
 			"nearest remaining line",
-			[]patch.Line{context, code(patch.Context, "nearby", two)},
-			code(patch.Context, "nearby", two),
+			[]patch.Line{context, code(patch.Context, "nearby", 2)},
+			code(patch.Context, "nearby", 2),
 		},
 	}
 }

@@ -18,7 +18,7 @@ type Binding struct {
 // Render formats bindings with aligned descriptions and keeps the closing hint
 // below the available body. The supplied bindings determine the help content.
 func Render(bindings []Binding, width, height int) string {
-	column := zero
+	column := 0
 	for _, binding := range bindings {
 		column = max(column, lipgloss.Width(binding.Keys))
 	}

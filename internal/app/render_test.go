@@ -19,7 +19,7 @@ func TestWorkflowErrorKeepsDiffLabelWithinFooter(t *testing.T) {
 				p,
 				nil,
 				nil,
-				initialLayout{size: size{Width: width, Height: eight}},
+				initialLayout{size: size{Width: width, Height: 8}},
 			)
 			m.err = errors.New(
 				"a very long storage failure\nthat exceeds" +
@@ -28,11 +28,11 @@ func TestWorkflowErrorKeepsDiffLabelWithinFooter(t *testing.T) {
 			lines := strings.Split(m.render(), "\n")
 			requireEqual(
 				t,
-				len(lines), eight,
+				len(lines), 8,
 				"error changed screen height: %d",
 				len(lines),
 			)
-			footer := lines[len(lines)-two]
+			footer := lines[len(lines)-2]
 			label := "local changes"
 			if kind == patch.Branch {
 				label = "branch changes from main"

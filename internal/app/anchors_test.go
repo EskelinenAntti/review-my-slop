@@ -9,9 +9,9 @@ import (
 
 func TestCommentAnchorUsesSemanticSelection(t *testing.T) {
 	lines := []patch.Line{
-		{Kind: patch.Context, Text: "before", OldNumber: one, NewNumber: one},
-		{Kind: patch.Deletion, Text: "removed", OldNumber: two},
-		{Kind: patch.Addition, Text: "added", NewNumber: two},
+		{Kind: patch.Context, Text: "before", OldNumber: 1, NewNumber: 1},
+		{Kind: patch.Deletion, Text: "removed", OldNumber: 2},
+		{Kind: patch.Addition, Text: "added", NewNumber: 2},
 	}
 	anchor := commentAnchor(
 		patch.File{OldPath: "old.go", NewPath: "new.go"},
@@ -19,10 +19,10 @@ func TestCommentAnchorUsesSemanticSelection(t *testing.T) {
 	)
 	requireEqual(
 		t,
-		anchor.FilePath == "new.go" && anchor.OldStart == one &&
-			anchor.OldEnd == two &&
-			anchor.NewStart == one &&
-			anchor.NewEnd == two &&
+		anchor.FilePath == "new.go" && anchor.OldStart == 1 &&
+			anchor.OldEnd == 2 &&
+			anchor.NewStart == 1 &&
+			anchor.NewEnd == 2 &&
 			slices.Equal(
 				anchor.QuotedLines,
 				[]string{" before", "-removed", "+added"},
@@ -31,7 +31,7 @@ func TestCommentAnchorUsesSemanticSelection(t *testing.T) {
 		"anchor=%#v",
 		anchor,
 	)
-	anchor = commentAnchor(patch.File{OldPath: "deleted.go"}, lines[one:two])
+	anchor = commentAnchor(patch.File{OldPath: "deleted.go"}, lines[1:2])
 	requireEqual(
 		t,
 		anchor.FilePath == "deleted.go" && anchor.NewStart == 0, true,

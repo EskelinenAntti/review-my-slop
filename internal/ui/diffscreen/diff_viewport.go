@@ -14,12 +14,12 @@ func (v *diffView) resize(
 	width,
 	height int,
 ) diffViewport {
-	viewport.Width, viewport.Height = max(one, width), max(one, height)
+	viewport.Width, viewport.Height = max(1, width), max(1, height)
 	return v.clampViewport(viewport)
 }
 
 func (v *diffView) maxTop(height int) int {
-	end := max(zero, len(v.rows)-height)
+	end := max(0, len(v.rows)-height)
 	if v.hasStickyHeader(end, height) {
 		end++
 	}
@@ -27,16 +27,16 @@ func (v *diffView) maxTop(height int) int {
 }
 
 func (v *diffView) clampViewport(viewport diffViewport) diffViewport {
-	viewport.top = max(zero, min(viewport.top, v.maxTop(viewport.Height)))
+	viewport.top = max(0, min(viewport.top, v.maxTop(viewport.Height)))
 	viewport.LeftColumn = max(
-		zero,
+		0,
 		min(viewport.LeftColumn, v.maxHorizontalOffset(viewport.Width)),
 	)
 	return viewport
 }
 
 func (v *diffView) hasStickyHeader(top int, viewportHeight int) bool {
-	return viewportHeight > one && top >= zero && top < len(v.rows) &&
+	return viewportHeight > 1 && top >= 0 && top < len(v.rows) &&
 		v.rows[top].kind != fileRow
 }
 
@@ -45,7 +45,7 @@ func (v *diffView) contentHeight(viewport diffViewport) int {
 	if v.hasStickyHeader(viewport.top, viewport.Height) {
 		height--
 	}
-	return max(one, height)
+	return max(1, height)
 }
 
 func (v *diffView) keepVisible(
@@ -64,7 +64,7 @@ func (v *diffView) keepVisible(
 			viewport.top = cursor.row
 		}
 		if cursor.row >= viewport.top+height {
-			viewport.top = cursor.row - height + one
+			viewport.top = cursor.row - height + 1
 		}
 		viewport = v.clampViewport(viewport)
 	}
@@ -76,12 +76,12 @@ func (v *diffView) align(
 	cursor diffCursor,
 	alignment verticalAlignment,
 ) diffViewport {
-	headerHeight := zero
-	if viewport.Height > one {
-		headerHeight = one
+	headerHeight := 0
+	if viewport.Height > 1 {
+		headerHeight = 1
 	}
 	offset := max(
-		zero,
+		0,
 		alignmentOffset(viewport.Height, alignment)-headerHeight,
 	)
 	viewport.top = cursor.row - offset
@@ -99,9 +99,9 @@ func alignmentOffset(height int, alignment verticalAlignment) int {
 		return height / halfPageDivisor
 	}
 	if alignment == bottom {
-		return height - one
+		return height - 1
 	}
-	return zero
+	return 0
 }
 
 func (v *diffView) scrollHorizontal(
@@ -146,7 +146,7 @@ func (v *diffView) scrollVertical(
 	}
 	target := max(
 		viewport.top,
-		min(cursor.row, viewport.top+v.contentHeight(viewport)-one),
+		min(cursor.row, viewport.top+v.contentHeight(viewport)-1),
 	)
 	d := forward
 	if cursor.row > target {
@@ -185,10 +185,10 @@ func (v *diffView) scrollHalfPage(
 	if !v.valid(cursor) {
 		return viewport, cursor
 	}
-	distance := int(direction) * max(one, viewport.Height/halfPageDivisor)
+	distance := int(direction) * max(1, viewport.Height/halfPageDivisor)
 	viewport.top += distance
 	viewport = v.clampViewport(viewport)
-	target := min(len(v.rows)-one, max(zero, cursor.row+distance))
+	target := min(len(v.rows)-1, max(0, cursor.row+distance))
 	candidate, ok := v.nearest(target, cursor.pane, direction, viewport)
 	if ok {
 		cursor = candidate
@@ -197,8 +197,8 @@ func (v *diffView) scrollHalfPage(
 }
 
 func (v *diffView) viewportProgress(viewport diffViewport) int {
-	if len(v.rows) == zero {
-		return zero
+	if len(v.rows) == 0 {
+		return 0
 	}
 	bottom := min(len(v.rows), viewport.top+v.contentHeight(viewport))
 	return bottom * percentageScale / len(v.rows)
@@ -214,7 +214,7 @@ func (v *diffView) nearest(
 	bool,
 ) {
 	height := v.contentHeight(viewport)
-	for distance := zero; distance < height; distance++ {
+	for distance := 0; distance < height; distance++ {
 		cursor, ok := v.viewportCursorAtDistance(
 			target,
 			pane,
@@ -239,13 +239,13 @@ func (v *diffView) rowInViewport(
 }
 
 func (v *diffView) maxHorizontalOffset(width int) int {
-	contentWidth := max(one, width-14)
-	extra := zero
+	contentWidth := max(1, width-14)
+	extra := 0
 	if v.split {
 		paneWidth := (width - paneDividerWidth) / int(paneCount)
-		contentWidth, extra = max(one, paneWidth-6), splitColorPadding
+		contentWidth, extra = max(1, paneWidth-6), splitColorPadding
 	}
-	longest := zero
+	longest := 0
 	for _, current := range v.rows {
 		if current.kind != lineRow {
 			continue
@@ -260,7 +260,7 @@ func (v *diffView) maxHorizontalOffset(width int) int {
 				extra,
 		)
 	}
-	return max(zero, longest-contentWidth)
+	return max(0, longest-contentWidth)
 }
 
 func (v *diffView) viewportCursorAtDistance(

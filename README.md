@@ -48,7 +48,20 @@ separately), and `make test` for race-enabled tests.
 
 `make revive` runs standalone [Revive](https://github.com/revive-lint/revive)
 v1.17.0 through `go run`, so no separate Revive installation is needed. The
-version is pinned in the Makefile and shared with CI. `revive.toml` enables all
-rules with their default settings and reports every confidence level.
-`-set_exit_status` makes findings fail local checks and CI. Fix findings without
-disabling rules, adding suppressions, or relaxing thresholds.
+version is pinned in the Makefile and shared with CI. `revive.toml` builds on
+Revive's default checks and confidence threshold, with explicit additional rules
+for readable control flow, naming, error handling, and suspicious operations.
+`-set_exit_status` makes findings fail local checks and CI.
+
+Rule arguments keep their upstream defaults, including cognitive complexity of
+7, cyclomatic complexity of 10, and function length of 50 statements / 75 lines.
+The only custom rule argument is a 400-line file limit, counting comments and
+blank lines. These limits apply to both production code and tests; split files
+by responsibility and keep related tests together.
+
+The configuration deliberately omits `add-constant`, comment-density quotas,
+and rigid line-length limits. Keep ordinary literals such as indexes and exit
+codes inline; name constants when their names explain domain meaning. Fix
+findings by improving the code rather than adding suppressions or increasing
+limits. When adding rules, favor checks that improve clarity or catch mistakes
+over mechanical rewrites.
