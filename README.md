@@ -40,3 +40,15 @@ brew install EskelinenAntti/cli/review-my-slop
 ```
 
 The project is licensed under the [MIT License](LICENSE).
+
+## Development
+
+Run `make check` for Revive, `go vet`, and Staticcheck (install Staticcheck
+separately), and `make test` for race-enabled tests.
+
+`make revive` runs standalone [Revive](https://github.com/revive-lint/revive)
+v1.17.0 through `go run`, so no separate Revive installation is needed. The
+version is pinned in the Makefile and shared with CI. `revive.toml` enables all
+rules with their default settings and reports every confidence level.
+`-set_exit_status` makes findings fail local checks and CI. Fix findings without
+disabling rules, adding suppressions, or relaxing thresholds.

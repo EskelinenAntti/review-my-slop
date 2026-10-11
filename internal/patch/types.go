@@ -4,9 +4,11 @@ package patch
 type Kind uint8
 
 const (
-	// Unstaged compares the index to the working tree and includes untracked files.
+	// Unstaged compares the index to the working tree and includes untracked
+	// files.
 	Unstaged Kind = iota
-	// Branch compares the default branch's merge base to the working tree and includes untracked files.
+	// Branch compares the default branch's merge base to the working tree and
+	// includes untracked files.
 	Branch
 )
 
@@ -19,6 +21,7 @@ type Patch struct {
 	Files  []File
 }
 
+// File contains one file's source, metadata and diff hunks.
 type File struct {
 	// Paths are repository-relative; empty means absent on that side.
 	OldPath     string
@@ -30,25 +33,16 @@ type File struct {
 	Hunks       []Hunk
 }
 
+// Hunk groups adjacent changes under a diff header.
 type Hunk struct {
 	Header string
 	Lines  []Line
 }
 
+// Line contains diff text and its old and new source positions.
 type Line struct {
 	Kind      LineKind
 	Text      string
 	OldNumber LineNumber
 	NewNumber LineNumber
 }
-
-// LineNumber is one-based; zero means absent on that side.
-type LineNumber int
-
-type LineKind uint8
-
-const (
-	Context LineKind = iota
-	Addition
-	Deletion
-)

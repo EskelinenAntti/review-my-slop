@@ -8,85 +8,249 @@ import (
 )
 
 func TestSplitRowsPairOnlyAdjacentChangeBlocks(t *testing.T) {
-	code := func(kind patch.LineKind, text string) patch.Line {
-		return patch.Line{Kind: kind, Text: text}
-	}
-	d1, d2 := code(patch.Deletion, "old-a"), code(patch.Deletion, "old-b")
-	a1, a2 := code(patch.Addition, "new-a"), code(patch.Addition, "new-b")
-	context := code(patch.Context, "unchanged")
-	for _, tc := range []struct {
-		name  string
-		lines []patch.Line
-		want  [][2]string
-	}{
-		{"additions", []patch.Line{a1, a2}, [][2]string{{"", "new-a"}, {"", "new-b"}}},
-		{"deletions", []patch.Line{d1, d2}, [][2]string{{"old-a", ""}, {"old-b", ""}}},
-		{"more deletions", []patch.Line{d1, d2, a1}, [][2]string{{"old-a", "new-a"}, {"old-b", ""}}},
-		{"more additions", []patch.Line{d1, a1, a2}, [][2]string{{"old-a", "new-a"}, {"", "new-b"}}},
-		{"context separates blocks", []patch.Line{d1, context, a1}, [][2]string{{"old-a", ""}, {"unchanged", "unchanged"}, {"", "new-a"}}},
-		{"addition before deletion", []patch.Line{a1, d1, a2}, [][2]string{{"", "new-a"}, {"old-a", "new-b"}}},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			p := patch.Patch{Files: []patch.File{{DisplayPath: "file.go", Hunks: []patch.Hunk{{Header: "@@", Lines: tc.lines}}}}}
-			v := newSideBySideView(p, true)
-			var got [][2]string
-			for row, entry := range v.rows {
-				if entry.kind != lineRow {
-					continue
+	for _, tc := range pairingCases() {
+		t.Run(
+			tc.name,
+			func(t *testing.T) {
+				p := patch.Patch{
+					Files: []patch.File{
+						{
+							DisplayPath: "file.go",
+							Hunks: []patch.Hunk{
+								{Header: "@@", Lines: tc.lines},
+							},
+						},
+					},
 				}
-				var texts [2]string
-				for _, pane := range []diffPane{left, right} {
-					if cursor, ok := v.cursorAt(row, pane); ok {
-						line, _ := v.line(cursor)
-						texts[pane] = line.Text
-					}
-				}
-				got = append(got, texts)
-			}
-			if !slices.Equal(got, tc.want) {
-				t.Fatalf("paired source lines=%v, want %v", got, tc.want)
-			}
-		})
+				v := newSideBySideView(p, true)
+				got := pairedTexts(v)
+				requireEqual(
+					t,
+					slices.Equal(got, tc.want), true,
+					"paired source lines=%v, want %v",
+					got,
+					tc.want,
+				)
+			},
+		)
 	}
 }
 
 func TestCursorRestorationPrioritizesIdentityBeforeDistance(t *testing.T) {
-	code := func(kind patch.LineKind, text string, number patch.LineNumber) patch.Line {
+	code := func(
+		kind patch.LineKind,
+		text string,
+		number patch.LineNumber,
+	) patch.Line {
 		return patch.Line{Kind: kind, Text: text, NewNumber: number}
 	}
-	context := code(patch.Context, "unchanged", 1)
-	target := code(patch.Addition, "target", 10)
-	makePatch := func(lines []patch.Line) patch.Patch {
-		return patch.Patch{Files: []patch.File{{OldPath: "file.go", NewPath: "file.go", Hunks: []patch.Hunk{{Header: "@@", Lines: lines}}}}}
-	}
-	old := newUnifiedView(makePatch([]patch.Line{context, target}), true)
+	context := code(patch.Context, fixtureUnchanged, one)
+	target := code(patch.Addition, fixtureTarget, ten)
+
+	old := newUnifiedView(linePatch([]patch.Line{context, target}), true)
 	cursor, _ := old.last()
 	identity := identify(old, cursor)
-	for _, tc := range []struct {
-		name  string
-		lines []patch.Line
-		want  patch.Line
-	}{
-		{"numbers before text", []patch.Line{code(patch.Addition, "target", 20), code(patch.Addition, "changed text", 10)}, code(patch.Addition, "changed text", 10)},
-		{"text before distance", []patch.Line{code(patch.Addition, "target", 20), code(patch.Addition, "different", 21)}, code(patch.Addition, "target", 20)},
-		{"source distance before kind", []patch.Line{code(patch.Addition, "different", 20), context}, context},
-		{"nearest matching text by source position", []patch.Line{code(patch.Addition, "target", 20), code(patch.Addition, "target", 21)}, code(patch.Addition, "target", 20)},
-		{"equidistant matching text", []patch.Line{code(patch.Addition, "target", 8), context, code(patch.Addition, "target", 12)}, code(patch.Addition, "target", 8)},
-		{"nearest remaining line", []patch.Line{context, code(patch.Context, "nearby", 2)}, code(patch.Context, "nearby", 2)},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			for _, header := range []string{"@@", "@@ -10,2 +10,3 @@"} {
-				t.Run(header, func(t *testing.T) {
-					p := makePatch(tc.lines)
-					p.Files[0].Hunks[0].Header = header
-					next := newUnifiedView(p, true)
-					restored, ok := next.findCursor(identity)
-					line, _ := next.line(restored)
-					if !ok || line != tc.want {
-						t.Fatalf("restored=%#v, want %#v", line, tc.want)
-					}
-				})
-			}
-		})
+	for _, tc := range restorationCases(context) {
+		t.Run(
+			tc.name,
+			func(t *testing.T) {
+				assertRestoredCursor(t, tc, identity)
+			},
+		)
+	}
+}
+
+type pairingCase struct {
+	name  string
+	lines []patch.Line
+	want  [][two]string
+}
+
+func pairingCases() []pairingCase {
+	code := func(kind patch.LineKind, text string) patch.Line {
+		return patch.Line{Kind: kind, Text: text}
+	}
+	d1, d2 := code(patch.Deletion, fixtureOldA), code(
+		patch.Deletion,
+		fixtureOldB,
+	)
+	a1, a2 := code(patch.Addition, fixtureNewA), code(
+		patch.Addition,
+		fixtureNewB,
+	)
+	context := code(patch.Context, fixtureUnchanged)
+
+	return []pairingCase{
+		{
+			"additions",
+			[]patch.Line{a1, a2},
+			[][two]string{{"", fixtureNewA}, {"", fixtureNewB}},
+		},
+
+		{
+			"deletions",
+			[]patch.Line{d1, d2},
+			[][two]string{{fixtureOldA, ""}, {fixtureOldB, ""}},
+		},
+
+		{
+			"more deletions",
+			[]patch.Line{d1, d2, a1},
+			[][two]string{{fixtureOldA, fixtureNewA}, {fixtureOldB, ""}},
+		},
+
+		{
+			"more additions",
+			[]patch.Line{d1, a1, a2},
+			[][two]string{{fixtureOldA, fixtureNewA}, {"", fixtureNewB}},
+		},
+
+		{
+			"context separates blocks",
+			[]patch.Line{d1, context, a1},
+			[][two]string{
+				{fixtureOldA, ""},
+				{fixtureUnchanged, fixtureUnchanged},
+				{"", fixtureNewA},
+			},
+		},
+
+		{
+			"addition before deletion",
+			[]patch.Line{a1, d1, a2},
+			[][two]string{{"", fixtureNewA}, {fixtureOldA, fixtureNewB}},
+		},
+	}
+}
+
+func pairedTexts(v *diffView) [][two]string {
+	var got [][two]string
+	for row, entry := range v.rows {
+		if entry.kind != lineRow {
+			continue
+		}
+		var texts [two]string
+		for _, pane := range []diffPane{left, right} {
+			texts[pane] = paneText(v, row, pane)
+		}
+		got = append(got, texts)
+	}
+	return got
+}
+
+func paneText(v *diffView, row int, pane diffPane) string {
+	if cursor, ok := v.cursorAt(row, pane); ok {
+		line, _ := v.line(cursor)
+		return line.Text
+	}
+	return ""
+}
+
+type restorationCase struct {
+	name  string
+	lines []patch.Line
+	want  patch.Line
+}
+
+func restorationCases(context patch.Line) []restorationCase {
+	code := numberedLine
+	return []restorationCase{
+		{
+			"numbers before text",
+			[]patch.Line{
+				code(patch.Addition, fixtureTarget, minimumWidth),
+				code(patch.Addition, "changed text", ten),
+			},
+			code(patch.Addition, "changed text", ten),
+		},
+
+		{
+			"text before distance",
+			[]patch.Line{
+				code(patch.Addition, fixtureTarget, minimumWidth),
+				code(patch.Addition, "different", fixtureNumber21),
+			},
+			code(patch.Addition, fixtureTarget, minimumWidth),
+		},
+
+		{
+			"source distance before kind",
+			[]patch.Line{
+				code(patch.Addition, "different", minimumWidth),
+				context,
+			},
+			context,
+		},
+
+		{
+			"nearest matching text by source position",
+			[]patch.Line{
+				code(patch.Addition, fixtureTarget, minimumWidth),
+				code(patch.Addition, fixtureTarget, fixtureNumber21),
+			},
+			code(patch.Addition, fixtureTarget, minimumWidth),
+		},
+
+		{
+			"equidistant matching text",
+			[]patch.Line{
+				code(patch.Addition, fixtureTarget, eight),
+				context,
+				code(patch.Addition, fixtureTarget, fixtureNumber12),
+			},
+			code(patch.Addition, fixtureTarget, eight),
+		},
+
+		{
+			"nearest remaining line",
+			[]patch.Line{context, code(patch.Context, "nearby", two)},
+			code(patch.Context, "nearby", two),
+		},
+	}
+}
+
+func numberedLine(
+	kind patch.LineKind,
+	text string,
+	number patch.LineNumber,
+) patch.Line {
+	return patch.Line{Kind: kind, Text: text, NewNumber: number}
+}
+
+func assertRestoredCursor(
+	t *testing.T,
+	tc restorationCase,
+	identity cursorIdentity,
+) {
+	for _, header := range []string{"@@", "@@ -10,2 +10,3 @@"} {
+		t.Run(
+			header,
+			func(t *testing.T) {
+				p := linePatch(tc.lines)
+				p.Files[0].Hunks[0].Header = header
+				next := newUnifiedView(p, true)
+				restored, ok := next.findCursor(identity)
+				line, _ := next.line(restored)
+				requireEqual(
+					t,
+					ok && line == tc.want, true,
+					"restored=%#v, want %#v",
+					line,
+					tc.want,
+				)
+			},
+		)
+	}
+}
+
+func linePatch(lines []patch.Line) patch.Patch {
+	return patch.Patch{
+		Files: []patch.File{
+			{
+				OldPath: "file.go",
+				NewPath: "file.go",
+				Hunks:   []patch.Hunk{{Header: "@@", Lines: lines}},
+			},
+		},
 	}
 }

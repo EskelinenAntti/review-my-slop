@@ -12,71 +12,92 @@ import (
 )
 
 func TestStoreQueuesByRepositoryAndDeletesExactPeek(t *testing.T) {
-	store := Store{Path: filepath.Join(t.TempDir(), "state", "comments.db")}
-	first := testComment("/repo/a", "first")
+	store := Store{
+		Path: filepath.Join(t.TempDir(), "state", fixtureCommentsDb),
+	}
+	first := testComment(fixtureRepoA, fixtureFirst)
 	second := testComment("/repo/b", "other")
-	third := testComment("/repo/a", "third")
+	third := testComment(fixtureRepoA, "third")
 	for _, comment := range []Comment{first, second, third} {
-		if _, err := store.Add(comment); err != nil {
-			t.Fatal(err)
+		{
+			_, err := store.Add(comment)
+			requireEqual(t, err == nil, true, fixtureV, err)
 		}
 	}
 
-	comments, err := store.List("/repo/a")
-	if err != nil {
-		t.Fatal(err)
+	comments, err := store.List(fixtureRepoA)
+	requireEqual(t, err == nil, true, fixtureV, err)
+	requireEqual(
+		t,
+		len(comments) == two && comments[zero].Body == fixtureFirst &&
+			comments[one].Body == "third",
+		true,
+		"unexpected comments: %#v",
+		comments,
+	)
+
+	{
+		_, err := store.Add(testComment(fixtureRepoA, "newer"))
+		requireEqual(t, err == nil, true, fixtureV, err)
 	}
-	if len(comments) != 2 || comments[0].Body != "first" || comments[1].Body != "third" {
-		t.Fatalf("unexpected comments: %#v", comments)
+	{
+		err := store.Acknowledge(
+			fixtureRepoA,
+			[]string{comments[zero].ID, comments[one].ID},
+		)
+		requireEqual(t, err == nil, true, fixtureV, err)
 	}
 
-	if _, err := store.Add(testComment("/repo/a", "newer")); err != nil {
-		t.Fatal(err)
-	}
-	if err := store.Acknowledge("/repo/a", []string{comments[0].ID, comments[1].ID}); err != nil {
-		t.Fatal(err)
-	}
-
-	remainingA, err := store.List("/repo/a")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(remainingA) != 1 || remainingA[0].Body != "newer" {
-		t.Fatalf("newer comment was not preserved: %#v", remainingA)
-	}
+	remainingA, err := store.List(fixtureRepoA)
+	requireEqual(t, err == nil, true, fixtureV, err)
+	requireEqual(
+		t,
+		len(remainingA) == one && remainingA[zero].Body == "newer", true,
+		"newer comment was not preserved: %#v",
+		remainingA,
+	)
 	remainingB, err := store.List("/repo/b")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(remainingB) != 1 {
-		t.Fatalf("other repository comments = %d, want 1", len(remainingB))
-	}
+	requireEqual(t, err == nil, true, fixtureV, err)
+	requireEqual(
+		t,
+		len(remainingB), one,
+		"other repository comments = %d, want 1",
+		len(remainingB),
+	)
 
 	dirInfo, err := os.Stat(filepath.Dir(store.Path))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if dirInfo.Mode().Perm() != 0o700 {
-		t.Fatalf("directory mode = %o, want 700", dirInfo.Mode().Perm())
-	}
+	requireEqual(t, err == nil, true, fixtureV, err)
+	requireEqual(
+		t,
+		dirInfo.Mode().Perm(), privateDirMode,
+		"directory mode = %o, want 700",
+		dirInfo.Mode().Perm(),
+	)
 	dbInfo, err := os.Stat(store.Path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if dbInfo.Mode().Perm() != 0o600 {
-		t.Fatalf("database mode = %o, want 600", dbInfo.Mode().Perm())
-	}
+	requireEqual(t, err == nil, true, fixtureV, err)
+	requireEqual(
+		t,
+		dbInfo.Mode().Perm(), privateFileMode,
+		"database mode = %o, want 600",
+		dbInfo.Mode().Perm(),
+	)
 }
 
 func TestWritePrompt(t *testing.T) {
 	var out bytes.Buffer
-	comment := testComment("/repo", "Handle the nil case.")
+	comment := testComment(fixtureRepository, "Handle the nil case.")
 	comment.Anchor = Anchor{
-		FilePath: "main.go", OldStart: 10, OldEnd: 11, NewStart: 12, NewEnd: 13,
+		FilePath: "main.go",
+		OldStart: ten,
+		OldEnd:   fixtureNumber11,
+		NewStart: fixtureNumber12,
+		NewEnd:   fixtureNumber13,
+
 		QuotedLines: []string{"-old()", "+new()"},
 	}
-	if err := WritePrompt(&out, []Comment{comment}); err != nil {
-		t.Fatal(err)
+	{
+		err := WritePrompt(&out, []Comment{comment})
+		requireEqual(t, err == nil, true, fixtureV, err)
 	}
 	for _, expected := range []string{
 		"New comments since last run:",
@@ -86,143 +107,193 @@ func TestWritePrompt(t *testing.T) {
 		"```diff",
 		"Handle the nil case.",
 	} {
-		if !strings.Contains(out.String(), expected) {
-			t.Fatalf("output lacks %q:\n%s", expected, out.String())
-		}
+		requireEqual(
+			t,
+			strings.Contains(out.String(), expected), true,
+			"output lacks %q:\n%s",
+			expected,
+			out.String(),
+		)
 	}
-	if strings.Contains(out.String(), "batch") {
-		t.Fatalf("output exposes internal batches:\n%s", out.String())
-	}
+	requireEqual(
+		t,
+		!strings.Contains(out.String(), "batch"), true,
+		"output exposes internal batches:\n%s",
+		out.String(),
+	)
 }
 
 func TestWritePromptNumbersMessages(t *testing.T) {
 	var out bytes.Buffer
-	if err := WritePrompt(&out, []Comment{
-		testComment("/repo", "First."),
-		testComment("/repo", "Second."),
-	}); err != nil {
-		t.Fatal(err)
+	{
+		err := WritePrompt(&out, []Comment{
+			testComment(fixtureRepository, "First."),
+			testComment(fixtureRepository, "Second."),
+		})
+		requireEqual(t, err == nil, true, fixtureV, err)
 	}
 	for _, expected := range []string{"### 1.", "### 2."} {
-		if !strings.Contains(out.String(), expected) {
-			t.Fatalf("output lacks %q:\n%s", expected, out.String())
-		}
+		requireEqual(
+			t,
+			strings.Contains(out.String(), expected), true,
+			"output lacks %q:\n%s",
+			expected,
+			out.String(),
+		)
 	}
 }
 
 func TestStoreRejectsEmptyAndOversizedComments(t *testing.T) {
-	store := Store{Path: filepath.Join(t.TempDir(), "comments.db")}
-	empty := testComment("/repo", "")
-	if _, err := store.Add(empty); err == nil {
-		t.Fatal("empty comment was accepted")
+	store := Store{Path: filepath.Join(t.TempDir(), fixtureCommentsDb)}
+	empty := testComment(fixtureRepository, "")
+	{
+		_, err := store.Add(empty)
+		requireEqual(
+			t,
+			err != nil,
+			true,
+			fixtureV,
+			"empty comment was accepted",
+		)
 	}
-	large := testComment("/repo", strings.Repeat("x", maxCommentBytes+1))
-	if _, err := store.Add(large); err == nil {
-		t.Fatal("oversized comment was accepted")
+	large := testComment(
+		fixtureRepository,
+		strings.Repeat("x", maxCommentBytes+one),
+	)
+	{
+		_, err := store.Add(large)
+		requireEqual(
+			t,
+			err != nil,
+			true,
+			fixtureV,
+			"oversized comment was accepted",
+		)
 	}
 }
 
 func TestListAndUpdateComments(t *testing.T) {
-	store := Store{Path: filepath.Join(t.TempDir(), "comments.db")}
-	if _, err := store.Add(testComment("/repo", "first")); err != nil {
-		t.Fatal(err)
+	store := Store{Path: filepath.Join(t.TempDir(), fixtureCommentsDb)}
+	{
+		_, err := store.Add(testComment(fixtureRepository, fixtureFirst))
+		requireEqual(t, err == nil, true, fixtureV, err)
 	}
-	second := testComment("/repo", "second")
-	second.Anchor = Anchor{FilePath: "other.go", NewStart: 2, NewEnd: 2}
-	if _, err := store.Add(second); err != nil {
-		t.Fatal(err)
-	}
-
-	comments, err := store.List("/repo")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(comments) != 2 || comments[1].Body != "second" {
-		t.Fatalf("comments = %#v", comments)
-	}
-	comments[1].Body = "edited"
-	if err := store.Update(comments[1]); err != nil {
-		t.Fatal(err)
+	second := testComment(fixtureRepository, "second")
+	second.Anchor = Anchor{FilePath: "other.go", NewStart: two, NewEnd: two}
+	{
+		_, err := store.Add(second)
+		requireEqual(t, err == nil, true, fixtureV, err)
 	}
 
-	updated, err := store.List("/repo")
-	if err != nil {
-		t.Fatal(err)
+	comments, err := store.List(fixtureRepository)
+	requireEqual(t, err == nil, true, fixtureV, err)
+	requireEqual(
+		t,
+		len(comments) == two && comments[one].Body == "second", true,
+		"comments = %#v",
+		comments,
+	)
+	comments[one].Body = "edited"
+	{
+		err := store.Update(comments[one])
+		requireEqual(t, err == nil, true, fixtureV, err)
 	}
-	if got := updated[1].Body; got != "edited" {
-		t.Fatalf("body = %q, want edited", got)
+
+	updated, err := store.List(fixtureRepository)
+	requireEqual(t, err == nil, true, fixtureV, err)
+	{
+		got := updated[one].Body
+		requireEqual(t, got, "edited", "body = %q, want edited", got)
 	}
 }
 
 func TestDeleteCommentRemovesMessage(t *testing.T) {
-	store := Store{Path: filepath.Join(t.TempDir(), "comments.db")}
-	if _, err := store.Add(testComment("/repo", "first")); err != nil {
-		t.Fatal(err)
+	store := Store{Path: filepath.Join(t.TempDir(), fixtureCommentsDb)}
+	{
+		_, err := store.Add(testComment(fixtureRepository, fixtureFirst))
+		requireEqual(t, err == nil, true, fixtureV, err)
 	}
-	if _, err := store.Add(testComment("/repo", "second")); err != nil {
-		t.Fatal(err)
+	{
+		_, err := store.Add(testComment(fixtureRepository, "second"))
+		requireEqual(t, err == nil, true, fixtureV, err)
 	}
-	comments, err := store.List("/repo")
-	if err != nil {
-		t.Fatal(err)
+	comments, err := store.List(fixtureRepository)
+	requireEqual(t, err == nil, true, fixtureV, err)
+	{
+		err := store.Delete(fixtureRepository, comments[zero].ID)
+		requireEqual(t, err == nil, true, fixtureV, err)
 	}
-	if err := store.Delete("/repo", comments[0].ID); err != nil {
-		t.Fatal(err)
+	remaining, err := store.List(fixtureRepository)
+	requireEqual(t, err == nil, true, fixtureV, err)
+	requireEqual(
+		t,
+		len(remaining) == one && remaining[zero].Body == "second", true,
+		"remaining = %#v",
+		remaining,
+	)
+	{
+		err := store.Delete(fixtureRepository, remaining[zero].ID)
+		requireEqual(t, err == nil, true, fixtureV, err)
 	}
-	remaining, err := store.List("/repo")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(remaining) != 1 || remaining[0].Body != "second" {
-		t.Fatalf("remaining = %#v", remaining)
-	}
-	if err := store.Delete("/repo", remaining[0].ID); err != nil {
-		t.Fatal(err)
-	}
-	remaining, err = store.List("/repo")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(remaining) != 0 {
-		t.Fatalf("remaining = %#v, want empty", remaining)
-	}
+	remaining, err = store.List(fixtureRepository)
+	requireEqual(t, err == nil, true, fixtureV, err)
+	requireEqual(
+		t,
+		len(remaining), zero,
+		"remaining = %#v, want empty",
+		remaining,
+	)
 }
 
 func TestLegacyMessageCanBeReadAndUpdated(t *testing.T) {
-	store := Store{Path: filepath.Join(t.TempDir(), "comments.db")}
-	legacy := []byte(`{"id":"legacy","repository":"/repo","created_at":"1970-01-01T00:00:01Z","diff_fingerprint":"unused","comment":{"anchor":{"file":"main.go","hunk":"@@","start_row":1,"end_row":2,"new_start":3,"quoted_lines":["+line"]},"body":"old"}}`)
-	if err := store.update(func(bucket *bolt.Bucket) error {
-		return bucket.Put([]byte{0, 0, 0, 1}, legacy)
-	}); err != nil {
-		t.Fatal(err)
+	store := Store{Path: filepath.Join(t.TempDir(), fixtureCommentsDb)}
+	legacy := []byte(
+		"{\"id\":\"legacy\",\"repository\":\"/repo\",\"cre" +
+			"ated_at\":\"1970-01-01T00:00:01Z\",\"diff_fi" +
+			"ngerprint\":\"unused\",\"comment\":{\"anchor\":" +
+			"{\"file\":\"main.go\",\"hunk\":\"@@\",\"start_row" +
+			"\":1,\"end_row\":2,\"new_start\":3,\"quoted_li" +
+			"nes\":[\"+line\"]},\"body\":\"old\"}}",
+	)
+	{
+		err := store.writeComments(func(bucket *bolt.Bucket) error {
+			return bucket.Put([]byte{zero, zero, zero, one}, legacy)
+		})
+		requireEqual(t, err == nil, true, fixtureV, err)
 	}
 
-	comments, err := store.List("/repo")
-	if err != nil {
-		t.Fatal(err)
+	comments, err := store.List(fixtureRepository)
+	requireEqual(t, err == nil, true, fixtureV, err)
+	requireEqual(
+		t,
+		len(comments) == one && comments[zero].ID == "legacy" &&
+			comments[zero].Body == "old" &&
+			comments[zero].Anchor.NewStart == 3,
+		true,
+		"legacy comment = %#v",
+		comments,
+	)
+	comments[zero].Body = "updated"
+	{
+		err := store.Update(comments[zero])
+		requireEqual(t, err == nil, true, fixtureV, err)
 	}
-	if len(comments) != 1 || comments[0].ID != "legacy" || comments[0].Body != "old" || comments[0].Anchor.NewStart != 3 {
-		t.Fatalf("legacy comment = %#v", comments)
-	}
-	comments[0].Body = "updated"
-	if err := store.Update(comments[0]); err != nil {
-		t.Fatal(err)
-	}
-	updated, err := store.List("/repo")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(updated) != 1 || updated[0].Body != "updated" {
-		t.Fatalf("updated comments = %#v", updated)
-	}
+	updated, err := store.List(fixtureRepository)
+	requireEqual(t, err == nil, true, fixtureV, err)
+	requireEqual(
+		t,
+		len(updated) == one && updated[zero].Body == "updated", true,
+		"updated comments = %#v",
+		updated,
+	)
 }
 
 func testComment(repository, body string) Comment {
 	return Comment{
 		ID:         body,
 		Repository: repository,
-		CreatedAt:  time.Unix(1, 0).UTC(),
-		Anchor:     Anchor{FilePath: "file.go", NewStart: 1, NewEnd: 1},
+		CreatedAt:  time.Unix(one, zero).UTC(),
+		Anchor:     Anchor{FilePath: "file.go", NewStart: one, NewEnd: one},
 		Body:       body,
 	}
 }

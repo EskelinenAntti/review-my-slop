@@ -24,6 +24,8 @@ jobs:
           cache: true
       - run: go test -race ./...
       - run: go vet ./...
+      - name: Revive
+        run: make revive
       - run: go build ./cmd/review-my-slop
 
   release:

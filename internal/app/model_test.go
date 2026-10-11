@@ -1,6 +1,7 @@
 package app
 
 import (
+	"errors"
 	"fmt"
 	"path/filepath"
 	"slices"
@@ -9,53 +10,83 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
-
 	"github.com/eskelinenantti/review-my-slop/internal/comments"
 	"github.com/eskelinenantti/review-my-slop/internal/patch"
 	"github.com/eskelinenantti/review-my-slop/internal/ui/diffscreen"
 )
 
-func testModel(p patch.Patch, comments []comments.Comment, save saveCommentFunc) model {
-	return newModel(p, comments, save, initialLayout{size: size{Width: 100, Height: 30}})
+func testModel(
+	p patch.Patch,
+	items []comments.Comment,
+	save saveCommentFunc,
+) model {
+	return newModel(
+		p,
+		items,
+		save,
+		initialLayout{size: size{Width: 100, Height: 30}},
+	)
 }
 
 func TestStoreBackedCommentLifecycle(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	store := comments.Store{Path: filepath.Join(t.TempDir(), "comments.db")}
 	m, err := newWithStore(store, modelPatch(), nil, defaultSize)
-	if err != nil {
-		t.Fatal(err)
+	requireEqual(t, err == nil, true, valueFormat, err)
+	anchor := comments.Anchor{
+		FilePath:    fixtureMainGo,
+		NewStart:    two,
+		QuotedLines: []string{"+new()"},
 	}
-	anchor := comments.Anchor{FilePath: "main.go", NewStart: 2, QuotedLines: []string{"+new()"}}
 	m.edit.body = "check this"
 	m.edit.anchor = anchor
 	m.finishCommentEdit()
-	if m.err != nil {
-		t.Fatal(m.err)
-	}
+	requireEqual(t, m.err == nil, true, valueFormat, m.err)
 	loaded, err := m.load()
-	if err != nil || len(loaded) != 1 || loaded[0].Repository != "/repo" || loaded[0].ID == "" || !slices.Equal(loaded[0].Anchor.QuotedLines, anchor.QuotedLines) {
-		t.Fatalf("loaded = %#v, error = %v", loaded, err)
-	}
-	id := loaded[0].ID
-	m.edit.index = 0
+	requireEqual(
+
+		t,
+
+		err == nil && len(loaded) == one &&
+			loaded[zero].Repository == "/repo" &&
+
+			loaded[zero].ID != "" &&
+
+			slices.Equal(loaded[zero].Anchor.QuotedLines, anchor.QuotedLines),
+
+		true,
+
+		"loaded = %#v, error = %v",
+
+		loaded,
+
+		err,
+	)
+	id := loaded[zero].ID
+	m.edit.index = zero
 	m.edit.body = "edited"
 	m.finishCommentEdit()
-	if m.err != nil {
-		t.Fatal(m.err)
-	}
+	requireEqual(t, m.err == nil, true, valueFormat, m.err)
 	loaded, err = m.load()
-	if err != nil || len(loaded) != 1 || loaded[0].ID != id || loaded[0].Body != "edited" {
-		t.Fatalf("edited = %#v, error = %v", loaded, err)
-	}
-	m.deleteComment(0)
-	if m.err != nil {
-		t.Fatal(m.err)
-	}
+	requireEqual(
+		t,
+		err == nil && len(loaded) == one && loaded[zero].ID == id &&
+			loaded[zero].Body == "edited",
+		true,
+		"edited = %#v, error = %v",
+		loaded,
+		err,
+	)
+	m.deleteComment(zero)
+	requireEqual(t, m.err == nil, true, valueFormat, m.err)
 	loaded, err = m.load()
-	if err != nil || len(loaded) != 0 {
-		t.Fatalf("remaining = %#v, error = %v", loaded, err)
-	}
+	requireEqual(
+		t,
+		err == nil && len(loaded) == zero, true,
+		"remaining = %#v, error = %v",
+		loaded,
+		err,
+	)
 }
 
 func TestNewUsesSavedSideBySideForWideInitialSize(t *testing.T) {
@@ -63,24 +94,39 @@ func TestNewUsesSavedSideBySideForWideInitialSize(t *testing.T) {
 		SideBySide: true,
 		size:       size{Width: 120, Height: 30},
 	})
-	if !m.diffOptions.SideBySide || !strings.Contains(m.render(), "│") {
-		t.Fatalf("sideBySide=%v render=%q", m.diffOptions.SideBySide, m.render())
-	}
+	requireEqual(
+		t,
+		m.diffOptions.SideBySide && strings.Contains(m.render(), "│"),
+		true,
+		fixtureSideBySideVRenderQ,
+		m.diffOptions.SideBySide,
+		m.render(),
+	)
 }
 
 func TestNewKeepsSavedSideBySideInactiveForNarrowInitialSize(t *testing.T) {
 	m := newModel(modelPatch(), nil, nil, initialLayout{
 		SideBySide: true,
-		size:       size{Width: 80, Height: 30},
+		size:       size{Width: defaultWidth, Height: 30},
 	})
-	if !m.diffOptions.SideBySide || strings.Contains(m.render(), "│") {
-		t.Fatalf("sideBySide=%v render=%q", m.diffOptions.SideBySide, m.render())
-	}
+	requireEqual(
+		t,
+		m.diffOptions.SideBySide && !strings.Contains(m.render(), "│"),
+		true,
+		fixtureSideBySideVRenderQ,
+		m.diffOptions.SideBySide,
+		m.render(),
+	)
 
 	m = updateModel(t, m, tea.WindowSizeMsg{Width: 120, Height: 30})
-	if !m.diffOptions.SideBySide || !strings.Contains(m.render(), "│") {
-		t.Fatalf("sideBySide=%v render=%q", m.diffOptions.SideBySide, m.render())
-	}
+	requireEqual(
+		t,
+		m.diffOptions.SideBySide && strings.Contains(m.render(), "│"),
+		true,
+		fixtureSideBySideVRenderQ,
+		m.diffOptions.SideBySide,
+		m.render(),
+	)
 }
 
 func TestSideBySideToggleStillSavesPreference(t *testing.T) {
@@ -93,11 +139,14 @@ func TestSideBySideToggleStillSavesPreference(t *testing.T) {
 		size: size{Width: 120, Height: 30},
 	})
 
-	m = updateModel(t, m, textKey("t"))
-	updateModel(t, m, textKey("t"))
-	if !slices.Equal(saved, []bool{true, false}) {
-		t.Fatalf("saved=%v", saved)
-	}
+	m = updateModel(t, m, textKey(fixtureT))
+	updateModel(t, m, textKey(fixtureT))
+	requireEqual(
+		t,
+		slices.Equal(saved, []bool{true, false}), true,
+		"saved=%v",
+		saved,
+	)
 }
 
 func TestRefreshTranslatesCursorAndSelection(t *testing.T) {
@@ -107,46 +156,68 @@ func TestRefreshTranslatesCursorAndSelection(t *testing.T) {
 	m.diffView.Move(diffscreen.NextLine)
 	_, want, _ := m.diffView.Current()
 	refreshed := modelPatch()
-	refreshed.Files[0].Metadata = []string{"new metadata"}
+	refreshed.Files[zero].Metadata = []string{"new metadata"}
 	m.updatePatch(refreshed)
 	_, got, ok := m.diffView.Current()
-	if !ok || got != want {
-		t.Fatalf("focused line=%#v, want %#v", got, want)
-	}
+	requireEqual(
+		t,
+		ok && got == want, true,
+		"focused line=%#v, want %#v",
+		got,
+		want,
+	)
 	_, lines, ok := m.diffView.Selected()
-	if !ok || len(lines) != 2 {
-		t.Fatalf("selection=%#v", lines)
-	}
+	requireEqual(t, ok && len(lines) == two, true, "selection=%#v", lines)
 }
 
 func TestUnchangedRefreshPreservesStateAndClearsError(t *testing.T) {
 	p := longModelPatch()
-	p.Files[0].OldPath, p.Files[0].NewPath = "long.go", "long.go"
-	m := newModel(p, nil, nil, initialLayout{size: size{Width: 40, Height: 8}})
-	for range 8 {
+	p.Files[zero].OldPath, p.Files[zero].NewPath = "long.go", "long.go"
+	m := newModel(
+		p,
+		nil,
+		nil,
+		initialLayout{size: size{Width: 40, Height: eight}},
+	)
+	for range eight {
 		m.diffView.Move(diffscreen.NextLine)
 	}
 	m.diffView.ToggleSelection()
 	m.diffView.Move(diffscreen.NextLine)
-	m.diffView.ScrollHorizontal(12)
+	m.diffView.ScrollHorizontal(fixtureNumber12)
 	before := m.diffView.Render(nil)
-	m.err = fmt.Errorf("previous refresh failed")
+	m.err = errors.New("previous refresh failed")
 	m = updateModel(t, m, refreshDiffMsg{patch: p})
-	if got := m.diffView.Render(nil); got != before {
-		t.Fatal("refresh changed presentation state")
+	{
+		got := m.diffView.Render(nil)
+		requireEqual(
+			t,
+			got, before,
+			valueFormat,
+			"refresh changed presentation state",
+		)
 	}
-	if m.err != nil {
-		t.Fatalf("refresh did not clear error: %v", m.err)
-	}
+	requireEqual(
+		t,
+		m.err == nil, true,
+		"refresh did not clear error: %v",
+		m.err,
+	)
 }
 
 func TestRefreshFailureRetainsView(t *testing.T) {
 	m := testModel(modelPatch(), nil, nil)
 	before := m.diffView.Render(nil)
-	m = updateModel(t, m, refreshDiffMsg{err: fmt.Errorf("git failed")})
-	if m.err == nil || m.diffView.Render(nil) != before || m.currentPatch.Root != "/repo" {
-		t.Fatalf("patch=%#v error=%v", m.currentPatch, m.err)
-	}
+	m = updateModel(t, m, refreshDiffMsg{err: errors.New("git failed")})
+	requireEqual(
+		t,
+		m.currentPatch.Root == "/repo" &&
+			(m.err != nil && m.diffView.Render(nil) == before),
+		true,
+		"patch=%#v error=%v",
+		m.currentPatch,
+		m.err,
+	)
 }
 
 func TestViewSwitchPreservesSemanticCursor(t *testing.T) {
@@ -157,60 +228,122 @@ func TestViewSwitchPreservesSemanticCursor(t *testing.T) {
 	_, want, _ := m.diffView.Current()
 	m.setSideBySide(true)
 	_, got, ok := m.diffView.Current()
-	if !ok || got != want {
-		t.Fatalf("focused line=%#v, want %#v", got, want)
-	}
+	requireEqual(
+		t,
+		ok && got == want, true,
+		"focused line=%#v, want %#v",
+		got,
+		want,
+	)
 }
 
 func TestCommentSaveUsesPatchAndPreservesAnchor(t *testing.T) {
 	var savedPatch patch.Patch
-	m := testModel(modelPatch(), nil, func(stored comments.Comment, p patch.Patch) (comments.Comment, error) {
-		savedPatch = p
-		stored.ID = "1"
-		return stored, nil
-	})
+	m := testModel(
+		modelPatch(),
+		nil,
+		func(
+			stored comments.Comment,
+			p patch.Patch,
+		) (
+			comments.Comment,
+			error,
+		) {
+			savedPatch = p
+			stored.ID = "1"
+			return stored, nil
+		},
+	)
 	m.edit.body = "comment"
-	m.edit.anchor = comments.Anchor{FilePath: "main.go"}
+	m.edit.anchor = comments.Anchor{FilePath: fixtureMainGo}
 	m.finishCommentEdit()
-	if savedPatch.Root != "/repo" || len(m.comments.items) != 1 || m.comments.items[0].Anchor.FilePath != "main.go" {
-		t.Fatalf("saved patch/comments = %#v %#v", savedPatch, m.comments.items)
-	}
+	requireEqual(
+		t,
+		savedPatch.Root == "/repo" && len(m.comments.items) == one &&
+			m.comments.items[zero].Anchor.FilePath == fixtureMainGo,
+		true,
+		"saved patch/comments = %#v %#v",
+		savedPatch,
+		m.comments.items,
+	)
 }
 
 func TestRenderingAndKeyBindingsRemainAvailable(t *testing.T) {
 	m := testModel(modelPatch(), nil, nil)
-	m.width, m.height = 80, 10
+	m.width, m.height = defaultWidth, ten
 	m.resizeScreens()
 	m.resizeScreens()
 	rendered := m.render()
-	for _, value := range []string{"review-my-slop", "+1-1", "old()", "new()", "local changes"} {
-		if !strings.Contains(rendered, value) {
-			t.Fatalf("render missing %q: %q", value, rendered)
-		}
+	for _, value := range []string{
+		"review-my-slop",
+		"+1-1",
+		"old()",
+		"new()",
+		"local changes",
+	} {
+		requireEqual(
+			t,
+			strings.Contains(rendered, value), true,
+			"render missing %q: %q",
+			value,
+			rendered,
+		)
 	}
 	m.mode = modeHelp
-	if !strings.Contains(m.render(), "Ctrl-w h/l/w") {
-		t.Fatal("help lost diffPane binding")
-	}
+	requireEqual(
+		t,
+		strings.Contains(m.render(), "Ctrl-w h/l/w"),
+		true,
+		valueFormat,
+		"help lost diffPane binding",
+	)
 }
 
 func TestEmptyViewKeepsKeyboardHintAtBottom(t *testing.T) {
 	m := testModel(patch.Patch{}, nil, nil)
-	m.width, m.height = 80, 10
+	m.width, m.height = defaultWidth, ten
 	m.resizeScreens()
 
-	lines := strings.Split(m.render(), "\n")
-	if got, want := lines[m.height-2], "j/k/h/l move"; !strings.Contains(got, want) {
-		t.Fatalf("line %d = %q, want it to contain %q", m.height-1, got, want)
+	lines := strings.Split(m.render(), newline)
+	{
+		got, want := lines[m.height-two], "j/k/h/l move"
+		requireEqual(
+			t,
+			strings.Contains(got, want),
+			true,
+			"line %d = %q, want it to contain %q",
+			m.height-one,
+			got,
+			want,
+		)
 	}
-	if got := lines[2]; !strings.Contains(got, "No unstaged or untracked changes.") {
-		t.Fatalf("empty-viewState line = %q", got)
+	{
+		got := lines[two]
+		requireEqual(
+			t,
+			strings.Contains(got, "No unstaged or untracked changes."),
+			true,
+			"empty-viewState line = %q",
+			got,
+		)
 	}
 }
 
 func TestMenuKeyboardHintsStayAtBottom(t *testing.T) {
-	m := testModel(modelPatch(), []comments.Comment{{Body: "first", Anchor: comments.Anchor{FilePath: "main.go", NewStart: 2}}}, nil)
-	m.width, m.height = 80, 10
+	m := testModel(
+		modelPatch(),
+		[]comments.Comment{
+			{
+				Body: "first",
+				Anchor: comments.Anchor{
+					FilePath: fixtureMainGo,
+					NewStart: two,
+				},
+			},
+		},
+		nil,
+	)
+	m.width, m.height = defaultWidth, ten
 	m.resizeScreens()
 
 	tests := []struct {
@@ -222,52 +355,130 @@ func TestMenuKeyboardHintsStayAtBottom(t *testing.T) {
 		{name: "help", mode: modeHelp, hint: "? or Esc closes help"},
 	}
 	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			m.mode = test.mode
-			lines := strings.Split(m.render(), "\n")
-			if got := lines[m.height-2]; !strings.Contains(got, test.hint) {
-				t.Fatalf("line %d = %q, want it to contain %q", m.height-1, got, test.hint)
-			}
-		})
+		t.Run(
+			test.name,
+			func(t *testing.T) {
+				m.mode = test.mode
+				lines := strings.Split(m.render(), newline)
+				{
+					got := lines[m.height-two]
+					requireEqual(
+						t,
+						strings.Contains(got, test.hint),
+						true,
+						"line %d = %q, want it to contain %q",
+						m.height-one,
+						got,
+						test.hint,
+					)
+				}
+			},
+		)
 	}
 }
 
 func TestCommentsMenuScrollsWithinScreenBody(t *testing.T) {
-	items := make([]comments.Comment, 10)
+	items := make([]comments.Comment, ten)
 	for index := range items {
-		items[index] = comments.Comment{Body: fmt.Sprintf("comment %d", index), Anchor: comments.Anchor{FilePath: "main.go"}}
+		items[index] = comments.Comment{
+			Body:   fmt.Sprintf("comment %d", index),
+			Anchor: comments.Anchor{FilePath: fixtureMainGo},
+		}
 	}
 	m := testModel(modelPatch(), items, nil)
-	m.width, m.height = 80, 7
+	m.width, m.height = defaultWidth, seven
 	m.mode = modeComments
 	m.resizeScreens()
 	m.commentView.Move(len(items))
 
-	rendered := strings.Split(ansi.Strip(m.render()), "\n")
-	if !strings.Contains(strings.Join(rendered[1:m.height-2], "\n"), "comment 9") {
-		t.Fatalf("selected comment is outside the screen body: %q", rendered)
-	}
-	if !strings.Contains(rendered[m.height-2], "j/k move") {
-		t.Fatalf("footer line = %q", rendered[m.height-2])
-	}
+	rendered := strings.Split(ansi.Strip(m.render()), newline)
+	requireEqual(
+		t,
+		strings.Contains(
+			strings.Join(rendered[one:m.height-two], newline),
+			"comment 9",
+		),
+		true,
+		"selected comment is outside the screen body: %q",
+		rendered,
+	)
+	requireEqual(
+		t,
+		strings.Contains(rendered[m.height-two], "j/k move"), true,
+		"footer line = %q",
+		rendered[m.height-two],
+	)
 }
 
 func modelPatch() patch.Patch {
-	return patch.Patch{Root: "/repo", Files: []patch.File{{DisplayPath: "main.go", OldPath: "main.go", NewPath: "main.go", Hunks: []patch.Hunk{{Header: "@@ -1,2 +1,2 @@", Lines: []patch.Line{{Kind: patch.Context, Text: "keep()", OldNumber: 1, NewNumber: 1}, {Kind: patch.Deletion, Text: "old()", OldNumber: 2}, {Kind: patch.Addition, Text: "new()", NewNumber: 2}}}}}}}
+	return patch.Patch{
+		Root: "/repo",
+		Files: []patch.File{
+			{
+				DisplayPath: fixtureMainGo,
+				OldPath:     fixtureMainGo,
+				NewPath:     fixtureMainGo,
+				Hunks: []patch.Hunk{
+					{
+						Header: "@@ -1,2 +1,2 @@",
+						Lines: []patch.Line{
+							{
+								Kind:      patch.Context,
+								Text:      "keep()",
+								OldNumber: one,
+								NewNumber: one,
+							},
+							{
+								Kind:      patch.Deletion,
+								Text:      "old()",
+								OldNumber: two,
+							},
+							{
+								Kind:      patch.Addition,
+								Text:      "new()",
+								NewNumber: two,
+							},
+						},
+					},
+				},
+			},
+		},
+	}
 }
 
-func TestNarrowLayoutToggleSavesPreferenceWithoutApplicationGeometryRules(t *testing.T) {
+func TestNarrowLayoutToggleSavesPreferenceWithoutApplicationGeometryRules(
+	t *testing.T,
+) {
 	var saved []bool
-	m := newModel(modelPatch(), nil, nil, initialLayout{
-		size:           size{Width: 80, Height: 30},
-		SaveSideBySide: func(enabled bool) error { saved = append(saved, enabled); return nil },
-	})
-	m = updateModel(t, m, textKey("t"))
-	if m.err != nil || !slices.Equal(saved, []bool{true}) || strings.Contains(m.render(), " │ ") {
-		t.Fatalf("narrow toggle: saved=%v err=%v render=%q", saved, m.err, m.render())
-	}
+	m := newModel(
+		modelPatch(),
+		nil,
+		nil,
+		initialLayout{
+			size: size{Width: defaultWidth, Height: 30},
+			SaveSideBySide: func(enabled bool) error {
+				saved = append(saved, enabled)
+				return nil
+			},
+		},
+	)
+	m = updateModel(t, m, textKey(fixtureT))
+	requireEqual(
+		t,
+		m.err == nil && slices.Equal(saved, []bool{true}) &&
+			!strings.Contains(m.render(), " │ "),
+		true,
+		"narrow toggle: saved=%v err=%v render=%q",
+		saved,
+		m.err,
+		m.render(),
+	)
 	m = updateModel(t, m, tea.WindowSizeMsg{Width: 120, Height: 30})
-	if !strings.Contains(m.render(), " │ ") {
-		t.Fatal("widening did not activate preferred layout")
-	}
+	requireEqual(
+		t,
+		strings.Contains(m.render(), " │ "),
+		true,
+		valueFormat,
+		"widening did not activate preferred layout",
+	)
 }

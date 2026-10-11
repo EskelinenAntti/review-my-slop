@@ -8,15 +8,11 @@ import (
 
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
-
 	"github.com/eskelinenantti/review-my-slop/internal/patch"
 )
 
 func TestSplitPairsUnequalChangeBlocksAndKeepsHunksSeparate(t *testing.T) {
-	p := patch.Patch{Files: []patch.File{{DisplayPath: "file", Hunks: []patch.Hunk{
-		{Header: "one", Lines: []patch.Line{{Kind: patch.Deletion, Text: "d1", OldNumber: 1}, {Kind: patch.Deletion, Text: "d2", OldNumber: 2}, {Kind: patch.Addition, Text: "a1", NewNumber: 1}, {Kind: patch.Addition, Text: "a2", NewNumber: 2}, {Kind: patch.Addition, Text: "a3", NewNumber: 3}, {Kind: patch.Context, Text: "c", OldNumber: 3, NewNumber: 4}}},
-		{Header: "two", Lines: []patch.Line{{Kind: patch.Addition, Text: "separate", NewNumber: 5}}},
-	}}}}
+	p := unequalChangePatch()
 	v := newSideBySideView(p, true)
 	var code []entry
 	for _, current := range v.rows {
@@ -24,243 +20,508 @@ func TestSplitPairsUnequalChangeBlocksAndKeepsHunksSeparate(t *testing.T) {
 			code = append(code, current)
 		}
 	}
-	if len(code) != 5 {
-		t.Fatalf("visual code entries = %d", len(code))
-	}
-	if code[0].leftLine != 0 || code[0].rightLine != 2 || code[1].leftLine != 1 || code[1].rightLine != 3 || code[2].leftLine != -1 || code[2].rightLine != 4 {
-		t.Fatalf("pairing = %#v", code[:3])
-	}
-	if code[4].hunk == code[3].hunk || code[4].leftLine != -1 {
-		t.Fatalf("hunks were paired: %#v", code[4])
-	}
+	requireEqual(t, len(code), five, "visual code entries = %d", len(code))
+	requireEqual(
+		t,
+		code[zero].leftLine == zero && code[zero].rightLine == two &&
+			code[one].leftLine == one &&
+			code[one].rightLine == three &&
+			code[two].leftLine == -one &&
+			code[two].rightLine == four,
+		true,
+		"pairing = %#v",
+		code[:three],
+	)
+	requireEqual(
+		t,
+		code[four].hunk != code[three].hunk && code[four].leftLine == -one,
+		true,
+		"hunks were paired: %#v",
+		code[four],
+	)
 }
 
 func TestSplitSelectionOnlyIncludesActivePane(t *testing.T) {
 	v := newSideBySideView(testPatch(), true)
 	first := mustFirst(t, v)
-	removed, _ := v.search("removed one", first, forward)
+	removed, _ := v.search(fixtureRemovedOne, first, forward)
 	added, _ := v.search("added one", first, forward)
 	left := v.beginSelection(removed)
 	left, ok := v.extendSelection(left, removed)
-	if !ok || len(v.lines(left)) != 1 || v.lines(left)[0].Kind != patch.Deletion {
-		t.Fatalf("left lines = %#v", v.lines(left))
-	}
+	requireEqual(
+		t,
+		ok && len(v.lines(left)) == one &&
+			v.lines(left)[zero].Kind == patch.Deletion,
+		true,
+		"left lines = %#v",
+		v.lines(left),
+	)
 	right := v.beginSelection(added)
-	if len(v.lines(right)) != 1 || v.lines(right)[0].Kind != patch.Addition {
-		t.Fatalf("right lines = %#v", v.lines(right))
-	}
+	requireEqual(
+		t,
+		len(v.lines(right)) == one &&
+			v.lines(right)[zero].Kind == patch.Addition,
+		true,
+		"right lines = %#v",
+		v.lines(right),
+	)
 }
 
 func TestSplitPaneSwitchingFindsRowsAboveAndBelowEmptyTargets(t *testing.T) {
-	p := patch.Patch{Files: []patch.File{{DisplayPath: "file", Hunks: []patch.Hunk{{Header: "@@", Lines: []patch.Line{
-		{Kind: patch.Addition, Text: "right", NewNumber: 1},
-		{Kind: patch.Context, Text: "both", OldNumber: 1, NewNumber: 2},
-		{Kind: patch.Deletion, Text: "left", OldNumber: 2},
-	}}}}}}
+	p := patch.Patch{
+		Files: []patch.File{
+			{
+				DisplayPath: fixtureFile,
+
+				Hunks: []patch.Hunk{
+					{
+						Header: hunkMarker,
+
+						Lines: []patch.Line{
+							{
+								Kind:      patch.Addition,
+								Text:      "right",
+								NewNumber: one,
+							},
+
+							{
+								Kind:      patch.Context,
+								Text:      fixtureBoth,
+								OldNumber: one,
+								NewNumber: two,
+							},
+
+							{
+								Kind:      patch.Deletion,
+								Text:      "left",
+								OldNumber: two,
+							},
+						},
+					},
+				},
+			},
+		},
+	}
 	v := newSideBySideView(p, true)
 	first := mustFirst(t, v)
 	left, ok := v.switchPane(first, left)
-	if !ok {
-		t.Fatal("did not find later left pane")
-	}
+	requireEqual(t, ok, true, fixtureV, "did not find later left pane")
 	line, _ := v.line(left)
-	if line.Text != "both" {
-		t.Fatalf("later left line = %q", line.Text)
-	}
+	requireEqual(t, line.Text, fixtureBoth, "later left line = %q", line.Text)
 	last, _ := v.last()
 	right, ok := v.switchPane(last, right)
-	if !ok {
-		t.Fatal("did not find earlier right pane")
-	}
+	requireEqual(t, ok, true, fixtureV, "did not find earlier right pane")
 	line, _ = v.line(right)
-	if line.Text != "both" {
-		t.Fatalf("earlier right line = %q", line.Text)
-	}
+	requireEqual(
+		t,
+		line.Text, fixtureBoth,
+		"earlier right line = %q",
+		line.Text,
+	)
 }
 
 func TestSplitPaneSwitchDoesNothingWhenTargetPaneIsEmpty(t *testing.T) {
-	p := patch.Patch{Files: []patch.File{{DisplayPath: "file", Hunks: []patch.Hunk{{Header: "@@", Lines: []patch.Line{{Kind: patch.Addition, Text: "one", NewNumber: 1}, {Kind: patch.Addition, Text: "two", NewNumber: 2}}}}}}}
+	p := patch.Patch{
+		Files: []patch.File{
+			{
+				DisplayPath: fixtureFile,
+				Hunks: []patch.Hunk{
+					{
+						Header: hunkMarker,
+						Lines: []patch.Line{
+							{
+								Kind:      patch.Addition,
+								Text:      fixtureOne,
+								NewNumber: one,
+							},
+							{
+								Kind:      patch.Addition,
+								Text:      fixtureTwo,
+								NewNumber: two,
+							},
+						},
+					},
+				},
+			},
+		},
+	}
 	v := newSideBySideView(p, true)
 	cursor := mustFirst(t, v)
-	if _, ok := v.switchPane(cursor, left); ok {
-		t.Fatal("switched to empty pane")
+	{
+		_, ok := v.switchPane(cursor, left)
+		requireEqual(t, !ok, true, fixtureV, "switched to empty pane")
 	}
 }
 
 func TestSplitVerticalMovementSkipsEmptyActivePane(t *testing.T) {
-	p := patch.Patch{Files: []patch.File{{DisplayPath: "file", Hunks: []patch.Hunk{{Header: "@@", Lines: []patch.Line{{Kind: patch.Context, Text: "one", OldNumber: 1, NewNumber: 1}, {Kind: patch.Addition, Text: "right", NewNumber: 2}, {Kind: patch.Context, Text: "two", OldNumber: 2, NewNumber: 3}, {Kind: patch.Deletion, Text: "left", OldNumber: 3}, {Kind: patch.Context, Text: "three", OldNumber: 4, NewNumber: 4}}}}}}}
+	p := patch.Patch{
+		Files: []patch.File{
+			{
+				DisplayPath: fixtureFile,
+				Hunks: []patch.Hunk{
+					{
+						Header: hunkMarker,
+						Lines: []patch.Line{
+							{
+								Kind:      patch.Context,
+								Text:      fixtureOne,
+								OldNumber: one,
+								NewNumber: one,
+							},
+							{
+								Kind:      patch.Addition,
+								Text:      "right",
+								NewNumber: two,
+							},
+							{
+								Kind:      patch.Context,
+								Text:      fixtureTwo,
+								OldNumber: two,
+								NewNumber: three,
+							},
+							{
+								Kind:      patch.Deletion,
+								Text:      "left",
+								OldNumber: three,
+							},
+							{
+								Kind:      patch.Context,
+								Text:      "three",
+								OldNumber: four,
+								NewNumber: four,
+							},
+						},
+					},
+				},
+			},
+		},
+	}
 	v := newSideBySideView(p, true)
 	first := mustFirst(t, v)
 	left, _ := v.switchPane(first, left)
 	nextLeft, _ := v.move(left, forward)
 	line, _ := v.line(nextLeft)
-	if line.Text != "two" {
-		t.Fatalf("left movement = %q", line.Text)
-	}
+	requireEqual(t, line.Text, fixtureTwo, "left movement = %q", line.Text)
 	rightAtContext, _ := v.switchPane(nextLeft, right)
 	nextRight, _ := v.move(rightAtContext, forward)
 	line, _ = v.line(nextRight)
-	if line.Text != "three" {
-		t.Fatalf("right movement = %q", line.Text)
-	}
+	requireEqual(t, line.Text, "three", "right movement = %q", line.Text)
 }
 
 func TestSplitVerticalMovementAndHalfPageUseVisualRows(t *testing.T) {
 	lines := []patch.Line{
-		{Kind: patch.Deletion, Text: "d1", OldNumber: 1}, {Kind: patch.Addition, Text: "a1", NewNumber: 1}, {Kind: patch.Context, Text: "c1", OldNumber: 2, NewNumber: 2},
-		{Kind: patch.Deletion, Text: "d2", OldNumber: 3}, {Kind: patch.Addition, Text: "a2", NewNumber: 3}, {Kind: patch.Context, Text: "c2", OldNumber: 4, NewNumber: 4},
-		{Kind: patch.Deletion, Text: "d3", OldNumber: 5}, {Kind: patch.Addition, Text: "a3", NewNumber: 5}, {Kind: patch.Context, Text: "c3", OldNumber: 6, NewNumber: 6},
+		{Kind: patch.Deletion, Text: "d1", OldNumber: one},
+		{Kind: patch.Addition, Text: "a1", NewNumber: one},
+		{Kind: patch.Context, Text: "c1", OldNumber: two, NewNumber: two},
+
+		{Kind: patch.Deletion, Text: "d2", OldNumber: three},
+		{Kind: patch.Addition, Text: "a2", NewNumber: three},
+		{Kind: patch.Context, Text: "c2", OldNumber: four, NewNumber: four},
+
+		{Kind: patch.Deletion, Text: "d3", OldNumber: five},
+		{Kind: patch.Addition, Text: "a3", NewNumber: five},
+		{Kind: patch.Context, Text: "c3", OldNumber: six, NewNumber: six},
 	}
-	v := newSideBySideView(patch.Patch{Files: []patch.File{{DisplayPath: "file", Hunks: []patch.Hunk{{Header: "@@", Lines: lines}}}}}, true)
+	v := newSideBySideView(
+
+		patch.Patch{
+			Files: []patch.File{
+				{
+					DisplayPath: fixtureFile,
+
+					Hunks: []patch.Hunk{
+						{
+							Header: hunkMarker,
+							Lines:  lines,
+						},
+					},
+				},
+			},
+		},
+
+		true,
+	)
 	cursor := mustFirst(t, v)
-	viewport := v.newViewport(120, 4)
+	viewport := v.newViewport(wideTestWidth, four)
 	viewport = v.keepVisible(viewport, cursor)
 	originalTop := viewport.top
 	viewport, moved := v.scrollHalfPage(viewport, cursor, forward)
-	if viewport.top <= originalTop || moved.row <= cursor.row {
-		t.Fatalf("viewport=%#v cursor=%#v", viewport, moved)
-	}
+	requireEqual(
+		t,
+		viewport.top > originalTop && moved.row > cursor.row, true,
+		"viewport=%#v cursor=%#v",
+		viewport,
+		moved,
+	)
 	viewport, moved = v.scrollHalfPage(viewport, moved, backward)
-	if viewport.top != originalTop || moved.row != cursor.row {
-		t.Fatalf("round trip viewport=%#v cursor=%#v", viewport, moved)
-	}
+	requireEqual(
+		t,
+		viewport.top == originalTop && moved.row == cursor.row, true,
+		"round trip viewport=%#v cursor=%#v",
+		viewport,
+		moved,
+	)
 }
 
 func TestFileHeaderSticksWithoutCoveringDiffRows(t *testing.T) {
-	p := patch.Patch{Files: []patch.File{
-		{DisplayPath: "first.go", Hunks: []patch.Hunk{{Header: "@@", Lines: []patch.Line{
-			{Kind: patch.Context, Text: "first one", OldNumber: 1, NewNumber: 1},
-			{Kind: patch.Context, Text: "first two", OldNumber: 2, NewNumber: 2},
-			{Kind: patch.Context, Text: "first three", OldNumber: 3, NewNumber: 3},
-		}}}},
-		{DisplayPath: "second.go", Hunks: []patch.Hunk{{Header: "@@", Lines: []patch.Line{
-			{Kind: patch.Context, Text: "second one", OldNumber: 1, NewNumber: 1},
-		}}}},
-	}}
+	p := stickyHeaderPatch()
 	v := newUnifiedView(p, true)
-	viewport := v.newViewport(60, 3)
-	viewport.top = 3
+	viewport := v.newViewport(sixty, three)
+	viewport.top = three
 
-	rendered := strings.Split(ansi.Strip(v.render(viewport, diffCursor{}, nil)), "\n")
-	if len(rendered) != viewport.Height || !strings.Contains(rendered[0], "first.go") {
-		t.Fatalf("sticky render = %#v", rendered)
-	}
-	if !strings.Contains(rendered[1], "first two") || !strings.Contains(rendered[2], "first three") {
-		t.Fatalf("sticky header covered content rows: %#v", rendered)
-	}
+	rendered := strings.Split(
+		ansi.Strip(v.render(viewport, diffCursor{}, nil)),
+		newline,
+	)
+	requireEqual(
+		t,
+		len(rendered) == viewport.Height &&
+			strings.Contains(rendered[zero], "first.go"),
+		true,
+		"sticky render = %#v",
+		rendered,
+	)
+	requireEqual(
+		t,
+		strings.Contains(rendered[one], "first two") &&
+			strings.Contains(rendered[two], "first three"),
+		true,
+		"sticky header covered content rows: %#v",
+		rendered,
+	)
 
-	secondFileRow := 5
+	secondFileRow := five
 	viewport.top = secondFileRow
-	rendered = strings.Split(ansi.Strip(v.render(viewport, diffCursor{}, nil)), "\n")
-	if strings.Count(strings.Join(rendered, "\n"), "second.go") != 1 {
-		t.Fatalf("file header was duplicated at its natural position: %#v", rendered)
-	}
+	rendered = strings.Split(
+		ansi.Strip(v.render(viewport, diffCursor{}, nil)),
+		newline,
+	)
+	requireEqual(
+		t,
+		strings.Count(strings.Join(rendered, newline), fixtureSecondGo), one,
+		"file header was duplicated at its natural position: %#v",
+		rendered,
+	)
 
-	viewport.top = secondFileRow + 1
-	rendered = strings.Split(ansi.Strip(v.render(viewport, diffCursor{}, nil)), "\n")
-	if !strings.Contains(rendered[0], "second.go") {
-		t.Fatalf("sticky header did not change with the file: %#v", rendered)
-	}
+	viewport.top = secondFileRow + one
+	rendered = strings.Split(
+		ansi.Strip(v.render(viewport, diffCursor{}, nil)),
+		newline,
+	)
+	requireEqual(
+		t,
+		strings.Contains(rendered[zero], fixtureSecondGo), true,
+		"sticky header did not change with the file: %#v",
+		rendered,
+	)
 }
 
 func TestKeepVisibleAccountsForStickyFileHeader(t *testing.T) {
 	v := newUnifiedView(longPatch(), true)
 	cursor, _ := v.last()
-	viewport := v.keepVisible(v.newViewport(50, 4), cursor)
+	viewport := v.keepVisible(v.newViewport(fifty, four), cursor)
 	rendered := ansi.Strip(v.render(viewport, cursor, nil))
 	line, _ := v.line(cursor)
-	if cursor.row >= viewport.top+v.contentHeight(viewport) || !strings.Contains(rendered, strconv.Itoa(int(line.NewNumber))) {
-		t.Fatalf("last cursor row is hidden by sticky header: viewport=%#v render=%q", viewport, rendered)
-	}
+	requireEqual(
+		t,
+		cursor.row < viewport.top+v.contentHeight(viewport) &&
+			strings.Contains(rendered, strconv.Itoa(int(line.NewNumber))),
+		true,
+		"last cursor row is hidden by sticky head"+
+			"er: viewport=%#v render=%q",
+		viewport,
+		rendered,
+	)
 }
 
 func TestSplitTabsDoNotShiftLineNumbersOrDivider(t *testing.T) {
-	p := patch.Patch{Files: []patch.File{{DisplayPath: "file", Hunks: []patch.Hunk{{Header: "@@", Lines: []patch.Line{{Kind: patch.Context, Text: "\t\tlong line", OldNumber: 1, NewNumber: 1}}}}}}}
+	p := patch.Patch{
+		Files: []patch.File{
+			{
+				DisplayPath: fixtureFile,
+				Hunks: []patch.Hunk{
+					{
+						Header: hunkMarker,
+						Lines: []patch.Line{
+							{
+								Kind:      patch.Context,
+								Text:      "\t\tlong line",
+								OldNumber: one,
+								NewNumber: one,
+							},
+						},
+					},
+				},
+			},
+		},
+	}
 	v := newSideBySideView(p, true)
 	cursor := mustFirst(t, v)
-	rendered := ansi.Strip(renderOne(v, cursor, 120, nil))
-	if strings.ContainsRune(rendered, '\t') || strings.Index(rendered, "│") != 59 || lipgloss.Width(rendered) != 120 {
-		t.Fatalf("rendered = %q width=%d", rendered, lipgloss.Width(rendered))
-	}
+	rendered := ansi.Strip(renderOne(v, cursor, wideTestWidth, nil))
+	requireEqual(
+		t,
+		!strings.ContainsRune(rendered, '\t') &&
+			strings.Index(rendered, "│") == 59 &&
+			lipgloss.Width(rendered) == wideTestWidth,
+		true,
+		"rendered = %q width=%d",
+		rendered,
+		lipgloss.Width(rendered),
+	)
 }
 
 func TestHorizontalScrollKeepsUnifiedGutterFixed(t *testing.T) {
 	p := longLinePatch()
 	v := newUnifiedView(p, true)
 	cursor := mustFirst(t, v)
-	viewport := v.newViewport(37, 1)
+	viewport := v.newViewport(fixtureNumber37, one)
 	viewport = v.keepVisible(viewport, cursor)
 	before := ansi.Strip(v.render(viewport, cursor, nil))
-	viewport = v.scrollHorizontal(viewport, 4)
+	viewport = v.scrollHorizontal(viewport, four)
 	after := ansi.Strip(v.render(viewport, cursor, nil))
-	if before[:14] != after[:14] || !strings.Contains(after[14:], "efghij") || viewport.LeftColumn != 4 {
-		t.Fatalf("before=%q after=%q viewport=%#v", before, after, viewport)
-	}
+	requireEqual(
+		t,
+		viewport.LeftColumn == four &&
+			(before[:14] == after[:14] &&
+				strings.Contains(after[14:], "efghij")),
+		true,
+		"before=%q after=%q viewport=%#v",
+		before,
+		after,
+		viewport,
+	)
 }
 
 func TestHorizontalScrollKeepsSplitGuttersAndDividerFixed(t *testing.T) {
 	v := newSideBySideView(longLinePatch(), true)
 	cursor := mustFirst(t, v)
-	viewport := v.newViewport(120, 1)
+	viewport := v.newViewport(wideTestWidth, one)
 	viewport = v.keepVisible(viewport, cursor)
-	viewport = v.scrollHorizontal(viewport, 8)
+	viewport = v.scrollHorizontal(viewport, eight)
 	rendered := ansi.Strip(v.render(viewport, cursor, nil))
-	if strings.Index(rendered, "│") != 59 || rendered[:6] != "    1 " || rendered[63:69] != "    1 " {
-		t.Fatalf("gutters moved: %q", rendered)
-	}
-	if !strings.Contains(rendered[6:59], "ghijkl") || !strings.Contains(rendered[69:], "ghijkl") {
-		t.Fatalf("offset differs: %q", rendered)
-	}
+	requireEqual(
+		t,
+		rendered[63:69] == "    1 " &&
+			(rendered[:six] == "    1 " &&
+				strings.Index(rendered, "│") == 59),
+		true,
+		"gutters moved: %q",
+		rendered,
+	)
+	requireEqual(
+		t,
+		strings.Contains(rendered[six:59], "ghijkl") &&
+			strings.Contains(rendered[69:], "ghijkl"),
+		true,
+		"offset differs: %q",
+		rendered,
+	)
 }
 
 func TestHorizontalScrollStartAndEndClamp(t *testing.T) {
 	v := newUnifiedView(longLinePatch(), true)
-	viewport := v.newViewport(37, 1)
-	viewport = v.scrollHorizontal(viewport, int(^uint(0)>>1))
-	if viewport.LeftColumn == 0 {
-		t.Fatal("end did not scroll")
-	}
-	viewport = v.scrollHorizontal(viewport, -int(^uint(0)>>1))
-	if viewport.LeftColumn != 0 {
-		t.Fatalf("start = %d", viewport.LeftColumn)
-	}
+	viewport := v.newViewport(fixtureNumber37, one)
+	viewport = v.scrollHorizontal(viewport, int(^uint(zero)>>one))
+	requireEqual(
+		t,
+		viewport.LeftColumn != zero,
+		true,
+		fixtureV,
+		"end did not scroll",
+	)
+	viewport = v.scrollHorizontal(viewport, -int(^uint(zero)>>one))
+	requireEqual(
+		t,
+		viewport.LeftColumn, zero,
+		"start = %d",
+		viewport.LeftColumn,
+	)
 }
 
 func TestDiffMarkersUseTerminalColorsAndCursorFillsWidth(t *testing.T) {
 	v := newUnifiedView(testPatch(), true)
 	first := mustFirst(t, v)
 	added, _ := v.search("added one", first, forward)
-	removed, _ := v.search("removed one", first, forward)
-	addedRender := renderTarget(v, added, first, 80, nil)
-	removedRender := renderTarget(v, removed, first, 80, nil)
-	if !strings.Contains(addedRender, "\x1b[32m+\x1b[m") || !strings.Contains(removedRender, "\x1b[31m-\x1b[m") {
-		t.Fatalf("added=%q removed=%q", addedRender, removedRender)
-	}
-	assertStyledThroughColumn(t, renderOne(v, added, 80, nil), 80, sgrExpectation{reverse: true})
+	removed, _ := v.search(fixtureRemovedOne, first, forward)
+	addedRender := renderTarget(v, added, first, defaultWidth, nil)
+	removedRender := renderTarget(v, removed, first, defaultWidth, nil)
+	requireEqual(
+		t,
+		strings.Contains(addedRender, "\x1b[32m+\x1b[m") &&
+			strings.Contains(removedRender, "\x1b[31m-\x1b[m"),
+		true,
+		"added=%q removed=%q",
+		addedRender,
+		removedRender,
+	)
+	assertStyledThroughColumn(
+		t,
+		renderOne(v, added, defaultWidth, nil),
+		defaultWidth,
+		sgrExpectation{reverse: true},
+	)
 }
 
 func TestSelectionBackgroundKeepsDefaultWeight(t *testing.T) {
 	v := newUnifiedView(testPatch(), false)
 	first := mustFirst(t, v)
-	removed, _ := v.search("removed one", first, forward)
+	removed, _ := v.search(fixtureRemovedOne, first, forward)
 	selection := v.beginSelection(removed)
-	rendered := renderTarget(v, removed, first, 72, &selection)
-	if strings.Contains(rendered, "\x1b[1m") {
-		t.Fatalf("selection is bold: %q", rendered)
-	}
-	assertStyledThroughColumn(t, rendered, 72, sgrExpectation{background: "219;234;254"})
+	rendered := renderTarget(v, removed, first, fixtureNumber72, &selection)
+	requireEqual(
+		t,
+		!strings.Contains(rendered, "\x1b[1m"), true,
+		"selection is bold: %q",
+		rendered,
+	)
+	assertStyledThroughColumn(
+		t,
+		rendered,
+		fixtureNumber72,
+		sgrExpectation{background: "219;234;254"},
+	)
 }
 
 func TestSyntaxHighlightingSurvivesDiffStyling(t *testing.T) {
-	p := patch.Patch{Files: []patch.File{{DisplayPath: "main.go", OldPath: "main.go", NewPath: "main.go", OldSource: "package main\nold()\n", NewSource: "package main\nnew()\n", Hunks: []patch.Hunk{{Header: "@@", Lines: []patch.Line{{Kind: patch.Deletion, Text: "old()", OldNumber: 2}, {Kind: patch.Addition, Text: "new()", NewNumber: 2}}}}}}}
+	p := patch.Patch{
+		Files: []patch.File{
+			{
+				DisplayPath: fixtureMainGo,
+				OldPath:     fixtureMainGo,
+				NewPath:     fixtureMainGo,
+				OldSource:   "package main\nold()\n",
+				NewSource:   "package main\nnew()\n",
+				Hunks: []patch.Hunk{
+					{
+						Header: hunkMarker,
+						Lines: []patch.Line{
+							{
+								Kind:      patch.Deletion,
+								Text:      "old()",
+								OldNumber: two,
+							},
+							{
+								Kind:      patch.Addition,
+								Text:      "new()",
+								NewNumber: two,
+							},
+						},
+					},
+				},
+			},
+		},
+	}
 	v := newUnifiedView(p, true)
 	first := mustFirst(t, v)
 	added, _ := v.search("new()", first, forward)
 	for _, cursor := range []diffCursor{first, added} {
-		rendered := renderTarget(v, cursor, diffCursor{}, 80, nil)
-		if !strings.Contains(rendered, "[38;2;") {
-			t.Fatalf("syntax highlighting missing: %q", rendered)
-		}
+		rendered := renderTarget(v, cursor, diffCursor{}, defaultWidth, nil)
+		requireEqual(
+			t,
+			strings.Contains(rendered, "[38;2;"), true,
+			"syntax highlighting missing: %q",
+			rendered,
+		)
 	}
 }
 
@@ -268,12 +529,13 @@ func TestRenderedCodeRowsHaveExactTerminalWidth(t *testing.T) {
 	for _, test := range []struct {
 		constructor func(patch.Patch, bool) *diffView
 		width       int
-	}{{newUnifiedView, 37}, {newSideBySideView, 120}} {
+	}{{newUnifiedView, fixtureNumber37}, {newSideBySideView, wideTestWidth}} {
 		v := test.constructor(testPatch(), true)
 		cursor := mustFirst(t, v)
 		for {
-			if width := lipgloss.Width(renderOne(v, cursor, test.width, nil)); width != test.width {
-				t.Fatalf("width = %d", width)
+			{
+				width := lipgloss.Width(renderOne(v, cursor, test.width, nil))
+				requireEqual(t, width, test.width, "width = %d", width)
 			}
 			next, ok := v.move(cursor, forward)
 			if !ok {
@@ -285,27 +547,84 @@ func TestRenderedCodeRowsHaveExactTerminalWidth(t *testing.T) {
 }
 
 func TestRenderStyledRowStripsSyntaxBackgroundColors(t *testing.T) {
-	value := strings.Join([]string{"\x1b[48;2;255;0;0;38;2;1;2;3mtruecolor", "\x1b[48;5;123;1mindexed", "\x1b[45mstandard", "\x1b[105mbright"}, " ")
-	rendered := renderStyledRow(lineStyle(patch.Addition, true), value, 80, false)
-	for _, forbidden := range []string{"48;2;255;0;0", "48;5;123", "[45m", "[105m"} {
-		if strings.Contains(rendered, forbidden) {
-			t.Fatalf("retains %q: %q", forbidden, rendered)
-		}
+	value := strings.Join(
+		[]string{
+			"\x1b[48;2;255;0;0;38;2;1;2;3mtruecolor",
+			"\x1b[48;5;123;1mindexed",
+			"\x1b[45mstandard",
+			"\x1b[105mbright",
+		},
+		" ",
+	)
+	rendered := renderStyledRow(
+		lineStyle(patch.Addition, true),
+		value,
+		defaultWidth,
+		false,
+	)
+	for _, forbidden := range []string{
+		"48;2;255;0;0",
+		"48;5;123",
+		"[45m",
+		"[105m",
+	} {
+		requireEqual(
+			t,
+			!strings.Contains(rendered, forbidden), true,
+			"retains %q: %q",
+			forbidden,
+			rendered,
+		)
 	}
 }
 
-func renderOne(v *diffView, cursor diffCursor, width int, selection *diffSelection) string {
+func renderOne(
+	v *diffView,
+	cursor diffCursor,
+	width int,
+	selection *diffSelection,
+) string {
 	return renderTarget(v, cursor, cursor, width, selection)
 }
 
-func renderTarget(v *diffView, target, active diffCursor, width int, selection *diffSelection) string {
-	viewport := v.newViewport(width, 1)
+func renderTarget(
+	v *diffView,
+	target, active diffCursor,
+	width int,
+	selection *diffSelection,
+) string {
+	viewport := v.newViewport(width, one)
 	viewport.top = target.row
 	return v.render(viewport, active, selection)
 }
 
 func longLinePatch() patch.Patch {
-	return patch.Patch{Files: []patch.File{{DisplayPath: "long", Hunks: []patch.Hunk{{Header: "@@", Lines: []patch.Line{{Kind: patch.Context, Text: "abcdefghijklmnopqrstuvwxyz0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ", OldNumber: 1, NewNumber: 1}}}}}}}
+	return patch.Patch{
+		Files: []patch.File{
+			{
+				DisplayPath: "long",
+
+				Hunks: []patch.Hunk{
+					{
+						Header: hunkMarker,
+
+						Lines: []patch.Line{
+							{
+								Kind: patch.Context,
+
+								Text: "abcdefghijklmnopqrstuvwxyz0123456789" +
+									"ABCDEFGHIJKLMNOPQRSTUVWXYZ",
+
+								OldNumber: one,
+
+								NewNumber: one,
+							},
+						},
+					},
+				},
+			},
+		},
+	}
 }
 
 type sgrExpectation struct {
@@ -319,57 +638,217 @@ type sgrState struct {
 
 var sgrPattern = regexp.MustCompile(`\x1b\[([0-9;]*)m`)
 
-func assertStyledThroughColumn(t *testing.T, rendered string, width int, expected sgrExpectation) {
+func assertStyledThroughColumn(
+	t *testing.T,
+	initialRendered string,
+	width int,
+	expected sgrExpectation,
+) {
+	rendered := initialRendered
+
 	t.Helper()
 	state := sgrState{}
-	column := 0
-	for len(rendered) > 0 {
+	column := zero
+	for len(rendered) > zero {
 		location := sgrPattern.FindStringSubmatchIndex(rendered)
 		if location == nil {
-			for range rendered {
-				column++
-				assertSGRState(t, column, state, expected)
-			}
+			column = assertStyledText(t, rendered, column, state, expected)
 			break
 		}
-		for range rendered[:location[0]] {
-			column++
-			assertSGRState(t, column, state, expected)
-		}
-		state.apply(rendered[location[2]:location[3]])
-		rendered = rendered[location[1]:]
+		column = assertStyledText(
+			t,
+			rendered[:location[zero]],
+			column,
+			state,
+			expected,
+		)
+		state.apply(rendered[location[two]:location[three]])
+		rendered = rendered[location[one]:]
 	}
-	if column != width {
-		t.Fatalf("styled columns = %d, want %d", column, width)
-	}
+	requireEqual(
+		t,
+		column, width,
+		"styled columns = %d, want %d",
+		column,
+		width,
+	)
 }
-func (s *sgrState) apply(parameters string) {
+func (s *sgrState) apply(initialParameters string) {
+	parameters := initialParameters
+
 	if parameters == "" {
 		parameters = "0"
 	}
 	values := strings.Split(parameters, ";")
-	for index := 0; index < len(values); index++ {
+	for index := zero; index < len(values); index++ {
 		value, _ := strconv.Atoi(values[index])
 		switch value {
-		case 0:
+		case zero:
 			*s = sgrState{}
-		case 7:
+		case seven:
 			s.reverse = true
-		case 27:
+		case fixtureNumber27:
 			s.reverse = false
-		case 49:
+		case sgrDefaultBackground:
 			s.background = ""
-		case 48:
-			if index+4 < len(values) && values[index+1] == "2" {
-				s.background = strings.Join(values[index+2:index+5], ";")
-				index += 4
-			}
+		case sgrExtendedBackground:
+			index = s.applyBackground(values, index)
+		default:
+			// Other inputs leave the current state unchanged.
 		}
 	}
 }
-func assertSGRState(t *testing.T, column int, state sgrState, expected sgrExpectation) {
+func assertSGRState(
+	t *testing.T,
+	column int,
+	state sgrState,
+	expected sgrExpectation,
+) {
 	t.Helper()
-	if state.background != expected.background || state.reverse != expected.reverse {
-		t.Fatalf("column %d state=%#v want=%#v", column, state, expected)
+	requireEqual(
+		t,
+		state.background == expected.background &&
+			state.reverse == expected.reverse,
+		true,
+		"column %d state=%#v want=%#v",
+		column,
+		state,
+		expected,
+	)
+}
+
+func (s *sgrState) applyBackground(values []string, index int) int {
+	if index+four < len(values) && values[index+one] == "2" {
+		s.background = strings.Join(values[index+two:index+five], ";")
+		return index + four
+	}
+	return index
+}
+
+func assertStyledText(
+	t *testing.T,
+	text string,
+	start int,
+	state sgrState,
+	expected sgrExpectation,
+) int {
+	column := start
+	for range text {
+		column++
+		assertSGRState(t, column, state, expected)
+	}
+	return column
+}
+
+func unequalChangePatch() patch.Patch {
+	return patch.Patch{
+		Files: []patch.File{
+			{
+				DisplayPath: fixtureFile,
+				Hunks: []patch.Hunk{
+					{
+						Header: fixtureOne,
+						Lines: []patch.Line{
+							{
+								Kind:      patch.Deletion,
+								Text:      "d1",
+								OldNumber: one,
+							},
+							{
+								Kind:      patch.Deletion,
+								Text:      "d2",
+								OldNumber: two,
+							},
+							{
+								Kind:      patch.Addition,
+								Text:      "a1",
+								NewNumber: one,
+							},
+							{
+								Kind:      patch.Addition,
+								Text:      "a2",
+								NewNumber: two,
+							},
+							{
+								Kind:      patch.Addition,
+								Text:      "a3",
+								NewNumber: three,
+							},
+							{
+								Kind:      patch.Context,
+								Text:      "c",
+								OldNumber: three,
+								NewNumber: four,
+							},
+						},
+					},
+
+					{
+						Header: fixtureTwo,
+						Lines: []patch.Line{
+							{
+								Kind:      patch.Addition,
+								Text:      "separate",
+								NewNumber: five,
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+}
+
+func stickyHeaderPatch() patch.Patch {
+	return patch.Patch{
+		Files: []patch.File{
+			{
+				DisplayPath: "first.go",
+				Hunks: []patch.Hunk{
+					{
+						Header: hunkMarker,
+						Lines: []patch.Line{
+							{
+								Kind:      patch.Context,
+								Text:      "first one",
+								OldNumber: one,
+								NewNumber: one,
+							},
+
+							{
+								Kind:      patch.Context,
+								Text:      "first two",
+								OldNumber: two,
+								NewNumber: two,
+							},
+
+							{
+								Kind:      patch.Context,
+								Text:      "first three",
+								OldNumber: three,
+								NewNumber: three,
+							},
+						},
+					},
+				},
+			},
+
+			{
+				DisplayPath: fixtureSecondGo,
+				Hunks: []patch.Hunk{
+					{
+						Header: hunkMarker,
+						Lines: []patch.Line{
+							{
+								Kind:      patch.Context,
+								Text:      "second one",
+								OldNumber: one,
+								NewNumber: one,
+							},
+						},
+					},
+				},
+			},
+		},
 	}
 }

@@ -9,6 +9,7 @@ import (
 	"github.com/eskelinenantti/review-my-slop/internal/ui/internal/frame"
 )
 
+// Binding pairs a key sequence with its help description.
 type Binding struct {
 	Keys        string
 	Description string
@@ -17,17 +18,22 @@ type Binding struct {
 // Render formats bindings with aligned descriptions and keeps the closing hint
 // below the available body. The supplied bindings determine the help content.
 func Render(bindings []Binding, width, height int) string {
-	column := 0
+	column := zero
 	for _, binding := range bindings {
 		column = max(column, lipgloss.Width(binding.Keys))
 	}
 	body := []string{""}
 	for _, binding := range bindings {
-		line := binding.Keys + strings.Repeat(" ", column-lipgloss.Width(binding.Keys)) + "  " + binding.Description
-		body = append(body, ansi.Truncate(line, max(20, width), ""))
+		line := binding.Keys +
+			strings.Repeat(" ", column-lipgloss.Width(binding.Keys)) +
+			"  " +
+			binding.Description
+		body = append(body, ansi.Truncate(line, max(minimumWidth, width), ""))
 	}
 	return frame.Render(
-		lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Cyan).Render("review-my-slop help"),
+		lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Cyan).Render(
+			"review-my-slop help",
+		),
 		body,
 		lipgloss.NewStyle().Faint(true).Render("? or Esc closes help"),
 		height,

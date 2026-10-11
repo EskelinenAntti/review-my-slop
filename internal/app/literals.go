@@ -1,0 +1,6 @@
+package app
+
+const (
+	one  = 1
+	zero = 0
+)

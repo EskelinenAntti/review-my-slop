@@ -1,6 +1,8 @@
 package diffscreen
 
-import "github.com/eskelinenantti/review-my-slop/internal/ui/internal/frame"
+import (
+	"github.com/eskelinenantti/review-my-slop/internal/ui/internal/frame"
+)
 
 // BeginDrag focuses the code under a left-button press and clears any previous
 // selection. Coordinates are zero-based terminal cells, including the header.
@@ -30,7 +32,10 @@ func (v *View) DragTo(x, y int) {
 	if cursor == *v.drag && v.selection == nil {
 		return
 	}
-	selection, ok := v.view.extendSelection(v.view.beginSelection(*v.drag), cursor)
+	selection, ok := v.view.extendSelection(
+		v.view.beginSelection(*v.drag),
+		cursor,
+	)
 	if !ok {
 		return
 	}
@@ -48,7 +53,7 @@ func (v *View) cursorAtPoint(x, y int) (diffCursor, bool) {
 	if v.view.hasStickyHeader(v.viewport.top, v.viewport.Height) {
 		row--
 	}
-	if row < 0 || row >= v.view.contentHeight(v.viewport) {
+	if row < zero || row >= v.view.contentHeight(v.viewport) {
 		return diffCursor{}, false
 	}
 	pane := right
@@ -57,8 +62,10 @@ func (v *View) cursorAtPoint(x, y int) (diffCursor, bool) {
 		switch {
 		case x < leftWidth:
 			pane = left
-		case x < leftWidth+3:
+		case x < leftWidth+three:
 			return diffCursor{}, false
+		default:
+			// Other inputs leave the current state unchanged.
 		}
 	}
 	return v.view.cursorAt(v.viewport.top+row, pane)

@@ -1,6 +1,8 @@
 package diffscreen
 
-import "github.com/eskelinenantti/review-my-slop/internal/patch"
+import (
+	"github.com/eskelinenantti/review-my-slop/internal/patch"
+)
 
 type cursorIdentity struct {
 	file   patch.File
@@ -11,7 +13,8 @@ type cursorIdentity struct {
 }
 
 // replaceView translates interactive state before replacing the row projection.
-// Source identity is shared by focus, selection endpoints, and the search origin.
+// Source identity is shared by focus, selection endpoints, and the search
+// origin.
 func (v *View) replaceView(next *diffView) {
 	old := v.view
 	leftColumn := v.viewport.LeftColumn
@@ -28,7 +31,7 @@ func (v *View) replaceView(next *diffView) {
 	v.selection = preserveSelection(old, v.selection, next)
 	v.view = next
 	if next.valid(v.cursor) {
-		v.viewport.top = max(0, v.cursor.row-rowsAbove)
+		v.viewport.top = max(zero, v.cursor.row-rowsAbove)
 		v.viewport = next.keepVisible(v.viewport, v.cursor)
 	}
 	if v.search.active {
@@ -48,10 +51,20 @@ func identify(v *diffView, cursor diffCursor) cursorIdentity {
 	file := v.patch.Files[row.file]
 	hunk := file.Hunks[row.hunk]
 	line := hunk.Lines[v.lineIndex(row, cursor.pane)]
-	return cursorIdentity{file: file, hunk: hunk, line: line, cursor: cursor, valid: true}
+	return cursorIdentity{
+		file:   file,
+		hunk:   hunk,
+		line:   line,
+		cursor: cursor,
+		valid:  true,
+	}
 }
 
-func preserveSelection(old *diffView, selection *diffSelection, next *diffView) *diffSelection {
+func preserveSelection(
+	old *diffView,
+	selection *diffSelection,
+	next *diffView,
+) *diffSelection {
 	if selection == nil {
 		return nil
 	}
@@ -62,7 +75,8 @@ func preserveSelection(old *diffView, selection *diffSelection, next *diffView) 
 	}
 	translatedFirst, firstOK := next.findCursor(first)
 	translatedLast, lastOK := next.findCursor(last)
-	if !firstOK || !lastOK || !sameFile(first.file, last.file) || first.hunk.Header != last.hunk.Header {
+	if first.hunk.Header != last.hunk.Header ||
+		(!firstOK || !lastOK || !sameFile(first.file, last.file)) {
 		return nil
 	}
 	translated := next.beginSelection(translatedFirst)

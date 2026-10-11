@@ -1,7 +1,10 @@
 package comments
 
-import "time"
+import (
+	"time"
+)
 
+// Anchor identifies the file and source range attached to a comment.
 type Anchor struct {
 	FilePath    string   `json:"file"`
 	OldStart    int      `json:"old_start,omitempty"`
@@ -11,6 +14,7 @@ type Anchor struct {
 	QuotedLines []string `json:"quoted_lines"`
 }
 
+// Comment contains feedback, its source anchor and repository identity.
 type Comment struct {
 	ID         string    `json:"id"`
 	Repository string    `json:"repository"`

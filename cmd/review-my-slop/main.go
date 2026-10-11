@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -12,26 +13,29 @@ import (
 )
 
 func main() {
-	if err := run(context.Background(), os.Args[1:], os.Stdout); err != nil {
-		fmt.Fprintln(os.Stderr, "review-my-slop:", err)
-		os.Exit(1)
+	if err := run(context.Background(), os.Args[one:], os.Stdout); err != nil {
+		_, _ = fmt.Fprintln(os.Stderr, "review-my-slop:", err)
+		os.Exit(one)
 	}
 }
 
 func run(ctx context.Context, args []string, output io.Writer) error {
-	if len(args) == 0 {
+	if len(args) == zero {
 		return runCode(ctx)
 	}
-	if len(args) > 1 {
-		return fmt.Errorf("usage: review-my-slop [code|comments]")
+	if len(args) > one {
+		return errors.New("usage: review-my-slop [code|comments]")
 	}
-	switch args[0] {
+	switch args[zero] {
 	case "code":
 		return runCode(ctx)
 	case "comments":
 		return runComments(ctx, output)
 	default:
-		return fmt.Errorf("unknown subcommand %q; usage: review-my-slop [code|comments]", args[0])
+		return fmt.Errorf(
+			"unknown subcommand %q; usage: review-my-slop [code|comments]",
+			args[zero],
+		)
 	}
 }
 

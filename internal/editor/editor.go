@@ -38,67 +38,77 @@ func readCommentFile(path string, anchor comments.Anchor) (string, error) {
 }
 
 func commentDraft(body string, anchor comments.Anchor) string {
-	if len(anchor.QuotedLines) == 0 {
+	if len(anchor.QuotedLines) == zero {
 		return body
 	}
 	lines := suggestionLines(anchor.QuotedLines)
 	var draft strings.Builder
-	draft.WriteString(body)
-	if body != "" && !strings.HasSuffix(body, "\n") {
-		draft.WriteByte('\n')
+	_, _ = draft.WriteString(body)
+	if body != "" && !strings.HasSuffix(body, newline) {
+		_ = draft.WriteByte('\n')
 	}
-	draft.WriteByte('\n')
+	_ = draft.WriteByte('\n')
 	fence := contextFence(lines)
-	draft.WriteString(fence)
-	draft.WriteString("suggestion\n")
+	_, _ = draft.WriteString(fence)
+	_, _ = draft.WriteString("suggestion\n")
 	for _, line := range lines {
-		draft.WriteString(line)
-		draft.WriteByte('\n')
+		_, _ = draft.WriteString(line)
+		_ = draft.WriteByte('\n')
 	}
-	draft.WriteString(fence)
-	draft.WriteByte('\n')
+	_, _ = draft.WriteString(fence)
+	_ = draft.WriteByte('\n')
 	return draft.String()
 }
 
 func stripUnchangedSuggestion(body string, quoted []string) string {
-	if len(quoted) == 0 {
+	if len(quoted) == zero {
 		return body
 	}
 	lines := suggestionLines(quoted)
 	fence := contextFence(lines)
 	var suggestion strings.Builder
-	suggestion.WriteString(fence)
-	suggestion.WriteString("suggestion\n")
+	_, _ = suggestion.WriteString(fence)
+	_, _ = suggestion.WriteString("suggestion\n")
 	for _, line := range lines {
-		suggestion.WriteString(line)
-		suggestion.WriteByte('\n')
+		_, _ = suggestion.WriteString(line)
+		_ = suggestion.WriteByte('\n')
 	}
-	suggestion.WriteString(fence)
+	_, _ = suggestion.WriteString(fence)
 	start := strings.Index(body, suggestion.String())
-	if start < 0 {
+	if start < zero {
 		return body
 	}
 	end := start + suggestion.Len()
-	before := strings.TrimRight(body[:start], "\n")
+	before := strings.TrimRight(body[:start], newline)
 	after := body[end:]
 	if strings.TrimSpace(after) == "" {
 		return before
 	}
-	return before + "\n" + strings.TrimLeft(after, "\n")
+	return before + newline + strings.TrimLeft(after, newline)
 }
 
 func commentCommand(ctx context.Context, editor, path string) *exec.Cmd {
 	return exec.CommandContext(ctx, "sh", "-c", editor+" "+shellQuote(path))
 }
 
-func sourceCommand(ctx context.Context, editor, path string, line int) *exec.Cmd {
-	return exec.CommandContext(ctx, "sh", "-c", editor+" +"+strconv.Itoa(line)+" "+shellQuote(path))
+func sourceCommand(
+	ctx context.Context,
+	editor,
+	path string,
+	line int,
+) *exec.Cmd {
+	return exec.CommandContext(
+		ctx,
+		"sh",
+		"-c",
+		editor+" +"+strconv.Itoa(line)+" "+shellQuote(path),
+	)
 }
 
 func suggestionLines(quoted []string) []string {
-	lines := make([]string, 0, len(quoted))
+	lines := make([]string, zero, len(quoted))
 	for _, line := range quoted {
-		if line != "" && line[0] != '-' {
+		if line != "" && line[zero] != '-' {
 			lines = append(lines, line[1:])
 		}
 	}
@@ -106,21 +116,22 @@ func suggestionLines(quoted []string) []string {
 }
 
 func contextFence(lines []string) string {
-	longest := 0
+	longest := zero
 	for _, line := range lines {
-		run := 0
+		run := zero
 		for _, char := range line {
 			if char == '`' {
 				run++
 				longest = max(longest, run)
 			} else {
-				run = 0
+				run = zero
 			}
 		}
 	}
-	return strings.Repeat("`", max(3, longest+1))
+	return strings.Repeat("`", max(three, longest+1))
 }
 
 func shellQuote(value string) string {
-	return "'" + strings.ReplaceAll(value, "'", "'\"'\"'") + "'"
+	return fixtureText + strings.ReplaceAll(value, fixtureText, "'\"'\"'") +
+		fixtureText
 }

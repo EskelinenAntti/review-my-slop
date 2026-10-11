@@ -21,8 +21,15 @@ func TestCommandStartsAndQuitsInPTY(t *testing.T) {
 	binary := filepath.Join(t.TempDir(), "review-my-slop")
 	build := exec.Command("go", "build", "-o", binary, ".")
 	build.Dir = "."
-	if output, err := build.CombinedOutput(); err != nil {
-		t.Fatalf("build command: %v\n%s", err, output)
+	{
+		output, err := build.CombinedOutput()
+		requireEqual(
+			t,
+			err == nil, true,
+			"build command: %v\n%s",
+			err,
+			output,
+		)
 	}
 
 	for _, test := range []struct {
@@ -33,20 +40,23 @@ func TestCommandStartsAndQuitsInPTY(t *testing.T) {
 		{name: "code subcommand", args: []string{"code"}},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			testCommandStartsAndQuitsInPTY(t, binary, test.args)
+			assertPTYStartup(t, binary, test.args)
 		})
 	}
 }
 
-func testCommandStartsAndQuitsInPTY(t *testing.T, binary string, args []string) {
+func assertPTYStartup(t *testing.T, binary string, args []string) {
 	t.Helper()
 	repo, err := filepath.EvalSymlinks(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
+	requireEqual(t, err == nil, true, fixtureV, err)
 	runGit(t, repo, "init", "-q")
-	if err := os.WriteFile(filepath.Join(repo, "main.go"), []byte("package main\n\nfunc main() {}\n"), 0o644); err != nil {
-		t.Fatal(err)
+	{
+		err := os.WriteFile(
+			filepath.Join(repo, "main.go"),
+			[]byte("package main\n\nfunc main() {}\n"),
+			publicFileMode,
+		)
+		requireEqual(t, err == nil, true, fixtureV, err)
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -58,31 +68,50 @@ func testCommandStartsAndQuitsInPTY(t *testing.T, binary string, args []string) 
 		"XDG_DATA_HOME="+t.TempDir(),
 		"XDG_STATE_HOME="+t.TempDir(),
 	)
-	terminal, err := pty.StartWithSize(command, &pty.Winsize{Rows: 24, Cols: 100})
-	if err != nil {
-		t.Fatal(err)
-	}
+	terminal, err := pty.StartWithSize(
+		command,
+		&pty.Winsize{Rows: 24, Cols: 100},
+	)
+	requireEqual(t, err == nil, true, fixtureV, err)
 	defer terminal.Close()
 
 	var output lockedBuffer
-	readDone := make(chan error, 1)
+	readDone := make(chan error, one)
 	go func() {
 		_, readErr := io.Copy(&output, terminal)
 		readDone <- readErr
 	}()
 
 	deadline := time.Now().Add(5 * time.Second)
-	for !strings.Contains(output.String(), "review-my-slop") && time.Now().Before(deadline) {
+	for !strings.Contains(output.String(), "review-my-slop") &&
+		time.Now().Before(deadline) {
 		time.Sleep(20 * time.Millisecond)
 	}
-	if !strings.Contains(output.String(), "main.go") {
-		t.Fatalf("TUI did not render untracked file:\n%s", output.String())
+	requireEqual(
+		t,
+		strings.Contains(output.String(), "main.go"), true,
+		"TUI did not render untracked file:\n%s",
+		output.String(),
+	)
+	{
+		_, err := terminal.Write([]byte("q"))
+		requireEqual(
+			t,
+			err == nil, true,
+			"write quit: %v\n%s",
+			err,
+			output.String(),
+		)
 	}
-	if _, err := terminal.Write([]byte("q")); err != nil {
-		t.Fatalf("write quit: %v\n%s", err, output.String())
-	}
-	if err := command.Wait(); err != nil {
-		t.Fatalf("command exit: %v\n%s", err, output.String())
+	{
+		err := command.Wait()
+		requireEqual(
+			t,
+			err == nil, true,
+			"command exit: %v\n%s",
+			err,
+			output.String(),
+		)
 	}
 	select {
 	case <-readDone:
@@ -112,7 +141,15 @@ func runGit(t *testing.T, dir string, args ...string) {
 	t.Helper()
 	command := exec.Command("git", args...)
 	command.Dir = dir
-	if output, err := command.CombinedOutput(); err != nil {
-		t.Fatalf("git %s: %v\n%s", strings.Join(args, " "), err, output)
+	{
+		output, err := command.CombinedOutput()
+		requireEqual(
+			t,
+			err == nil, true,
+			"git %s: %v\n%s",
+			strings.Join(args, " "),
+			err,
+			output,
+		)
 	}
 }

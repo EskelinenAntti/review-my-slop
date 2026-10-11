@@ -1,0 +1,5 @@
+enable-all-rules = true
+confidence = 0.0
+
+[directive.specify-disable-reason]
+[directive.specify-disable-rule]

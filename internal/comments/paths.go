@@ -8,6 +8,7 @@ import (
 
 const appName = "review-my-slop"
 
+// DataDir resolves the application's local data directory.
 func DataDir() (string, error) {
 	return appDir("XDG_DATA_HOME", filepath.Join(".local", "share"))
 }

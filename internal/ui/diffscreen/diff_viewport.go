@@ -9,13 +9,17 @@ func (v *diffView) newViewport(width, height int) diffViewport {
 	return v.resize(diffViewport{}, width, height)
 }
 
-func (v *diffView) resize(viewport diffViewport, width, height int) diffViewport {
-	viewport.Width, viewport.Height = max(1, width), max(1, height)
+func (v *diffView) resize(
+	viewport diffViewport,
+	width,
+	height int,
+) diffViewport {
+	viewport.Width, viewport.Height = max(one, width), max(one, height)
 	return v.clampViewport(viewport)
 }
 
 func (v *diffView) maxTop(height int) int {
-	end := max(0, len(v.rows)-height)
+	end := max(zero, len(v.rows)-height)
 	if v.hasStickyHeader(end, height) {
 		end++
 	}
@@ -23,13 +27,17 @@ func (v *diffView) maxTop(height int) int {
 }
 
 func (v *diffView) clampViewport(viewport diffViewport) diffViewport {
-	viewport.top = max(0, min(viewport.top, v.maxTop(viewport.Height)))
-	viewport.LeftColumn = max(0, min(viewport.LeftColumn, v.maxHorizontalOffset(viewport.Width)))
+	viewport.top = max(zero, min(viewport.top, v.maxTop(viewport.Height)))
+	viewport.LeftColumn = max(
+		zero,
+		min(viewport.LeftColumn, v.maxHorizontalOffset(viewport.Width)),
+	)
 	return viewport
 }
 
 func (v *diffView) hasStickyHeader(top int, viewportHeight int) bool {
-	return viewportHeight > 1 && top >= 0 && top < len(v.rows) && v.rows[top].kind != fileRow
+	return viewportHeight > one && top >= zero && top < len(v.rows) &&
+		v.rows[top].kind != fileRow
 }
 
 func (v *diffView) contentHeight(viewport diffViewport) int {
@@ -37,64 +45,109 @@ func (v *diffView) contentHeight(viewport diffViewport) int {
 	if v.hasStickyHeader(viewport.top, viewport.Height) {
 		height--
 	}
-	return max(1, height)
+	return max(one, height)
 }
 
-func (v *diffView) keepVisible(viewport diffViewport, cursor diffCursor) diffViewport {
+func (v *diffView) keepVisible(
+	initialViewport diffViewport,
+	cursor diffCursor,
+) diffViewport {
+	viewport := initialViewport
+
 	if !v.valid(cursor) {
 		return v.clampViewport(viewport)
 	}
 	viewport = v.clampViewport(viewport)
-	for range 2 {
+	for range two {
 		height := v.contentHeight(viewport)
 		if cursor.row < viewport.top {
 			viewport.top = cursor.row
 		}
 		if cursor.row >= viewport.top+height {
-			viewport.top = cursor.row - height + 1
+			viewport.top = cursor.row - height + one
 		}
 		viewport = v.clampViewport(viewport)
 	}
 	return viewport
 }
 
-func (v *diffView) align(viewport diffViewport, cursor diffCursor, alignment verticalAlignment) diffViewport {
-	headerHeight := 0
-	if viewport.Height > 1 {
-		headerHeight = 1
+func (v *diffView) align(
+	viewport diffViewport,
+	cursor diffCursor,
+	alignment verticalAlignment,
+) diffViewport {
+	headerHeight := zero
+	if viewport.Height > one {
+		headerHeight = one
 	}
-	offset := max(0, alignmentOffset(viewport.Height, alignment)-headerHeight)
+	offset := max(
+		zero,
+		alignmentOffset(viewport.Height, alignment)-headerHeight,
+	)
 	viewport.top = cursor.row - offset
 	if !v.hasStickyHeader(viewport.top, viewport.Height) {
-		viewport.top = cursor.row - alignmentOffset(viewport.Height, alignment)
+		viewport.top = cursor.row - alignmentOffset(
+			viewport.Height,
+			alignment,
+		)
 	}
 	return v.clampViewport(viewport)
 }
 
 func alignmentOffset(height int, alignment verticalAlignment) int {
 	if alignment == middle {
-		return height / 2
+		return height / two
 	}
 	if alignment == bottom {
-		return height - 1
+		return height - one
 	}
-	return 0
+	return zero
 }
 
-func (v *diffView) scrollHorizontal(viewport diffViewport, columns int) diffViewport {
-	columns = max(-viewport.LeftColumn, min(columns, v.maxHorizontalOffset(viewport.Width)-viewport.LeftColumn))
+func (v *diffView) scrollHorizontal(
+	viewport diffViewport,
+	initialColumns int,
+) diffViewport {
+	columns := initialColumns
+
+	columns = max(
+		-viewport.LeftColumn,
+		min(
+			columns,
+			v.maxHorizontalOffset(viewport.Width)-viewport.LeftColumn,
+		),
+	)
 	viewport.LeftColumn += columns
 	return v.clampViewport(viewport)
 }
 
-func (v *diffView) scrollVertical(viewport diffViewport, cursor diffCursor, rows int) (diffViewport, diffCursor) {
-	rows = max(-viewport.top, min(rows, v.maxTop(viewport.Height)-viewport.top))
+func (v *diffView) scrollVertical(
+	initialViewport diffViewport,
+	initialCursor diffCursor,
+	initialRows int,
+) (
+	diffViewport,
+	diffCursor,
+) {
+	cursor := initialCursor
+
+	viewport := initialViewport
+
+	rows := initialRows
+
+	rows = max(
+		-viewport.top,
+		min(rows, v.maxTop(viewport.Height)-viewport.top),
+	)
 	viewport.top += rows
 	viewport = v.clampViewport(viewport)
 	if !v.valid(cursor) || v.cursorVisible(viewport, cursor) {
 		return viewport, cursor
 	}
-	target := max(viewport.top, min(cursor.row, viewport.top+v.contentHeight(viewport)-1))
+	target := max(
+		viewport.top,
+		min(cursor.row, viewport.top+v.contentHeight(viewport)-one),
+	)
 	d := forward
 	if cursor.row > target {
 		d = backward
@@ -109,59 +162,126 @@ func (v *diffView) scrollVertical(viewport diffViewport, cursor diffCursor, rows
 	return viewport, cursor
 }
 
-func (v *diffView) cursorVisible(viewport diffViewport, cursor diffCursor) bool {
-	return v.valid(cursor) && cursor.row >= viewport.top && cursor.row < viewport.top+v.contentHeight(viewport)
+func (v *diffView) cursorVisible(
+	viewport diffViewport,
+	cursor diffCursor,
+) bool {
+	return cursor.row >= viewport.top && v.valid(cursor) &&
+		cursor.row < viewport.top+v.contentHeight(viewport)
 }
 
-func (v *diffView) scrollHalfPage(viewport diffViewport, cursor diffCursor, direction direction) (diffViewport, diffCursor) {
+func (v *diffView) scrollHalfPage(
+	initialViewport diffViewport,
+	initialCursor diffCursor,
+	direction direction,
+) (
+	diffViewport,
+	diffCursor,
+) {
+	cursor := initialCursor
+
+	viewport := initialViewport
+
 	if !v.valid(cursor) {
 		return viewport, cursor
 	}
-	distance := int(direction) * max(1, viewport.Height/2)
+	distance := int(direction) * max(one, viewport.Height/two)
 	viewport.top += distance
 	viewport = v.clampViewport(viewport)
-	target := min(len(v.rows)-1, max(0, cursor.row+distance))
-	if candidate, ok := v.nearest(target, cursor.pane, direction, viewport); ok {
+	target := min(len(v.rows)-one, max(zero, cursor.row+distance))
+	candidate, ok := v.nearest(target, cursor.pane, direction, viewport)
+	if ok {
 		cursor = candidate
 	}
 	return viewport, cursor
 }
 
 func (v *diffView) viewportProgress(viewport diffViewport) int {
-	if len(v.rows) == 0 {
-		return 0
+	if len(v.rows) == zero {
+		return zero
 	}
 	bottom := min(len(v.rows), viewport.top+v.contentHeight(viewport))
-	return bottom * 100 / len(v.rows)
+	return bottom * hundred / len(v.rows)
 }
 
-func (v *diffView) nearest(target int, pane diffPane, direction direction, viewport diffViewport) (diffCursor, bool) {
+func (v *diffView) nearest(
+	target int,
+	pane diffPane,
+	direction direction,
+	viewport diffViewport,
+) (
+	diffCursor,
+	bool,
+) {
 	height := v.contentHeight(viewport)
-	for distance := 0; distance < height; distance++ {
-		for _, y := range []int{target + int(direction)*distance, target - int(direction)*distance} {
-			if y < viewport.top || y >= viewport.top+height || y >= len(v.rows) {
-				continue
-			}
-			if cursor, ok := v.cursorAt(y, pane); ok {
-				return cursor, true
-			}
+	for distance := zero; distance < height; distance++ {
+		cursor, ok := v.viewportCursorAtDistance(
+			target,
+			pane,
+			direction,
+			viewport,
+			height,
+			distance,
+		)
+		if ok {
+			return cursor, true
 		}
 	}
 	return diffCursor{}, false
 }
 
+func (v *diffView) rowInViewport(
+	y int,
+	viewport diffViewport,
+	height int,
+) bool {
+	return y >= viewport.top && y < viewport.top+height && y < len(v.rows)
+}
+
 func (v *diffView) maxHorizontalOffset(width int) int {
-	contentWidth := max(1, width-14)
-	extra := 0
+	contentWidth := max(one, width-14)
+	extra := zero
 	if v.split {
-		contentWidth, extra = max(1, (width-3)/2-6), 2
+		contentWidth, extra = max(one, (width-3)/two-6), two
 	}
-	longest := 0
+	longest := zero
 	for _, current := range v.rows {
 		if current.kind != lineRow {
 			continue
 		}
-		longest = max(longest, lipgloss.Width(expandTabs(ansi.Strip(current.text+current.left+current.right)))+extra)
+		longest = max(
+			longest,
+			lipgloss.Width(
+				expandTabs(
+					ansi.Strip(current.text+current.left+current.right),
+				),
+			)+
+				extra,
+		)
 	}
-	return max(0, longest-contentWidth)
+	return max(zero, longest-contentWidth)
+}
+
+func (v *diffView) viewportCursorAtDistance(
+	target int,
+	pane diffPane,
+	direction direction,
+	viewport diffViewport,
+	height, distance int,
+) (
+	diffCursor,
+	bool,
+) {
+	for _, y := range []int{
+		target + int(direction)*distance,
+		target - int(direction)*distance,
+	} {
+		if !v.rowInViewport(y, viewport, height) {
+			continue
+		}
+		if cursor, ok := v.cursorAt(y, pane); ok {
+			return cursor, true
+		}
+	}
+	return diffCursor{}, false
 }

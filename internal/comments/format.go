@@ -23,8 +23,9 @@ func (s Store) WritePending(w io.Writer, repository string) error {
 	return s.Acknowledge(repository, ids)
 }
 
+// WritePrompt formats review comments for the agent.
 func WritePrompt(w io.Writer, comments []Comment) error {
-	if len(comments) == 0 {
+	if len(comments) == zero {
 		_, err := fmt.Fprintln(w, "No pending review comments.")
 		return err
 	}
@@ -32,46 +33,70 @@ func WritePrompt(w io.Writer, comments []Comment) error {
 		return err
 	}
 	for index, comment := range comments {
-		a := comment.Anchor
-		if _, err := fmt.Fprintf(w, "\n### %d. `%s` (%s)\n\n", index+1, a.FilePath, describeRange(a)); err != nil {
-			return err
-		}
-		if len(a.QuotedLines) > 0 {
-			if _, err := fmt.Fprintln(w, "```diff"); err != nil {
-				return err
-			}
-			for _, line := range a.QuotedLines {
-				if _, err := fmt.Fprintln(w, line); err != nil {
-					return err
-				}
-			}
-			if _, err := fmt.Fprintln(w, "```"); err != nil {
-				return err
-			}
-		}
-		if _, err := fmt.Fprintln(w, strings.TrimSpace(comment.Body)); err != nil {
+		if err := writeComment(w, index, comment); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
+func writeComment(w io.Writer, index int, comment Comment) error {
+	a := comment.Anchor
+	_, err := fmt.Fprintf(
+		w,
+		"\n### %d. `%s` (%s)\n\n",
+		index+one,
+		a.FilePath,
+		describeRange(a),
+	)
+	if err != nil {
+		return err
+	}
+	if err := writeQuotedLines(w, a.QuotedLines); err != nil {
+		return err
+	}
+	_, err = fmt.Fprintln(w, strings.TrimSpace(comment.Body))
+	return err
+}
+
+func writeQuotedLines(w io.Writer, lines []string) error {
+	if len(lines) == zero {
+		return nil
+	}
+	if _, err := fmt.Fprintln(w, "```diff"); err != nil {
+		return err
+	}
+	for _, line := range lines {
+		if _, err := fmt.Fprintln(w, line); err != nil {
+			return err
+		}
+	}
+	_, err := fmt.Fprintln(w, "```")
+	return err
+}
+
 func describeRange(anchor Anchor) string {
 	var sides []string
-	if anchor.OldStart > 0 {
-		sides = append(sides, lineRange("old", anchor.OldStart, anchor.OldEnd))
+	if anchor.OldStart > zero {
+		sides = append(
+			sides,
+			lineRange("old", anchor.OldStart, anchor.OldEnd),
+		)
 	}
-	if anchor.NewStart > 0 {
-		sides = append(sides, lineRange("new", anchor.NewStart, anchor.NewEnd))
+	if anchor.NewStart > zero {
+		sides = append(
+			sides,
+			lineRange("new", anchor.NewStart, anchor.NewEnd),
+		)
 	}
-	if len(sides) == 0 {
+	if len(sides) == zero {
 		return "diff lines"
 	}
 	return strings.Join(sides, ", ")
 }
 
 func lineRange(side string, start, end int) string {
-	if end == 0 || end == start {
+	if end == zero || end == start {
 		return fmt.Sprintf("%s line %d", side, start)
 	}
 	return fmt.Sprintf("%s lines %d-%d", side, start, end)

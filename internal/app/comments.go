@@ -1,12 +1,11 @@
 package app
 
 import (
-	"fmt"
+	"errors"
 	"path/filepath"
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
-
 	"github.com/eskelinenantti/review-my-slop/internal/comments"
 	"github.com/eskelinenantti/review-my-slop/internal/editor"
 	"github.com/eskelinenantti/review-my-slop/internal/patch"
@@ -21,32 +20,19 @@ func (m model) updateComments(name string) (tea.Model, tea.Cmd) {
 		m.quitting = true
 		return m, tea.Quit
 	case "j", "down":
-		m.commentView.Move(1)
+		m.commentView.Move(one)
 	case "k", "up":
-		m.commentView.Move(-1)
+		m.commentView.Move(-one)
 	case "enter", "e":
-		if len(m.comments.items) > 0 {
-			selected, ok := m.commentView.Selected()
-			if !ok {
-				return m, nil
-			}
-			m.edit.index = m.commentIndex(selected)
-			m.edit.body = m.comments.items[m.edit.index].Body
-			m.edit.anchor = m.comments.items[m.edit.index].Anchor
-			cmd, err := m.openCommentEditor()
-			if err != nil {
-				m.err = err
-				m.clearCommentEdit()
-				return m, nil
-			}
-			return m, cmd
-		}
+		return m.editSelectedComment()
 	case "D":
-		if len(m.comments.items) > 0 {
+		if len(m.comments.items) > zero {
 			if selected, ok := m.commentView.Selected(); ok {
 				m.deleteComment(m.commentIndex(selected))
 			}
 		}
+	default:
+		// Other inputs leave the current state unchanged.
 	}
 	return m, nil
 }
@@ -54,10 +40,10 @@ func (m model) updateComments(name string) (tea.Model, tea.Cmd) {
 func (m *model) beginComment() (tea.Cmd, error) {
 	file, lines, ok := m.diffView.Selected()
 	if !ok {
-		return nil, fmt.Errorf("select code lines before commenting")
+		return nil, errors.New("select code lines before commenting")
 	}
 	anchor := commentAnchor(file, lines)
-	m.edit.body, m.edit.index, m.edit.anchor = "", -1, anchor
+	m.edit.body, m.edit.index, m.edit.anchor = "", -one, anchor
 	cmd, err := m.openCommentEditor()
 	if err != nil {
 		m.clearCommentEdit()
@@ -69,7 +55,7 @@ func (m *model) beginComment() (tea.Cmd, error) {
 func (m *model) finishCommentEdit() {
 	body := strings.TrimSpace(m.edit.body)
 	if body == "" {
-		if m.edit.index >= 0 {
+		if m.edit.index >= zero {
 			m.deleteComment(m.edit.index)
 		}
 		m.clearCommentEdit()
@@ -77,12 +63,12 @@ func (m *model) finishCommentEdit() {
 		return
 	}
 	if m.save == nil {
-		m.err = fmt.Errorf("comment storage is unavailable")
+		m.err = errors.New("comment storage is unavailable")
 		m.clearCommentEdit()
 		return
 	}
 	var comment comments.Comment
-	if m.edit.index >= 0 {
+	if m.edit.index >= zero {
 		comment = m.comments.items[m.edit.index]
 		comment.Body = body
 	} else {
@@ -94,7 +80,7 @@ func (m *model) finishCommentEdit() {
 		m.clearCommentEdit()
 		return
 	}
-	if m.edit.index >= 0 {
+	if m.edit.index >= zero {
 		m.comments.items[m.edit.index] = saved
 	} else {
 		m.comments.items = append(m.comments.items, saved)
@@ -109,25 +95,28 @@ func (m *model) finishCommentEdit() {
 }
 
 func (m *model) deleteComment(index int) {
-	if index < 0 || index >= len(m.comments.items) {
+	if index < zero || index >= len(m.comments.items) {
 		return
 	}
 	if m.delete == nil {
-		m.err = fmt.Errorf("comment storage is unavailable")
+		m.err = errors.New("comment storage is unavailable")
 		return
 	}
 	if err := m.delete(m.comments.items[index], m.currentPatch); err != nil {
 		m.err = err
 		return
 	}
-	m.comments.items = append(m.comments.items[:index], m.comments.items[index+1:]...)
+	m.comments.items = append(
+		m.comments.items[:index],
+		m.comments.items[index+one:]...,
+	)
 	m.commentView.Update(m.comments.items)
 	m.comments.revision++
 	m.err = nil
 }
 
 func (m *model) clearCommentEdit() {
-	m.edit = commentEdit{index: -1}
+	m.edit = commentEdit{index: -one}
 }
 
 func (m model) openCurrentLine() (tea.Cmd, error) {
@@ -143,17 +132,19 @@ func (m model) openCurrentLine() (tea.Cmd, error) {
 func (m model) sourceLocation() (string, int, error) {
 	file, line, ok := m.diffView.Current()
 	if !ok {
-		return "", 0, fmt.Errorf("select a code line to open in $EDITOR")
+		return "", zero, errors.New("select a code line to open in $EDITOR")
 	}
 	path, number := file.NewPath, line.NewNumber
 	if path == "" || path == "/dev/null" {
 		path = file.OldPath
 	}
-	if number == 0 {
+	if number == zero {
 		number = line.OldNumber
 	}
-	if path == "" || path == "/dev/null" || number < 1 {
-		return "", 0, fmt.Errorf("current line has no editable working-tree location")
+	if path == "" || path == "/dev/null" || number < one {
+		return "", zero, errors.New(
+			"current line has no editable working-tree location",
+		)
 	}
 	if !filepath.IsAbs(path) {
 		path = filepath.Join(m.currentPatch.Root, filepath.FromSlash(path))
@@ -162,18 +153,28 @@ func (m model) sourceLocation() (string, int, error) {
 }
 
 func (m model) openCommentEditor() (tea.Cmd, error) {
-	return editor.EditComment(m.ctx, m.edit.body, m.edit.anchor, func(body string, err error) tea.Msg {
-		return commentEditorFinishedMsg{body: body, err: err}
-	})
+	return editor.EditComment(
+		m.ctx,
+		m.edit.body,
+		m.edit.anchor,
+		func(
+			body string,
+			err error,
+		) tea.Msg {
+			return commentEditorFinishedMsg{body: body, err: err}
+		},
+	)
 }
 
 func (m model) commentIndex(selected comments.Comment) int {
 	for index, item := range m.comments.items {
-		if selected.ID != "" && item.ID == selected.ID || selected.ID == "" && item.Body == selected.Body && item.Anchor.FilePath == selected.Anchor.FilePath {
+		if selected.ID != "" && item.ID == selected.ID ||
+			selected.ID == "" && item.Body == selected.Body &&
+				item.Anchor.FilePath == selected.Anchor.FilePath {
 			return index
 		}
 	}
-	return -1
+	return -one
 }
 
 func commentAnchor(file patch.File, lines []patch.Line) comments.Anchor {
@@ -197,13 +198,33 @@ func commentAnchor(file patch.File, lines []patch.Line) comments.Anchor {
 	return anchor
 }
 func accumulateRange(start, end *int, value int) {
-	if value == 0 {
+	if value == zero {
 		return
 	}
-	if *start == 0 || value < *start {
+	if *start == zero || value < *start {
 		*start = value
 	}
 	if value > *end {
 		*end = value
 	}
+}
+
+func (m model) editSelectedComment() (tea.Model, tea.Cmd) {
+	if len(m.comments.items) > zero {
+		selected, ok := m.commentView.Selected()
+		if !ok {
+			return m, nil
+		}
+		m.edit.index = m.commentIndex(selected)
+		m.edit.body = m.comments.items[m.edit.index].Body
+		m.edit.anchor = m.comments.items[m.edit.index].Anchor
+		cmd, err := m.openCommentEditor()
+		if err != nil {
+			m.err = err
+			m.clearCommentEdit()
+			return m, nil
+		}
+		return m, cmd
+	}
+	return m, nil
 }

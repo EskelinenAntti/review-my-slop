@@ -1,6 +1,10 @@
 // Package keymap recognizes two-key bindings without executing UI actions.
 package keymap
 
+import (
+	"slices"
+)
+
 // Sequence defines the accepted keys following a prefix. RetryUnmatched causes
 // an invalid continuation to be processed as a fresh key instead of consumed.
 type Sequence struct {
@@ -32,10 +36,8 @@ func (m *Matcher) Feed(key string) string {
 		prefix := m.pending
 		m.pending = ""
 		sequence := m.sequences[prefix]
-		for _, continuation := range sequence.Keys {
-			if continuation == key {
-				return prefix + " " + key
-			}
+		if slices.Contains(sequence.Keys, key) {
+			return prefix + " " + key
 		}
 		if !sequence.RetryUnmatched {
 			return ""
