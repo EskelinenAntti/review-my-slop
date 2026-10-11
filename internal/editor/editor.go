@@ -108,17 +108,22 @@ func suggestionLines(quoted []string) []string {
 func contextFence(lines []string) string {
 	longest := 0
 	for _, line := range lines {
-		run := 0
-		for _, char := range line {
-			if char == '`' {
-				run++
-				longest = max(longest, run)
-			} else {
-				run = 0
-			}
-		}
+		longest = max(longest, longestBacktickRun(line))
 	}
 	return strings.Repeat("`", max(3, longest+1))
+}
+
+func longestBacktickRun(line string) int {
+	longest, run := 0, 0
+	for _, char := range line {
+		if char == '`' {
+			run++
+			longest = max(longest, run)
+		} else {
+			run = 0
+		}
+	}
+	return longest
 }
 
 func shellQuote(value string) string {

@@ -32,12 +32,7 @@ func (v *View) Update(items []comments.Comment) {
 	v.items = append([]comments.Comment(nil), items...)
 	v.row = min(v.row, max(0, len(items)-1))
 	if ok && selected.ID != "" {
-		for index, item := range items {
-			if item.ID == selected.ID {
-				v.row = index
-				break
-			}
-		}
+		v.restoreFocus(selected.ID)
 	}
 	v.keepVisible()
 }
@@ -87,30 +82,7 @@ func (v *View) keepVisible() {
 func (v *View) Render(err error) string {
 	header := titleStyle.Render("comments") + "  " + mutedStyle.Render(fmt.Sprintf("%d pending", len(v.items)))
 	height := frame.BodyHeight(v.height)
-	body := make([]string, 0, height)
-	if len(v.items) == 0 {
-		body = make([]string, height)
-		body[min(1, height-1)] = mutedStyle.Render("No pending comments.")
-	} else {
-		start := v.startRow(height)
-		end := min(len(v.items), start+height)
-		for index := start; index < end; index++ {
-			comment := v.items[index]
-			prefix, style := "  ", lipgloss.NewStyle()
-			if index == v.row {
-				prefix, style = "> ", lipgloss.NewStyle().Reverse(true)
-			}
-			location := comment.Anchor.FilePath
-			if comment.Anchor.NewStart > 0 {
-				location += fmt.Sprintf(":%d", comment.Anchor.NewStart)
-			} else if comment.Anchor.OldStart > 0 {
-				location += fmt.Sprintf(":%d", comment.Anchor.OldStart)
-			}
-			text := strings.ReplaceAll(strings.TrimSpace(comment.Body), "\n", " ")
-			line := ansi.Truncate(fmt.Sprintf("%s%s  %s", prefix, location, text), max(20, v.width), "")
-			body = append(body, style.Width(max(20, v.width)).Render(line))
-		}
-	}
+	body := v.renderBody(height)
 	footer := mutedStyle.Render("j/k move  Enter/e edit  D delete  Esc/q return")
 	if err != nil {
 		message := strings.ReplaceAll(err.Error(), "\n", " ")
@@ -124,3 +96,48 @@ var (
 	mutedStyle = lipgloss.NewStyle().Faint(true)
 	errorStyle = lipgloss.NewStyle().Foreground(lipgloss.Red).Bold(true)
 )
+
+func (v *View) restoreFocus(id string) {
+	for index, item := range v.items {
+		if item.ID == id {
+			v.row = index
+			return
+		}
+	}
+}
+
+func (v *View) renderBody(height int) []string {
+	if len(v.items) == 0 {
+		body := make([]string, height)
+		body[min(1, height-1)] = mutedStyle.Render("No pending comments.")
+		return body
+	}
+	body := make([]string, 0, height)
+	start := v.startRow(height)
+	for index := start; index < min(len(v.items), start+height); index++ {
+		body = append(body, v.renderComment(index))
+	}
+	return body
+}
+
+func (v *View) renderComment(index int) string {
+	comment := v.items[index]
+	prefix, style := "  ", lipgloss.NewStyle()
+	if index == v.row {
+		prefix, style = "> ", lipgloss.NewStyle().Reverse(true)
+	}
+	text := strings.ReplaceAll(strings.TrimSpace(comment.Body), "\n", " ")
+	line := ansi.Truncate(fmt.Sprintf("%s%s  %s", prefix, commentLocation(comment), text), max(20, v.width), "")
+	return style.Width(max(20, v.width)).Render(line)
+}
+
+func commentLocation(comment comments.Comment) string {
+	location := comment.Anchor.FilePath
+	if comment.Anchor.NewStart > 0 {
+		return location + fmt.Sprintf(":%d", comment.Anchor.NewStart)
+	}
+	if comment.Anchor.OldStart > 0 {
+		return location + fmt.Sprintf(":%d", comment.Anchor.OldStart)
+	}
+	return location
+}

@@ -10,58 +10,46 @@ import (
 	"testing"
 
 	"github.com/eskelinenantti/review-my-slop/internal/comments"
+	"github.com/eskelinenantti/review-my-slop/internal/testutil"
 )
 
 func TestRunCommentsPrintsAndConsumesCurrentRepositoryFeedback(t *testing.T) {
 	repo := initRepository(t)
 	nested := filepath.Join(repo, "nested")
-	if err := os.Mkdir(nested, 0o755); err != nil {
-		t.Fatal(err)
-	}
+
+	testutil.NoError(t, os.Mkdir(nested, 0o755))
+
 	t.Chdir(nested)
 	data := t.TempDir()
 	t.Setenv("XDG_DATA_HOME", data)
 	store, err := comments.OpenDefault()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := store.Add(comments.Comment{
-		Repository: repo,
-		Anchor:     comments.Anchor{FilePath: "main.go", NewStart: 3, NewEnd: 3},
-		Body:       "Check this error.",
-	}); err != nil {
-		t.Fatal(err)
+	testutil.Require(t, err == nil, err)
+	{
+		_, err := store.Add(comments.Comment{
+			Repository: repo,
+			Anchor:     comments.Anchor{FilePath: "main.go", NewStart: 3, NewEnd: 3},
+			Body:       "Check this error.",
+		})
+		testutil.Require(t, err == nil, err)
 	}
 
 	var output bytes.Buffer
-	if err := runComments(context.Background(), &output); err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(output.String(), "Check this error.") {
-		t.Fatalf("unexpected output:\n%s", output.String())
-	}
-	if !strings.HasPrefix(output.String(), "New comments since last run:\n") {
-		t.Fatalf("unexpected output heading:\n%s", output.String())
-	}
-	if strings.Contains(output.String(), "batch") {
-		t.Fatalf("output exposes internal batches:\n%s", output.String())
-	}
+
+	testutil.NoError(t, runComments(context.Background(), &output))
+
+	testutil.Requiref(t, strings.Contains(output.String(), "Check this error."), "unexpected output:\n%s", output.String())
+	testutil.Requiref(t, strings.HasPrefix(output.String(), "New comments since last run:\n"), "unexpected output heading:\n%s", output.String())
+	testutil.Requiref(t, !strings.Contains(output.String(), "batch"), "output exposes internal batches:\n%s", output.String())
 
 	var empty bytes.Buffer
-	if err := runComments(context.Background(), &empty); err != nil {
-		t.Fatal(err)
-	}
-	if strings.TrimSpace(empty.String()) != "No pending review comments." {
-		t.Fatalf("second output = %q", empty.String())
-	}
+
+	testutil.NoError(t, runComments(context.Background(), &empty))
+
+	testutil.Requiref(t, strings.TrimSpace(empty.String()) == "No pending review comments.", "second output = %q", empty.String())
 
 	info, err := os.Stat(filepath.Join(data, "review-my-slop", "comments.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if info.Mode().Perm() != 0o600 {
-		t.Fatalf("database mode = %o", info.Mode().Perm())
-	}
+	testutil.Require(t, err == nil, err)
+	testutil.Requiref(t, info.Mode().Perm() == 0o600, "database mode = %o", info.Mode().Perm())
 }
 
 func TestRunCommentsPreservesFeedbackWhenOutputFails(t *testing.T) {
@@ -69,34 +57,28 @@ func TestRunCommentsPreservesFeedbackWhenOutputFails(t *testing.T) {
 	t.Chdir(repo)
 	t.Setenv("XDG_DATA_HOME", t.TempDir())
 	store, err := comments.OpenDefault()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := store.Add(comments.Comment{
-		Repository: repo,
-		Anchor:     comments.Anchor{FilePath: "main.go", NewStart: 1},
-		Body:       "Preserve me.",
-	}); err != nil {
-		t.Fatal(err)
+	testutil.Require(t, err == nil, err)
+	{
+		_, err := store.Add(comments.Comment{
+			Repository: repo,
+			Anchor:     comments.Anchor{FilePath: "main.go", NewStart: 1},
+			Body:       "Preserve me.",
+		})
+		testutil.Require(t, err == nil, err)
 	}
 
-	if err := runComments(context.Background(), failingWriter{}); err == nil {
-		t.Fatal("output failure was ignored")
+	{
+		err := runComments(context.Background(), failingWriter{})
+		testutil.Require(t, err != nil, "output failure was ignored")
 	}
 	comments, err := store.List(repo)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(comments) != 1 {
-		t.Fatalf("pending comments = %d, want 1", len(comments))
-	}
+	testutil.Require(t, err == nil, err)
+	testutil.Requiref(t, len(comments) == 1, "pending comments = %d, want 1", len(comments))
 }
 
 func TestRunRejectsUnknownSubcommand(t *testing.T) {
 	err := run(context.Background(), []string{"unknown"}, &bytes.Buffer{})
-	if err == nil || !strings.Contains(err.Error(), `unknown subcommand "unknown"`) {
-		t.Fatalf("error = %v", err)
-	}
+	testutil.Requiref(t, err != nil && strings.Contains(err.Error(), `unknown subcommand "unknown"`), "error = %v", err)
 }
 
 type failingWriter struct{}
@@ -108,13 +90,12 @@ func (failingWriter) Write([]byte) (int, error) {
 func initRepository(t *testing.T) string {
 	t.Helper()
 	repo, err := filepath.EvalSymlinks(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
+	testutil.Require(t, err == nil, err)
 	cmd := exec.Command("git", "init", "-q")
 	cmd.Dir = repo
-	if out, err := cmd.CombinedOutput(); err != nil {
-		t.Fatalf("git init: %v\n%s", err, out)
+	{
+		out, err := cmd.CombinedOutput()
+		testutil.Requiref(t, err == nil, "git init: %v\n%s", err, out)
 	}
 	return repo
 }

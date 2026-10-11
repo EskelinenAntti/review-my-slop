@@ -144,14 +144,7 @@ func newWithStore(store commentStore, p patch.Patch, items []comments.Comment, s
 		return model{}, err
 	}
 	m := newModel(p, items, func(comment comments.Comment, current patch.Patch) (comments.Comment, error) {
-		comment.Repository = current.Root
-		if comment.ID != "" {
-			if err := store.Update(comment); err != nil {
-				return comments.Comment{}, err
-			}
-			return comment, nil
-		}
-		return store.Add(comment)
+		return saveStoredComment(store, comment, current)
 	}, initialLayout{
 		SideBySide:     preferences.SideBySide,
 		SaveSideBySide: func(enabled bool) error { return settings.Save(settings.Preferences{SideBySide: enabled}) },
@@ -179,90 +172,135 @@ func (m model) Init() tea.Cmd { return func() tea.Msg { return tea.RequestBackgr
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.BackgroundColorMsg:
-		if dark := msg.IsDark(); dark != m.diffOptions.Dark {
-			m.diffOptions.Dark = dark
-			m.diffView.Configure(m.diffOptions)
-		}
+		m.updateBackground(msg)
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
 		m.resizeScreens()
 	case commentEditorFinishedMsg:
-		if msg.err != nil {
-			m.err = msg.err
-			m.clearCommentEdit()
-		} else {
-			m.edit.body = msg.body
-			m.finishCommentEdit()
-		}
+		m.commentEditorFinished(msg)
 	case commentsLoadedMsg:
-		if msg.revision != m.comments.revision {
-			break
-		}
-		if msg.err != nil {
-			m.err = fmt.Errorf("refresh comments: %w", msg.err)
-		} else {
-			m.comments.items = msg.comments
-			m.commentView.Update(m.comments.items)
-			m.err = nil
-		}
+		m.commentsLoaded(msg)
 	case sourceEditorFinishedMsg:
-		if msg.err != nil {
-			m.err = fmt.Errorf("editor: %w", msg.err)
-			break
-		}
-		return m, m.loadRefresh()
+		return m.sourceEditorFinished(msg)
 	case tea.FocusMsg:
 		return m, m.loadRefresh()
 	case refreshDiffMsg:
-		if msg.kind != m.kind {
-			return m, nil
-		}
-		if msg.err != nil {
-			m.err = fmt.Errorf("refresh diff: %w", msg.err)
-		} else {
-			m.updatePatch(msg.patch)
-			m.err = nil
-		}
+		m.diffRefreshed(msg)
 	case tea.KeyPressMsg:
 		m.diffView.EndDrag()
 		return m.updateKey(msg)
-	case tea.MouseClickMsg:
-		if msg.Button == tea.MouseLeft {
-			switch m.mode {
-			case modeBrowse:
-				m.diffView.BeginDrag(msg.X, msg.Y)
-			case modeComments:
-				m.commentView.Click(msg.X, msg.Y)
-			}
-		}
-	case tea.MouseMotionMsg:
-		if msg.Button == tea.MouseLeft && m.mode == modeBrowse {
-			m.diffView.DragTo(msg.X, msg.Y)
-		}
-	case tea.MouseReleaseMsg:
-		if msg.Button == tea.MouseLeft || msg.Button == tea.MouseNone {
-			if m.mode == modeBrowse {
-				m.diffView.DragTo(msg.X, msg.Y)
-			}
-			m.diffView.EndDrag()
-		}
-	case tea.MouseWheelMsg:
-		m.diffView.EndDrag()
-		if m.mode != modeBrowse && m.mode != modeSearch {
-			break
-		}
-		switch msg.Button {
-		case tea.MouseWheelUp:
-			m.diffView.ScrollVertical(-verticalScrollStep)
-		case tea.MouseWheelDown:
-			m.diffView.ScrollVertical(verticalScrollStep)
-		case tea.MouseWheelLeft:
-			m.diffView.ScrollHorizontal(-horizontalScrollStep)
-		case tea.MouseWheelRight:
-			m.diffView.ScrollHorizontal(horizontalScrollStep)
-		}
+	default:
+		m.updateMouse(msg)
 	}
 	return m, nil
+}
+
+func (m *model) updateBackground(msg tea.BackgroundColorMsg) {
+	if dark := msg.IsDark(); dark != m.diffOptions.Dark {
+		m.diffOptions.Dark = dark
+		m.diffView.Configure(m.diffOptions)
+	}
+}
+
+func (m *model) commentEditorFinished(msg commentEditorFinishedMsg) {
+	if msg.err != nil {
+		m.err = msg.err
+		m.clearCommentEdit()
+		return
+	}
+	m.edit.body = msg.body
+	m.finishCommentEdit()
+}
+
+func (m *model) commentsLoaded(msg commentsLoadedMsg) {
+	if msg.revision != m.comments.revision {
+		return
+	}
+	if msg.err != nil {
+		m.err = fmt.Errorf("refresh comments: %w", msg.err)
+		return
+	}
+	m.comments.items = msg.comments
+	m.commentView.Update(m.comments.items)
+	m.err = nil
+}
+
+func (m model) sourceEditorFinished(msg sourceEditorFinishedMsg) (tea.Model, tea.Cmd) {
+	if msg.err != nil {
+		m.err = fmt.Errorf("editor: %w", msg.err)
+		return m, nil
+	}
+	return m, m.loadRefresh()
+}
+
+func (m *model) diffRefreshed(msg refreshDiffMsg) {
+	if msg.kind != m.kind {
+		return
+	}
+	if msg.err != nil {
+		m.err = fmt.Errorf("refresh diff: %w", msg.err)
+		return
+	}
+	m.updatePatch(msg.patch)
+	m.err = nil
+}
+
+func (m *model) updateMouse(msg tea.Msg) {
+	switch msg := msg.(type) {
+	case tea.MouseClickMsg:
+		m.mouseClick(msg)
+	case tea.MouseMotionMsg:
+		m.mouseMotion(msg)
+	case tea.MouseReleaseMsg:
+		m.mouseRelease(msg)
+	case tea.MouseWheelMsg:
+		m.mouseWheel(msg)
+	}
+}
+
+func (m *model) mouseClick(msg tea.MouseClickMsg) {
+	if msg.Button != tea.MouseLeft {
+		return
+	}
+	switch m.mode {
+	case modeBrowse:
+		m.diffView.BeginDrag(msg.X, msg.Y)
+	case modeComments:
+		m.commentView.Click(msg.X, msg.Y)
+	}
+}
+
+func (m *model) mouseMotion(msg tea.MouseMotionMsg) {
+	if msg.Button == tea.MouseLeft && m.mode == modeBrowse {
+		m.diffView.DragTo(msg.X, msg.Y)
+	}
+}
+
+func (m *model) mouseRelease(msg tea.MouseReleaseMsg) {
+	if msg.Button != tea.MouseLeft && msg.Button != tea.MouseNone {
+		return
+	}
+	if m.mode == modeBrowse {
+		m.diffView.DragTo(msg.X, msg.Y)
+	}
+	m.diffView.EndDrag()
+}
+
+func (m *model) mouseWheel(msg tea.MouseWheelMsg) {
+	m.diffView.EndDrag()
+	if m.mode != modeBrowse && m.mode != modeSearch {
+		return
+	}
+	switch msg.Button {
+	case tea.MouseWheelUp:
+		m.diffView.ScrollVertical(-verticalScrollStep)
+	case tea.MouseWheelDown:
+		m.diffView.ScrollVertical(verticalScrollStep)
+	case tea.MouseWheelLeft:
+		m.diffView.ScrollHorizontal(-horizontalScrollStep)
+	case tea.MouseWheelRight:
+		m.diffView.ScrollHorizontal(horizontalScrollStep)
+	}
 }
 
 func (m model) loadRefresh() tea.Cmd {
@@ -295,18 +333,26 @@ func (m *model) resizeScreens() {
 
 func (m model) updateKey(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	name := key.String()
-	if m.mode == modeComments {
+	switch m.mode {
+	case modeComments:
 		return m.updateComments(name)
-	}
-	if m.mode == modeHelp {
-		if name == "esc" || name == "?" || name == "q" {
-			m.mode = modeBrowse
-		}
-		return m, nil
-	}
-	if m.mode == modeSearch {
+	case modeHelp:
+		return m.updateHelp(name)
+	case modeSearch:
 		return m.updateSearch(name, key)
 	}
+	return m.updateBrowseKey(name)
+}
+
+func (m model) updateHelp(name string) (tea.Model, tea.Cmd) {
+	switch name {
+	case "esc", "?", "q":
+		m.mode = modeBrowse
+	}
+	return m, nil
+}
+
+func (m model) updateBrowseKey(name string) (tea.Model, tea.Cmd) {
 	m.err = nil
 	name = m.keys.Feed(name)
 	switch name {
@@ -364,18 +410,10 @@ func (m model) updateKey(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		m.diffView.ClearSelection()
 	case "c":
 		cmd, err := m.beginComment()
-		if err != nil {
-			m.err = err
-			return m, nil
-		}
-		return m, cmd
+		return m.editorCommandResult(cmd, err)
 	case "e":
 		cmd, err := m.openCurrentLine()
-		if err != nil {
-			m.err = err
-			return m, nil
-		}
-		return m, cmd
+		return m.editorCommandResult(cmd, err)
 	case "C":
 		m.mode = modeComments
 		m.commentView.Update(m.comments.items)
@@ -383,18 +421,41 @@ func (m model) updateKey(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	case "R":
 		return m, m.loadRefresh()
 	case "tab":
-		if m.currentPatch.Branch == "" {
-			return m, nil
-		}
-		if m.kind == patch.Unstaged {
-			m.kind = patch.Branch
-		} else {
-			m.kind = patch.Unstaged
-		}
-		m.diffView.ClearSelection()
-		return m, m.loadRefresh()
+		return m.togglePatchKind()
 	case "t":
 		m.toggleSideBySide()
 	}
 	return m, nil
+}
+
+func saveStoredComment(store commentStore, comment comments.Comment, current patch.Patch) (comments.Comment, error) {
+	comment.Repository = current.Root
+	if comment.ID == "" {
+		return store.Add(comment)
+	}
+	if err := store.Update(comment); err != nil {
+		return comments.Comment{}, err
+	}
+	return comment, nil
+}
+
+func (m model) editorCommandResult(cmd tea.Cmd, err error) (tea.Model, tea.Cmd) {
+	if err != nil {
+		m.err = err
+		return m, nil
+	}
+	return m, cmd
+}
+
+func (m model) togglePatchKind() (tea.Model, tea.Cmd) {
+	if m.currentPatch.Branch == "" {
+		return m, nil
+	}
+	if m.kind == patch.Unstaged {
+		m.kind = patch.Branch
+	} else {
+		m.kind = patch.Unstaged
+	}
+	m.diffView.ClearSelection()
+	return m, m.loadRefresh()
 }

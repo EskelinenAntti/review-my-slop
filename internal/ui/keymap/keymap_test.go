@@ -1,6 +1,10 @@
 package keymap
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/eskelinenantti/review-my-slop/internal/testutil"
+)
 
 func TestFeed(t *testing.T) {
 	for _, test := range []struct {
@@ -22,8 +26,9 @@ func TestFeed(t *testing.T) {
 				Sequence{Prefix: "ctrl+w", Keys: []string{"h", "l", "ctrl+w"}},
 			)
 			for i, key := range test.keys {
-				if got := m.Feed(key); got != test.want[i] {
-					t.Fatalf("key %d (%q): got %q, want %q", i, key, got, test.want[i])
+				{
+					got := m.Feed(key)
+					testutil.Requiref(t, got == test.want[i], "key %d (%q): got %q, want %q", i, key, got, test.want[i])
 				}
 			}
 		})
@@ -34,23 +39,28 @@ func TestIndependentCopies(t *testing.T) {
 	m := New(Sequence{Prefix: "g", Keys: []string{"g"}, RetryUnmatched: true})
 	m.Feed("g")
 	copy := m
-	if got := m.Feed("j"); got != "j" {
-		t.Fatalf("unmatched key: %q", got)
+	{
+		got := m.Feed("j")
+		testutil.Requiref(t, got == "j", "unmatched key: %q", got)
 	}
-	if got := copy.Feed("g"); got != "g g" {
-		t.Fatalf("copy: %q", got)
+	{
+		got := copy.Feed("g")
+		testutil.Requiref(t, got == "g g", "copy: %q", got)
 	}
-	if got := m.Feed("g"); got != "" {
-		t.Fatalf("original retained consumed prefix: %q", got)
+	{
+		got := m.Feed("g")
+		testutil.Requiref(t, got == "", "original retained consumed prefix: %q", got)
 	}
-	if got := m.Feed("g"); got != "g g" {
-		t.Fatalf("original: %q", got)
+	{
+		got := m.Feed("g")
+		testutil.Requiref(t, got == "g g", "original: %q", got)
 	}
 }
 
 func TestZeroValuePassesKeysThrough(t *testing.T) {
 	var m Matcher
-	if got := m.Feed("j"); got != "j" {
-		t.Fatalf("got %q", got)
+	{
+		got := m.Feed("j")
+		testutil.Requiref(t, got == "j", "got %q", got)
 	}
 }

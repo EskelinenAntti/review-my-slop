@@ -10,6 +10,19 @@ permissions:
   contents: read
 
 jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - uses: golangci/golangci-lint-action@v9.3.0
+        with:
+          version: v2.14.0
+
   test:
     name: Test (${{ matrix.os }})
     strategy:
@@ -28,7 +41,7 @@ jobs:
 
   release:
     name: Release
-    needs: test
+    needs: [test, lint]
     if: github.event_name == 'push'
     runs-on: ubuntu-latest
     permissions:

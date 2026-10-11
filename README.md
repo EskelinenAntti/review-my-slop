@@ -39,4 +39,16 @@ All data stays truly local, and no telemetry is sent.
 brew install EskelinenAntti/cli/review-my-slop
 ```
 
+## Development
+
+Use Go 1.26 and [golangci-lint v2.14.0](https://golangci-lint.run/docs/welcome/install/local/).
+Run `make test` for race-enabled tests, `make build` to build the CLI, and
+`make check` (or `make lint`) for static analysis. CI runs the same lint
+configuration before releasing.
+
+The standard golangci-lint checks include govet, staticcheck, errcheck,
+ineffassign, and unused. The additional gocognit check requires cognitive
+complexity below 5 for every function, including tests. Its configuration
+threshold is 4 because gocognit reports scores strictly above the threshold.
+
 The project is licensed under the [MIT License](LICENSE).

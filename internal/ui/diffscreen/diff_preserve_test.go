@@ -5,20 +5,17 @@ import (
 	"testing"
 
 	"github.com/eskelinenantti/review-my-slop/internal/patch"
+	"github.com/eskelinenantti/review-my-slop/internal/testutil"
 )
 
 func TestPreserveTranslatesCursorSelectionAndViewport(t *testing.T) {
 	old := newUnifiedView(testPatch(), true)
 	first := mustFirst(t, old)
 	cursor, ok := old.search("added one", first, forward)
-	if !ok {
-		t.Fatal("cursor not found")
-	}
+	testutil.Require(t, ok, "cursor not found")
 	selection := old.beginSelection(first)
 	selection, ok = old.extendSelection(selection, cursor)
-	if !ok {
-		t.Fatal("selection not created")
-	}
+	testutil.Require(t, ok, "selection not created")
 	viewport := old.newViewport(100, 4)
 	viewport = old.align(viewport, cursor, middle)
 	screen := &View{view: old, cursor: cursor, selection: &selection, viewport: viewport}
@@ -27,23 +24,16 @@ func TestPreserveTranslatesCursorSelectionAndViewport(t *testing.T) {
 	screen.replaceView(next)
 	preserved := screen
 
-	if !next.valid(preserved.cursor) {
-		t.Fatal("cursor was not preserved")
-	}
+	testutil.Require(t, next.valid(preserved.cursor), "cursor was not preserved")
 	line, ok := next.line(preserved.cursor)
-	if !ok || line.Text != "added one" {
-		t.Fatalf("cursor line = %#v, ok=%v", line, ok)
-	}
-	if preserved.selection == nil {
-		t.Fatalf("selection = %#v", preserved.selection)
-	}
+	testutil.Requiref(t, ok && line.Text == "added one", "cursor line = %#v, ok=%v", line, ok)
+	testutil.Requiref(t, preserved.selection != nil, "selection = %#v", preserved.selection)
 	firstLine, firstOK := next.line(preserved.selection.First)
 	lastLine, lastOK := next.line(preserved.selection.Last)
-	if !firstOK || !lastOK || firstLine.Text != "before" || lastLine.Text != "added one" {
-		t.Fatalf("selection endpoints = %#v, %#v", firstLine, lastLine)
-	}
-	if got, want := preserved.cursor.row-preserved.viewport.top, cursor.row-viewport.top; got != want {
-		t.Fatalf("screen row = %d, want %d", got, want)
+	testutil.Requiref(t, firstOK && lastOK && firstLine.Text == "before" && lastLine.Text == "added one", "selection endpoints = %#v, %#v", firstLine, lastLine)
+	{
+		got, want := preserved.cursor.row-preserved.viewport.top, cursor.row-viewport.top
+		testutil.Requiref(t, got == want, "screen row = %d, want %d", got, want)
 	}
 }
 
@@ -55,9 +45,7 @@ func TestPreserveReturnsEmptyStateForEmptyView(t *testing.T) {
 	screen.replaceView(newUnifiedView(patch.Patch{}, true))
 	preserved := screen
 
-	if preserved.view.valid(preserved.cursor) || preserved.selection != nil {
-		t.Fatalf("state = %#v", preserved)
-	}
+	testutil.Requiref(t, !preserved.view.valid(preserved.cursor) && preserved.selection == nil, "state = %#v", preserved)
 }
 
 func TestPreserveClampsHorizontalOffsetForShorterLines(t *testing.T) {
@@ -66,15 +54,11 @@ func TestPreserveClampsHorizontalOffsetForShorterLines(t *testing.T) {
 	old := newUnifiedView(p, true)
 	cursor := mustFirst(t, old)
 	viewport := old.scrollHorizontal(old.newViewport(40, 10), 30)
-	if viewport.LeftColumn == 0 {
-		t.Fatal("fixture does not scroll horizontally")
-	}
+	testutil.Require(t, viewport.LeftColumn != 0, "fixture does not scroll horizontally")
 	short := testPatch()
 	preserved := &View{view: old, cursor: cursor, viewport: viewport}
 	preserved.replaceView(newUnifiedView(short, true))
-	if preserved.viewport.LeftColumn != 0 {
-		t.Fatalf("horizontal offset = %d", preserved.viewport.LeftColumn)
-	}
+	testutil.Requiref(t, preserved.viewport.LeftColumn == 0, "horizontal offset = %d", preserved.viewport.LeftColumn)
 }
 
 func TestUpdatePreservesCursorAfterLineDeletion(t *testing.T) {
@@ -112,26 +96,25 @@ func TestUpdatePreservesCursorAfterLineDeletion(t *testing.T) {
 			{"cursor hunk removed", []patch.Hunk{early, late}, late.Lines[0]},
 		} {
 			t.Run(fmt.Sprintf("%s/split=%v", tc.name, split), func(t *testing.T) {
-				v := New(original, Options{SideBySide: split})
-				v.Resize(120, 4)
-				v.BeginSearch()
-				v.InsertSearch("target")
-				v.AcceptSearch()
-				_, line, ok := v.Current()
-				if !ok || line != target {
-					t.Fatalf("initial cursor = %#v, ok=%v", line, ok)
-				}
-				v.Update(makePatch(tc.hunks))
-				_, line, ok = v.Current()
-				if !ok || line != tc.want {
-					t.Fatalf("restored cursor = %#v, ok=%v, want %#v", line, ok, tc.want)
-				}
-				if v.cursor.row < v.viewport.top || v.cursor.row >= v.viewport.top+v.view.contentHeight(v.viewport) {
-					t.Fatal("restored cursor is outside the viewport")
-				}
+				assertCursorAfterDeletion(t, original, makePatch(tc.hunks), split, target, tc.want)
 			})
 		}
 	}
 }
 
 func ptr[T any](value T) *T { return &value }
+
+func assertCursorAfterDeletion(t *testing.T, original, updated patch.Patch, split bool, target, want patch.Line) {
+	t.Helper()
+	v := New(original, Options{SideBySide: split})
+	v.Resize(120, 4)
+	v.BeginSearch()
+	v.InsertSearch("target")
+	v.AcceptSearch()
+	_, line, ok := v.Current()
+	testutil.Requiref(t, ok && line == target, "initial cursor = %#v, ok=%v", line, ok)
+	v.Update(updated)
+	_, line, ok = v.Current()
+	testutil.Requiref(t, ok && line == want, "restored cursor = %#v, ok=%v, want %#v", line, ok, want)
+	testutil.Require(t, v.cursor.row >= v.viewport.top && v.cursor.row < v.viewport.top+v.view.contentHeight(v.viewport), "restored cursor is outside the viewport")
+}

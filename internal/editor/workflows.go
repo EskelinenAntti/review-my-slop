@@ -29,7 +29,7 @@ func commentWorkflow(ctx context.Context, command, body string, anchor comments.
 		if err != nil {
 			return err
 		}
-		defer os.Remove(path)
+		defer func() { _ = os.Remove(path) }() // The editor may have already removed the draft.
 		if err := adapter.execute(commentCommand(ctx, command, path)); err != nil {
 			return fmt.Errorf("editor: %w", err)
 		}

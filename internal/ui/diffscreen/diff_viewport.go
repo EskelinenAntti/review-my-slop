@@ -46,13 +46,7 @@ func (v *diffView) keepVisible(viewport diffViewport, cursor diffCursor) diffVie
 	}
 	viewport = v.clampViewport(viewport)
 	for range 2 {
-		height := v.contentHeight(viewport)
-		if cursor.row < viewport.top {
-			viewport.top = cursor.row
-		}
-		if cursor.row >= viewport.top+height {
-			viewport.top = cursor.row - height + 1
-		}
+		viewport.top = visibleTop(viewport.top, v.contentHeight(viewport), cursor.row)
 		viewport = v.clampViewport(viewport)
 	}
 	return viewport
@@ -99,10 +93,7 @@ func (v *diffView) scrollVertical(viewport diffViewport, cursor diffCursor, rows
 	if cursor.row > target {
 		d = backward
 	}
-	candidate, ok := v.nearest(target, cursor.pane, d, viewport)
-	if !ok && v.split {
-		candidate, ok = v.nearest(target, cursor.pane.other(), d, viewport)
-	}
+	candidate, ok := v.nearestEitherPane(target, cursor.pane, d, viewport)
 	if ok {
 		cursor = candidate
 	}
@@ -136,18 +127,28 @@ func (v *diffView) viewportProgress(viewport diffViewport) int {
 }
 
 func (v *diffView) nearest(target int, pane diffPane, direction direction, viewport diffViewport) (diffCursor, bool) {
-	height := v.contentHeight(viewport)
-	for distance := 0; distance < height; distance++ {
-		for _, y := range []int{target + int(direction)*distance, target - int(direction)*distance} {
-			if y < viewport.top || y >= viewport.top+height || y >= len(v.rows) {
-				continue
-			}
-			if cursor, ok := v.cursorAt(y, pane); ok {
-				return cursor, true
-			}
+	for distance := 0; distance < v.contentHeight(viewport); distance++ {
+		if cursor, ok := v.nearestAtDistance(target, distance, pane, direction, viewport); ok {
+			return cursor, true
 		}
 	}
 	return diffCursor{}, false
+}
+
+func (v *diffView) nearestAtDistance(target, distance int, pane diffPane, direction direction, viewport diffViewport) (diffCursor, bool) {
+	for _, y := range []int{target + int(direction)*distance, target - int(direction)*distance} {
+		if cursor, ok := v.visibleCursorAt(y, pane, viewport); ok {
+			return cursor, true
+		}
+	}
+	return diffCursor{}, false
+}
+
+func (v *diffView) visibleCursorAt(y int, pane diffPane, viewport diffViewport) (diffCursor, bool) {
+	if y < viewport.top || y >= viewport.top+v.contentHeight(viewport) {
+		return diffCursor{}, false
+	}
+	return v.cursorAt(y, pane)
 }
 
 func (v *diffView) maxHorizontalOffset(width int) int {
@@ -164,4 +165,24 @@ func (v *diffView) maxHorizontalOffset(width int) int {
 		longest = max(longest, lipgloss.Width(expandTabs(ansi.Strip(current.text+current.left+current.right)))+extra)
 	}
 	return max(0, longest-contentWidth)
+}
+
+func visibleTop(top, height, row int) int {
+	if row < top {
+		top = row
+	}
+	if row >= top+height {
+		top = row - height + 1
+	}
+	return top
+}
+
+func (v *diffView) nearestEitherPane(target int, pane diffPane, d direction, viewport diffViewport) (diffCursor, bool) {
+	if cursor, ok := v.nearest(target, pane, d, viewport); ok {
+		return cursor, true
+	}
+	if v.split {
+		return v.nearest(target, pane.other(), d, viewport)
+	}
+	return diffCursor{}, false
 }

@@ -31,25 +31,47 @@ func WritePrompt(w io.Writer, comments []Comment) error {
 	if _, err := fmt.Fprintln(w, "New comments since last run:"); err != nil {
 		return err
 	}
+	return writeComments(w, comments)
+}
+
+func writeComments(w io.Writer, comments []Comment) error {
 	for index, comment := range comments {
-		a := comment.Anchor
-		if _, err := fmt.Fprintf(w, "\n### %d. `%s` (%s)\n\n", index+1, a.FilePath, describeRange(a)); err != nil {
+		if err := writeComment(w, index+1, comment); err != nil {
 			return err
 		}
-		if len(a.QuotedLines) > 0 {
-			if _, err := fmt.Fprintln(w, "```diff"); err != nil {
-				return err
-			}
-			for _, line := range a.QuotedLines {
-				if _, err := fmt.Fprintln(w, line); err != nil {
-					return err
-				}
-			}
-			if _, err := fmt.Fprintln(w, "```"); err != nil {
-				return err
-			}
-		}
-		if _, err := fmt.Fprintln(w, strings.TrimSpace(comment.Body)); err != nil {
+	}
+	return nil
+}
+
+func writeComment(w io.Writer, index int, comment Comment) error {
+	a := comment.Anchor
+	if _, err := fmt.Fprintf(w, "\n### %d. `%s` (%s)\n\n", index, a.FilePath, describeRange(a)); err != nil {
+		return err
+	}
+	if err := writeQuotedLines(w, a.QuotedLines); err != nil {
+		return err
+	}
+	_, err := fmt.Fprintln(w, strings.TrimSpace(comment.Body))
+	return err
+}
+
+func writeQuotedLines(w io.Writer, lines []string) error {
+	if len(lines) == 0 {
+		return nil
+	}
+	if _, err := fmt.Fprintln(w, "```diff"); err != nil {
+		return err
+	}
+	if err := writeLines(w, lines); err != nil {
+		return err
+	}
+	_, err := fmt.Fprintln(w, "```")
+	return err
+}
+
+func writeLines(w io.Writer, lines []string) error {
+	for _, line := range lines {
+		if _, err := fmt.Fprintln(w, line); err != nil {
 			return err
 		}
 	}

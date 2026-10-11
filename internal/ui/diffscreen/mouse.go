@@ -27,6 +27,10 @@ func (v *View) DragTo(x, y int) {
 	if !ok || cursor.pane != v.drag.pane {
 		return
 	}
+	v.extendDrag(cursor)
+}
+
+func (v *View) extendDrag(cursor diffCursor) {
 	if cursor == *v.drag && v.selection == nil {
 		return
 	}
@@ -45,21 +49,35 @@ func (v *View) cursorAtPoint(x, y int) (diffCursor, bool) {
 	if !ok {
 		return diffCursor{}, false
 	}
+	row, ok = v.contentRow(row)
+	if !ok {
+		return diffCursor{}, false
+	}
+	pane, ok := v.paneAtPoint(x)
+	if !ok {
+		return diffCursor{}, false
+	}
+	return v.view.cursorAt(v.viewport.top+row, pane)
+}
+
+func (v *View) paneAtPoint(x int) (diffPane, bool) {
+	if !v.view.split {
+		return right, true
+	}
+	leftWidth, _ := splitPaneWidths(v.viewport.Width)
+	switch {
+	case x < leftWidth:
+		return left, true
+	case x < leftWidth+3:
+		return right, false
+	default:
+		return right, true
+	}
+}
+
+func (v *View) contentRow(row int) (int, bool) {
 	if v.view.hasStickyHeader(v.viewport.top, v.viewport.Height) {
 		row--
 	}
-	if row < 0 || row >= v.view.contentHeight(v.viewport) {
-		return diffCursor{}, false
-	}
-	pane := right
-	if v.view.split {
-		leftWidth, _ := splitPaneWidths(v.viewport.Width)
-		switch {
-		case x < leftWidth:
-			pane = left
-		case x < leftWidth+3:
-			return diffCursor{}, false
-		}
-	}
-	return v.view.cursorAt(v.viewport.top+row, pane)
+	return row, row >= 0 && row < v.view.contentHeight(v.viewport)
 }

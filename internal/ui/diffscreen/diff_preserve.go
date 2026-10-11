@@ -31,13 +31,18 @@ func (v *View) replaceView(next *diffView) {
 		v.viewport.top = max(0, v.cursor.row-rowsAbove)
 		v.viewport = next.keepVisible(v.viewport, v.cursor)
 	}
-	if v.search.active {
-		v.search.from = v.cursor
-		if translated, ok := next.findCursor(origin); ok {
-			v.search.from = translated
-		}
-		v.previewSearch(v.search.query)
+	v.restoreSearch(next, origin)
+}
+
+func (v *View) restoreSearch(next *diffView, origin cursorIdentity) {
+	if !v.search.active {
+		return
 	}
+	v.search.from = v.cursor
+	if translated, ok := next.findCursor(origin); ok {
+		v.search.from = translated
+	}
+	v.previewSearch(v.search.query)
 }
 
 func identify(v *diffView, cursor diffCursor) cursorIdentity {
@@ -57,18 +62,25 @@ func preserveSelection(old *diffView, selection *diffSelection, next *diffView) 
 	}
 	first := identify(old, selection.First)
 	last := identify(old, selection.Last)
-	if !first.valid || !last.valid {
+	if !sameSelectionSource(first, last) {
 		return nil
 	}
 	translatedFirst, firstOK := next.findCursor(first)
 	translatedLast, lastOK := next.findCursor(last)
-	if !firstOK || !lastOK || !sameFile(first.file, last.file) || first.hunk.Header != last.hunk.Header {
+	if !firstOK || !lastOK {
 		return nil
 	}
-	translated := next.beginSelection(translatedFirst)
-	translated, ok := next.extendSelection(translated, translatedLast)
+	return translatedSelection(next, translatedFirst, translatedLast)
+}
+
+func translatedSelection(next *diffView, first, last diffCursor) *diffSelection {
+	translated, ok := next.extendSelection(next.beginSelection(first), last)
 	if !ok {
 		return nil
 	}
 	return &translated
+}
+
+func sameSelectionSource(first, last cursorIdentity) bool {
+	return first.valid && last.valid && sameFile(first.file, last.file) && first.hunk.Header == last.hunk.Header
 }

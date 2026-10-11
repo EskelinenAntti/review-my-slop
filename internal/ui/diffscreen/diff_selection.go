@@ -1,6 +1,8 @@
 package diffscreen
 
 import (
+	"iter"
+
 	"github.com/eskelinenantti/review-my-slop/internal/patch"
 )
 
@@ -25,29 +27,45 @@ func (v *diffView) lines(selection diffSelection) []patch.Line {
 	if _, ok := v.extendSelection(selection, selection.Last); !ok {
 		return nil
 	}
-	first, last := selection.First.row, selection.Last.row
-	if first > last {
-		first, last = last, first
+	if selection.First.row == selection.Last.row && selection.First.pane != selection.Last.pane {
+		return v.crossPaneLines(selection)
 	}
-	lines := make([]patch.Line, 0, last-first+1)
-	if first == last && selection.First.pane != selection.Last.pane {
-		current := v.rows[first]
-		indices := []int{v.lineIndex(current, selection.First.pane), v.lineIndex(current, selection.Last.pane)}
-		for _, index := range indices {
-			if index >= 0 && (len(lines) == 0 || lines[len(lines)-1] != v.patch.Files[current.file].Hunks[current.hunk].Lines[index]) {
-				lines = append(lines, v.patch.Files[current.file].Hunks[current.hunk].Lines[index])
-			}
-		}
-		return lines
+	return v.paneLines(selection)
+}
+
+func (v *diffView) crossPaneLines(selection diffSelection) []patch.Line {
+	var lines []patch.Line
+	for _, pane := range []diffPane{selection.First.pane, selection.Last.pane} {
+		lines = v.appendDistinctLine(lines, diffCursor{row: selection.First.row, pane: pane})
 	}
+	return lines
+}
+
+func (v *diffView) paneLines(selection diffSelection) []patch.Line {
+	var lines []patch.Line
+	first, last := min(selection.First.row, selection.Last.row), max(selection.First.row, selection.Last.row)
 	for y := first; y <= last; y++ {
-		pane := selection.First.pane
-		if y == selection.Last.row {
-			pane = selection.Last.pane
-		}
-		if line, ok := v.line(diffCursor{row: y, pane: pane}); ok {
+		if line, ok := v.line(diffCursor{row: y, pane: selectionPane(selection, y)}); ok {
 			lines = append(lines, line)
 		}
+	}
+	return lines
+}
+
+func selectionPane(selection diffSelection, row int) diffPane {
+	if row == selection.Last.row {
+		return selection.Last.pane
+	}
+	return selection.First.pane
+}
+
+func (v *diffView) appendDistinctLine(lines []patch.Line, cursor diffCursor) []patch.Line {
+	line, ok := v.line(cursor)
+	if !ok {
+		return lines
+	}
+	if len(lines) == 0 || lines[len(lines)-1] != line {
+		return append(lines, line)
 	}
 	return lines
 }
@@ -73,39 +91,89 @@ func (v *diffView) findCursor(target cursorIdentity) (diffCursor, bool) {
 	if !target.valid {
 		return diffCursor{}, false
 	}
-	best := diffCursor{}
-	bestRank, bestDistance := 0, 0
-	for y, current := range v.rows {
-		if current.hunk < 0 || !sameFile(v.patch.Files[current.file], target.file) {
-			continue
+	best := cursorMatch{}
+	for candidate := range v.fileCursors(target) {
+		match := v.rankCursor(candidate, target)
+		if match.rank == 3 {
+			return candidate, true
 		}
-		for _, pane := range [2]diffPane{target.cursor.pane, target.cursor.pane.other()} {
-			candidate, ok := v.cursorAt(y, pane)
-			if !ok {
-				continue
-			}
-			line, _ := v.line(candidate)
-			rank := 1
-			if line.Kind == target.line.Kind {
-				if line.OldNumber == target.line.OldNumber && line.NewNumber == target.line.NewNumber {
-					return candidate, true
-				}
-				if line.Text == target.line.Text {
-					rank = 2
-				}
-			}
-			distance := abs(y - target.cursor.row)
-			if line.NewNumber > 0 && target.line.NewNumber > 0 {
-				distance = abs(int(line.NewNumber - target.line.NewNumber))
-			} else if line.OldNumber > 0 && target.line.OldNumber > 0 {
-				distance = abs(int(line.OldNumber - target.line.OldNumber))
-			}
-			if rank > bestRank || rank == bestRank && distance < bestDistance {
-				best, bestRank, bestDistance = candidate, rank, distance
-			}
+		best = betterMatch(best, match)
+	}
+	return best.cursor, best.rank > 0
+}
+
+type cursorMatch struct {
+	cursor         diffCursor
+	rank, distance int
+}
+
+func (v *diffView) fileCursors(target cursorIdentity) iter.Seq[diffCursor] {
+	return func(yield func(diffCursor) bool) {
+		v.yieldFileCursors(target, yield)
+	}
+}
+
+func (v *diffView) yieldFileCursors(target cursorIdentity, yield func(diffCursor) bool) {
+	for y, current := range v.rows {
+		if !v.visitFileRow(y, current, target, yield) {
+			return
 		}
 	}
-	return best, bestRank > 0
+}
+
+func (v *diffView) visitFileRow(y int, current entry, target cursorIdentity, yield func(diffCursor) bool) bool {
+	if !v.isTargetFile(current, target.file) {
+		return true
+	}
+	return v.yieldRowCursors(y, target.cursor.pane, yield)
+}
+
+func (v *diffView) isTargetFile(current entry, file patch.File) bool {
+	return current.hunk >= 0 && sameFile(v.patch.Files[current.file], file)
+}
+
+func (v *diffView) yieldRowCursors(y int, pane diffPane, yield func(diffCursor) bool) bool {
+	for _, pane := range [2]diffPane{pane, pane.other()} {
+		if candidate, ok := v.cursorAt(y, pane); ok && !yield(candidate) {
+			return false
+		}
+	}
+	return true
+}
+
+func (v *diffView) rankCursor(candidate diffCursor, target cursorIdentity) cursorMatch {
+	line, _ := v.line(candidate)
+	return cursorMatch{cursor: candidate, rank: identityRank(line, target.line), distance: sourceDistance(line, candidate.row, target)}
+}
+
+func identityRank(line, target patch.Line) int {
+	if line.Kind != target.Kind {
+		return 1
+	}
+	if line.OldNumber == target.OldNumber && line.NewNumber == target.NewNumber {
+		return 3
+	}
+	if line.Text == target.Text {
+		return 2
+	}
+	return 1
+}
+
+func sourceDistance(line patch.Line, row int, target cursorIdentity) int {
+	if line.NewNumber > 0 && target.line.NewNumber > 0 {
+		return abs(int(line.NewNumber - target.line.NewNumber))
+	}
+	if line.OldNumber > 0 && target.line.OldNumber > 0 {
+		return abs(int(line.OldNumber - target.line.OldNumber))
+	}
+	return abs(row - target.cursor.row)
+}
+
+func betterMatch(best, candidate cursorMatch) cursorMatch {
+	if candidate.rank > best.rank || candidate.rank == best.rank && candidate.distance < best.distance {
+		return candidate
+	}
+	return best
 }
 
 func sameFile(candidate, target patch.File) bool {
