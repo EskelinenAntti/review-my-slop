@@ -24,6 +24,7 @@ jobs:
           cache: true
       - run: go test -race ./...
       - run: go vet ./...
+      - run: make critic
       - run: go build ./cmd/review-my-slop
 
   release:

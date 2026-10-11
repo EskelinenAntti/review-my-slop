@@ -108,7 +108,7 @@ type model struct {
 	quitting   bool
 }
 
-func newModel(p patch.Patch, comments []comments.Comment, save saveCommentFunc, layout initialLayout) model {
+func newModel(p patch.Patch, items []comments.Comment, save saveCommentFunc, layout initialLayout) model {
 	size := layout.size
 	if size.Width <= 0 || size.Height <= 0 {
 		size = defaultSize
@@ -116,8 +116,8 @@ func newModel(p patch.Patch, comments []comments.Comment, save saveCommentFunc, 
 	m := model{
 		ctx:          context.Background(),
 		currentPatch: p,
-		comments:     commentState{items: comments},
-		commentView:  commentscreen.New(comments),
+		comments:     commentState{items: items},
+		commentView:  commentscreen.New(items),
 		edit:         commentEdit{index: -1},
 		width:        size.Width,
 		height:       size.Height,
@@ -167,14 +167,14 @@ func newWithStore(store commentStore, p patch.Patch, items []comments.Comment, s
 }
 
 func (m *model) setRefresh(refresh refreshDiffFunc)    { m.refresh = refresh }
-func (m *model) setDelete(delete deleteCommentFunc)    { m.delete = delete }
+func (m *model) setDelete(remove deleteCommentFunc)    { m.delete = remove }
 func (m *model) setLoadComments(load loadCommentsFunc) { m.load = load }
 func (m *model) configureSideBySide(enabled bool, save saveSideBySideFunc) {
 	m.saveLayout = save
 	m.setSideBySide(enabled)
 }
 
-func (m model) Init() tea.Cmd { return func() tea.Msg { return tea.RequestBackgroundColor() } }
+func (m model) Init() tea.Cmd { return tea.RequestBackgroundColor }
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
@@ -279,8 +279,8 @@ func (m model) loadComments() tea.Cmd {
 	}
 	revision := m.comments.revision
 	return func() tea.Msg {
-		comments, err := m.load()
-		return commentsLoadedMsg{comments: comments, revision: revision, err: err}
+		items, err := m.load()
+		return commentsLoadedMsg{comments: items, revision: revision, err: err}
 	}
 }
 

@@ -392,8 +392,8 @@ func (v *View) renderFooter(value string) string {
 	return value + strings.Repeat(" ", max(1, width-lipgloss.Width(value)-lipgloss.Width(right))) + right
 }
 func patchLineCounts(p patch.Patch) (added, removed int) {
-	for _, file := range p.Files {
-		for _, hunk := range file.Hunks {
+	for index := range p.Files {
+		for _, hunk := range p.Files[index].Hunks {
 			for _, line := range hunk.Lines {
 				if line.Kind == patch.Addition {
 					added++

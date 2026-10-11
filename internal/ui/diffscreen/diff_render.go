@@ -63,7 +63,7 @@ func (v *diffView) renderUnifiedRow(current entry, y int, viewport diffViewport,
 		if cursor.row == y {
 			style, strip = cursorStyle, true
 		}
-		return renderStyledRow(style, value, width, strip)
+		return renderStyledRow(&style, value, width, strip)
 	}
 	return ""
 }
@@ -113,7 +113,7 @@ func (v *diffView) renderPane(current entry, y int, pane diffPane, width, offset
 	if cursor == candidate {
 		style, strip = cursorStyle, true
 	}
-	return renderStyledRow(style, value, width, strip)
+	return renderStyledRow(&style, value, width, strip)
 }
 
 func selected(selection *diffSelection, cursor diffCursor) bool {
@@ -156,7 +156,7 @@ func number(value patch.LineNumber) string {
 	return strconv.Itoa(int(value))
 }
 
-func renderStyledRow(style lipgloss.Style, value string, width int, stripForeground bool) string {
+func renderStyledRow(style *lipgloss.Style, value string, width int, stripForeground bool) string {
 	value = filterANSIColors(value, stripForeground)
 	fitted := fitANSIWindow(value, 0, width)
 	prefix := stylePrefix(style)
@@ -222,7 +222,7 @@ func fitANSIWindow(value string, offset, width int) string {
 
 func expandTabs(value string) string { return strings.ReplaceAll(value, "\t", "    ") }
 
-func stylePrefix(style lipgloss.Style) string {
+func stylePrefix(style *lipgloss.Style) string {
 	const marker = "\x00"
 	rendered := style.Render(marker)
 	index := strings.Index(rendered, marker)

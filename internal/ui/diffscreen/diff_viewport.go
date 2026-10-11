@@ -28,7 +28,7 @@ func (v *diffView) clampViewport(viewport diffViewport) diffViewport {
 	return viewport
 }
 
-func (v *diffView) hasStickyHeader(top int, viewportHeight int) bool {
+func (v *diffView) hasStickyHeader(top, viewportHeight int) bool {
 	return viewportHeight > 1 && top >= 0 && top < len(v.rows) && v.rows[top].kind != fileRow
 }
 

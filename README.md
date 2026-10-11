@@ -39,4 +39,15 @@ All data stays truly local, and no telemetry is sent.
 brew install EskelinenAntti/cli/review-my-slop
 ```
 
+## Development
+
+Run `make test` for the race-enabled test suite and `make check` for Go vet,
+Staticcheck (installed separately), and go-critic. `make critic` runs the pinned
+go-critic version directly through Go; no separate installation is needed.
+
+All non-experimental go-critic checks are enabled, including checks on test
+files. The `hugeParam` threshold is 512 bytes to accommodate the TUI's
+value-based models. GitHub Actions also runs `make critic` on every pull request
+and push to main.
+
 The project is licensed under the [MIT License](LICENSE).

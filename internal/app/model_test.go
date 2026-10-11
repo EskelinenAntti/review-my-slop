@@ -15,8 +15,8 @@ import (
 	"github.com/eskelinenantti/review-my-slop/internal/ui/diffscreen"
 )
 
-func testModel(p patch.Patch, comments []comments.Comment, save saveCommentFunc) model {
-	return newModel(p, comments, save, initialLayout{size: size{Width: 100, Height: 30}})
+func testModel(p patch.Patch, items []comments.Comment, save saveCommentFunc) model {
+	return newModel(p, items, save, initialLayout{size: size{Width: 100, Height: 30}})
 }
 
 func TestStoreBackedCommentLifecycle(t *testing.T) {

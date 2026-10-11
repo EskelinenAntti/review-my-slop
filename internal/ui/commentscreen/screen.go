@@ -32,8 +32,8 @@ func (v *View) Update(items []comments.Comment) {
 	v.items = append([]comments.Comment(nil), items...)
 	v.row = min(v.row, max(0, len(items)-1))
 	if ok && selected.ID != "" {
-		for index, item := range items {
-			if item.ID == selected.ID {
+		for index := range items {
+			if items[index].ID == selected.ID {
 				v.row = index
 				break
 			}

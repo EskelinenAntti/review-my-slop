@@ -613,8 +613,8 @@ func focusLine(t *testing.T, m *model, text string) {
 	t.Helper()
 	m.diffView.Move(diffscreen.FirstLine)
 	count := 0
-	for _, file := range m.currentPatch.Files {
-		for _, hunk := range file.Hunks {
+	for index := range m.currentPatch.Files {
+		for _, hunk := range m.currentPatch.Files[index].Hunks {
 			count += len(hunk.Lines)
 		}
 	}

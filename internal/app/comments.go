@@ -168,7 +168,8 @@ func (m model) openCommentEditor() (tea.Cmd, error) {
 }
 
 func (m model) commentIndex(selected comments.Comment) int {
-	for index, item := range m.comments.items {
+	for index := range m.comments.items {
+		item := &m.comments.items[index]
 		if selected.ID != "" && item.ID == selected.ID || selected.ID == "" && item.Body == selected.Body && item.Anchor.FilePath == selected.Anchor.FilePath {
 			return index
 		}

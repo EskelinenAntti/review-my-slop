@@ -32,12 +32,13 @@ type diffView struct {
 
 func newDiffView(p patch.Patch, split, dark bool) *diffView {
 	v := &diffView{patch: p, split: split, dark: dark}
-	for fileIndex, file := range p.Files {
+	for fileIndex := range p.Files {
+		file := &p.Files[fileIndex]
 		v.rows = append(v.rows, entry{kind: fileRow, file: fileIndex, hunk: -1, leftLine: -1, rightLine: -1, text: file.DisplayPath})
 		for _, metadata := range file.Metadata {
 			v.rows = append(v.rows, entry{kind: metadataRow, file: fileIndex, hunk: -1, leftLine: -1, rightLine: -1, text: metadata})
 		}
-		highlighted := v.highlight(&file)
+		highlighted := v.highlight(file)
 		for hunkIndex, hunk := range file.Hunks {
 			v.rows = append(v.rows, entry{kind: hunkRow, file: fileIndex, hunk: hunkIndex, leftLine: -1, rightLine: -1, text: hunkHeader(hunk.Header)})
 			for _, indices := range lineRows(hunk.Lines, split) {

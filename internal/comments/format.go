@@ -17,8 +17,8 @@ func (s Store) WritePending(w io.Writer, repository string) error {
 		return err
 	}
 	ids := make([]string, len(pending))
-	for i, comment := range pending {
-		ids[i] = comment.ID
+	for i := range pending {
+		ids[i] = pending[i].ID
 	}
 	return s.Acknowledge(repository, ids)
 }
@@ -31,7 +31,8 @@ func WritePrompt(w io.Writer, comments []Comment) error {
 	if _, err := fmt.Fprintln(w, "New comments since last run:"); err != nil {
 		return err
 	}
-	for index, comment := range comments {
+	for index := range comments {
+		comment := &comments[index]
 		a := comment.Anchor
 		if _, err := fmt.Fprintf(w, "\n### %d. `%s` (%s)\n\n", index+1, a.FilePath, describeRange(a)); err != nil {
 			return err
