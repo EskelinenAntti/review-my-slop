@@ -5,27 +5,36 @@ import (
 	"testing"
 
 	"github.com/eskelinenantti/review-my-slop/internal/patch"
-	"github.com/eskelinenantti/review-my-slop/internal/testutil"
 )
 
 func TestSelectedDefaultsToCurrentAndMovementExtendsRange(t *testing.T) {
 	v := New(testPatch(), Options{Dark: true})
 	file, lines, ok := v.Selected()
-	testutil.Requiref(t, ok && file.NewPath == "first.go" && len(lines) == 1 && lines[0].Text == "before", "default selection=%#v %#v %v", file, lines, ok)
+	if !ok || file.NewPath != "first.go" || len(lines) != 1 || lines[0].Text != "before" {
+		t.Fatalf("default selection=%#v %#v %v", file, lines, ok)
+	}
 	v.ToggleSelection()
 	v.Move(NextLine)
 	_, lines, ok = v.Selected()
-	testutil.Requiref(t, ok && len(lines) == 2, "extended selection=%#v", lines)
+	if !ok || len(lines) != 2 {
+		t.Fatalf("extended selection=%#v", lines)
+	}
 	before := v.cursor
 	for range 20 {
 		v.Move(NextLine)
 	}
-	testutil.Require(t, v.cursor.row >= before.row, "selection moved backward")
+	if v.cursor.row < before.row {
+		t.Fatal("selection moved backward")
+	}
 	file, _, _ = v.Selected()
-	testutil.Require(t, file.NewPath == "first.go", "selection crossed file")
+	if file.NewPath != "first.go" {
+		t.Fatal("selection crossed file")
+	}
 	v.ClearSelection()
 	_, lines, ok = v.Selected()
-	testutil.Requiref(t, ok && len(lines) == 1, "cleared selection=%#v", lines)
+	if !ok || len(lines) != 1 {
+		t.Fatalf("cleared selection=%#v", lines)
+	}
 }
 
 func TestUpdateAndConfigurePreserveState(t *testing.T) {
@@ -39,16 +48,26 @@ func TestUpdateAndConfigurePreserveState(t *testing.T) {
 	p.Files[0].Metadata = []string{"new metadata"}
 	v.Update(p)
 	_, got, ok := v.Current()
-	testutil.Requiref(t, ok && got == want, "updated current=%#v, want %#v", got, want)
+	if !ok || got != want {
+		t.Fatalf("updated current=%#v, want %#v", got, want)
+	}
 	_, lines, ok := v.Selected()
-	testutil.Requiref(t, ok && len(lines) == 2, "updated selection=%#v", lines)
+	if !ok || len(lines) != 2 {
+		t.Fatalf("updated selection=%#v", lines)
+	}
 	v.Configure(Options{SideBySide: true, Dark: false})
 	_, got, ok = v.Current()
-	testutil.Requiref(t, ok && got == want, "configured current=%#v, want %#v", got, want)
-	testutil.Require(t, strings.Contains(v.Render(nil), " │ "), "split layout not rendered")
+	if !ok || got != want {
+		t.Fatalf("configured current=%#v, want %#v", got, want)
+	}
+	if !strings.Contains(v.Render(nil), " │ ") {
+		t.Fatal("split layout not rendered")
+	}
 	before := v.Render(nil)
 	v.Update(p)
-	testutil.Require(t, v.Render(nil) == before, "unchanged refresh changed presentation")
+	if v.Render(nil) != before {
+		t.Fatal("unchanged refresh changed presentation")
+	}
 }
 
 func TestNarrowLayoutFallbackPreservesPreferenceAndPosition(t *testing.T) {
@@ -63,11 +82,17 @@ func TestNarrowLayoutFallbackPreservesPreferenceAndPosition(t *testing.T) {
 	offset := v.cursor.row - v.viewport.top
 	_, want, _ := v.Current()
 	v.Resize(80, 10)
-	testutil.Require(t, !strings.Contains(v.Render(nil), " │ "), "narrow layout remained split")
+	if strings.Contains(v.Render(nil), " │ ") {
+		t.Fatal("narrow layout remained split")
+	}
 	v.Resize(120, 10)
 	_, got, _ := v.Current()
-	testutil.Require(t, got == want && v.cursor.row-v.viewport.top == offset, "resize lost meaningful position")
-	testutil.Require(t, strings.Contains(v.Render(nil), " │ "), "resize lost split preference")
+	if got != want || v.cursor.row-v.viewport.top != offset {
+		t.Fatal("resize lost meaningful position")
+	}
+	if !strings.Contains(v.Render(nil), " │ ") {
+		t.Fatal("resize lost split preference")
+	}
 }
 
 func TestPageMovementDoesNotPartiallyChangeRejectedSelection(t *testing.T) {
@@ -76,7 +101,9 @@ func TestPageMovementDoesNotPartiallyChangeRejectedSelection(t *testing.T) {
 	v.ToggleSelection()
 	beforeCursor, beforeViewport := v.cursor, v.viewport
 	v.Move(NextPage)
-	testutil.Require(t, v.cursor == beforeCursor && v.viewport == beforeViewport, "rejected selection partially changed state")
+	if v.cursor != beforeCursor || v.viewport != beforeViewport {
+		t.Fatal("rejected selection partially changed state")
+	}
 }
 
 func TestSearchPreviewAcceptRepeatAndCancel(t *testing.T) {
@@ -85,26 +112,42 @@ func TestSearchPreviewAcceptRepeatAndCancel(t *testing.T) {
 	origin := v.cursor
 	v.BeginSearch()
 	v.InsertSearch("removed")
-	testutil.Require(t, !strings.Contains(v.Render(nil), "no matches"), "deletion not found")
-	testutil.Require(t, v.cursor.pane == left, "search did not activate deletion pane")
+	if strings.Contains(v.Render(nil), "no matches") {
+		t.Fatal("deletion not found")
+	}
+	if v.cursor.pane != left {
+		t.Fatal("search did not activate deletion pane")
+	}
 	first := v.cursor
 	v.AcceptSearch()
-	testutil.Require(t, v.Find(Forward) && v.cursor != first, "next match not found")
-	testutil.Require(t, v.Find(Backward) && v.cursor == first, "previous match not found")
+	if !v.Find(Forward) || v.cursor == first {
+		t.Fatal("next match not found")
+	}
+	if !v.Find(Backward) || v.cursor != first {
+		t.Fatal("previous match not found")
+	}
 	v.BeginSearch()
 	v.InsertSearch("missing")
-	testutil.Require(t, strings.Contains(v.Render(nil), "no matches"), "missing query matched")
+	if !strings.Contains(v.Render(nil), "no matches") {
+		t.Fatal("missing query matched")
+	}
 	v.CancelSearch()
-	testutil.Require(t, v.cursor == first, "cancel did not restore focus")
+	if v.cursor != first {
+		t.Fatal("cancel did not restore focus")
+	}
 	v.BeginSearch()
 	v.InsertSearch("before")
 	for range len("before") {
 		v.BackspaceSearch()
 	}
-	testutil.Require(t, v.cursor == first, "empty query did not restore focus")
+	if v.cursor != first {
+		t.Fatal("empty query did not restore focus")
+	}
 	v.CancelSearch()
 	v.Move(FirstLine)
-	testutil.Require(t, v.cursor == origin, "first line changed")
+	if v.cursor != origin {
+		t.Fatal("first line changed")
+	}
 }
 
 func TestSearchOriginSurvivesPatchAndLayoutChanges(t *testing.T) {
@@ -120,7 +163,9 @@ func TestSearchOriginSurvivesPatchAndLayoutChanges(t *testing.T) {
 	v.Configure(Options{SideBySide: true, Dark: true})
 	v.CancelSearch()
 	_, got, ok := v.Current()
-	testutil.Requiref(t, ok && got == origin, "restored source=%#v, want %#v", got, origin)
+	if !ok || got != origin {
+		t.Fatalf("restored source=%#v, want %#v", got, origin)
+	}
 }
 
 func TestEmptyAndMetadataOnlyPatches(t *testing.T) {
@@ -139,15 +184,15 @@ func TestEmptyAndMetadataOnlyPatches(t *testing.T) {
 		v.BeginSearch()
 		v.InsertSearch("anything")
 		v.CancelSearch()
-		{
-			_, _, ok := v.Current()
-			testutil.Require(t, !ok, "empty view returned focused code")
+		if _, _, ok := v.Current(); ok {
+			t.Fatal("empty view returned focused code")
 		}
-		{
-			_, _, ok := v.Selected()
-			testutil.Require(t, !ok, "empty view returned selected code")
+		if _, _, ok := v.Selected(); ok {
+			t.Fatal("empty view returned selected code")
 		}
-		testutil.Require(t, !v.Find(Forward), "empty view found a match")
+		if v.Find(Forward) {
+			t.Fatal("empty view found a match")
+		}
 		_ = v.Render(nil)
 	}
 }
@@ -158,18 +203,59 @@ func TestHorizontalScrollEdgesAreIdempotent(t *testing.T) {
 	distance := int(^uint(0) >> 1)
 	v.ScrollHorizontal(distance)
 	before := v.viewport.LeftColumn
-	testutil.Require(t, before != 0, "fixture has no horizontal overflow")
+	if before == 0 {
+		t.Fatal("fixture has no horizontal overflow")
+	}
 	v.ScrollHorizontal(distance)
-	testutil.Require(t, v.viewport.LeftColumn == before, "scroll end overflowed")
+	if v.viewport.LeftColumn != before {
+		t.Fatal("scroll end overflowed")
+	}
 	v.ScrollHorizontal(-distance)
-	testutil.Require(t, v.viewport.LeftColumn == 0, "scroll start not clamped")
+	if v.viewport.LeftColumn != 0 {
+		t.Fatal("scroll start not clamped")
+	}
 }
 
 func TestVerticalScrollKeepsFocusInViewport(t *testing.T) {
 	p := longPatch()
 	p.Files[0].OldPath, p.Files[0].NewPath = "long.go", "long.go"
 	for _, split := range []bool{false, true} {
-		assertScrollFocus(t, p, split)
+		v := New(p, Options{SideBySide: split})
+		v.Resize(120, 10)
+		v.ToggleSelection()
+		for range 4 {
+			v.Move(NextLine)
+		}
+		cursor, selection := v.cursor, *v.selection
+		before := v.Render(nil)
+		v.ScrollVertical(3)
+		if v.viewport.top != 3 || v.Render(nil) == before {
+			t.Fatal("scroll did not move content")
+		}
+		if v.cursor != cursor || *v.selection != selection {
+			t.Fatal("scroll moved focus while it was still visible")
+		}
+		v.ScrollVertical(6)
+		if v.cursor.row != v.viewport.top || v.selection.Last != v.cursor || v.selection.First != selection.First {
+			t.Fatal("scroll did not clamp focus and extend selection")
+		}
+		before = v.Render(nil)
+		v.Update(p)
+		if v.Render(nil) != before {
+			t.Fatal("refresh reset scrolled content")
+		}
+		v.Resize(120, 11)
+		if v.viewport.top != 9 {
+			t.Fatal("resize reset scrolled content")
+		}
+		v.Move(NextLine)
+		if !v.view.cursorVisible(v.viewport, v.cursor) {
+			t.Fatal("keyboard navigation did not reveal focus")
+		}
+		v.ScrollVertical(-8)
+		if v.cursor.row != v.viewport.top+v.view.contentHeight(v.viewport)-1 {
+			t.Fatal("scroll up did not clamp focus to bottom of viewport")
+		}
 	}
 }
 
@@ -179,13 +265,34 @@ func TestVerticalScrollDoesNotCrossSelectionHunk(t *testing.T) {
 	v.ToggleSelection()
 	cursor, viewport, selection := v.cursor, v.viewport, *v.selection
 	v.ScrollVertical(100)
-	testutil.Require(t, v.cursor == cursor && v.viewport == viewport && *v.selection == selection, "scroll partially changed selection across hunks")
+	if v.cursor != cursor || v.viewport != viewport || *v.selection != selection {
+		t.Fatal("scroll partially changed selection across hunks")
+	}
 }
 
 func TestVerticalScrollClampsAtContentEdges(t *testing.T) {
 	for _, p := range []patch.Patch{longPatch(), testPatch(), {}} {
 		for _, height := range []int{1, 10, 100} {
-			assertScrollEdges(t, p, height)
+			v := New(p, Options{})
+			v.Resize(80, height)
+			distance := int(^uint(0) >> 1)
+			v.ScrollVertical(distance)
+			end := v.viewport.top
+			if len(v.view.rows) > v.viewport.Height && end == 0 {
+				t.Fatal("overflowing content did not scroll")
+			}
+			if len(v.view.rows) > 0 && end+v.view.contentHeight(v.viewport) < len(v.view.rows) {
+				t.Fatal("scroll did not reach final row")
+			}
+			v.ScrollVertical(distance)
+			if v.viewport.top != end {
+				t.Fatal("scroll past end changed viewport")
+			}
+			v.ScrollVertical(-distance)
+			v.ScrollVertical(-distance)
+			if v.viewport.top != 0 {
+				t.Fatal("scroll start not clamped")
+			}
 		}
 	}
 }
@@ -196,61 +303,29 @@ func TestSearchEditingOwnsUnicodeQueryAcrossUpdates(t *testing.T) {
 	_, origin, _ := v.Current()
 	v.InsertSearch("rem")
 	v.InsertSearch("oved界")
-	testutil.Require(t, strings.Contains(v.Render(nil), "/removed界"), "query chunks were not appended")
+	if !strings.Contains(v.Render(nil), "/removed界") {
+		t.Fatal("query chunks were not appended")
+	}
 	v.BackspaceSearch()
 	_, found, ok := v.Current()
-	testutil.Require(t, ok && strings.Contains(found.Text, "removed") && !strings.Contains(v.Render(nil), "no matches"), "Unicode backspace did not restore a matching query")
+	if !ok || !strings.Contains(found.Text, "removed") || strings.Contains(v.Render(nil), "no matches") {
+		t.Fatal("Unicode backspace did not restore a matching query")
+	}
 	p.Files[0].Metadata = []string{"inserted"}
 	v.Update(p)
 	v.Resize(120, 10)
 	v.Configure(Options{SideBySide: true, Dark: true})
-	testutil.Require(t, strings.Contains(v.Render(nil), "/removed"), "reconfiguration lost the active query")
+	if !strings.Contains(v.Render(nil), "/removed") {
+		t.Fatal("reconfiguration lost the active query")
+	}
 	v.CancelSearch()
 	_, restored, _ := v.Current()
-	testutil.Require(t, restored == origin, "cancel did not restore source focus")
+	if restored != origin {
+		t.Fatal("cancel did not restore source focus")
+	}
 	v.BeginSearch()
 	v.BackspaceSearch()
-	testutil.Require(t, !strings.Contains(v.Render(nil), "/removed"), "new search retained the previous query")
-}
-
-func assertScrollFocus(t *testing.T, p patch.Patch, split bool) {
-	t.Helper()
-	v := New(p, Options{SideBySide: split})
-	v.Resize(120, 10)
-	v.ToggleSelection()
-	for range 4 {
-		v.Move(NextLine)
+	if strings.Contains(v.Render(nil), "/removed") {
+		t.Fatal("new search retained the previous query")
 	}
-	cursor, selection := v.cursor, *v.selection
-	before := v.Render(nil)
-	v.ScrollVertical(3)
-	testutil.Require(t, v.viewport.top == 3 && v.Render(nil) != before, "scroll did not move content")
-	testutil.Require(t, v.cursor == cursor && *v.selection == selection, "scroll moved focus while it was still visible")
-	v.ScrollVertical(6)
-	testutil.Require(t, v.cursor.row == v.viewport.top && v.selection.Last == v.cursor && v.selection.First == selection.First, "scroll did not clamp focus and extend selection")
-	before = v.Render(nil)
-	v.Update(p)
-	testutil.Require(t, v.Render(nil) == before, "refresh reset scrolled content")
-	v.Resize(120, 11)
-	testutil.Require(t, v.viewport.top == 9, "resize reset scrolled content")
-	v.Move(NextLine)
-	testutil.Require(t, v.view.cursorVisible(v.viewport, v.cursor), "keyboard navigation did not reveal focus")
-	v.ScrollVertical(-8)
-	testutil.Require(t, v.cursor.row == v.viewport.top+v.view.contentHeight(v.viewport)-1, "scroll up did not clamp focus to bottom of viewport")
-}
-
-func assertScrollEdges(t *testing.T, p patch.Patch, height int) {
-	t.Helper()
-	v := New(p, Options{})
-	v.Resize(80, height)
-	distance := int(^uint(0) >> 1)
-	v.ScrollVertical(distance)
-	end := v.viewport.top
-	testutil.Require(t, len(v.view.rows) <= v.viewport.Height || end != 0, "overflowing content did not scroll")
-	testutil.Require(t, len(v.view.rows) <= 0 || end+v.view.contentHeight(v.viewport) >= len(v.view.rows), "scroll did not reach final row")
-	v.ScrollVertical(distance)
-	testutil.Require(t, v.viewport.top == end, "scroll past end changed viewport")
-	v.ScrollVertical(-distance)
-	v.ScrollVertical(-distance)
-	testutil.Require(t, v.viewport.top == 0, "scroll start not clamped")
 }

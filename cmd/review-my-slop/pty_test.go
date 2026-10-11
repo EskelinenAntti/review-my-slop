@@ -15,16 +15,14 @@ import (
 	"time"
 
 	"github.com/creack/pty"
-	"github.com/eskelinenantti/review-my-slop/internal/testutil"
 )
 
 func TestCommandStartsAndQuitsInPTY(t *testing.T) {
 	binary := filepath.Join(t.TempDir(), "review-my-slop")
 	build := exec.Command("go", "build", "-o", binary, ".")
 	build.Dir = "."
-	{
-		output, err := build.CombinedOutput()
-		testutil.Requiref(t, err == nil, "build command: %v\n%s", err, output)
+	if output, err := build.CombinedOutput(); err != nil {
+		t.Fatalf("build command: %v\n%s", err, output)
 	}
 
 	for _, test := range []struct {
@@ -43,10 +41,13 @@ func TestCommandStartsAndQuitsInPTY(t *testing.T) {
 func testCommandStartsAndQuitsInPTY(t *testing.T, binary string, args []string) {
 	t.Helper()
 	repo, err := filepath.EvalSymlinks(t.TempDir())
-	testutil.Require(t, err == nil, err)
+	if err != nil {
+		t.Fatal(err)
+	}
 	runGit(t, repo, "init", "-q")
-
-	testutil.NoError(t, os.WriteFile(filepath.Join(repo, "main.go"), []byte("package main\n\nfunc main() {}\n"), 0o644))
+	if err := os.WriteFile(filepath.Join(repo, "main.go"), []byte("package main\n\nfunc main() {}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -58,8 +59,14 @@ func testCommandStartsAndQuitsInPTY(t *testing.T, binary string, args []string) 
 		"XDG_STATE_HOME="+t.TempDir(),
 	)
 	terminal, err := pty.StartWithSize(command, &pty.Winsize{Rows: 24, Cols: 100})
-	testutil.Require(t, err == nil, err)
-	defer func() { _ = terminal.Close() }()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := terminal.Close(); err != nil {
+			t.Errorf("close PTY: %v", err)
+		}
+	}()
 
 	var output lockedBuffer
 	readDone := make(chan error, 1)
@@ -72,14 +79,14 @@ func testCommandStartsAndQuitsInPTY(t *testing.T, binary string, args []string) 
 	for !strings.Contains(output.String(), "review-my-slop") && time.Now().Before(deadline) {
 		time.Sleep(20 * time.Millisecond)
 	}
-	testutil.Requiref(t, strings.Contains(output.String(), "main.go"), "TUI did not render untracked file:\n%s", output.String())
-	{
-		_, err := terminal.Write([]byte("q"))
-		testutil.Requiref(t, err == nil, "write quit: %v\n%s", err, output.String())
+	if !strings.Contains(output.String(), "main.go") {
+		t.Fatalf("TUI did not render untracked file:\n%s", output.String())
 	}
-	{
-		err := command.Wait()
-		testutil.Requiref(t, err == nil, "command exit: %v\n%s", err, output.String())
+	if _, err := terminal.Write([]byte("q")); err != nil {
+		t.Fatalf("write quit: %v\n%s", err, output.String())
+	}
+	if err := command.Wait(); err != nil {
+		t.Fatalf("command exit: %v\n%s", err, output.String())
 	}
 	select {
 	case <-readDone:
@@ -109,8 +116,7 @@ func runGit(t *testing.T, dir string, args ...string) {
 	t.Helper()
 	command := exec.Command("git", args...)
 	command.Dir = dir
-	{
-		output, err := command.CombinedOutput()
-		testutil.Requiref(t, err == nil, "git %s: %v\n%s", strings.Join(args, " "), err, output)
+	if output, err := command.CombinedOutput(); err != nil {
+		t.Fatalf("git %s: %v\n%s", strings.Join(args, " "), err, output)
 	}
 }

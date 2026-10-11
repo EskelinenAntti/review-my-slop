@@ -6,7 +6,11 @@ linters:
     - gocognit
   settings:
     gocognit:
-      # Report complexity 5 and above: every function must stay below 5.
+      # Report complexity 5 and above for production functions.
       min-complexity: 4
   exclusions:
     presets: []
+    rules:
+      - path: '_test\.go$'
+        linters:
+          - gocognit

@@ -9,9 +9,9 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
+
 	"github.com/eskelinenantti/review-my-slop/internal/comments"
 	"github.com/eskelinenantti/review-my-slop/internal/patch"
-	"github.com/eskelinenantti/review-my-slop/internal/testutil"
 	"github.com/eskelinenantti/review-my-slop/internal/ui/diffscreen"
 )
 
@@ -23,25 +23,39 @@ func TestStoreBackedCommentLifecycle(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	store := comments.Store{Path: filepath.Join(t.TempDir(), "comments.db")}
 	m, err := newWithStore(store, modelPatch(), nil, defaultSize)
-	testutil.Require(t, err == nil, err)
+	if err != nil {
+		t.Fatal(err)
+	}
 	anchor := comments.Anchor{FilePath: "main.go", NewStart: 2, QuotedLines: []string{"+new()"}}
 	m.edit.body = "check this"
 	m.edit.anchor = anchor
 	m.finishCommentEdit()
-	testutil.Require(t, m.err == nil, m.err)
+	if m.err != nil {
+		t.Fatal(m.err)
+	}
 	loaded, err := m.load()
-	testutil.Requiref(t, err == nil && len(loaded) == 1 && loaded[0].Repository == "/repo" && loaded[0].ID != "" && slices.Equal(loaded[0].Anchor.QuotedLines, anchor.QuotedLines), "loaded = %#v, error = %v", loaded, err)
+	if err != nil || len(loaded) != 1 || loaded[0].Repository != "/repo" || loaded[0].ID == "" || !slices.Equal(loaded[0].Anchor.QuotedLines, anchor.QuotedLines) {
+		t.Fatalf("loaded = %#v, error = %v", loaded, err)
+	}
 	id := loaded[0].ID
 	m.edit.index = 0
 	m.edit.body = "edited"
 	m.finishCommentEdit()
-	testutil.Require(t, m.err == nil, m.err)
+	if m.err != nil {
+		t.Fatal(m.err)
+	}
 	loaded, err = m.load()
-	testutil.Requiref(t, err == nil && len(loaded) == 1 && loaded[0].ID == id && loaded[0].Body == "edited", "edited = %#v, error = %v", loaded, err)
+	if err != nil || len(loaded) != 1 || loaded[0].ID != id || loaded[0].Body != "edited" {
+		t.Fatalf("edited = %#v, error = %v", loaded, err)
+	}
 	m.deleteComment(0)
-	testutil.Require(t, m.err == nil, m.err)
+	if m.err != nil {
+		t.Fatal(m.err)
+	}
 	loaded, err = m.load()
-	testutil.Requiref(t, err == nil && len(loaded) == 0, "remaining = %#v, error = %v", loaded, err)
+	if err != nil || len(loaded) != 0 {
+		t.Fatalf("remaining = %#v, error = %v", loaded, err)
+	}
 }
 
 func TestNewUsesSavedSideBySideForWideInitialSize(t *testing.T) {
@@ -49,7 +63,9 @@ func TestNewUsesSavedSideBySideForWideInitialSize(t *testing.T) {
 		SideBySide: true,
 		size:       size{Width: 120, Height: 30},
 	})
-	testutil.Requiref(t, m.diffOptions.SideBySide && strings.Contains(m.render(), "│"), "sideBySide=%v render=%q", m.diffOptions.SideBySide, m.render())
+	if !m.diffOptions.SideBySide || !strings.Contains(m.render(), "│") {
+		t.Fatalf("sideBySide=%v render=%q", m.diffOptions.SideBySide, m.render())
+	}
 }
 
 func TestNewKeepsSavedSideBySideInactiveForNarrowInitialSize(t *testing.T) {
@@ -57,10 +73,14 @@ func TestNewKeepsSavedSideBySideInactiveForNarrowInitialSize(t *testing.T) {
 		SideBySide: true,
 		size:       size{Width: 80, Height: 30},
 	})
-	testutil.Requiref(t, m.diffOptions.SideBySide && !strings.Contains(m.render(), "│"), "sideBySide=%v render=%q", m.diffOptions.SideBySide, m.render())
+	if !m.diffOptions.SideBySide || strings.Contains(m.render(), "│") {
+		t.Fatalf("sideBySide=%v render=%q", m.diffOptions.SideBySide, m.render())
+	}
 
 	m = updateModel(t, m, tea.WindowSizeMsg{Width: 120, Height: 30})
-	testutil.Requiref(t, m.diffOptions.SideBySide && strings.Contains(m.render(), "│"), "sideBySide=%v render=%q", m.diffOptions.SideBySide, m.render())
+	if !m.diffOptions.SideBySide || !strings.Contains(m.render(), "│") {
+		t.Fatalf("sideBySide=%v render=%q", m.diffOptions.SideBySide, m.render())
+	}
 }
 
 func TestSideBySideToggleStillSavesPreference(t *testing.T) {
@@ -75,7 +95,9 @@ func TestSideBySideToggleStillSavesPreference(t *testing.T) {
 
 	m = updateModel(t, m, textKey("t"))
 	updateModel(t, m, textKey("t"))
-	testutil.Requiref(t, slices.Equal(saved, []bool{true, false}), "saved=%v", saved)
+	if !slices.Equal(saved, []bool{true, false}) {
+		t.Fatalf("saved=%v", saved)
+	}
 }
 
 func TestRefreshTranslatesCursorAndSelection(t *testing.T) {
@@ -88,9 +110,13 @@ func TestRefreshTranslatesCursorAndSelection(t *testing.T) {
 	refreshed.Files[0].Metadata = []string{"new metadata"}
 	m.updatePatch(refreshed)
 	_, got, ok := m.diffView.Current()
-	testutil.Requiref(t, ok && got == want, "focused line=%#v, want %#v", got, want)
+	if !ok || got != want {
+		t.Fatalf("focused line=%#v, want %#v", got, want)
+	}
 	_, lines, ok := m.diffView.Selected()
-	testutil.Requiref(t, ok && len(lines) == 2, "selection=%#v", lines)
+	if !ok || len(lines) != 2 {
+		t.Fatalf("selection=%#v", lines)
+	}
 }
 
 func TestUnchangedRefreshPreservesStateAndClearsError(t *testing.T) {
@@ -106,18 +132,21 @@ func TestUnchangedRefreshPreservesStateAndClearsError(t *testing.T) {
 	before := m.diffView.Render(nil)
 	m.err = fmt.Errorf("previous refresh failed")
 	m = updateModel(t, m, refreshDiffMsg{patch: p})
-	{
-		got := m.diffView.Render(nil)
-		testutil.Require(t, got == before, "refresh changed presentation state")
+	if got := m.diffView.Render(nil); got != before {
+		t.Fatal("refresh changed presentation state")
 	}
-	testutil.Requiref(t, m.err == nil, "refresh did not clear error: %v", m.err)
+	if m.err != nil {
+		t.Fatalf("refresh did not clear error: %v", m.err)
+	}
 }
 
 func TestRefreshFailureRetainsView(t *testing.T) {
 	m := testModel(modelPatch(), nil, nil)
 	before := m.diffView.Render(nil)
 	m = updateModel(t, m, refreshDiffMsg{err: fmt.Errorf("git failed")})
-	testutil.Requiref(t, m.err != nil && m.diffView.Render(nil) == before && m.currentPatch.Root == "/repo", "patch=%#v error=%v", m.currentPatch, m.err)
+	if m.err == nil || m.diffView.Render(nil) != before || m.currentPatch.Root != "/repo" {
+		t.Fatalf("patch=%#v error=%v", m.currentPatch, m.err)
+	}
 }
 
 func TestViewSwitchPreservesSemanticCursor(t *testing.T) {
@@ -128,7 +157,9 @@ func TestViewSwitchPreservesSemanticCursor(t *testing.T) {
 	_, want, _ := m.diffView.Current()
 	m.setSideBySide(true)
 	_, got, ok := m.diffView.Current()
-	testutil.Requiref(t, ok && got == want, "focused line=%#v, want %#v", got, want)
+	if !ok || got != want {
+		t.Fatalf("focused line=%#v, want %#v", got, want)
+	}
 }
 
 func TestCommentSaveUsesPatchAndPreservesAnchor(t *testing.T) {
@@ -141,7 +172,9 @@ func TestCommentSaveUsesPatchAndPreservesAnchor(t *testing.T) {
 	m.edit.body = "comment"
 	m.edit.anchor = comments.Anchor{FilePath: "main.go"}
 	m.finishCommentEdit()
-	testutil.Requiref(t, savedPatch.Root == "/repo" && len(m.comments.items) == 1 && m.comments.items[0].Anchor.FilePath == "main.go", "saved patch/comments = %#v %#v", savedPatch, m.comments.items)
+	if savedPatch.Root != "/repo" || len(m.comments.items) != 1 || m.comments.items[0].Anchor.FilePath != "main.go" {
+		t.Fatalf("saved patch/comments = %#v %#v", savedPatch, m.comments.items)
+	}
 }
 
 func TestRenderingAndKeyBindingsRemainAvailable(t *testing.T) {
@@ -151,10 +184,14 @@ func TestRenderingAndKeyBindingsRemainAvailable(t *testing.T) {
 	m.resizeScreens()
 	rendered := m.render()
 	for _, value := range []string{"review-my-slop", "+1-1", "old()", "new()", "local changes"} {
-		testutil.Requiref(t, strings.Contains(rendered, value), "render missing %q: %q", value, rendered)
+		if !strings.Contains(rendered, value) {
+			t.Fatalf("render missing %q: %q", value, rendered)
+		}
 	}
 	m.mode = modeHelp
-	testutil.Require(t, strings.Contains(m.render(), "Ctrl-w h/l/w"), "help lost diffPane binding")
+	if !strings.Contains(m.render(), "Ctrl-w h/l/w") {
+		t.Fatal("help lost diffPane binding")
+	}
 }
 
 func TestEmptyViewKeepsKeyboardHintAtBottom(t *testing.T) {
@@ -163,13 +200,11 @@ func TestEmptyViewKeepsKeyboardHintAtBottom(t *testing.T) {
 	m.resizeScreens()
 
 	lines := strings.Split(m.render(), "\n")
-	{
-		got, want := lines[m.height-2], "j/k/h/l move"
-		testutil.Requiref(t, strings.Contains(got, want), "line %d = %q, want it to contain %q", m.height-1, got, want)
+	if got, want := lines[m.height-2], "j/k/h/l move"; !strings.Contains(got, want) {
+		t.Fatalf("line %d = %q, want it to contain %q", m.height-1, got, want)
 	}
-	{
-		got := lines[2]
-		testutil.Requiref(t, strings.Contains(got, "No unstaged or untracked changes."), "empty-viewState line = %q", got)
+	if got := lines[2]; !strings.Contains(got, "No unstaged or untracked changes.") {
+		t.Fatalf("empty-viewState line = %q", got)
 	}
 }
 
@@ -190,9 +225,8 @@ func TestMenuKeyboardHintsStayAtBottom(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			m.mode = test.mode
 			lines := strings.Split(m.render(), "\n")
-			{
-				got := lines[m.height-2]
-				testutil.Requiref(t, strings.Contains(got, test.hint), "line %d = %q, want it to contain %q", m.height-1, got, test.hint)
+			if got := lines[m.height-2]; !strings.Contains(got, test.hint) {
+				t.Fatalf("line %d = %q, want it to contain %q", m.height-1, got, test.hint)
 			}
 		})
 	}
@@ -210,8 +244,12 @@ func TestCommentsMenuScrollsWithinScreenBody(t *testing.T) {
 	m.commentView.Move(len(items))
 
 	rendered := strings.Split(ansi.Strip(m.render()), "\n")
-	testutil.Requiref(t, strings.Contains(strings.Join(rendered[1:m.height-2], "\n"), "comment 9"), "selected comment is outside the screen body: %q", rendered)
-	testutil.Requiref(t, strings.Contains(rendered[m.height-2], "j/k move"), "footer line = %q", rendered[m.height-2])
+	if !strings.Contains(strings.Join(rendered[1:m.height-2], "\n"), "comment 9") {
+		t.Fatalf("selected comment is outside the screen body: %q", rendered)
+	}
+	if !strings.Contains(rendered[m.height-2], "j/k move") {
+		t.Fatalf("footer line = %q", rendered[m.height-2])
+	}
 }
 
 func modelPatch() patch.Patch {
@@ -225,7 +263,11 @@ func TestNarrowLayoutToggleSavesPreferenceWithoutApplicationGeometryRules(t *tes
 		SaveSideBySide: func(enabled bool) error { saved = append(saved, enabled); return nil },
 	})
 	m = updateModel(t, m, textKey("t"))
-	testutil.Requiref(t, m.err == nil && slices.Equal(saved, []bool{true}) && !strings.Contains(m.render(), " │ "), "narrow toggle: saved=%v err=%v render=%q", saved, m.err, m.render())
+	if m.err != nil || !slices.Equal(saved, []bool{true}) || strings.Contains(m.render(), " │ ") {
+		t.Fatalf("narrow toggle: saved=%v err=%v render=%q", saved, m.err, m.render())
+	}
 	m = updateModel(t, m, tea.WindowSizeMsg{Width: 120, Height: 30})
-	testutil.Require(t, strings.Contains(m.render(), " │ "), "widening did not activate preferred layout")
+	if !strings.Contains(m.render(), " │ ") {
+		t.Fatal("widening did not activate preferred layout")
+	}
 }

@@ -5,7 +5,6 @@ import (
 	"testing"
 
 	"github.com/eskelinenantti/review-my-slop/internal/patch"
-	"github.com/eskelinenantti/review-my-slop/internal/testutil"
 )
 
 func TestSplitRowsPairOnlyAdjacentChangeBlocks(t *testing.T) {
@@ -30,8 +29,23 @@ func TestSplitRowsPairOnlyAdjacentChangeBlocks(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			p := patch.Patch{Files: []patch.File{{DisplayPath: "file.go", Hunks: []patch.Hunk{{Header: "@@", Lines: tc.lines}}}}}
 			v := newSideBySideView(p, true)
-			got := projectedSourceRows(v)
-			testutil.Requiref(t, slices.Equal(got, tc.want), "paired source lines=%v, want %v", got, tc.want)
+			var got [][2]string
+			for row, entry := range v.rows {
+				if entry.kind != lineRow {
+					continue
+				}
+				var texts [2]string
+				for _, pane := range []diffPane{left, right} {
+					if cursor, ok := v.cursorAt(row, pane); ok {
+						line, _ := v.line(cursor)
+						texts[pane] = line.Text
+					}
+				}
+				got = append(got, texts)
+			}
+			if !slices.Equal(got, tc.want) {
+				t.Fatalf("paired source lines=%v, want %v", got, tc.want)
+			}
 		})
 	}
 }
@@ -63,40 +77,16 @@ func TestCursorRestorationPrioritizesIdentityBeforeDistance(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			for _, header := range []string{"@@", "@@ -10,2 +10,3 @@"} {
 				t.Run(header, func(t *testing.T) {
-					assertCursorRestoration(t, makePatch, tc.lines, header, identity, tc.want)
+					p := makePatch(tc.lines)
+					p.Files[0].Hunks[0].Header = header
+					next := newUnifiedView(p, true)
+					restored, ok := next.findCursor(identity)
+					line, _ := next.line(restored)
+					if !ok || line != tc.want {
+						t.Fatalf("restored=%#v, want %#v", line, tc.want)
+					}
 				})
 			}
 		})
 	}
-}
-
-func projectedSourceRows(v *diffView) [][2]string {
-	var got [][2]string
-	for row, entry := range v.rows {
-		if entry.kind == lineRow {
-			got = append(got, projectedRowText(v, row))
-		}
-	}
-	return got
-}
-
-func projectedRowText(v *diffView, row int) [2]string {
-	var texts [2]string
-	for _, pane := range []diffPane{left, right} {
-		if cursor, ok := v.cursorAt(row, pane); ok {
-			line, _ := v.line(cursor)
-			texts[pane] = line.Text
-		}
-	}
-	return texts
-}
-
-func assertCursorRestoration(t *testing.T, makePatch func([]patch.Line) patch.Patch, lines []patch.Line, header string, identity cursorIdentity, want patch.Line) {
-	t.Helper()
-	p := makePatch(lines)
-	p.Files[0].Hunks[0].Header = header
-	next := newUnifiedView(p, true)
-	restored, ok := next.findCursor(identity)
-	line, _ := next.line(restored)
-	testutil.Requiref(t, ok && line == want, "restored=%#v, want %#v", line, want)
 }

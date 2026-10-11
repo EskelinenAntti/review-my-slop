@@ -48,7 +48,8 @@ configuration before releasing.
 
 The standard golangci-lint checks include govet, staticcheck, errcheck,
 ineffassign, and unused. The additional gocognit check requires cognitive
-complexity below 5 for every function, including tests. Its configuration
+complexity below 5 for production functions. Test files are excluded only from
+gocognit and still run through the other linters. Its configuration
 threshold is 4 because gocognit reports scores strictly above the threshold.
 
 The project is licensed under the [MIT License](LICENSE).

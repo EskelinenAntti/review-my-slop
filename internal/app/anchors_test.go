@@ -1,11 +1,9 @@
 package app
 
 import (
+	"github.com/eskelinenantti/review-my-slop/internal/patch"
 	"slices"
 	"testing"
-
-	"github.com/eskelinenantti/review-my-slop/internal/patch"
-	"github.com/eskelinenantti/review-my-slop/internal/testutil"
 )
 
 func TestCommentAnchorUsesSemanticSelection(t *testing.T) {
@@ -15,7 +13,11 @@ func TestCommentAnchorUsesSemanticSelection(t *testing.T) {
 		{Kind: patch.Addition, Text: "added", NewNumber: 2},
 	}
 	anchor := commentAnchor(patch.File{OldPath: "old.go", NewPath: "new.go"}, lines)
-	testutil.Requiref(t, anchor.FilePath == "new.go" && anchor.OldStart == 1 && anchor.OldEnd == 2 && anchor.NewStart == 1 && anchor.NewEnd == 2 && slices.Equal(anchor.QuotedLines, []string{" before", "-removed", "+added"}), "anchor=%#v", anchor)
+	if anchor.FilePath != "new.go" || anchor.OldStart != 1 || anchor.OldEnd != 2 || anchor.NewStart != 1 || anchor.NewEnd != 2 || !slices.Equal(anchor.QuotedLines, []string{" before", "-removed", "+added"}) {
+		t.Fatalf("anchor=%#v", anchor)
+	}
 	anchor = commentAnchor(patch.File{OldPath: "deleted.go"}, lines[1:2])
-	testutil.Requiref(t, anchor.FilePath == "deleted.go" && anchor.NewStart == 0, "deleted anchor=%#v", anchor)
+	if anchor.FilePath != "deleted.go" || anchor.NewStart != 0 {
+		t.Fatalf("deleted anchor=%#v", anchor)
+	}
 }

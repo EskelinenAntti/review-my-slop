@@ -5,31 +5,46 @@ import (
 	"testing"
 
 	"charm.land/lipgloss/v2"
+
 	"github.com/eskelinenantti/review-my-slop/internal/patch"
-	"github.com/eskelinenantti/review-my-slop/internal/testutil"
 )
 
 func TestUnifiedNavigationSearchAndFileJumps(t *testing.T) {
 	v := newUnifiedView(testPatch(), true)
 	first, ok := v.first()
-	testutil.Require(t, ok, "First returned no cursor")
+	if !ok {
+		t.Fatal("First returned no cursor")
+	}
 	line, _ := v.line(first)
-	testutil.Requiref(t, line.Text == "before", "first line = %q", line.Text)
+	if line.Text != "before" {
+		t.Fatalf("first line = %q", line.Text)
+	}
 	next, ok := v.move(first, forward)
-	testutil.Require(t, ok, "Move returned no cursor")
+	if !ok {
+		t.Fatal("Move returned no cursor")
+	}
 	line, _ = v.line(next)
-	testutil.Requiref(t, line.Kind == patch.Deletion, "next kind = %v", line.Kind)
+	if line.Kind != patch.Deletion {
+		t.Fatalf("next kind = %v", line.Kind)
+	}
 	match, ok := v.search("added", first, forward)
-	testutil.Require(t, ok, "Search returned no cursor")
+	if !ok {
+		t.Fatal("Search returned no cursor")
+	}
 	line, _ = v.line(match)
-	testutil.Requiref(t, line.Text == "added one", "match = %q", line.Text)
+	if line.Text != "added one" {
+		t.Fatalf("match = %q", line.Text)
+	}
 	jumped, ok := v.jumpFile(first, forward)
-	testutil.Require(t, ok, "JumpFile returned no cursor")
+	if !ok {
+		t.Fatal("JumpFile returned no cursor")
+	}
 	file, _ := v.file(jumped)
-	testutil.Requiref(t, file.DisplayPath == "second.go", "jumped file = %q", file.DisplayPath)
-	{
-		_, ok := v.jumpFile(jumped, forward)
-		testutil.Require(t, !ok, "JumpFile wrapped unexpectedly")
+	if file.DisplayPath != "second.go" {
+		t.Fatalf("jumped file = %q", file.DisplayPath)
+	}
+	if _, ok := v.jumpFile(jumped, forward); ok {
+		t.Fatal("JumpFile wrapped unexpectedly")
 	}
 }
 
@@ -37,26 +52,39 @@ func TestSplitPairsChangeBlocksAndSupportsEmptyPanes(t *testing.T) {
 	v := newSideBySideView(testPatch(), true)
 	first, _ := v.first()
 	removed, _ := v.move(first, forward)
-	testutil.Requiref(t, removed.pane == right, "initial pane = %v", removed.pane)
+	if removed.pane != right {
+		t.Fatalf("initial pane = %v", removed.pane)
+	}
 	removed, ok := v.switchPane(removed, left)
-	testutil.Require(t, ok, "could not switch to deletion pane")
+	if !ok {
+		t.Fatal("could not switch to deletion pane")
+	}
 	line, _ := v.line(removed)
-	testutil.Requiref(t, line.Text == "removed one", "left line = %q", line.Text)
+	if line.Text != "removed one" {
+		t.Fatalf("left line = %q", line.Text)
+	}
 	added, ok := v.switchPane(removed, right)
-	testutil.Require(t, ok, "paired addition missing")
+	if !ok {
+		t.Fatal("paired addition missing")
+	}
 	line, _ = v.line(added)
-	testutil.Requiref(t, line.Text == "added one", "right line = %q", line.Text)
+	if line.Text != "added one" {
+		t.Fatalf("right line = %q", line.Text)
+	}
 	secondRemoved, _ := v.move(removed, forward)
-	{
-		_, ok := v.switchPane(secondRemoved, right)
-		testutil.Require(t, ok, "pane switch should find a nearby right line")
+	if _, ok := v.switchPane(secondRemoved, right); !ok {
+		t.Fatal("pane switch should find a nearby right line")
 	}
 
 	viewport := v.newViewport(100, 20)
 	rendered := v.render(viewport, added, nil)
-	testutil.Requiref(t, strings.Contains(rendered, "removed one") && strings.Contains(rendered, "added one"), "paired render missing lines: %q", rendered)
+	if !strings.Contains(rendered, "removed one") || !strings.Contains(rendered, "added one") {
+		t.Fatalf("paired render missing lines: %q", rendered)
+	}
 	for _, row := range strings.Split(rendered, "\n") {
-		testutil.Requiref(t, !strings.Contains(row, " │ ") || lipgloss.Width(row) == 100, "rendered width = %d", lipgloss.Width(row))
+		if strings.Contains(row, " │ ") && lipgloss.Width(row) != 100 {
+			t.Fatalf("rendered width = %d", lipgloss.Width(row))
+		}
 	}
 }
 
@@ -67,14 +95,17 @@ func TestSelectionLines(t *testing.T) {
 	last, _ = v.move(last, forward)
 	selection := v.beginSelection(first)
 	selection, ok := v.extendSelection(selection, last)
-	testutil.Require(t, ok, "selection extension failed")
+	if !ok {
+		t.Fatal("selection extension failed")
+	}
 	lines := v.lines(selection)
-	testutil.Requiref(t, len(lines) == 3, "selected lines = %d", len(lines))
+	if len(lines) != 3 {
+		t.Fatalf("selected lines = %d", len(lines))
+	}
 
 	nextFile, _ := v.jumpFile(first, forward)
-	{
-		_, ok := v.extendSelection(selection, nextFile)
-		testutil.Require(t, !ok, "selection crossed a hunk")
+	if _, ok := v.extendSelection(selection, nextFile); ok {
+		t.Fatal("selection crossed a hunk")
 	}
 }
 
@@ -87,34 +118,42 @@ func TestViewportAlignmentResizeAndScrolling(t *testing.T) {
 	}
 	viewport := v.newViewport(30, 5)
 	viewport = v.keepVisible(viewport, cursor)
-	testutil.Requiref(t, cursor.row >= viewport.top && cursor.row < viewport.top+viewport.Height, "cursor not visible: %#v %#v", cursor, viewport)
+	if cursor.row < viewport.top || cursor.row >= viewport.top+viewport.Height {
+		t.Fatalf("cursor not visible: %#v %#v", cursor, viewport)
+	}
 	viewport = v.align(viewport, cursor, middle)
 	headerHeight := 0
 	if v.hasStickyHeader(viewport.top, viewport.Height) {
 		headerHeight = 1
 	}
-	testutil.Requiref(t, headerHeight+cursor.row-viewport.top == viewport.Height/2, "middle alignment = %#v", viewport)
+	if headerHeight+cursor.row-viewport.top != viewport.Height/2 {
+		t.Fatalf("middle alignment = %#v", viewport)
+	}
 	viewport = v.scrollHorizontal(viewport, 4)
-	testutil.Require(t, viewport.LeftColumn != 0, "horizontal scroll did not move")
+	if viewport.LeftColumn == 0 {
+		t.Fatal("horizontal scroll did not move")
+	}
 	viewport = v.resize(viewport, 20, 3)
-	testutil.Requiref(t, viewport.Width == 20 && viewport.Height == 3, "resize = %#v", viewport)
+	if viewport.Width != 20 || viewport.Height != 3 {
+		t.Fatalf("resize = %#v", viewport)
+	}
 	before := cursor
 	viewport, cursor = v.scrollHalfPage(viewport, cursor, forward)
-	testutil.Requiref(t, cursor.row >= before.row, "half page moved backward: %#v -> %#v", before, cursor)
+	if cursor.row < before.row {
+		t.Fatalf("half page moved backward: %#v -> %#v", before, cursor)
+	}
 }
 
 func TestViewportProgressUsesVisibleBottom(t *testing.T) {
 	v := newUnifiedView(longPatch(), true)
 	viewport := v.newViewport(30, 5)
-	{
-		progress := v.viewportProgress(viewport)
-		testutil.Requiref(t, progress > 0 && progress < 100, "initial progress=%d", progress)
+	if progress := v.viewportProgress(viewport); progress <= 0 || progress >= 100 {
+		t.Fatalf("initial progress=%d", progress)
 	}
 	last, _ := v.last()
 	viewport = v.keepVisible(viewport, last)
-	{
-		progress := v.viewportProgress(viewport)
-		testutil.Requiref(t, progress == 100, "final progress=%d", progress)
+	if progress := v.viewportProgress(viewport); progress != 100 {
+		t.Fatalf("final progress=%d", progress)
 	}
 }
 
@@ -128,12 +167,16 @@ func TestHalfPageScrollingMovesCursorToFileBoundaries(t *testing.T) {
 	for range len(longPatch().Files[0].Hunks[0].Lines) {
 		viewport, cursor = v.scrollHalfPage(viewport, cursor, forward)
 	}
-	testutil.Requiref(t, cursor == last, "cursor after scrolling down = %#v, want %#v", cursor, last)
+	if cursor != last {
+		t.Fatalf("cursor after scrolling down = %#v, want %#v", cursor, last)
+	}
 
 	for range len(longPatch().Files[0].Hunks[0].Lines) {
 		viewport, cursor = v.scrollHalfPage(viewport, cursor, backward)
 	}
-	testutil.Requiref(t, cursor == first, "cursor after scrolling up = %#v, want %#v", cursor, first)
+	if cursor != first {
+		t.Fatalf("cursor after scrolling up = %#v, want %#v", cursor, first)
+	}
 }
 
 func TestFindCursorUsesSemanticIdentityAcrossChangedCoordinates(t *testing.T) {
@@ -145,19 +188,29 @@ func TestFindCursorUsesSemanticIdentityAcrossChangedCoordinates(t *testing.T) {
 	changed.Files[0].Metadata = []string{"mode changed", "more metadata"}
 	newView := newUnifiedView(changed, true)
 	translated, ok := newView.findCursor(identify(oldView, cursor))
-	testutil.Require(t, ok, "semantic cursor was not found")
-	testutil.Require(t, translated.row != cursor.row, "cursor coordinate was reused after rows shifted")
+	if !ok {
+		t.Fatal("semantic cursor was not found")
+	}
+	if translated.row == cursor.row {
+		t.Fatal("cursor coordinate was reused after rows shifted")
+	}
 	translatedLine, _ := newView.line(translated)
-	testutil.Requiref(t, translatedLine == line, "translated line = %#v, want %#v", translatedLine, line)
+	if translatedLine != line {
+		t.Fatalf("translated line = %#v, want %#v", translatedLine, line)
+	}
 }
 
 func TestSplitViewWithOnlyDeletionsStartsInLeftPane(t *testing.T) {
 	p := patch.Patch{Files: []patch.File{{DisplayPath: "deleted.go", Hunks: []patch.Hunk{{Header: "@@", Lines: []patch.Line{{Kind: patch.Deletion, Text: "gone", OldNumber: 1}}}}}}}
 	v := newSideBySideView(p, true)
 	cursor, ok := v.first()
-	testutil.Requiref(t, ok && cursor.pane == left, "first cursor = %#v, %v", cursor, ok)
+	if !ok || cursor.pane != left {
+		t.Fatalf("first cursor = %#v, %v", cursor, ok)
+	}
 	line, _ := v.line(cursor)
-	testutil.Requiref(t, line.Text == "gone", "first line = %q", line.Text)
+	if line.Text != "gone" {
+		t.Fatalf("first line = %q", line.Text)
+	}
 }
 
 func TestFindCursorFallsBackNearRemovedLine(t *testing.T) {
@@ -168,15 +221,21 @@ func TestFindCursorFallsBackNearRemovedLine(t *testing.T) {
 	changed.Files[0].Hunks[0].Lines = changed.Files[0].Hunks[0].Lines[:2]
 	newView := newUnifiedView(changed, true)
 	fallback, ok := newView.findCursor(identify(oldView, cursor))
-	testutil.Require(t, ok, "nearby cursor was not found")
+	if !ok {
+		t.Fatal("nearby cursor was not found")
+	}
 	fallbackLine, _ := newView.line(fallback)
-	testutil.Requiref(t, fallbackLine.Kind == patch.Deletion, "fallback kind = %v", fallbackLine.Kind)
+	if fallbackLine.Kind != patch.Deletion {
+		t.Fatalf("fallback kind = %v", fallbackLine.Kind)
+	}
 }
 
 func mustFirst(t *testing.T, v *diffView) diffCursor {
 	t.Helper()
 	cursor, ok := v.first()
-	testutil.Require(t, ok, "no first cursor")
+	if !ok {
+		t.Fatal("no first cursor")
+	}
 	return cursor
 }
 
