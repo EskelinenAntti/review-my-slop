@@ -7,10 +7,10 @@ import (
 )
 
 func (v *diffView) valid(cursor diffCursor) bool {
-	return cursor.row >= 0 && cursor.row < len(v.rows) && v.lineIndex(v.rows[cursor.row], cursor.pane) >= 0
+	return cursor.row >= 0 && cursor.row < len(v.rows) && v.lineIndex(&v.rows[cursor.row], cursor.pane) >= 0
 }
 
-func (v *diffView) lineIndex(current entry, pane diffPane) int {
+func (v *diffView) lineIndex(current *entry, pane diffPane) int {
 	if current.kind != lineRow {
 		return -1
 	}

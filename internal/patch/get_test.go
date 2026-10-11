@@ -39,8 +39,8 @@ func TestGetIncludesUnstagedAndUntrackedButNotStagedOnly(t *testing.T) {
 		t.Fatalf("unexpected files: %q, %q", got.Files[0].DisplayPath, got.Files[1].DisplayPath)
 	}
 	modified := got.Files[0]
-	if !containsKind(modified, Deletion, "return 1") ||
-		!containsKind(modified, Addition, "return 2") {
+	if !containsKind(&modified, Deletion, "return 1") ||
+		!containsKind(&modified, Addition, "return 2") {
 		t.Fatalf("modified file lacks expected lines: %#v", modified.Hunks)
 	}
 	untracked := got.Files[1]
@@ -206,10 +206,10 @@ func TestGetBranchIncludesCommittedStagedUnstagedAndUntrackedChanges(t *testing.
 			t.Fatalf("file %d = %q, want %q", i, got.Files[i].DisplayPath, name)
 		}
 	}
-	if !containsKind(got.Files[0], Addition, "committed on feature") ||
-		!containsKind(got.Files[1], Addition, "unstaged on feature") ||
-		!containsKind(got.Files[2], Addition, "staged on feature") ||
-		!containsKind(got.Files[3], Addition, "untracked on feature") {
+	if !containsKind(&got.Files[0], Addition, "committed on feature") ||
+		!containsKind(&got.Files[1], Addition, "unstaged on feature") ||
+		!containsKind(&got.Files[2], Addition, "staged on feature") ||
+		!containsKind(&got.Files[3], Addition, "untracked on feature") {
 		t.Fatalf("branch diff lacks expected changes: %#v", got.Files)
 	}
 	if got.Files[0].OldSource != "base\n" || got.Files[0].NewSource != "committed on feature\n" {
@@ -381,7 +381,7 @@ func FuzzParseHunkBody(f *testing.F) {
 	})
 }
 
-func containsKind(file File, kind LineKind, text string) bool {
+func containsKind(file *File, kind LineKind, text string) bool {
 	for _, hunk := range file.Hunks {
 		for _, line := range hunk.Lines {
 			if line.Kind == kind && strings.Contains(line.Text, text) {

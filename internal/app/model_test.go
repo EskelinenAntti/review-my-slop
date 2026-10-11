@@ -15,8 +15,46 @@ import (
 	"github.com/eskelinenantti/review-my-slop/internal/ui/diffscreen"
 )
 
-func testModel(p patch.Patch, items []comments.Comment, save saveCommentFunc) model {
+func testModel(p patch.Patch, items []comments.Comment, save saveCommentFunc) *model {
 	return newModel(p, items, save, initialLayout{size: size{Width: 100, Height: 30}})
+}
+
+func TestLoadCommandsCaptureInputsBeforeModelChanges(t *testing.T) {
+	m := testModel(modelPatch(), nil, nil)
+	m.kind = patch.Unstaged
+	m.comments.revision = 1
+	m.setRefresh(func(kind patch.Kind) (patch.Patch, error) {
+		if kind != patch.Unstaged {
+			t.Fatalf("refresh kind = %v, want unstaged", kind)
+		}
+		return modelPatch(), nil
+	})
+	m.setLoadComments(func() ([]comments.Comment, error) {
+		return []comments.Comment{{Body: "original loader"}}, nil
+	})
+	refresh, load := m.loadRefresh(), m.loadComments()
+	m.kind = patch.Branch
+	m.comments.revision++
+	m.setRefresh(func(patch.Kind) (patch.Patch, error) {
+		t.Fatal("queued command used replacement refresh callback")
+		return patch.Patch{}, nil
+	})
+	m.setLoadComments(func() ([]comments.Comment, error) {
+		t.Fatal("queued command used replacement comments callback")
+		return nil, nil
+	})
+	refreshed := refresh().(refreshDiffMsg)
+	if refreshed.kind != patch.Unstaged {
+		t.Fatalf("refresh message kind = %v", refreshed.kind)
+	}
+	loaded := load().(commentsLoadedMsg)
+	if loaded.revision != 1 || len(loaded.comments) != 1 || loaded.comments[0].Body != "original loader" {
+		t.Fatalf("loaded comments = %#v", loaded)
+	}
+	m.Update(loaded)
+	if len(m.comments.items) != 0 {
+		t.Fatal("stale comments were applied after the revision changed")
+	}
 }
 
 func TestStoreBackedCommentLifecycle(t *testing.T) {

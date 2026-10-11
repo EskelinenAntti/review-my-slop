@@ -25,7 +25,7 @@ func TestRunCommentsPrintsAndConsumesCurrentRepositoryFeedback(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.Add(comments.Comment{
+	if _, err := store.Add(&comments.Comment{
 		Repository: repo,
 		Anchor:     comments.Anchor{FilePath: "main.go", NewStart: 3, NewEnd: 3},
 		Body:       "Check this error.",
@@ -72,7 +72,7 @@ func TestRunCommentsPreservesFeedbackWhenOutputFails(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.Add(comments.Comment{
+	if _, err := store.Add(&comments.Comment{
 		Repository: repo,
 		Anchor:     comments.Anchor{FilePath: "main.go", NewStart: 1},
 		Body:       "Preserve me.",

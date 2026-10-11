@@ -17,7 +17,7 @@ func TestStoreQueuesByRepositoryAndDeletesExactPeek(t *testing.T) {
 	second := testComment("/repo/b", "other")
 	third := testComment("/repo/a", "third")
 	for _, comment := range []Comment{first, second, third} {
-		if _, err := store.Add(comment); err != nil {
+		if _, err := store.Add(&comment); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -30,7 +30,7 @@ func TestStoreQueuesByRepositoryAndDeletesExactPeek(t *testing.T) {
 		t.Fatalf("unexpected comments: %#v", comments)
 	}
 
-	if _, err := store.Add(testComment("/repo/a", "newer")); err != nil {
+	if _, err := store.Add(new(testComment("/repo/a", "newer"))); err != nil {
 		t.Fatal(err)
 	}
 	if err := store.Acknowledge("/repo/a", []string{comments[0].ID, comments[1].ID}); err != nil {
@@ -113,23 +113,45 @@ func TestWritePromptNumbersMessages(t *testing.T) {
 func TestStoreRejectsEmptyAndOversizedComments(t *testing.T) {
 	store := Store{Path: filepath.Join(t.TempDir(), "comments.db")}
 	empty := testComment("/repo", "")
-	if _, err := store.Add(empty); err == nil {
+	if _, err := store.Add(&empty); err == nil {
 		t.Fatal("empty comment was accepted")
 	}
 	large := testComment("/repo", strings.Repeat("x", maxCommentBytes+1))
-	if _, err := store.Add(large); err == nil {
+	if _, err := store.Add(&large); err == nil {
 		t.Fatal("oversized comment was accepted")
+	}
+}
+
+func TestAddReturnsGeneratedMetadataWithoutChangingInput(t *testing.T) {
+	store := Store{Path: filepath.Join(t.TempDir(), "comments.db")}
+	input := Comment{Repository: "/repo", Body: "pending"}
+	saved, err := store.Add(&input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if input.ID != "" || !input.CreatedAt.IsZero() {
+		t.Fatalf("input metadata changed: %#v", input)
+	}
+	if saved.ID == "" || saved.CreatedAt.IsZero() {
+		t.Fatalf("stored metadata missing: %#v", saved)
+	}
+	pending, err := store.List(input.Repository)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(pending) != 1 || pending[0].ID != saved.ID || !pending[0].CreatedAt.Equal(saved.CreatedAt) {
+		t.Fatalf("stored comments = %#v", pending)
 	}
 }
 
 func TestListAndUpdateComments(t *testing.T) {
 	store := Store{Path: filepath.Join(t.TempDir(), "comments.db")}
-	if _, err := store.Add(testComment("/repo", "first")); err != nil {
+	if _, err := store.Add(new(testComment("/repo", "first"))); err != nil {
 		t.Fatal(err)
 	}
 	second := testComment("/repo", "second")
 	second.Anchor = Anchor{FilePath: "other.go", NewStart: 2, NewEnd: 2}
-	if _, err := store.Add(second); err != nil {
+	if _, err := store.Add(&second); err != nil {
 		t.Fatal(err)
 	}
 
@@ -141,7 +163,7 @@ func TestListAndUpdateComments(t *testing.T) {
 		t.Fatalf("comments = %#v", comments)
 	}
 	comments[1].Body = "edited"
-	if err := store.Update(comments[1]); err != nil {
+	if err := store.Update(&comments[1]); err != nil {
 		t.Fatal(err)
 	}
 
@@ -156,10 +178,10 @@ func TestListAndUpdateComments(t *testing.T) {
 
 func TestDeleteCommentRemovesMessage(t *testing.T) {
 	store := Store{Path: filepath.Join(t.TempDir(), "comments.db")}
-	if _, err := store.Add(testComment("/repo", "first")); err != nil {
+	if _, err := store.Add(new(testComment("/repo", "first"))); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.Add(testComment("/repo", "second")); err != nil {
+	if _, err := store.Add(new(testComment("/repo", "second"))); err != nil {
 		t.Fatal(err)
 	}
 	comments, err := store.List("/repo")
@@ -205,7 +227,7 @@ func TestLegacyMessageCanBeReadAndUpdated(t *testing.T) {
 		t.Fatalf("legacy comment = %#v", comments)
 	}
 	comments[0].Body = "updated"
-	if err := store.Update(comments[0]); err != nil {
+	if err := store.Update(&comments[0]); err != nil {
 		t.Fatal(err)
 	}
 	updated, err := store.List("/repo")

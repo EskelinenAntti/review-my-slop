@@ -23,9 +23,9 @@ type saveSideBySideFunc func(bool) error
 
 // commentStore supplies the persistence operations used by the terminal client.
 type commentStore interface {
-	Add(comments.Comment) (comments.Comment, error)
+	Add(*comments.Comment) (comments.Comment, error)
 	List(string) ([]comments.Comment, error)
-	Update(comments.Comment) error
+	Update(*comments.Comment) error
 	Delete(string, string) error
 }
 
@@ -108,12 +108,12 @@ type model struct {
 	quitting   bool
 }
 
-func newModel(p patch.Patch, items []comments.Comment, save saveCommentFunc, layout initialLayout) model {
+func newModel(p patch.Patch, items []comments.Comment, save saveCommentFunc, layout initialLayout) *model {
 	size := layout.size
 	if size.Width <= 0 || size.Height <= 0 {
 		size = defaultSize
 	}
-	m := model{
+	m := &model{
 		ctx:          context.Background(),
 		currentPatch: p,
 		comments:     commentState{items: items},
@@ -138,20 +138,20 @@ func newModel(p patch.Patch, items []comments.Comment, save saveCommentFunc, lay
 	return m
 }
 
-func newWithStore(store commentStore, p patch.Patch, items []comments.Comment, size size) (model, error) {
+func newWithStore(store commentStore, p patch.Patch, items []comments.Comment, size size) (*model, error) {
 	preferences, err := settings.Load()
 	if err != nil {
-		return model{}, err
+		return nil, err
 	}
 	m := newModel(p, items, func(comment comments.Comment, current patch.Patch) (comments.Comment, error) {
 		comment.Repository = current.Root
 		if comment.ID != "" {
-			if err := store.Update(comment); err != nil {
+			if err := store.Update(&comment); err != nil {
 				return comments.Comment{}, err
 			}
 			return comment, nil
 		}
-		return store.Add(comment)
+		return store.Add(&comment)
 	}, initialLayout{
 		SideBySide:     preferences.SideBySide,
 		SaveSideBySide: func(enabled bool) error { return settings.Save(settings.Preferences{SideBySide: enabled}) },
@@ -174,9 +174,9 @@ func (m *model) configureSideBySide(enabled bool, save saveSideBySideFunc) {
 	m.setSideBySide(enabled)
 }
 
-func (m model) Init() tea.Cmd { return tea.RequestBackgroundColor }
+func (m *model) Init() tea.Cmd { return tea.RequestBackgroundColor }
 
-func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.BackgroundColorMsg:
 		if dark := msg.IsDark(); dark != m.diffOptions.Dark {
@@ -265,21 +265,21 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m model) loadRefresh() tea.Cmd {
+func (m *model) loadRefresh() tea.Cmd {
 	if m.refresh == nil {
 		return nil
 	}
-	kind := m.kind
-	return func() tea.Msg { p, err := m.refresh(kind); return refreshDiffMsg{patch: p, kind: kind, err: err} }
+	kind, refresh := m.kind, m.refresh
+	return func() tea.Msg { p, err := refresh(kind); return refreshDiffMsg{patch: p, kind: kind, err: err} }
 }
 
-func (m model) loadComments() tea.Cmd {
+func (m *model) loadComments() tea.Cmd {
 	if m.load == nil {
 		return nil
 	}
-	revision := m.comments.revision
+	revision, load := m.comments.revision, m.load
 	return func() tea.Msg {
-		items, err := m.load()
+		items, err := load()
 		return commentsLoadedMsg{comments: items, revision: revision, err: err}
 	}
 }
@@ -293,7 +293,7 @@ func (m *model) resizeScreens() {
 	m.commentView.Resize(m.width, m.height)
 }
 
-func (m model) updateKey(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+func (m *model) updateKey(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	name := key.String()
 	if m.mode == modeComments {
 		return m.updateComments(name)

@@ -10,13 +10,13 @@ import (
 func TestWritePendingAcknowledgesOnlyExportedComments(t *testing.T) {
 	store := Store{Path: filepath.Join(t.TempDir(), "comments.db")}
 	for _, comment := range []Comment{testComment("/repo", "exported"), testComment("/other", "other repository")} {
-		if _, err := store.Add(comment); err != nil {
+		if _, err := store.Add(&comment); err != nil {
 			t.Fatal(err)
 		}
 	}
 	var output bytes.Buffer
 	writer := &addingWriter{Buffer: &output, add: func() {
-		if _, err := store.Add(testComment("/repo", "added during output")); err != nil {
+		if _, err := store.Add(new(testComment("/repo", "added during output"))); err != nil {
 			t.Fatal(err)
 		}
 	}}

@@ -12,7 +12,7 @@ import (
 	"github.com/eskelinenantti/review-my-slop/internal/patch"
 )
 
-func (m model) updateComments(name string) (tea.Model, tea.Cmd) {
+func (m *model) updateComments(name string) (tea.Model, tea.Cmd) {
 	m.err = nil
 	switch name {
 	case "esc", "C", "q":
@@ -30,7 +30,7 @@ func (m model) updateComments(name string) (tea.Model, tea.Cmd) {
 			if !ok {
 				return m, nil
 			}
-			m.edit.index = m.commentIndex(selected)
+			m.edit.index = m.commentIndex(&selected)
 			m.edit.body = m.comments.items[m.edit.index].Body
 			m.edit.anchor = m.comments.items[m.edit.index].Anchor
 			cmd, err := m.openCommentEditor()
@@ -44,7 +44,7 @@ func (m model) updateComments(name string) (tea.Model, tea.Cmd) {
 	case "D":
 		if len(m.comments.items) > 0 {
 			if selected, ok := m.commentView.Selected(); ok {
-				m.deleteComment(m.commentIndex(selected))
+				m.deleteComment(m.commentIndex(&selected))
 			}
 		}
 	}
@@ -56,7 +56,7 @@ func (m *model) beginComment() (tea.Cmd, error) {
 	if !ok {
 		return nil, fmt.Errorf("select code lines before commenting")
 	}
-	anchor := commentAnchor(file, lines)
+	anchor := commentAnchor(&file, lines)
 	m.edit.body, m.edit.index, m.edit.anchor = "", -1, anchor
 	cmd, err := m.openCommentEditor()
 	if err != nil {
@@ -130,7 +130,7 @@ func (m *model) clearCommentEdit() {
 	m.edit = commentEdit{index: -1}
 }
 
-func (m model) openCurrentLine() (tea.Cmd, error) {
+func (m *model) openCurrentLine() (tea.Cmd, error) {
 	path, number, err := m.sourceLocation()
 	if err != nil {
 		return nil, err
@@ -140,7 +140,7 @@ func (m model) openCurrentLine() (tea.Cmd, error) {
 	})
 }
 
-func (m model) sourceLocation() (string, int, error) {
+func (m *model) sourceLocation() (string, int, error) {
 	file, line, ok := m.diffView.Current()
 	if !ok {
 		return "", 0, fmt.Errorf("select a code line to open in $EDITOR")
@@ -161,13 +161,13 @@ func (m model) sourceLocation() (string, int, error) {
 	return path, int(number), nil
 }
 
-func (m model) openCommentEditor() (tea.Cmd, error) {
+func (m *model) openCommentEditor() (tea.Cmd, error) {
 	return editor.EditComment(m.ctx, m.edit.body, m.edit.anchor, func(body string, err error) tea.Msg {
 		return commentEditorFinishedMsg{body: body, err: err}
 	})
 }
 
-func (m model) commentIndex(selected comments.Comment) int {
+func (m *model) commentIndex(selected *comments.Comment) int {
 	for index := range m.comments.items {
 		item := &m.comments.items[index]
 		if selected.ID != "" && item.ID == selected.ID || selected.ID == "" && item.Body == selected.Body && item.Anchor.FilePath == selected.Anchor.FilePath {
@@ -177,7 +177,7 @@ func (m model) commentIndex(selected comments.Comment) int {
 	return -1
 }
 
-func commentAnchor(file patch.File, lines []patch.Line) comments.Anchor {
+func commentAnchor(file *patch.File, lines []patch.Line) comments.Anchor {
 	path := file.NewPath
 	if path == "" {
 		path = file.OldPath

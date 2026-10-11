@@ -74,7 +74,7 @@ func TestOpenCurrentLineUsesEditorWithWorkingTreeLocation(t *testing.T) {
 	t.Setenv("EDITOR", "printf")
 	m := testModel(coveragePatch(), nil, nil)
 	m.currentPatch.Root = "/tmp/repo with spaces"
-	focusLine(t, &m, "new()")
+	focusLine(t, m, "new()")
 	cmd, err := m.openCurrentLine()
 	if err != nil || cmd == nil {
 		t.Fatalf("command=%v err=%v", cmd, err)
@@ -127,7 +127,7 @@ func TestOpeningCommentsReloadsPendingComments(t *testing.T) {
 	m.setLoadComments(func() ([]comments.Comment, error) { return nil, nil })
 
 	next, cmd := m.Update(textKey("C"))
-	m = next.(model)
+	m = next.(*model)
 	if cmd == nil {
 		t.Fatal("opening comments did not request a refresh")
 	}
@@ -142,7 +142,7 @@ func TestCommentReloadFailurePreservesCurrentComments(t *testing.T) {
 	m.setLoadComments(func() ([]comments.Comment, error) { return nil, fmt.Errorf("storage unavailable") })
 
 	next, cmd := m.Update(textKey("C"))
-	m = next.(model)
+	m = next.(*model)
 	m = updateModel(t, m, cmd())
 	if len(m.comments.items) != 1 || m.err == nil || m.err.Error() != "refresh comments: storage unavailable" {
 		t.Fatalf("comments=%#v error=%v", m.comments.items, m.err)
@@ -222,7 +222,7 @@ func TestSavedSideBySideCanBeDisabledInNarrowTerminal(t *testing.T) {
 func TestResizeAcrossSideBySideThresholdPreservesFocusedLine(t *testing.T) {
 	m := testModel(coveragePatch(), nil, nil)
 	m.configureSideBySide(true, nil)
-	focusLine(t, &m, "keep()")
+	focusLine(t, m, "keep()")
 	_, before, _ := m.diffView.Current()
 	m = updateModel(t, m, tea.WindowSizeMsg{Width: 80, Height: 20})
 	m = updateModel(t, m, tea.WindowSizeMsg{Width: 120, Height: 20})
@@ -320,7 +320,7 @@ func TestSideBySidePaneSwitchingUsesCtrlWSequences(t *testing.T) {
 	m := testModel(coveragePatch(), nil, nil)
 	m = updateModel(t, m, tea.WindowSizeMsg{Width: 120, Height: 30})
 	m.setSideBySide(true)
-	focusLine(t, &m, "new()")
+	focusLine(t, m, "new()")
 	m = updateModel(t, m, controlKey('w'))
 	m = updateModel(t, m, textKey("h"))
 	if lineText(m) != "old()" {
@@ -373,13 +373,13 @@ func TestFocusAndManualRefreshLoadCurrentView(t *testing.T) {
 		return p, nil
 	})
 	next, cmd := m.Update(tea.FocusMsg{})
-	m = next.(model)
+	m = next.(*model)
 	if cmd == nil {
 		t.Fatal("focus did not refresh")
 	}
 	m = updateModel(t, m, cmd())
 	next, cmd = m.Update(textKey("R"))
-	m = next.(model)
+	m = next.(*model)
 	if cmd == nil {
 		t.Fatal("R did not refresh")
 	}
@@ -396,7 +396,7 @@ func TestSourceEditorCompletionRefreshesDiff(t *testing.T) {
 	m.setRefresh(func(patch.Kind) (patch.Patch, error) { return refreshed, nil })
 
 	next, cmd := m.Update(sourceEditorFinishedMsg{})
-	m = next.(model)
+	m = next.(*model)
 	if cmd == nil {
 		t.Fatal("editor completion did not refresh")
 	}
@@ -484,7 +484,7 @@ func TestTabTogglesDefaultBranchAndIgnoresStaleRefresh(t *testing.T) {
 		return p, nil
 	})
 	next, _ := m.Update(textKey("tab"))
-	m = next.(model)
+	m = next.(*model)
 	if m.kind != patch.Branch {
 		t.Fatalf("kind=%v", m.kind)
 	}
@@ -508,7 +508,7 @@ func TestTabDoesNothingWithoutDefaultBranch(t *testing.T) {
 		return coveragePatch(), nil
 	})
 	next, cmd := m.Update(textKey("tab"))
-	m = next.(model)
+	m = next.(*model)
 	if cmd != nil || refreshed || m.kind != patch.Unstaged {
 		t.Fatalf("tab changed model without default branch: cmd=%v refreshed=%v kind=%v", cmd != nil, refreshed, m.kind)
 	}
@@ -520,7 +520,7 @@ func TestDiffRefreshFallbackAndEmptyDiff(t *testing.T) {
 	if lineText(m) != "package main" {
 		t.Fatalf("initial focus=%q", lineText(m))
 	}
-	focusLine(t, &m, "new()")
+	focusLine(t, m, "new()")
 	changed := coveragePatch()
 	changed.Files[0].Hunks[0].Lines[2].Text = "different()"
 	m = updateModel(t, m, refreshDiffMsg{patch: changed})
@@ -591,10 +591,10 @@ func TestMouseWheelScrollsContentWithoutMovingFocus(t *testing.T) {
 	}
 }
 
-func updateModel(t *testing.T, m model, msg tea.Msg) model {
+func updateModel(t *testing.T, m *model, msg tea.Msg) *model {
 	t.Helper()
 	next, _ := m.Update(msg)
-	result, ok := next.(model)
+	result, ok := next.(*model)
 	if !ok {
 		t.Fatalf("model=%T", next)
 	}
@@ -619,7 +619,7 @@ func focusLine(t *testing.T, m *model, text string) {
 		}
 	}
 	for range count {
-		if lineText(*m) == text {
+		if lineText(m) == text {
 			return
 		}
 		m.diffView.Move(diffscreen.NextLine)
@@ -627,7 +627,7 @@ func focusLine(t *testing.T, m *model, text string) {
 	t.Fatalf("line %q not found", text)
 }
 
-func lineText(m model) string { _, line, _ := m.diffView.Current(); return line.Text }
+func lineText(m *model) string { _, line, _ := m.diffView.Current(); return line.Text }
 
 func screenBody(rendered string) string {
 	lines := strings.Split(rendered, "\n")

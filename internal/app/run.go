@@ -12,13 +12,13 @@ import (
 
 // Run starts an interactive review of the supplied patch.
 func Run(ctx context.Context, currentPatch patch.Patch, commentStore comments.Store, refresh func(context.Context, patch.Kind) (patch.Patch, error)) error {
-	return run(ctx, currentPatch, commentStore, refresh, initialTerminalSize, func(m model, options ...tea.ProgramOption) error {
+	return run(ctx, currentPatch, commentStore, refresh, initialTerminalSize, func(m *model, options ...tea.ProgramOption) error {
 		_, err := tea.NewProgram(m, options...).Run()
 		return err
 	})
 }
 
-func run(ctx context.Context, currentPatch patch.Patch, store commentStore, refresh func(context.Context, patch.Kind) (patch.Patch, error), terminalSize func() size, start func(model, ...tea.ProgramOption) error) error {
+func run(ctx context.Context, currentPatch patch.Patch, store commentStore, refresh func(context.Context, patch.Kind) (patch.Patch, error), terminalSize func() size, start func(*model, ...tea.ProgramOption) error) error {
 	pending, err := store.List(currentPatch.Root)
 	if err != nil {
 		return err

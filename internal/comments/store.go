@@ -39,11 +39,13 @@ func OpenDefault() (Store, error) {
 	return Store{Path: path}, nil
 }
 
-func (s Store) Add(comment Comment) (Comment, error) {
+// Add returns the stored comment with generated metadata without changing input.
+func (s Store) Add(input *Comment) (Comment, error) {
+	comment := *input
 	if comment.Repository == "" {
 		return Comment{}, errors.New("comment requires a repository")
 	}
-	if err := validateComment(comment); err != nil {
+	if err := validateComment(comment.Body); err != nil {
 		return Comment{}, err
 	}
 	if comment.ID == "" {
@@ -90,11 +92,11 @@ func (s Store) List(repository string) ([]Comment, error) {
 	return comments, err
 }
 
-func (s Store) Update(comment Comment) error {
+func (s Store) Update(comment *Comment) error {
 	if comment.Repository == "" || comment.ID == "" {
 		return errors.New("repository and comment ID are required")
 	}
-	if err := validateComment(comment); err != nil {
+	if err := validateComment(comment.Body); err != nil {
 		return err
 	}
 	data, err := json.Marshal(comment)
@@ -176,11 +178,11 @@ func (s Store) Acknowledge(repository string, ids []string) error {
 	})
 }
 
-func validateComment(comment Comment) error {
-	if len(comment.Body) == 0 {
+func validateComment(body string) error {
+	if len(body) == 0 {
 		return errors.New("comment body is empty")
 	}
-	if len(comment.Body) > maxCommentBytes {
+	if len(body) > maxCommentBytes {
 		return fmt.Errorf("comment exceeds %d bytes", maxCommentBytes)
 	}
 	return nil

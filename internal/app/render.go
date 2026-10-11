@@ -5,7 +5,7 @@ import (
 	"github.com/eskelinenantti/review-my-slop/internal/ui/helpscreen"
 )
 
-func (m model) View() tea.View {
+func (m *model) View() tea.View {
 	if m.quitting {
 		return tea.NewView("")
 	}
@@ -15,7 +15,7 @@ func (m model) View() tea.View {
 	result.MouseMode = tea.MouseModeCellMotion
 	return result
 }
-func (m model) render() string {
+func (m *model) render() string {
 	switch m.mode {
 	case modeHelp:
 		return m.renderHelp()
@@ -25,7 +25,7 @@ func (m model) render() string {
 		return m.diffView.Render(m.err)
 	}
 }
-func (m model) renderHelp() string {
+func (m *model) renderHelp() string {
 	bindings := []helpscreen.Binding{
 		{Keys: "j/k, arrows", Description: "move"},
 		{Keys: "h/l, left/right", Description: "scroll horizontally"},

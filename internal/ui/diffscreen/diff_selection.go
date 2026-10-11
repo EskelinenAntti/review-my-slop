@@ -32,7 +32,7 @@ func (v *diffView) lines(selection diffSelection) []patch.Line {
 	lines := make([]patch.Line, 0, last-first+1)
 	if first == last && selection.First.pane != selection.Last.pane {
 		current := v.rows[first]
-		indices := []int{v.lineIndex(current, selection.First.pane), v.lineIndex(current, selection.Last.pane)}
+		indices := []int{v.lineIndex(&current, selection.First.pane), v.lineIndex(&current, selection.Last.pane)}
 		for _, index := range indices {
 			if index >= 0 && (len(lines) == 0 || lines[len(lines)-1] != v.patch.Files[current.file].Hunks[current.hunk].Lines[index]) {
 				lines = append(lines, v.patch.Files[current.file].Hunks[current.hunk].Lines[index])
@@ -64,19 +64,19 @@ func (v *diffView) line(cursor diffCursor) (patch.Line, bool) {
 		return patch.Line{}, false
 	}
 	current := v.rows[cursor.row]
-	return v.patch.Files[current.file].Hunks[current.hunk].Lines[v.lineIndex(current, cursor.pane)], true
+	return v.patch.Files[current.file].Hunks[current.hunk].Lines[v.lineIndex(&current, cursor.pane)], true
 }
 
 // findCursor searches the file by line numbers, then matching text and kind,
 // then source proximity. Ties keep the preferred pane.
-func (v *diffView) findCursor(target cursorIdentity) (diffCursor, bool) {
+func (v *diffView) findCursor(target *cursorIdentity) (diffCursor, bool) {
 	if !target.valid {
 		return diffCursor{}, false
 	}
 	best := diffCursor{}
 	bestRank, bestDistance := 0, 0
 	for y, current := range v.rows {
-		if current.hunk < 0 || !sameFile(v.patch.Files[current.file], target.file) {
+		if current.hunk < 0 || !sameFile(&v.patch.Files[current.file], &target.file) {
 			continue
 		}
 		for _, pane := range [2]diffPane{target.cursor.pane, target.cursor.pane.other()} {
@@ -108,7 +108,7 @@ func (v *diffView) findCursor(target cursorIdentity) (diffCursor, bool) {
 	return best, bestRank > 0
 }
 
-func sameFile(candidate, target patch.File) bool {
+func sameFile(candidate, target *patch.File) bool {
 	return candidate.OldPath != "" && candidate.OldPath == target.OldPath ||
 		candidate.NewPath != "" && candidate.NewPath == target.NewPath
 }

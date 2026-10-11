@@ -21,7 +21,7 @@ func (m *model) setSideBySide(enabled bool) {
 	m.diffView.Configure(m.diffOptions)
 }
 
-func (m model) updateSearch(name string, key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+func (m *model) updateSearch(name string, key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	switch name {
 	case "esc":
 		m.diffView.CancelSearch()

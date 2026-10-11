@@ -21,7 +21,7 @@ func (v *diffView) render(viewport diffViewport, cursor diffCursor, selection *d
 	}
 	end := min(len(v.rows), viewport.top+v.contentHeight(viewport))
 	for y := viewport.top; y < end; y++ {
-		current := v.rows[y]
+		current := &v.rows[y]
 		if v.split && current.kind == lineRow {
 			lines = append(lines, v.renderSplitRow(current, y, viewport, cursor, selection))
 		} else {
@@ -34,7 +34,7 @@ func (v *diffView) render(viewport diffViewport, cursor diffCursor, selection *d
 	return strings.Join(lines, "\n")
 }
 
-func (v *diffView) renderUnifiedRow(current entry, y int, viewport diffViewport, cursor diffCursor, selection *diffSelection) string {
+func (v *diffView) renderUnifiedRow(current *entry, y int, viewport diffViewport, cursor diffCursor, selection *diffSelection) string {
 	width := max(20, viewport.Width)
 	switch current.kind {
 	case fileRow:
@@ -72,7 +72,7 @@ func (v *diffView) renderFileRow(path string, width int) string {
 	return fileStyle.Width(max(20, width)).Render(path)
 }
 
-func (v *diffView) renderSplitRow(current entry, y int, viewport diffViewport, cursor diffCursor, selection *diffSelection) string {
+func (v *diffView) renderSplitRow(current *entry, y int, viewport diffViewport, cursor diffCursor, selection *diffSelection) string {
 	leftWidth, rightWidth := splitPaneWidths(viewport.Width)
 	left := v.renderPane(current, y, left, leftWidth, viewport.LeftColumn, cursor, selection)
 	right := v.renderPane(current, y, right, rightWidth, viewport.LeftColumn, cursor, selection)
@@ -84,7 +84,7 @@ func splitPaneWidths(width int) (int, int) {
 	return left, max(20, width-3-left)
 }
 
-func (v *diffView) renderPane(current entry, y int, pane diffPane, width, offset int, cursor diffCursor, selection *diffSelection) string {
+func (v *diffView) renderPane(current *entry, y int, pane diffPane, width, offset int, cursor diffCursor, selection *diffSelection) string {
 	index := v.lineIndex(current, pane)
 	if index < 0 {
 		return strings.Repeat(" ", width)
