@@ -254,30 +254,37 @@ type deletionFixture struct {
 }
 
 func deletionSource() deletionFixture {
+	const (
+		beforeSourceLine   = 50
+		addedSourceLine    = beforeSourceLine + 1
+		afterOldSourceLine = beforeSourceLine + 1
+		afterNewSourceLine = addedSourceLine + 1
+		targetSourceLine   = afterNewSourceLine + 1
+	)
 	early := patch.Hunk{Header: "@@ -1,0 +1 @@", Lines: []patch.Line{
 		{Kind: patch.Addition, Text: "early change", NewNumber: one},
 	}}
 	before := patch.Line{
 		Kind:      patch.Context,
 		Text:      "before",
-		OldNumber: fifty,
-		NewNumber: fifty,
+		OldNumber: beforeSourceLine,
+		NewNumber: beforeSourceLine,
 	}
 	added := patch.Line{
 		Kind:      patch.Addition,
 		Text:      "removed addition",
-		NewNumber: fixtureNumber51,
+		NewNumber: addedSourceLine,
 	}
 	after := patch.Line{
 		Kind:      patch.Context,
 		Text:      "after",
-		OldNumber: fixtureNumber51,
-		NewNumber: fixtureNumber52,
+		OldNumber: afterOldSourceLine,
+		NewNumber: afterNewSourceLine,
 	}
 	target := patch.Line{
 		Kind:      patch.Addition,
 		Text:      "target",
-		NewNumber: fixtureNumber53,
+		NewNumber: targetSourceLine,
 	}
 	late := patch.Hunk{Header: "@@ -100,0 +100 @@", Lines: []patch.Line{
 		{Kind: patch.Addition, Text: "late change", NewNumber: hundred},

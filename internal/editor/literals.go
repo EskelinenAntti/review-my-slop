@@ -1,8 +1,8 @@
 package editor
 
 const (
-	fixtureText = "'"
-	newline     = "\n"
-	three       = 3
-	zero        = 0
+	shellQuoteDelimiter = "'"
+	newline             = "\n"
+	minimumFenceLength  = 3
+	zero                = 0
 )

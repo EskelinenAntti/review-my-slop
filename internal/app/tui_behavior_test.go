@@ -569,11 +569,11 @@ func TestHorizontalScrollKeysMoveByStepAndReset(t *testing.T) {
 	m = updateModel(
 		t,
 		m,
-		tea.WindowSizeMsg{Width: fixtureNumber37, Height: defaultHeight},
+		tea.WindowSizeMsg{Width: narrowTestWidth, Height: defaultHeight},
 	)
 	initial := m.diffView.Render(nil)
 	want := diffscreen.New(longModelPatch(), diffscreen.Options{Dark: true})
-	want.Resize(fixtureNumber37, defaultHeight)
+	want.Resize(narrowTestWidth, defaultHeight)
 	want.ScrollHorizontal(two * horizontalScrollStep)
 	m = updateModel(t, m, textKey("l"))
 	m = updateModel(t, m, tea.KeyPressMsg(tea.Key{Code: tea.KeyRight}))
@@ -911,7 +911,7 @@ func TestMouseWheelScrollsContentWithoutMovingFocus(t *testing.T) {
 	m = updateModel(
 		t,
 		m,
-		tea.WindowSizeMsg{Width: fixtureNumber37, Height: nine},
+		tea.WindowSizeMsg{Width: narrowTestWidth, Height: nine},
 	)
 	m = updateModel(t, m, textKey(selectionKey))
 	m = updateModel(t, m, textKey(keyJ))

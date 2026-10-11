@@ -110,7 +110,8 @@ func TestMouseHitTestingMatchesScrolledProjection(t *testing.T) {
 func TestSplitMouseRejectsDividerEmptyPaneAndCrossPaneDrag(t *testing.T) {
 	v := New(testPatch(), Options{SideBySide: true})
 	v.Resize(wideTestWidth, minimumWidth)
-	for _, x := range []int{fixtureNumber58, fixtureNumber59, sixty} {
+	dividerStart, _ := splitPaneWidths(wideTestWidth)
+	for x := dividerStart; x < dividerStart+paneDividerWidth; x++ {
 		requireEqual(
 			t,
 			!v.BeginDrag(x, three),

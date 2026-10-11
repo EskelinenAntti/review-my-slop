@@ -4,7 +4,7 @@ const (
 	commandErrorFormat = "cmd=%v err=%v"
 	editorVariable     = "EDITOR"
 	fixtureBody        = "body"
-	fixtureNumber42    = 42
+	sourceLine         = 42
 	fixtureOriginal    = "original"
 	fixtureTMPDIR      = "TMPDIR"
 	fixtureTrue        = "true"

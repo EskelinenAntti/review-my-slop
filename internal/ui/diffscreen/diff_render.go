@@ -106,8 +106,8 @@ func (v *diffView) renderSplitRow(
 }
 
 func splitPaneWidths(width int) (leftWidth, rightWidth int) {
-	left := max(minimumWidth, (width-3)/2)
-	return left, max(minimumWidth, width-3-left)
+	left := max(minimumWidth, (width-paneDividerWidth)/int(paneCount))
+	return left, max(minimumWidth, width-paneDividerWidth-left)
 }
 
 func (v *diffView) renderPane(
@@ -225,7 +225,7 @@ func filterANSIColors(value string, stripForeground bool) string {
 type colorFilter struct{ foreground bool }
 
 func (f colorFilter) sequence(sequence string) string {
-	parameters := sequence[two : len(sequence)-one]
+	parameters := sequence[sgrPrefixLength : len(sequence)-one]
 	if parameters == "" {
 		return sequence
 	}
@@ -247,12 +247,12 @@ func (f colorFilter) basic(code int) bool {
 }
 
 func backgroundCode(code int) bool {
-	return code >= forty && code <= sgrDefaultBackground ||
-		code >= hundred && code <= sgrBrightBackgroundEnd
+	return code >= sgrBackgroundStart && code <= sgrDefaultBackground ||
+		code >= sgrBrightBackgroundStart && code <= sgrBrightBackgroundEnd
 }
 
 func foregroundCode(code int) bool {
-	return code >= defaultHeight && code <= sgrDefaultForeground ||
+	return code >= sgrForegroundStart && code <= sgrDefaultForeground ||
 		code >= sgrBrightForegroundStart && code <= sgrBrightForegroundEnd
 }
 
@@ -262,9 +262,9 @@ func extendedColorEnd(parts []string, index int) int {
 	}
 	switch parts[index+one] {
 	case "2":
-		return min(index+four, len(parts)-one)
+		return min(index+sgrRGBParameterCount, len(parts)-one)
 	case "5":
-		return min(index+two, len(parts)-one)
+		return min(index+sgrIndexedParameterCount, len(parts)-one)
 	default:
 		return index
 	}

@@ -168,7 +168,7 @@ func restorationCases(context patch.Line) []restorationCase {
 			"text before distance",
 			[]patch.Line{
 				code(patch.Addition, fixtureTarget, minimumWidth),
-				code(patch.Addition, "different", fixtureNumber21),
+				code(patch.Addition, "different", distantSourceLine),
 			},
 			code(patch.Addition, fixtureTarget, minimumWidth),
 		},
@@ -186,7 +186,7 @@ func restorationCases(context patch.Line) []restorationCase {
 			"nearest matching text by source position",
 			[]patch.Line{
 				code(patch.Addition, fixtureTarget, minimumWidth),
-				code(patch.Addition, fixtureTarget, fixtureNumber21),
+				code(patch.Addition, fixtureTarget, distantSourceLine),
 			},
 			code(patch.Addition, fixtureTarget, minimumWidth),
 		},
@@ -196,7 +196,7 @@ func restorationCases(context patch.Line) []restorationCase {
 			[]patch.Line{
 				code(patch.Addition, fixtureTarget, eight),
 				context,
-				code(patch.Addition, fixtureTarget, fixtureNumber12),
+				code(patch.Addition, fixtureTarget, nearbySourceLine),
 			},
 			code(patch.Addition, fixtureTarget, eight),
 		},

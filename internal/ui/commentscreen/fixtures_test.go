@@ -3,7 +3,7 @@ package commentscreen
 const (
 	five            = 5
 	fixtureFirst    = "first"
-	fixtureNumber25 = 25
+	narrowTestWidth = 25
 	fixtureV        = "%v"
 	four            = 4
 	hundred         = 100

@@ -83,8 +83,14 @@ func (v *diffView) findCursor(target cursorIdentity) (diffCursor, bool) {
 		}
 		best = best.choose(match)
 	}
-	return best.cursor, best.rank > zero
+	return best.cursor, best.rank != noCursorMatch
 }
+
+const (
+	noCursorMatch = iota
+	proximityMatch
+	textMatch
+)
 
 type cursorMatch struct {
 	cursor         diffCursor
@@ -99,7 +105,7 @@ func (m cursorMatch) betterThan(other cursorMatch) bool {
 
 func (v *diffView) matchRow(y int, target cursorIdentity) cursorMatch {
 	best := cursorMatch{}
-	for _, pane := range [two]diffPane{
+	for _, pane := range [paneCount]diffPane{
 		target.cursor.pane,
 		target.cursor.pane.other(),
 	} {
@@ -124,7 +130,7 @@ func matchLine(
 ) cursorMatch {
 	match := cursorMatch{
 		cursor:   cursor,
-		rank:     one,
+		rank:     proximityMatch,
 		distance: lineDistance(cursor, line, target),
 	}
 	if line.Kind != target.line.Kind {
@@ -136,7 +142,7 @@ func matchLine(
 		return match
 	}
 	if line.Text == target.line.Text {
-		match.rank = two
+		match.rank = textMatch
 	}
 	return match
 }
@@ -182,7 +188,7 @@ func (v *diffView) pairedSelectionLines(
 	rowIndex int,
 	selection diffSelection,
 ) []patch.Line {
-	lines := make([]patch.Line, zero, two)
+	lines := make([]patch.Line, zero, int(paneCount))
 	current := v.rows[rowIndex]
 	sourceLines := v.patch.Files[current.file].Hunks[current.hunk].Lines
 	indices := []int{

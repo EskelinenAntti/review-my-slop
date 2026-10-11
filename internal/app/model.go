@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"fmt"
+	"math"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/eskelinenantti/review-my-slop/internal/comments"
@@ -514,5 +515,5 @@ var browseAlignments = map[string]diffscreen.Alignment{
 var browseScrolls = map[string]int{
 	"h": -horizontalScrollStep, "left": -horizontalScrollStep,
 	"l": horizontalScrollStep, "right": horizontalScrollStep,
-	"0": -int(^uint(zero) >> one), "$": int(^uint(zero) >> one),
+	"0": -math.MaxInt, "$": math.MaxInt,
 }

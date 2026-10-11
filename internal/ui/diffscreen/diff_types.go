@@ -5,6 +5,7 @@ type diffPane uint8
 const (
 	left diffPane = iota
 	right
+	paneCount
 )
 
 func (pane diffPane) other() diffPane {

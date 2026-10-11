@@ -89,9 +89,9 @@ func TestWritePrompt(t *testing.T) {
 	comment.Anchor = Anchor{
 		FilePath: "main.go",
 		OldStart: ten,
-		OldEnd:   fixtureNumber11,
-		NewStart: fixtureNumber12,
-		NewEnd:   fixtureNumber13,
+		OldEnd:   anchorOldEnd,
+		NewStart: anchorNewStart,
+		NewEnd:   anchorNewEnd,
 
 		QuotedLines: []string{"-old()", "+new()"},
 	}

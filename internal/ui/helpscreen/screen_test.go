@@ -62,13 +62,13 @@ func TestRenderEmptyAndTruncatedBindings(t *testing.T) {
 func TestRenderClipsWideBindingText(t *testing.T) {
 	rendered := Render(
 		[]Binding{{"界", strings.Repeat("description", 10)}},
-		fixtureNumber24,
+		narrowTestWidth,
 		eight,
 	)
 	for _, line := range strings.Split(rendered, "\n") {
 		requireEqual(
 			t,
-			ansi.StringWidth(line) <= fixtureNumber24, true,
+			ansi.StringWidth(line) <= narrowTestWidth, true,
 			"line exceeds width: %q",
 			line,
 		)

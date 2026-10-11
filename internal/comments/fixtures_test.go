@@ -4,9 +4,9 @@ const (
 	fixtureCommentsDb         = "comments.db"
 	fixtureDataDirectoryQWant = "data directory = %q, want %q"
 	fixtureFirst              = "first"
-	fixtureNumber11           = 11
-	fixtureNumber12           = 12
-	fixtureNumber13           = 13
+	anchorOldEnd              = 11
+	anchorNewStart            = 12
+	anchorNewEnd              = 13
 	fixtureRepoA              = "/repo/a"
 	fixtureRepository         = "/repo"
 	fixtureV                  = "%v"

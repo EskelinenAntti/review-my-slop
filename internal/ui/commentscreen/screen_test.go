@@ -116,7 +116,7 @@ func TestEmptyListAndInputOwnership(t *testing.T) {
 
 func TestRenderErrorKeepsScreenLayout(t *testing.T) {
 	v := New([]comments.Comment{{ID: "one", Body: "pending"}})
-	v.Resize(fixtureNumber25, seven)
+	v.Resize(narrowTestWidth, seven)
 	normal := strings.Split(ansi.Strip(v.Render(nil)), newline)
 	failed := strings.Split(
 		ansi.Strip(
@@ -140,7 +140,7 @@ func TestRenderErrorKeepsScreenLayout(t *testing.T) {
 	requireEqual(
 		t,
 		strings.HasPrefix(failed[five], "storage failed ") &&
-			ansi.StringWidth(failed[five]) == fixtureNumber25 &&
+			ansi.StringWidth(failed[five]) == narrowTestWidth &&
 			strings.Contains(v.Render(nil), "j/k move"),
 		true,
 		"error footer=%q",

@@ -160,7 +160,7 @@ func TestSourceArgumentsAndContext(t *testing.T) {
 		context.Background(),
 		"printf '%s\\n'",
 		"/repo with spaces/it's.go",
-		fixtureNumber42,
+		sourceLine,
 	)
 	cmd.Stdout = &output
 	{

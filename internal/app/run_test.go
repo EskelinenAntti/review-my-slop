@@ -136,7 +136,7 @@ func assertStartupFailure(t *testing.T, failure string) {
 	config, err := os.UserConfigDir()
 	requireEqual(t, err == nil, true, valueFormat, err)
 	{
-		err := os.MkdirAll(config, fixtureNumber0700)
+		err := os.MkdirAll(config, privateDirMode)
 		requireEqual(t, err == nil, true, valueFormat, err)
 	}
 	store := comments.Store{Path: filepath.Join(t.TempDir(), "comments.db")}
@@ -145,7 +145,7 @@ func assertStartupFailure(t *testing.T, failure string) {
 			err := os.WriteFile(
 				store.Path,
 				[]byte("invalid database"),
-				fixtureNumber0600,
+				privateFileMode,
 			)
 			requireEqual(t, err == nil, true, valueFormat, err)
 		}
@@ -153,7 +153,7 @@ func assertStartupFailure(t *testing.T, failure string) {
 		{
 			err := os.Mkdir(
 				filepath.Join(config, "review-my-slop"),
-				fixtureNumber0700,
+				privateDirMode,
 			)
 			requireEqual(t, err == nil, true, valueFormat, err)
 		}
@@ -161,7 +161,7 @@ func assertStartupFailure(t *testing.T, failure string) {
 			err := os.WriteFile(
 				filepath.Join(config, "review-my-slop", "ui.json"),
 				[]byte("invalid json"),
-				fixtureNumber0600,
+				privateFileMode,
 			)
 			requireEqual(t, err == nil, true, valueFormat, err)
 		}

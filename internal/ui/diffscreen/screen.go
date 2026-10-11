@@ -117,7 +117,7 @@ func (v *View) Resize(width, height int) {
 }
 
 func (v *View) sideBySideActive() bool {
-	return v.options.SideBySide && v.width >= hundred
+	return v.options.SideBySide && v.width >= minimumSplitWidth
 }
 func (v *View) newReviewView(p patch.Patch) *diffView {
 	return newDiffView(

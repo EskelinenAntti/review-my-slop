@@ -1,6 +1,7 @@
 package diffscreen
 
 import (
+	"math"
 	"strings"
 	"testing"
 
@@ -304,7 +305,7 @@ func TestEmptyAndMetadataOnlyPatches(t *testing.T) {
 func TestHorizontalScrollEdgesAreIdempotent(t *testing.T) {
 	v := New(longPatch(), Options{})
 	v.Resize(defaultHeight, ten)
-	distance := int(^uint(zero) >> one)
+	distance := math.MaxInt
 	v.ScrollHorizontal(distance)
 	before := v.viewport.LeftColumn
 	requireEqual(
@@ -374,7 +375,7 @@ func TestVerticalScrollKeepsFocusInViewport(t *testing.T) {
 			fixtureV,
 			"refresh reset scrolled content",
 		)
-		v.Resize(wideTestWidth, fixtureNumber11)
+		v.Resize(wideTestWidth, stickyHeaderTestHeight)
 		requireEqual(
 			t,
 			v.viewport.top, nine,
@@ -420,7 +421,7 @@ func TestVerticalScrollClampsAtContentEdges(t *testing.T) {
 		for _, height := range []int{one, ten, hundred} {
 			v := New(p, Options{})
 			v.Resize(defaultWidth, height)
-			distance := int(^uint(zero) >> one)
+			distance := math.MaxInt
 			v.ScrollVertical(distance)
 			end := v.viewport.top
 			requireEqual(

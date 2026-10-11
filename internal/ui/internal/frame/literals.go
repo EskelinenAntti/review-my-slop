@@ -1,7 +1,8 @@
 package frame
 
 const (
-	one  = 1
-	two  = 2
-	zero = 0
+	headerRows = 1
+	one        = 1
+	footerRows = 2
+	zero       = 0
 )

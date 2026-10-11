@@ -128,10 +128,10 @@ func contextFence(lines []string) string {
 			}
 		}
 	}
-	return strings.Repeat("`", max(three, longest+1))
+	return strings.Repeat("`", max(minimumFenceLength, longest+1))
 }
 
 func shellQuote(value string) string {
-	return fixtureText + strings.ReplaceAll(value, fixtureText, "'\"'\"'") +
-		fixtureText
+	quoted := strings.ReplaceAll(value, shellQuoteDelimiter, "'\"'\"'")
+	return shellQuoteDelimiter + quoted + shellQuoteDelimiter
 }

@@ -83,7 +83,7 @@ func TestLoadSaveUserPreferences(t *testing.T) {
 	requireEqual(t, err == nil, true, fixtureV, err)
 	{
 		got := info.Mode().Perm()
-		requireEqual(t, got, fixtureNumber0600, "permissions=%o", got)
+		requireEqual(t, got, privateFileMode, "permissions=%o", got)
 	}
 	entries, err := os.ReadDir(filepath.Dir(path))
 	requireEqual(t, err == nil, true, fixtureV, err)
@@ -108,7 +108,7 @@ func TestReadErrors(t *testing.T) {
 					err := os.WriteFile(
 						path,
 						[]byte(test.data),
-						fixtureNumber0600,
+						privateFileMode,
 					)
 					requireEqual(t, err == nil, true, fixtureV, err)
 				}

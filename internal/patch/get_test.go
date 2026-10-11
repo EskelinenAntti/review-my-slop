@@ -114,7 +114,7 @@ func TestGetReportsUnavailableBranchAndInvalidKind(t *testing.T) {
 		message string
 	}{
 		{Branch, "default branch is unavailable"},
-		{Kind(fixtureNumber255), "unknown patch kind"},
+		{Kind(unknownPatchKind), "unknown patch kind"},
 	} {
 		got, err := Get(context.Background(), test.kind)
 		requireEqual(
@@ -477,15 +477,15 @@ func TestParseHunkBodyLineNumbers(t *testing.T) {
 			NewNumber: minimumWidth,
 		},
 
-		{Kind: Deletion, Text: "old", OldNumber: fixtureNumber11},
+		{Kind: Deletion, Text: "old", OldNumber: deletedSourceLine},
 
-		{Kind: Addition, Text: "new", NewNumber: fixtureNumber21},
+		{Kind: Addition, Text: "new", NewNumber: addedSourceLine},
 
 		{
 			Kind:      Context,
 			Text:      "same",
-			OldNumber: fixtureNumber12,
-			NewNumber: fixtureNumber22,
+			OldNumber: trailingOldSourceLine,
+			NewNumber: trailingNewSourceLine,
 		},
 	}
 	requireEqual(t, len(lines), len(want), "lines = %#v", lines)

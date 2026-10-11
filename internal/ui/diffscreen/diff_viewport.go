@@ -58,7 +58,7 @@ func (v *diffView) keepVisible(
 		return v.clampViewport(viewport)
 	}
 	viewport = v.clampViewport(viewport)
-	for range two {
+	for range viewportAdjustmentPasses {
 		height := v.contentHeight(viewport)
 		if cursor.row < viewport.top {
 			viewport.top = cursor.row
@@ -96,7 +96,7 @@ func (v *diffView) align(
 
 func alignmentOffset(height int, alignment verticalAlignment) int {
 	if alignment == middle {
-		return height / two
+		return height / halfPageDivisor
 	}
 	if alignment == bottom {
 		return height - one
@@ -185,7 +185,7 @@ func (v *diffView) scrollHalfPage(
 	if !v.valid(cursor) {
 		return viewport, cursor
 	}
-	distance := int(direction) * max(one, viewport.Height/two)
+	distance := int(direction) * max(one, viewport.Height/halfPageDivisor)
 	viewport.top += distance
 	viewport = v.clampViewport(viewport)
 	target := min(len(v.rows)-one, max(zero, cursor.row+distance))
@@ -201,7 +201,7 @@ func (v *diffView) viewportProgress(viewport diffViewport) int {
 		return zero
 	}
 	bottom := min(len(v.rows), viewport.top+v.contentHeight(viewport))
-	return bottom * hundred / len(v.rows)
+	return bottom * percentageScale / len(v.rows)
 }
 
 func (v *diffView) nearest(
@@ -242,7 +242,8 @@ func (v *diffView) maxHorizontalOffset(width int) int {
 	contentWidth := max(one, width-14)
 	extra := zero
 	if v.split {
-		contentWidth, extra = max(one, (width-3)/two-6), two
+		paneWidth := (width - paneDividerWidth) / int(paneCount)
+		contentWidth, extra = max(one, paneWidth-6), splitColorPadding
 	}
 	longest := zero
 	for _, current := range v.rows {

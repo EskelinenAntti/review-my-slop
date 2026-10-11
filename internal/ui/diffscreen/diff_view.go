@@ -85,8 +85,8 @@ func (v *diffView) appendHunkRows(
 			kind:      lineRow,
 			file:      fileIndex,
 			hunk:      hunkIndex,
-			leftLine:  indices[zero],
-			rightLine: indices[one],
+			leftLine:  indices[left],
+			rightLine: indices[right],
 		}
 		v.rows = append(v.rows, v.highlightRow(row, hunk.Lines, highlighted))
 	}
@@ -112,26 +112,26 @@ func (v *diffView) highlightRow(
 
 // lineRows maps source lines to display rows. Split mode pairs each deletion
 // block with the immediately following additions; unmatched panes use -1.
-func lineRows(lines []patch.Line, options Options) [][two]int {
+func lineRows(lines []patch.Line, options Options) [][paneCount]int {
 	if !options.SideBySide {
-		rows := make([][two]int, len(lines))
+		rows := make([][paneCount]int, len(lines))
 		for index := range lines {
-			rows[index] = [two]int{index, index}
+			rows[index] = [paneCount]int{index, index}
 		}
 		return rows
 	}
 	return splitLineRows(lines)
 }
 
-func splitLineRows(lines []patch.Line) [][two]int {
-	rows := make([][two]int, zero, len(lines))
+func splitLineRows(lines []patch.Line) [][paneCount]int {
+	rows := make([][paneCount]int, zero, len(lines))
 	for index := zero; index < len(lines); {
 		switch lines[index].Kind {
 		case patch.Context:
-			rows = append(rows, [two]int{index, index})
+			rows = append(rows, [paneCount]int{index, index})
 			index++
 		case patch.Addition:
-			rows = append(rows, [two]int{-one, index})
+			rows = append(rows, [paneCount]int{-one, index})
 			index++
 		default:
 			removedStart := index
@@ -154,19 +154,19 @@ func changeBlockEnd(lines []patch.Line, start int, kind patch.LineKind) int {
 	return end
 }
 
-func pairedChangeRows(removedStart, addedStart, end int) [][two]int {
+func pairedChangeRows(removedStart, addedStart, end int) [][paneCount]int {
 	rows := make(
-		[][two]int,
+		[][paneCount]int,
 		zero,
 		max(addedStart-removedStart, end-addedStart),
 	)
 	for offset := zero; offset < cap(rows); offset++ {
-		indices := [two]int{-one, -one}
+		indices := [paneCount]int{-one, -one}
 		if removedStart+offset < addedStart {
-			indices[zero] = removedStart + offset
+			indices[left] = removedStart + offset
 		}
 		if addedStart+offset < end {
-			indices[one] = addedStart + offset
+			indices[right] = addedStart + offset
 		}
 		rows = append(rows, indices)
 	}

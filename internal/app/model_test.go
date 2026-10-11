@@ -184,7 +184,7 @@ func TestUnchangedRefreshPreservesStateAndClearsError(t *testing.T) {
 	}
 	m.diffView.ToggleSelection()
 	m.diffView.Move(diffscreen.NextLine)
-	m.diffView.ScrollHorizontal(fixtureNumber12)
+	m.diffView.ScrollHorizontal(horizontalScrollColumns)
 	before := m.diffView.Render(nil)
 	m.err = errors.New("previous refresh failed")
 	m = updateModel(t, m, refreshDiffMsg{patch: p})

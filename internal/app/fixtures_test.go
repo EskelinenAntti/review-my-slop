@@ -13,10 +13,10 @@ const (
 	fixtureKeep               = "keep()"
 	fixtureMainGo             = "main.go"
 	fixtureNew                = "new()"
-	fixtureNumber0600         = 0600
-	fixtureNumber0700         = 0700
-	fixtureNumber12           = 12
-	fixtureNumber37           = 37
+	privateFileMode           = 0600
+	privateDirMode            = 0700
+	horizontalScrollColumns   = 12
+	narrowTestWidth           = 37
 	fixtureOld                = "old()"
 	fixturePackageMain        = "package main"
 	fixtureSideBySideVRenderQ = "sideBySide=%v render=%q"

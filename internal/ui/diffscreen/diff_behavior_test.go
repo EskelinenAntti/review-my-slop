@@ -374,7 +374,7 @@ func TestHorizontalScrollKeepsUnifiedGutterFixed(t *testing.T) {
 	p := longLinePatch()
 	v := newUnifiedView(p, true)
 	cursor := mustFirst(t, v)
-	viewport := v.newViewport(fixtureNumber37, one)
+	viewport := v.newViewport(narrowTestWidth, one)
 	viewport = v.keepVisible(viewport, cursor)
 	before := ansi.Strip(v.render(viewport, cursor, nil))
 	viewport = v.scrollHorizontal(viewport, four)
@@ -420,7 +420,7 @@ func TestHorizontalScrollKeepsSplitGuttersAndDividerFixed(t *testing.T) {
 
 func TestHorizontalScrollStartAndEndClamp(t *testing.T) {
 	v := newUnifiedView(longLinePatch(), true)
-	viewport := v.newViewport(fixtureNumber37, one)
+	viewport := v.newViewport(narrowTestWidth, one)
 	viewport = v.scrollHorizontal(viewport, int(^uint(zero)>>one))
 	requireEqual(
 		t,
@@ -467,7 +467,7 @@ func TestSelectionBackgroundKeepsDefaultWeight(t *testing.T) {
 	first := mustFirst(t, v)
 	removed, _ := v.search(fixtureRemovedOne, first, forward)
 	selection := v.beginSelection(removed)
-	rendered := renderTarget(v, removed, first, fixtureNumber72, &selection)
+	rendered := renderTarget(v, removed, first, renderTestWidth, &selection)
 	requireEqual(
 		t,
 		!strings.Contains(rendered, "\x1b[1m"), true,
@@ -477,7 +477,7 @@ func TestSelectionBackgroundKeepsDefaultWeight(t *testing.T) {
 	assertStyledThroughColumn(
 		t,
 		rendered,
-		fixtureNumber72,
+		renderTestWidth,
 		sgrExpectation{background: "219;234;254"},
 	)
 }
@@ -529,7 +529,7 @@ func TestRenderedCodeRowsHaveExactTerminalWidth(t *testing.T) {
 	for _, test := range []struct {
 		constructor func(patch.Patch, bool) *diffView
 		width       int
-	}{{newUnifiedView, fixtureNumber37}, {newSideBySideView, wideTestWidth}} {
+	}{{newUnifiedView, narrowTestWidth}, {newSideBySideView, wideTestWidth}} {
 		v := test.constructor(testPatch(), true)
 		cursor := mustFirst(t, v)
 		for {
@@ -687,7 +687,7 @@ func (s *sgrState) apply(initialParameters string) {
 			*s = sgrState{}
 		case seven:
 			s.reverse = true
-		case fixtureNumber27:
+		case sgrReverseOff:
 			s.reverse = false
 		case sgrDefaultBackground:
 			s.background = ""
