@@ -122,33 +122,61 @@ func (v *View) newReviewView(p patch.Patch) *diffView {
 func (v *View) Move(motion Motion) {
 	v.EndDrag()
 	v.search.repeatMiss = false
+	v.applyMotion(motion)
+}
+
+func (v *View) applyMotion(motion Motion) {
 	switch motion {
 	case PreviousLine:
 		v.move(backward)
+		return
 	case NextLine:
 		v.move(forward)
+		return
 	case PreviousPage:
 		v.halfPage(backward)
+		return
 	case NextPage:
 		v.halfPage(forward)
+		return
+	}
+	v.jumpMotion(motion)
+}
+
+func (v *View) jumpMotion(motion Motion) {
+	switch motion {
 	case FirstLine:
-		if cursor, ok := v.view.first(); ok {
-			v.setCursor(cursor)
-		}
+		cursor, ok := v.view.first()
+		v.focusIfAvailable(cursor, ok)
+		return
 	case LastLine:
-		if cursor, ok := v.view.last(); ok {
-			v.setCursor(cursor)
-		}
+		cursor, ok := v.view.last()
+		v.focusIfAvailable(cursor, ok)
+		return
 	case PreviousFile:
 		v.jumpFile(backward)
+		return
 	case NextFile:
 		v.jumpFile(forward)
+		return
+	}
+	v.paneMotion(motion)
+}
+
+func (v *View) paneMotion(motion Motion) {
+	switch motion {
 	case OldPane:
 		v.switchPane(left)
 	case NewPane:
 		v.switchPane(right)
 	case OtherPane:
 		v.switchPane(v.cursor.pane.other())
+	}
+}
+
+func (v *View) focusIfAvailable(cursor diffCursor, ok bool) {
+	if ok {
+		v.setCursor(cursor)
 	}
 }
 
@@ -197,18 +225,8 @@ func (v *View) switchPane(pane diffPane) {
 	if !ok {
 		return
 	}
-	if v.selection != nil {
-		first, firstOK := v.view.switchPane(v.selection.First, pane)
-		last, lastOK := v.view.switchPane(v.selection.Last, pane)
-		if !firstOK || !lastOK {
-			return
-		}
-		selection := v.view.beginSelection(first)
-		selection, ok = v.view.extendSelection(selection, last)
-		if !ok {
-			return
-		}
-		v.selection = &selection
+	if !v.switchSelectionPane(pane) {
+		return
 	}
 	v.setCursor(cursor)
 }
@@ -332,7 +350,7 @@ func (v *View) Find(d Direction) bool {
 	if v.search.term == "" {
 		return false
 	}
-	if d != Forward && d != Backward {
+	if !validDirection(d) {
 		return false
 	}
 	cursor, ok := v.view.search(v.search.term, v.cursor, direction(d))
@@ -349,26 +367,8 @@ func (v *View) Find(d Direction) bool {
 func (v *View) Render(err error) string {
 	added, removed := patchLineCounts(v.view.patch)
 	header := titleStyle.Render("review-my-slop") + "  " + mutedStyle.Render(fmt.Sprintf("+%d-%d", added, removed))
-	var body []string
-	if len(v.view.patch.Files) == 0 {
-		empty := "No unstaged or untracked changes."
-		if v.view.patch.Kind == patch.Branch {
-			empty = "No branch or worktree changes."
-		}
-		body = make([]string, frame.BodyHeight(v.height))
-		body[min(1, len(body)-1)] = mutedStyle.Render(empty)
-	} else {
-		body = strings.Split(v.view.render(v.viewport, v.cursor, v.selection), "\n")
-	}
-	status := "j/k/h/l move  c comment  ? help  q quit"
-	if v.search.active {
-		status = "/" + v.search.query + cursorStyle.Render(" ")
-		if v.search.miss {
-			status += errorStyle.Render("  no matches")
-		}
-	} else if v.selection != nil {
-		status = "visual selection  j/k extend  c comment  Esc cancel"
-	}
+	body := v.renderBody()
+	status := v.renderStatus()
 	footer := mutedStyle.Render(status)
 	if v.search.repeatMiss {
 		footer = errorStyle.Render(fmt.Sprintf("no matches for %q", v.search.term))
@@ -394,14 +394,21 @@ func (v *View) renderFooter(value string) string {
 func patchLineCounts(p patch.Patch) (added, removed int) {
 	for _, file := range p.Files {
 		for _, hunk := range file.Hunks {
-			for _, line := range hunk.Lines {
-				if line.Kind == patch.Addition {
-					added++
-				}
-				if line.Kind == patch.Deletion {
-					removed++
-				}
-			}
+			a, r := hunkLineCounts(hunk)
+			added += a
+			removed += r
+		}
+	}
+	return
+}
+
+func hunkLineCounts(hunk patch.Hunk) (added, removed int) {
+	for _, line := range hunk.Lines {
+		if line.Kind == patch.Addition {
+			added++
+		}
+		if line.Kind == patch.Deletion {
+			removed++
 		}
 	}
 	return
@@ -412,3 +419,49 @@ var (
 	mutedStyle = lipgloss.NewStyle().Faint(true)
 	errorStyle = lipgloss.NewStyle().Foreground(lipgloss.Red).Bold(true)
 )
+
+func (v *View) switchSelectionPane(pane diffPane) bool {
+	if v.selection == nil {
+		return true
+	}
+	first, firstOK := v.view.switchPane(v.selection.First, pane)
+	last, lastOK := v.view.switchPane(v.selection.Last, pane)
+	if !bothFound(firstOK, lastOK) {
+		return false
+	}
+	selection := v.view.selectionBetween(first, last)
+	if selection == nil {
+		return false
+	}
+	v.selection = selection
+	return true
+}
+
+func (v *View) renderBody() []string {
+	var body []string
+	if len(v.view.patch.Files) == 0 {
+		empty := "No unstaged or untracked changes."
+		if v.view.patch.Kind == patch.Branch {
+			empty = "No branch or worktree changes."
+		}
+		body = make([]string, frame.BodyHeight(v.height))
+		body[min(1, len(body)-1)] = mutedStyle.Render(empty)
+	} else {
+		body = strings.Split(v.view.render(v.viewport, v.cursor, v.selection), "\n")
+	}
+	return body
+}
+func (v *View) renderStatus() string {
+	status := "j/k/h/l move  c comment  ? help  q quit"
+	if v.search.active {
+		status = "/" + v.search.query + cursorStyle.Render(" ")
+		if v.search.miss {
+			status += errorStyle.Render("  no matches")
+		}
+	} else if v.selection != nil {
+		status = "visual selection  j/k extend  c comment  Esc cancel"
+	}
+	return status
+}
+
+func validDirection(d Direction) bool { return d == Forward || d == Backward }

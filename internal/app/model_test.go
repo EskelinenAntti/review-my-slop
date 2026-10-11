@@ -95,6 +95,9 @@ func TestSideBySideToggleStillSavesPreference(t *testing.T) {
 
 	m = updateModel(t, m, textKey("t"))
 	m = updateModel(t, m, textKey("t"))
+	if m.diffOptions.SideBySide {
+		t.Fatal("second toggle left side-by-side enabled")
+	}
 	if !slices.Equal(saved, []bool{true, false}) {
 		t.Fatalf("saved=%v", saved)
 	}

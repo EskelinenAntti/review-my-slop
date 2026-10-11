@@ -46,31 +46,32 @@ func (s Store) Add(comment Comment) (Comment, error) {
 	if err := validateComment(comment); err != nil {
 		return Comment{}, err
 	}
-	if comment.ID == "" {
-		comment.ID = fmt.Sprintf("%d", time.Now().UnixNano())
-	}
-	if comment.CreatedAt.IsZero() {
-		comment.CreatedAt = time.Now().UTC()
-	}
+	comment = initializeComment(comment)
 	data, err := json.Marshal(comment)
 	if err != nil {
 		return Comment{}, fmt.Errorf("encode comment: %w", err)
 	}
-	err = s.update(func(bucket *bolt.Bucket) error {
-		var pending int
-		cursor := bucket.Cursor()
-		for _, value := cursor.First(); value != nil; _, value = cursor.Next() {
-			pending += len(value)
-		}
-		if pending+len(data) > maxPendingBytes {
-			return fmt.Errorf("pending feedback exceeds %d bytes", maxPendingBytes)
-		}
-		if bucket.Get([]byte(comment.ID)) != nil {
-			return errors.New("comment ID already exists")
-		}
-		return bucket.Put([]byte(comment.ID), data)
-	})
+	err = s.update(func(bucket *bolt.Bucket) error { return addComment(bucket, comment.ID, data) })
 	return comment, err
+}
+
+func addComment(bucket *bolt.Bucket, id string, data []byte) error {
+	if pendingBytes(bucket)+len(data) > maxPendingBytes {
+		return fmt.Errorf("pending feedback exceeds %d bytes", maxPendingBytes)
+	}
+	if bucket.Get([]byte(id)) != nil {
+		return errors.New("comment ID already exists")
+	}
+	return bucket.Put([]byte(id), data)
+}
+
+func pendingBytes(bucket *bolt.Bucket) int {
+	var pending int
+	cursor := bucket.Cursor()
+	for _, value := cursor.First(); value != nil; _, value = cursor.Next() {
+		pending += len(value)
+	}
+	return pending
 }
 
 func (s Store) List(repository string) ([]Comment, error) {
@@ -91,7 +92,7 @@ func (s Store) List(repository string) ([]Comment, error) {
 }
 
 func (s Store) Update(comment Comment) error {
-	if comment.Repository == "" || comment.ID == "" {
+	if missingIdentity(comment.Repository, comment.ID) {
 		return errors.New("repository and comment ID are required")
 	}
 	if err := validateComment(comment); err != nil {
@@ -101,26 +102,34 @@ func (s Store) Update(comment Comment) error {
 	if err != nil {
 		return fmt.Errorf("encode comment: %w", err)
 	}
-	return s.update(func(bucket *bolt.Bucket) error {
-		cursor := bucket.Cursor()
-		for key, value := cursor.First(); key != nil; key, value = cursor.Next() {
-			stored, err := decodeComment(value)
-			if err != nil {
-				return err
-			}
-			if stored.Repository != comment.Repository || stored.ID != comment.ID {
-				continue
-			}
-			oldKey := append([]byte(nil), key...)
-			if !bytes.Equal(oldKey, []byte(comment.ID)) {
-				if err := bucket.Delete(oldKey); err != nil {
-					return err
-				}
-			}
-			return bucket.Put([]byte(comment.ID), data)
+	return s.update(func(bucket *bolt.Bucket) error { return updateComment(bucket, comment, data) })
+}
+
+func findCommentKey(bucket *bolt.Bucket, repository, id string) ([]byte, error) {
+	cursor := bucket.Cursor()
+	for key, value := cursor.First(); key != nil; key, value = cursor.Next() {
+		stored, err := decodeComment(value)
+		if err != nil {
+			return nil, err
 		}
-		return errors.New("comment is no longer in the comments")
-	})
+		if matchesComment(stored, repository, id) {
+			return append([]byte(nil), key...), nil
+		}
+	}
+	return nil, errors.New("comment is no longer in the comments")
+}
+
+func matchesComment(comment Comment, repository, id string) bool {
+	return comment.Repository == repository && comment.ID == id
+}
+
+func replaceComment(bucket *bolt.Bucket, oldKey []byte, id string, data []byte) error {
+	if !bytes.Equal(oldKey, []byte(id)) {
+		if err := bucket.Delete(oldKey); err != nil {
+			return err
+		}
+	}
+	return bucket.Put([]byte(id), data)
 }
 
 func (s Store) Delete(repository, id string) error {
@@ -128,18 +137,11 @@ func (s Store) Delete(repository, id string) error {
 		return errors.New("repository and comment ID are required")
 	}
 	return s.update(func(bucket *bolt.Bucket) error {
-		cursor := bucket.Cursor()
-		for key, value := cursor.First(); key != nil; key, value = cursor.Next() {
-			comment, err := decodeComment(value)
-			if err != nil {
-				return err
-			}
-			if comment.Repository != repository || comment.ID != id {
-				continue
-			}
-			return bucket.Delete(key)
+		key, err := findCommentKey(bucket, repository, id)
+		if err != nil {
+			return err
 		}
-		return errors.New("comment is no longer in the comments")
+		return bucket.Delete(key)
 	})
 }
 
@@ -152,28 +154,41 @@ func (s Store) Acknowledge(repository string, ids []string) error {
 		wanted[id] = struct{}{}
 	}
 	return s.update(func(bucket *bolt.Bucket) error {
-		var keys [][]byte
-		if err := bucket.ForEach(func(key, value []byte) error {
-			comment, err := decodeComment(value)
-			if err != nil {
-				return err
-			}
-			if comment.Repository == repository {
-				if _, ok := wanted[comment.ID]; ok {
-					keys = append(keys, append([]byte(nil), key...))
-				}
-			}
-			return nil
-		}); err != nil {
+		keys, err := acknowledgedKeys(bucket, repository, wanted)
+		if err != nil {
 			return err
 		}
-		for _, key := range keys {
-			if err := bucket.Delete(key); err != nil {
-				return err
-			}
+		return deleteKeys(bucket, keys)
+	})
+}
+
+func acknowledgedKeys(bucket *bolt.Bucket, repository string, wanted map[string]struct{}) ([][]byte, error) {
+	var keys [][]byte
+	err := bucket.ForEach(func(key, value []byte) error {
+		comment, err := decodeComment(value)
+		if err != nil {
+			return err
+		}
+		if wantedComment(comment, repository, wanted) {
+			keys = append(keys, append([]byte(nil), key...))
 		}
 		return nil
 	})
+	return keys, err
+}
+
+func wantedComment(comment Comment, repository string, wanted map[string]struct{}) bool {
+	_, ok := wanted[comment.ID]
+	return comment.Repository == repository && ok
+}
+
+func deleteKeys(bucket *bolt.Bucket, keys [][]byte) error {
+	for _, key := range keys {
+		if err := bucket.Delete(key); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func validateComment(comment Comment) error {
@@ -254,19 +269,50 @@ func (s Store) open() (*bolt.DB, error) {
 	if s.Path == "" {
 		return nil, errors.New("comments path is empty")
 	}
-	if err := os.MkdirAll(filepath.Dir(s.Path), 0o700); err != nil {
-		return nil, fmt.Errorf("create comments directory: %w", err)
-	}
-	if err := os.Chmod(filepath.Dir(s.Path), 0o700); err != nil {
-		return nil, fmt.Errorf("secure comments directory: %w", err)
+	if err := s.prepareDirectory(); err != nil {
+		return nil, err
 	}
 	db, err := bolt.Open(s.Path, 0o600, &bolt.Options{Timeout: 2 * time.Second})
 	if err != nil {
 		return nil, fmt.Errorf("open comments: %w", err)
 	}
-	if err := os.Chmod(s.Path, 0o600); err != nil {
+	return secureDatabase(db, s.Path)
+}
+
+func secureDatabase(db *bolt.DB, path string) (*bolt.DB, error) {
+	if err := os.Chmod(path, 0o600); err != nil {
 		db.Close()
 		return nil, fmt.Errorf("secure comments database: %w", err)
 	}
 	return db, nil
+}
+
+func initializeComment(comment Comment) Comment {
+	if comment.ID == "" {
+		comment.ID = fmt.Sprintf("%d", time.Now().UnixNano())
+	}
+	if comment.CreatedAt.IsZero() {
+		comment.CreatedAt = time.Now().UTC()
+	}
+	return comment
+}
+
+func (s Store) prepareDirectory() error {
+	if err := os.MkdirAll(filepath.Dir(s.Path), 0o700); err != nil {
+		return fmt.Errorf("create comments directory: %w", err)
+	}
+	if err := os.Chmod(filepath.Dir(s.Path), 0o700); err != nil {
+		return fmt.Errorf("secure comments directory: %w", err)
+	}
+	return nil
+}
+
+func missingIdentity(repository, id string) bool { return repository == "" || id == "" }
+
+func updateComment(bucket *bolt.Bucket, comment Comment, data []byte) error {
+	key, err := findCommentKey(bucket, comment.Repository, comment.ID)
+	if err != nil {
+		return err
+	}
+	return replaceComment(bucket, key, comment.ID, data)
 }

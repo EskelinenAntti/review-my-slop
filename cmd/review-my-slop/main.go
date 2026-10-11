@@ -11,11 +11,14 @@ import (
 	"github.com/eskelinenantti/review-my-slop/internal/patch"
 )
 
-func main() {
-	if err := run(context.Background(), os.Args[1:], os.Stdout); err != nil {
-		fmt.Fprintln(os.Stderr, "review-my-slop:", err)
-		os.Exit(1)
+func main() { os.Exit(exitCode(run(context.Background(), os.Args[1:], os.Stdout), os.Stderr)) }
+
+func exitCode(err error, stderr io.Writer) int {
+	if err != nil {
+		fmt.Fprintln(stderr, "review-my-slop:", err)
+		return 1
 	}
+	return 0
 }
 
 func run(ctx context.Context, args []string, output io.Writer) error {
@@ -25,36 +28,41 @@ func run(ctx context.Context, args []string, output io.Writer) error {
 	if len(args) > 1 {
 		return fmt.Errorf("usage: review-my-slop [code|comments]")
 	}
-	switch args[0] {
+	return runSubcommand(ctx, args[0], output)
+}
+
+func runSubcommand(ctx context.Context, command string, output io.Writer) error {
+	switch command {
 	case "code":
 		return runCode(ctx)
 	case "comments":
 		return runComments(ctx, output)
 	default:
-		return fmt.Errorf("unknown subcommand %q; usage: review-my-slop [code|comments]", args[0])
+		return fmt.Errorf("unknown subcommand %q; usage: review-my-slop [code|comments]", command)
 	}
 }
 
 func runCode(ctx context.Context) error {
-	commentStore, err := comments.OpenDefault()
+	store, current, err := loadReview(ctx)
 	if err != nil {
 		return err
 	}
-	currentPatch, err := patch.Get(ctx, patch.Unstaged)
-	if err != nil {
-		return err
-	}
-	return app.Run(ctx, currentPatch, commentStore, patch.Get)
+	return app.Run(ctx, current, store, patch.Get)
 }
 
 func runComments(ctx context.Context, output io.Writer) error {
-	commentStore, err := comments.OpenDefault()
+	store, current, err := loadReview(ctx)
 	if err != nil {
 		return err
 	}
-	currentPatch, err := patch.Get(ctx, patch.Unstaged)
+	return store.WritePending(output, current.Root)
+}
+
+func loadReview(ctx context.Context) (comments.Store, patch.Patch, error) {
+	store, err := comments.OpenDefault()
 	if err != nil {
-		return err
+		return comments.Store{}, patch.Patch{}, err
 	}
-	return commentStore.WritePending(output, currentPatch.Root)
+	current, err := patch.Get(ctx, patch.Unstaged)
+	return store, current, err
 }

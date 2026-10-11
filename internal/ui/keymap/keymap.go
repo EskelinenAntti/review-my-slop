@@ -32,10 +32,8 @@ func (m *Matcher) Feed(key string) string {
 		prefix := m.pending
 		m.pending = ""
 		sequence := m.sequences[prefix]
-		for _, continuation := range sequence.Keys {
-			if continuation == key {
-				return prefix + " " + key
-			}
+		if sequence.accepts(key) {
+			return prefix + " " + key
 		}
 		if !sequence.RetryUnmatched {
 			return ""
@@ -46,4 +44,13 @@ func (m *Matcher) Feed(key string) string {
 		return ""
 	}
 	return key
+}
+
+func (s Sequence) accepts(key string) bool {
+	for _, continuation := range s.Keys {
+		if continuation == key {
+			return true
+		}
+	}
+	return false
 }

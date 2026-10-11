@@ -47,12 +47,7 @@ func (v *diffView) keepVisible(viewport diffViewport, cursor diffCursor) diffVie
 	viewport = v.clampViewport(viewport)
 	for range 2 {
 		height := v.contentHeight(viewport)
-		if cursor.row < viewport.top {
-			viewport.top = cursor.row
-		}
-		if cursor.row >= viewport.top+height {
-			viewport.top = cursor.row - height + 1
-		}
+		viewport.top = visibleTop(viewport.top, cursor.row, height)
 		viewport = v.clampViewport(viewport)
 	}
 	return viewport
@@ -99,6 +94,10 @@ func (v *diffView) scrollVertical(viewport diffViewport, cursor diffCursor, rows
 	if cursor.row > target {
 		d = backward
 	}
+	return viewport, v.visibleCursor(target, cursor, d, viewport)
+}
+
+func (v *diffView) visibleCursor(target int, cursor diffCursor, d direction, viewport diffViewport) diffCursor {
 	candidate, ok := v.nearest(target, cursor.pane, d, viewport)
 	if !ok && v.split {
 		candidate, ok = v.nearest(target, cursor.pane.other(), d, viewport)
@@ -106,7 +105,7 @@ func (v *diffView) scrollVertical(viewport diffViewport, cursor diffCursor, rows
 	if ok {
 		cursor = candidate
 	}
-	return viewport, cursor
+	return cursor
 }
 
 func (v *diffView) cursorVisible(viewport diffViewport, cursor diffCursor) bool {
@@ -139,7 +138,7 @@ func (v *diffView) nearest(target int, pane diffPane, direction direction, viewp
 	height := v.contentHeight(viewport)
 	for distance := 0; distance < height; distance++ {
 		for _, y := range []int{target + int(direction)*distance, target - int(direction)*distance} {
-			if y < viewport.top || y >= viewport.top+height || y >= len(v.rows) {
+			if !v.rowVisible(y, viewport.top, height) {
 				continue
 			}
 			if cursor, ok := v.cursorAt(y, pane); ok {
@@ -164,4 +163,18 @@ func (v *diffView) maxHorizontalOffset(width int) int {
 		longest = max(longest, lipgloss.Width(expandTabs(ansi.Strip(current.text+current.left+current.right)))+extra)
 	}
 	return max(0, longest-contentWidth)
+}
+
+func (v *diffView) rowVisible(y, top, height int) bool {
+	return y >= top && y < top+height && y < len(v.rows)
+}
+
+func visibleTop(top, row, height int) int {
+	if row < top {
+		top = row
+	}
+	if row >= top+height {
+		top = row - height + 1
+	}
+	return top
 }

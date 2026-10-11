@@ -45,3 +45,17 @@ func TestRelativeXDGDataDirectoryIsIgnored(t *testing.T) {
 		t.Fatalf("data directory = %q, want %q", data, want)
 	}
 }
+
+func TestDefaultStoreUsesDataDirectory(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv("XDG_DATA_HOME", root)
+	want := filepath.Join(root, appName, "comments.db")
+	path, err := DefaultPath()
+	if err != nil || path != want {
+		t.Fatalf("path=%q error=%v", path, err)
+	}
+	store, err := OpenDefault()
+	if err != nil || store.Path != want {
+		t.Fatalf("store=%+v error=%v", store, err)
+	}
+}

@@ -32,9 +32,13 @@ func (m model) updateSearch(name string, key tea.KeyPressMsg) (tea.Model, tea.Cm
 	case "backspace":
 		m.diffView.BackspaceSearch()
 	default:
-		if key.Text != "" {
-			m.diffView.InsertSearch(key.Text)
-		}
+		m.insertSearch(key.Text)
 	}
 	return m, nil
+}
+
+func (m *model) insertSearch(text string) {
+	if text != "" {
+		m.diffView.InsertSearch(text)
+	}
 }

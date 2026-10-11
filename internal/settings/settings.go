@@ -55,22 +55,18 @@ func writePreferences(path string, preferences Preferences) error {
 		return fmt.Errorf("encode UI settings: %w", err)
 	}
 	data = append(data, '\n')
+	return replacePreferences(path, data)
+}
+
+func replacePreferences(path string, data []byte) error {
 	temporary, err := os.CreateTemp(filepath.Dir(path), "ui-*.tmp")
 	if err != nil {
 		return fmt.Errorf("create UI settings file: %w", err)
 	}
 	temporaryPath := temporary.Name()
 	defer os.Remove(temporaryPath)
-	if err := temporary.Chmod(0o600); err != nil {
-		temporary.Close()
-		return fmt.Errorf("secure UI settings file: %w", err)
-	}
-	if _, err := temporary.Write(data); err != nil {
-		temporary.Close()
-		return fmt.Errorf("write UI settings: %w", err)
-	}
-	if err := temporary.Close(); err != nil {
-		return fmt.Errorf("close UI settings: %w", err)
+	if err := writeTemporaryPreferences(temporary, data); err != nil {
+		return err
 	}
 	if err := os.Rename(temporaryPath, path); err != nil {
 		return fmt.Errorf("replace UI settings: %w", err)
@@ -84,4 +80,23 @@ func settingsPath() (string, error) {
 		return "", fmt.Errorf("resolve UI settings directory: %w", err)
 	}
 	return filepath.Join(config, "review-my-slop", "ui.json"), nil
+}
+
+func writeTemporaryPreferences(temporary *os.File, data []byte) error {
+	if err := temporary.Chmod(0o600); err != nil {
+		temporary.Close()
+		return fmt.Errorf("secure UI settings file: %w", err)
+	}
+	return finishTemporaryPreferences(temporary, data)
+}
+
+func finishTemporaryPreferences(temporary *os.File, data []byte) error {
+	if _, err := temporary.Write(data); err != nil {
+		temporary.Close()
+		return fmt.Errorf("write UI settings: %w", err)
+	}
+	if err := temporary.Close(); err != nil {
+		return fmt.Errorf("close UI settings: %w", err)
+	}
+	return nil
 }

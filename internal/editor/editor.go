@@ -17,14 +17,9 @@ func createCommentFile(body string, anchor comments.Anchor) (string, error) {
 		return "", fmt.Errorf("create comment file: %w", err)
 	}
 	path := file.Name()
-	if _, err := file.WriteString(commentDraft(body, anchor)); err != nil {
-		_ = file.Close()
+	if err := writeCommentFile(file, body, anchor); err != nil {
 		_ = os.Remove(path)
-		return "", fmt.Errorf("write comment file: %w", err)
-	}
-	if err := file.Close(); err != nil {
-		_ = os.Remove(path)
-		return "", fmt.Errorf("close comment file: %w", err)
+		return "", err
 	}
 	return path, nil
 }
@@ -79,6 +74,10 @@ func stripUnchangedSuggestion(body string, quoted []string) string {
 		return body
 	}
 	end := start + suggestion.Len()
+	return removeSuggestion(body, start, end)
+}
+
+func removeSuggestion(body string, start, end int) string {
 	before := strings.TrimRight(body[:start], "\n")
 	after := body[end:]
 	if strings.TrimSpace(after) == "" {
@@ -123,4 +122,15 @@ func contextFence(lines []string) string {
 
 func shellQuote(value string) string {
 	return "'" + strings.ReplaceAll(value, "'", "'\"'\"'") + "'"
+}
+
+func writeCommentFile(file *os.File, body string, anchor comments.Anchor) error {
+	if _, err := file.WriteString(commentDraft(body, anchor)); err != nil {
+		_ = file.Close()
+		return fmt.Errorf("write comment file: %w", err)
+	}
+	if err := file.Close(); err != nil {
+		return fmt.Errorf("close comment file: %w", err)
+	}
+	return nil
 }

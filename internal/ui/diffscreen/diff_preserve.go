@@ -57,18 +57,30 @@ func preserveSelection(old *diffView, selection *diffSelection, next *diffView) 
 	}
 	first := identify(old, selection.First)
 	last := identify(old, selection.Last)
-	if !first.valid || !last.valid {
+	if !validSelectionIdentities(first, last) {
 		return nil
 	}
 	translatedFirst, firstOK := next.findCursor(first)
 	translatedLast, lastOK := next.findCursor(last)
-	if !firstOK || !lastOK || !sameFile(first.file, last.file) || first.hunk.Header != last.hunk.Header {
+	if !bothFound(firstOK, lastOK) {
 		return nil
 	}
-	translated := next.beginSelection(translatedFirst)
-	translated, ok := next.extendSelection(translated, translatedLast)
+	return next.selectionBetween(translatedFirst, translatedLast)
+}
+
+func (v *diffView) selectionBetween(first, last diffCursor) *diffSelection {
+	translated, ok := v.extendSelection(v.beginSelection(first), last)
 	if !ok {
 		return nil
 	}
 	return &translated
 }
+
+func validSelectionIdentities(first, last cursorIdentity) bool {
+	if !first.valid || !last.valid {
+		return false
+	}
+	return sameFile(first.file, last.file) && first.hunk.Header == last.hunk.Header
+}
+
+func bothFound(first, last bool) bool { return first && last }

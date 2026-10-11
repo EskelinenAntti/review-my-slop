@@ -2,7 +2,6 @@ package diffscreen
 
 import (
 	"bytes"
-	"io"
 	"strings"
 
 	"github.com/alecthomas/chroma/v2/quick"
@@ -25,9 +24,5 @@ func render(filename, source string, darkBackground bool) []string {
 	if err := quick.Highlight(&buf, source, filename, "terminal16m", theme); err != nil {
 		return strings.Split(strings.TrimSuffix(source, "\n"), "\n")
 	}
-	rendered, err := io.ReadAll(&buf)
-	if err != nil {
-		return strings.Split(strings.TrimSuffix(source, "\n"), "\n")
-	}
-	return strings.Split(strings.TrimSuffix(string(rendered), "\n"), "\n")
+	return strings.Split(strings.TrimSuffix(buf.String(), "\n"), "\n")
 }
