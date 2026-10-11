@@ -94,7 +94,7 @@ func TestSideBySideToggleStillSavesPreference(t *testing.T) {
 	})
 
 	m = updateModel(t, m, textKey("t"))
-	m = updateModel(t, m, textKey("t"))
+	updateModel(t, m, textKey("t"))
 	if !slices.Equal(saved, []bool{true, false}) {
 		t.Fatalf("saved=%v", saved)
 	}
