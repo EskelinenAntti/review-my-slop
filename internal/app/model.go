@@ -186,6 +186,20 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
 		m.resizeScreens()
+
+	case tea.KeyPressMsg:
+		m.diffView.EndDrag()
+		return m.updateKey(msg)
+	case tea.MouseClickMsg, tea.MouseMotionMsg, tea.MouseReleaseMsg, tea.MouseWheelMsg:
+		m.updateMouse(msg)
+	default:
+		return m.updateWorkflow(msg)
+	}
+	return m, nil
+}
+
+func (m model) updateWorkflow(msg tea.Msg) (tea.Model, tea.Cmd) {
+	switch msg := msg.(type) {
 	case commentEditorFinishedMsg:
 		m.finishCommentEditor(msg)
 	case commentsLoadedMsg:
@@ -200,11 +214,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, m.loadRefresh()
 	case refreshDiffMsg:
 		m.finishDiffRefresh(msg)
-	case tea.KeyPressMsg:
-		m.diffView.EndDrag()
-		return m.updateKey(msg)
-	case tea.MouseClickMsg, tea.MouseMotionMsg, tea.MouseReleaseMsg, tea.MouseWheelMsg:
-		m.updateMouse(msg)
 	default:
 		return m, nil
 	}
@@ -301,6 +310,20 @@ func (m model) updateBrowseKey(name string) (tea.Model, tea.Cmd) {
 	case "ctrl+c", "q":
 		m.quitting = true
 		return m, tea.Quit
+	case "c":
+		return m.startCommentEditor()
+	case "e":
+		return m.startSourceEditor()
+	case "R":
+		return m, m.loadRefresh()
+	case "tab":
+		return m.switchPatchKind()
+	default:
+		return m.updateBrowseView(name)
+	}
+}
+func (m model) updateBrowseView(name string) (tea.Model, tea.Cmd) {
+	switch name {
 	case "?":
 		m.mode = modeHelp
 	case "/":
@@ -310,18 +333,10 @@ func (m model) updateBrowseKey(name string) (tea.Model, tea.Cmd) {
 		m.diffView.ToggleSelection()
 	case "esc":
 		m.diffView.ClearSelection()
-	case "c":
-		return m.startCommentEditor()
-	case "e":
-		return m.startSourceEditor()
 	case "C":
 		m.mode = modeComments
 		m.commentView.Update(m.comments.items)
 		return m, m.loadComments()
-	case "R":
-		return m, m.loadRefresh()
-	case "tab":
-		return m.switchPatchKind()
 	case "t":
 		m.toggleSideBySide()
 	default:
@@ -329,6 +344,7 @@ func (m model) updateBrowseKey(name string) (tea.Model, tea.Cmd) {
 	}
 	return m, nil
 }
+
 func (m model) startCommentEditor() (tea.Model, tea.Cmd) {
 	cmd, err := m.beginComment()
 	if err != nil {

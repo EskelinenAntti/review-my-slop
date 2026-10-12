@@ -287,7 +287,7 @@ func (r *defaultBranchRunner) Run(_ context.Context, _ string, args ...string) (
 		return []byte(r.root + "\n"), nil
 	case call == "symbolic-ref --quiet --short refs/remotes/origin/HEAD" && r.originHEAD != "":
 		return []byte(r.originHEAD + "\n"), nil
-	case len(args) == 4 && args[0] == "rev-parse" && args[1] == "--verify" && args[2] == "--quiet" && args[3] == r.available+"^{commit}" && r.available != "":
+	case call == "rev-parse --verify --quiet "+r.available+"^{commit}" && r.available != "":
 		return []byte("commit\n"), nil
 	default:
 		return nil, exec.ErrNotFound
