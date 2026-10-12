@@ -1,4 +1,5 @@
-// Package diffscreen presents patches and owns their interactive browsing state.
+// Package diffscreen presents patches and owns their interactive browsing
+// state.
 package diffscreen
 
 import (
@@ -115,9 +116,14 @@ func (v *View) Resize(width, height int) {
 	}
 }
 
-func (v *View) sideBySideActive() bool { return v.options.SideBySide && v.width >= 100 }
+func (v *View) sideBySideActive() bool {
+	return v.options.SideBySide && v.width >= 100
+}
 func (v *View) newReviewView(p patch.Patch) *diffView {
-	return newDiffView(p, Options{SideBySide: v.sideBySideActive(), Dark: v.options.Dark})
+	return newDiffView(
+		p,
+		Options{SideBySide: v.sideBySideActive(), Dark: v.options.Dark},
+	)
 }
 
 // Move performs navigation and keeps the resulting focus visible. Line and
@@ -232,7 +238,11 @@ func (v *View) Align(alignment Alignment) {
 	if _, ok := v.view.line(v.cursor); !ok {
 		return
 	}
-	v.viewport = v.view.align(v.viewport, v.cursor, verticalAlignment(alignment))
+	v.viewport = v.view.align(
+		v.viewport,
+		v.cursor,
+		verticalAlignment(alignment),
+	)
 }
 
 // ScrollHorizontal shifts the visible content by the requested columns.
@@ -252,7 +262,8 @@ func (v *View) ScrollVertical(rows int) {
 	v.viewport, v.cursor = viewport, cursor
 }
 
-// ToggleSelection starts a range at the focused line or clears the current range.
+// ToggleSelection starts a range at the focused line or clears the current
+// range.
 func (v *View) ToggleSelection() {
 	v.search.repeatMiss = false
 	if v.selection != nil {
@@ -266,7 +277,11 @@ func (v *View) ToggleSelection() {
 }
 
 // ClearSelection clears the selected range and ends any drag.
-func (v *View) ClearSelection() { v.EndDrag(); v.selection = nil; v.search.repeatMiss = false }
+func (v *View) ClearSelection() {
+	v.EndDrag()
+	v.selection = nil
+	v.search.repeatMiss = false
+}
 
 // Selected returns the focused line when no explicit range is selected.
 // The bool is false when the patch has no selectable code.
@@ -297,7 +312,8 @@ func (v *View) BeginSearch() {
 }
 
 // InsertSearch appends text to the query and previews from the search origin.
-// It starts a search session if needed; a miss retains the last successful focus.
+// It starts a search session if needed; a miss retains the last successful
+// focus.
 func (v *View) InsertSearch(text string) {
 	if !v.search.active {
 		v.BeginSearch()
@@ -375,12 +391,14 @@ func (v *View) Find(d Direction) bool {
 // position label. Dimensions are configured through Resize.
 func (v *View) Render(err error) string {
 	added, removed := patchLineCounts(v.view.patch)
-	header := titleStyle.Render("review-my-slop") + "  " + mutedStyle.Render(fmt.Sprintf("+%d-%d", added, removed))
+	counts := mutedStyle.Render(fmt.Sprintf("+%d-%d", added, removed))
+	header := titleStyle.Render("review-my-slop") + "  " + counts
 	body := v.renderBody()
 	status := v.renderStatus()
 	footer := mutedStyle.Render(status)
 	if v.search.repeatMiss {
-		footer = errorStyle.Render(fmt.Sprintf("no matches for %q", v.search.term))
+		message := fmt.Sprintf("no matches for %q", v.search.term)
+		footer = errorStyle.Render(message)
 	}
 	if err != nil {
 		footer = errorStyle.Render(strings.ReplaceAll(err.Error(), "\n", " "))
@@ -397,7 +415,10 @@ func (v *View) renderBody() []string {
 		body = make([]string, frame.BodyHeight(v.height))
 		body[min(1, len(body)-1)] = mutedStyle.Render(empty)
 	} else {
-		body = strings.Split(v.view.render(v.viewport, v.cursor, v.selection), "\n")
+		body = strings.Split(
+			v.view.render(v.viewport, v.cursor, v.selection),
+			"\n",
+		)
 	}
 	return body
 }
@@ -426,7 +447,10 @@ func (v *View) renderFooter(value string) string {
 	right := mutedStyle.Render(label)
 	width := max(20, v.width)
 	value = ansi.Truncate(value, max(0, width-lipgloss.Width(right)-1), "")
-	return value + strings.Repeat(" ", max(1, width-lipgloss.Width(value)-lipgloss.Width(right))) + right
+	return value + strings.Repeat(
+		" ",
+		max(1, width-lipgloss.Width(value)-lipgloss.Width(right)),
+	) + right
 }
 func patchLineCounts(p patch.Patch) (added, removed int) {
 	for _, file := range p.Files {

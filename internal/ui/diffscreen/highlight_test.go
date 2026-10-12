@@ -9,11 +9,19 @@ import (
 
 func TestRenamedFileHighlightsEachSideUsingItsOwnPath(t *testing.T) {
 	source := "package main\n\nfunc example() {}\n"
-	file := patch.File{OldPath: "old.go", NewPath: "new.txt", OldSource: source, NewSource: source}
+	file := patch.File{
+		OldPath:   "old.go",
+		NewPath:   "new.txt",
+		OldSource: source,
+		NewSource: source,
+	}
 	view := &diffView{dark: true}
 	pair := view.highlight(&file)
 	old, updated := strings.Join(pair.Old, "\n"), strings.Join(pair.New, "\n")
-	if old == updated || stripANSI(old) != strings.TrimSuffix(source, "\n") || stripANSI(updated) != strings.TrimSuffix(source, "\n") {
+	if old == updated || stripANSI(old) != strings.TrimSuffix(
+		source,
+		"\n",
+	) || stripANSI(updated) != strings.TrimSuffix(source, "\n") {
 		t.Fatalf("highlighted old=%q new=%q", old, updated)
 	}
 }
@@ -49,14 +57,27 @@ func answer(value int) string {
 	dark := strings.Join(render("example.go", source, darkTheme), "\n")
 	light := strings.Join(render("example.go", source, lightTheme), "\n")
 	if dark == light {
-		t.Fatal("light and dark terminal backgrounds use identical highlighting")
+		t.Fatal(
+			"light and dark terminal backgrounds use identical highlighting",
+		)
 	}
-	for name, rendered := range map[string]string{"dark": dark, "light": light} {
+	for name, rendered := range map[string]string{
+		"dark":  dark,
+		"light": light,
+	} {
 		if !strings.Contains(rendered, "[38;2;") {
-			t.Errorf("%s theme does not use truecolor syntax highlighting: %q", name, rendered)
+			t.Errorf(
+				"%s theme does not use truecolor syntax highlighting: %q",
+				name,
+				rendered,
+			)
 		}
 		if strings.Contains(rendered, "[48;2;") {
-			t.Errorf("%s theme overrides terminal background: %q", name, rendered)
+			t.Errorf(
+				"%s theme overrides terminal background: %q",
+				name,
+				rendered,
+			)
 		}
 	}
 }

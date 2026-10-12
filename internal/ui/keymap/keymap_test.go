@@ -10,10 +10,22 @@ func TestFeed(t *testing.T) {
 		{"single keys", []string{"j", "q"}, []string{"j", "q"}},
 		{"completed binding", []string{"g", "g"}, []string{"", "g g"}},
 		{"retry unmatched", []string{"g", "j"}, []string{"", "j"}},
-		{"retry starts another binding", []string{"g", "z", "t"}, []string{"", "", "z t"}},
+		{
+			"retry starts another binding",
+			[]string{"g", "z", "t"},
+			[]string{"", "", "z t"},
+		},
 		{"consume unmatched", []string{"z", "q", "j"}, []string{"", "", "j"}},
-		{"consume another prefix", []string{"z", "g", "g", "g"}, []string{"", "", "", "g g"}},
-		{"pane binding", []string{"ctrl+w", "ctrl+w"}, []string{"", "ctrl+w ctrl+w"}},
+		{
+			"consume another prefix",
+			[]string{"z", "g", "g", "g"},
+			[]string{"", "", "", "g g"},
+		},
+		{
+			"pane binding",
+			[]string{"ctrl+w", "ctrl+w"},
+			[]string{"", "ctrl+w ctrl+w"},
+		},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			assertKeySequence(t, test.keys, test.want)

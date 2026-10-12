@@ -9,7 +9,10 @@ func (v *diffView) newViewport(width, height int) diffViewport {
 	return v.resize(diffViewport{}, width, height)
 }
 
-func (v *diffView) resize(viewport diffViewport, width, height int) diffViewport {
+func (v *diffView) resize(
+	viewport diffViewport,
+	width, height int,
+) diffViewport {
 	viewport.Width, viewport.Height = max(1, width), max(1, height)
 	return v.clampViewport(viewport)
 }
@@ -24,12 +27,16 @@ func (v *diffView) maxTop(height int) int {
 
 func (v *diffView) clampViewport(viewport diffViewport) diffViewport {
 	viewport.top = max(0, min(viewport.top, v.maxTop(viewport.Height)))
-	viewport.LeftColumn = max(0, min(viewport.LeftColumn, v.maxHorizontalOffset(viewport.Width)))
+	viewport.LeftColumn = max(
+		0,
+		min(viewport.LeftColumn, v.maxHorizontalOffset(viewport.Width)),
+	)
 	return viewport
 }
 
 func (v *diffView) hasStickyHeader(top int, viewportHeight int) bool {
-	return viewportHeight > 1 && top >= 0 && top < len(v.rows) && v.rows[top].kind != fileRow
+	return viewportHeight > 1 && top >= 0 &&
+		top < len(v.rows) && v.rows[top].kind != fileRow
 }
 
 func (v *diffView) contentHeight(viewport diffViewport) int {
@@ -40,7 +47,10 @@ func (v *diffView) contentHeight(viewport diffViewport) int {
 	return max(1, height)
 }
 
-func (v *diffView) keepVisible(viewport diffViewport, cursor diffCursor) diffViewport {
+func (v *diffView) keepVisible(
+	viewport diffViewport,
+	cursor diffCursor,
+) diffViewport {
 	if !v.valid(cursor) {
 		return v.clampViewport(viewport)
 	}
@@ -58,7 +68,11 @@ func (v *diffView) keepVisible(viewport diffViewport, cursor diffCursor) diffVie
 	return viewport
 }
 
-func (v *diffView) align(viewport diffViewport, cursor diffCursor, alignment verticalAlignment) diffViewport {
+func (v *diffView) align(
+	viewport diffViewport,
+	cursor diffCursor,
+	alignment verticalAlignment,
+) diffViewport {
 	headerHeight := 0
 	if viewport.Height > 1 {
 		headerHeight = 1
@@ -81,20 +95,33 @@ func alignmentOffset(height int, alignment verticalAlignment) int {
 	return 0
 }
 
-func (v *diffView) scrollHorizontal(viewport diffViewport, columns int) diffViewport {
-	columns = max(-viewport.LeftColumn, min(columns, v.maxHorizontalOffset(viewport.Width)-viewport.LeftColumn))
+func (v *diffView) scrollHorizontal(
+	viewport diffViewport,
+	columns int,
+) diffViewport {
+	columns = max(
+		-viewport.LeftColumn,
+		min(columns, v.maxHorizontalOffset(viewport.Width)-viewport.LeftColumn),
+	)
 	viewport.LeftColumn += columns
 	return v.clampViewport(viewport)
 }
 
-func (v *diffView) scrollVertical(viewport diffViewport, cursor diffCursor, rows int) (diffViewport, diffCursor) {
+func (v *diffView) scrollVertical(
+	viewport diffViewport,
+	cursor diffCursor,
+	rows int,
+) (diffViewport, diffCursor) {
 	rows = max(-viewport.top, min(rows, v.maxTop(viewport.Height)-viewport.top))
 	viewport.top += rows
 	viewport = v.clampViewport(viewport)
 	if !v.valid(cursor) || v.cursorVisible(viewport, cursor) {
 		return viewport, cursor
 	}
-	target := max(viewport.top, min(cursor.row, viewport.top+v.contentHeight(viewport)-1))
+	target := max(
+		viewport.top,
+		min(cursor.row, viewport.top+v.contentHeight(viewport)-1),
+	)
 	d := forward
 	if cursor.row > target {
 		d = backward
@@ -109,11 +136,19 @@ func (v *diffView) scrollVertical(viewport diffViewport, cursor diffCursor, rows
 	return viewport, cursor
 }
 
-func (v *diffView) cursorVisible(viewport diffViewport, cursor diffCursor) bool {
-	return v.valid(cursor) && cursor.row >= viewport.top && cursor.row < viewport.top+v.contentHeight(viewport)
+func (v *diffView) cursorVisible(
+	viewport diffViewport,
+	cursor diffCursor,
+) bool {
+	return v.valid(cursor) && cursor.row >= viewport.top &&
+		cursor.row < viewport.top+v.contentHeight(viewport)
 }
 
-func (v *diffView) scrollHalfPage(viewport diffViewport, cursor diffCursor, direction direction) (diffViewport, diffCursor) {
+func (v *diffView) scrollHalfPage(
+	viewport diffViewport,
+	cursor diffCursor,
+	direction direction,
+) (diffViewport, diffCursor) {
 	if !v.valid(cursor) {
 		return viewport, cursor
 	}
@@ -121,7 +156,8 @@ func (v *diffView) scrollHalfPage(viewport diffViewport, cursor diffCursor, dire
 	viewport.top += distance
 	viewport = v.clampViewport(viewport)
 	target := min(len(v.rows)-1, max(0, cursor.row+distance))
-	if candidate, ok := v.nearest(target, cursor.pane, direction, viewport); ok {
+	candidate, ok := v.nearest(target, cursor.pane, direction, viewport)
+	if ok {
 		cursor = candidate
 	}
 	return viewport, cursor
@@ -135,10 +171,18 @@ func (v *diffView) viewportProgress(viewport diffViewport) int {
 	return bottom * 100 / len(v.rows)
 }
 
-func (v *diffView) nearest(target int, pane diffPane, direction direction, viewport diffViewport) (diffCursor, bool) {
+func (v *diffView) nearest(
+	target int,
+	pane diffPane,
+	direction direction,
+	viewport diffViewport,
+) (diffCursor, bool) {
 	height := v.contentHeight(viewport)
 	for distance := 0; distance < height; distance++ {
-		for _, y := range []int{target + int(direction)*distance, target - int(direction)*distance} {
+		for _, y := range []int{
+			target + int(direction)*distance,
+			target - int(direction)*distance,
+		} {
 			if cursor, ok := v.cursorInViewport(y, pane, viewport); ok {
 				return cursor, true
 			}
@@ -147,7 +191,11 @@ func (v *diffView) nearest(target int, pane diffPane, direction direction, viewp
 	return diffCursor{}, false
 }
 
-func (v *diffView) cursorInViewport(y int, pane diffPane, viewport diffViewport) (diffCursor, bool) {
+func (v *diffView) cursorInViewport(
+	y int,
+	pane diffPane,
+	viewport diffViewport,
+) (diffCursor, bool) {
 	if y < viewport.top || y >= viewport.top+v.contentHeight(viewport) {
 		return diffCursor{}, false
 	}
@@ -165,7 +213,12 @@ func (v *diffView) maxHorizontalOffset(width int) int {
 		if current.kind != lineRow {
 			continue
 		}
-		longest = max(longest, lipgloss.Width(expandTabs(ansi.Strip(current.text+current.left+current.right)))+extra)
+		longest = max(
+			longest,
+			lipgloss.Width(
+				expandTabs(ansi.Strip(current.text+current.left+current.right)),
+			)+extra,
+		)
 	}
 	return max(0, longest-contentWidth)
 }

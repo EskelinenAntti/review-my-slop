@@ -13,7 +13,8 @@ type Preferences struct {
 	SideBySide bool `json:"side_by_side"`
 }
 
-// Load reads preferences from the user configuration directory. Missing files use defaults.
+// Load reads preferences from the user configuration directory. Missing files
+// use defaults.
 func Load() (Preferences, error) {
 	path, err := settingsPath()
 	if err != nil {

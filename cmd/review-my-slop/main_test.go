@@ -26,8 +26,12 @@ func TestRunCommentsPrintsAndConsumesCurrentRepositoryFeedback(t *testing.T) {
 
 	comment := comments.Comment{
 		Repository: repo,
-		Anchor:     comments.Anchor{FilePath: "main.go", NewStart: 3, NewEnd: 3},
-		Body:       "Check this error.",
+		Anchor: comments.Anchor{
+			FilePath: "main.go",
+			NewStart: 3,
+			NewEnd:   3,
+		},
+		Body: "Check this error.",
 	}
 	if _, err := store.Add(comment); err != nil {
 		t.Fatal(err)
@@ -35,19 +39,32 @@ func TestRunCommentsPrintsAndConsumesCurrentRepositoryFeedback(t *testing.T) {
 
 	var output bytes.Buffer
 	testutil.NoError(t, runComments(context.Background(), &output))
-	testutil.RequireEqual(t, strings.Contains(output.String(), "Check this error."), true, "unexpected output:\n%s", output.String())
-	testutil.RequireEqual(t, strings.HasPrefix(output.String(), "New comments since last run:\n"), true, "unexpected output heading:\n%s", output.String())
-	testutil.RequireEqual(t, !strings.Contains(output.String(), "batch"), true, "output exposes internal batches:\n%s", output.String())
+	testutil.RequireEqual(t,
+		strings.Contains(output.String(), "Check this error."), true,
+		"unexpected output:\n%s", output.String(),
+	)
+	testutil.RequireEqual(t,
+		strings.HasPrefix(
+			output.String(),
+			"New comments since last run:\n",
+		), true,
+		"unexpected output heading:\n%s", output.String(),
+	)
+	testutil.RequireEqual(t, !strings.Contains(output.String(), "batch"), true,
+		"output exposes internal batches:\n%s", output.String(),
+	)
 
 	var empty bytes.Buffer
 	testutil.NoError(t, runComments(context.Background(), &empty))
-	testutil.RequireEqual(t, strings.TrimSpace(empty.String()), "No pending review comments.",
+	testutil.RequireEqual(
+		t, strings.TrimSpace(empty.String()), "No pending review comments.",
 		"second output = %q", empty.String())
 
 	info, err := os.Stat(filepath.Join(data, "review-my-slop", "comments.db"))
 	testutil.NoError(t, err)
-	testutil.RequireEqual(t, info.Mode().Perm(), 0o600,
-		"database mode = %o", info.Mode().Perm())
+	testutil.RequireEqual(t, info.Mode().Perm(), 0o600, "database mode = %o",
+		info.Mode().Perm(),
+	)
 }
 
 func TestRunCommentsPreservesFeedbackWhenOutputFails(t *testing.T) {
@@ -71,14 +88,18 @@ func TestRunCommentsPreservesFeedbackWhenOutputFails(t *testing.T) {
 	}
 	pending, err := store.List(repo)
 	testutil.NoError(t, err)
-	testutil.RequireEqual(t, len(pending), 1,
-		"pending comments = %d, want 1", len(pending))
+	testutil.RequireEqual(t, len(pending), 1, "pending comments = %d, want 1",
+		len(pending),
+	)
 }
 
 func TestRunRejectsUnknownSubcommand(t *testing.T) {
 	err := run(context.Background(), []string{"unknown"}, &bytes.Buffer{})
 	testutil.RequireEqual(t, err != nil, true, "error = %v", err)
-	testutil.RequireEqual(t, strings.Contains(err.Error(), `unknown subcommand "unknown"`), true, "error = %v", err)
+	testutil.RequireEqual(t,
+		strings.Contains(err.Error(), `unknown subcommand "unknown"`), true,
+		"error = %v", err,
+	)
 }
 
 type failingWriter struct{}

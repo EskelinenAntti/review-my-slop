@@ -8,7 +8,10 @@ func beginSelection(cursor diffCursor) diffSelection {
 	return diffSelection{First: cursor, Last: cursor}
 }
 
-func (v *diffView) extendSelection(selection diffSelection, cursor diffCursor) (diffSelection, bool) {
+func (v *diffView) extendSelection(
+	selection diffSelection,
+	cursor diffCursor,
+) (diffSelection, bool) {
 	if !v.valid(selection.First) || !v.valid(cursor) {
 		return selection, false
 	}
@@ -25,7 +28,10 @@ func (v *diffView) lines(selection diffSelection) []patch.Line {
 	if _, ok := v.extendSelection(selection, selection.Last); !ok {
 		return nil
 	}
-	first, last := min(selection.First.row, selection.Last.row), max(selection.First.row, selection.Last.row)
+	first, last := min(
+		selection.First.row,
+		selection.Last.row,
+	), max(selection.First.row, selection.Last.row)
 	if first == last && selection.First.pane != selection.Last.pane {
 		return v.paneLines(selection)
 	}
@@ -67,7 +73,10 @@ func (v *diffView) line(cursor diffCursor) (patch.Line, bool) {
 		return patch.Line{}, false
 	}
 	current := v.rows[cursor.row]
-	return v.patch.Files[current.file].Hunks[current.hunk].Lines[v.lineIndex(current, cursor.pane)], true
+	return v.patch.Files[current.file].Hunks[current.hunk].Lines[v.lineIndex(
+		current,
+		cursor.pane,
+	)], true
 }
 
 // findCursor searches the file by line numbers, then matching text and kind,
@@ -95,7 +104,8 @@ type cursorMatch struct {
 }
 
 func (m cursorMatch) betterThan(other cursorMatch) bool {
-	return m.rank > other.rank || m.rank == other.rank && m.distance < other.distance
+	return m.rank > other.rank ||
+		m.rank == other.rank && m.distance < other.distance
 }
 
 func (m cursorMatch) preferredTo(other cursorMatch) cursorMatch {
@@ -111,13 +121,20 @@ func (v *diffView) matchRow(y int, target cursorIdentity) cursorMatch {
 		return cursorMatch{}
 	}
 	best := cursorMatch{}
-	for _, pane := range [2]diffPane{target.cursor.pane, target.cursor.pane.other()} {
+	for _, pane := range [2]diffPane{
+		target.cursor.pane,
+		target.cursor.pane.other(),
+	} {
 		candidate, ok := v.cursorAt(y, pane)
 		if !ok {
 			continue
 		}
 		line, _ := v.line(candidate)
-		match := cursorMatch{cursor: candidate, rank: lineMatchRank(line, target.line), distance: lineDistance(line, target.line, y-target.cursor.row)}
+		match := cursorMatch{
+			cursor:   candidate,
+			rank:     lineMatchRank(line, target.line),
+			distance: lineDistance(line, target.line, y-target.cursor.row),
+		}
 		if match.rank == 3 {
 			return match
 		}
@@ -134,7 +151,8 @@ func lineMatchRank(line, target patch.Line) int {
 	if line.Kind != target.Kind {
 		return 1
 	}
-	if line.OldNumber == target.OldNumber && line.NewNumber == target.NewNumber {
+	if line.OldNumber == target.OldNumber &&
+		line.NewNumber == target.NewNumber {
 		return 3
 	}
 	if line.Text == target.Text {
@@ -165,7 +183,11 @@ func abs(value int) int {
 	return value
 }
 
-func highlightedLine(lines []string, number patch.LineNumber, fallback string) string {
+func highlightedLine(
+	lines []string,
+	number patch.LineNumber,
+	fallback string,
+) string {
 	if number <= 0 || int(number) > len(lines) {
 		return fallback
 	}

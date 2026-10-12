@@ -45,7 +45,14 @@ func checkCommandLifecycle(t *testing.T, binary string, args []string) {
 	testutil.NoError(t, err)
 
 	runGit(t, repo, "init", "-q")
-	testutil.NoError(t, os.WriteFile(filepath.Join(repo, "main.go"), []byte("package main\n\nfunc main() {}\n"), 0o644))
+	testutil.NoError(
+		t,
+		os.WriteFile(
+			filepath.Join(repo, "main.go"),
+			[]byte("package main\n\nfunc main() {}\n"),
+			0o644,
+		),
+	)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -56,7 +63,10 @@ func checkCommandLifecycle(t *testing.T, binary string, args []string) {
 		"XDG_DATA_HOME="+t.TempDir(),
 		"XDG_STATE_HOME="+t.TempDir(),
 	)
-	terminal, err := pty.StartWithSize(command, &pty.Winsize{Rows: 24, Cols: 100})
+	terminal, err := pty.StartWithSize(
+		command,
+		&pty.Winsize{Rows: 24, Cols: 100},
+	)
 	testutil.NoError(t, err)
 
 	defer terminal.Close()
@@ -69,10 +79,15 @@ func checkCommandLifecycle(t *testing.T, binary string, args []string) {
 	}()
 
 	deadline := time.Now().Add(5 * time.Second)
-	for !strings.Contains(output.String(), "review-my-slop") && time.Now().Before(deadline) {
+	for !strings.Contains(
+		output.String(),
+		"review-my-slop",
+	) && time.Now().Before(deadline) {
 		time.Sleep(20 * time.Millisecond)
 	}
-	testutil.RequireEqual(t, strings.Contains(output.String(), "main.go"), true, "TUI did not render untracked file:\n%s", output.String())
+	testutil.RequireEqual(t, strings.Contains(output.String(), "main.go"), true,
+		"TUI did not render untracked file:\n%s", output.String(),
+	)
 
 	if _, err := terminal.Write([]byte("q")); err != nil {
 		t.Fatalf("write quit: %v\n%s", err, output.String())

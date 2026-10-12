@@ -93,8 +93,17 @@ func commentCommand(ctx context.Context, editor, path string) *exec.Cmd {
 	return exec.CommandContext(ctx, "sh", "-c", editor+" "+shellQuote(path))
 }
 
-func sourceCommand(ctx context.Context, editor, path string, line int) *exec.Cmd {
-	return exec.CommandContext(ctx, "sh", "-c", editor+" +"+strconv.Itoa(line)+" "+shellQuote(path))
+func sourceCommand(
+	ctx context.Context,
+	editor, path string,
+	line int,
+) *exec.Cmd {
+	return exec.CommandContext(
+		ctx,
+		"sh",
+		"-c",
+		editor+" +"+strconv.Itoa(line)+" "+shellQuote(path),
+	)
 }
 
 func suggestionLines(quoted []string) []string {

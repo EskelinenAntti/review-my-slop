@@ -36,7 +36,10 @@ func run(ctx context.Context, args []string, output io.Writer) error {
 	case "comments":
 		return runComments(ctx, output)
 	default:
-		return fmt.Errorf("unknown subcommand %q; usage: review-my-slop [code|comments]", args[0])
+		return fmt.Errorf(
+			"unknown subcommand %q; usage: review-my-slop [code|comments]",
+			args[0],
+		)
 	}
 }
 

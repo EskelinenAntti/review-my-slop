@@ -11,7 +11,8 @@ type cursorIdentity struct {
 }
 
 // replaceView translates interactive state before replacing the row projection.
-// Source identity is shared by focus, selection endpoints, and the search origin.
+// Source identity is shared by focus, selection endpoints, and the search
+// origin.
 func (v *View) replaceView(next *diffView) {
 	old := v.view
 	leftColumn := v.viewport.LeftColumn
@@ -48,10 +49,20 @@ func identify(v *diffView, cursor diffCursor) cursorIdentity {
 	file := v.patch.Files[row.file]
 	hunk := file.Hunks[row.hunk]
 	line := hunk.Lines[v.lineIndex(row, cursor.pane)]
-	return cursorIdentity{file: file, hunk: hunk, line: line, cursor: cursor, valid: true}
+	return cursorIdentity{
+		file:   file,
+		hunk:   hunk,
+		line:   line,
+		cursor: cursor,
+		valid:  true,
+	}
 }
 
-func preserveSelection(old *diffView, selection *diffSelection, next *diffView) *diffSelection {
+func preserveSelection(
+	old *diffView,
+	selection *diffSelection,
+	next *diffView,
+) *diffSelection {
 	if selection == nil {
 		return nil
 	}
@@ -62,7 +73,10 @@ func preserveSelection(old *diffView, selection *diffSelection, next *diffView) 
 	}
 	translatedFirst, firstOK := next.findCursor(first)
 	translatedLast, lastOK := next.findCursor(last)
-	if !firstOK || !lastOK || !sameFile(first.file, last.file) || first.hunk.Header != last.hunk.Header {
+	if !firstOK || !lastOK || !sameFile(
+		first.file,
+		last.file,
+	) || first.hunk.Header != last.hunk.Header {
 		return nil
 	}
 	translated := beginSelection(translatedFirst)

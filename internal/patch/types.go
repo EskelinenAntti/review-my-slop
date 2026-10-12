@@ -4,9 +4,11 @@ package patch
 type Kind uint8
 
 const (
-	// Unstaged compares the index to the working tree and includes untracked files.
+	// Unstaged compares the index to the working tree and includes untracked
+	// files.
 	Unstaged Kind = iota
-	// Branch compares the default branch's merge base to the working tree and includes untracked files.
+	// Branch compares the default branch's merge base to the working tree and
+	// includes untracked files.
 	Branch
 )
 

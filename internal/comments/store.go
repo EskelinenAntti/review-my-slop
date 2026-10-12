@@ -42,7 +42,8 @@ func OpenDefault() (Store, error) {
 	return Store{Path: path}, nil
 }
 
-// Add validates and stores a comment, assigning an ID and timestamp when absent.
+// Add validates and stores a comment, assigning an ID and timestamp when
+// absent.
 func (s Store) Add(comment Comment) (Comment, error) {
 	if comment.Repository == "" {
 		return Comment{}, errors.New("comment requires a repository")
@@ -106,7 +107,11 @@ func (s Store) Update(comment Comment) error {
 	if err != nil {
 		return fmt.Errorf("encode comment: %w", err)
 	}
-	return s.transact(func(bucket *bolt.Bucket) error { return replaceComment(bucket, comment, data) })
+	return s.transact(
+		func(bucket *bolt.Bucket) error {
+			return replaceComment(bucket, comment, data)
+		},
+	)
 }
 
 // Delete removes the identified comment from the repository.
@@ -178,7 +183,10 @@ func replaceComment(bucket *bolt.Bucket, comment Comment, data []byte) error {
 	return bucket.Put([]byte(comment.ID), data)
 }
 
-func findCommentKey(bucket *bolt.Bucket, repository, id string) ([]byte, error) {
+func findCommentKey(
+	bucket *bolt.Bucket,
+	repository, id string,
+) ([]byte, error) {
 	cursor := bucket.Cursor()
 	for key, value := cursor.First(); key != nil; key, value = cursor.Next() {
 		comment, err := decodeComment(value)
@@ -192,7 +200,11 @@ func findCommentKey(bucket *bolt.Bucket, repository, id string) ([]byte, error) 
 	return nil, nil
 }
 
-func findPendingKeys(bucket *bolt.Bucket, repository string, wanted map[string]struct{}) ([][]byte, error) {
+func findPendingKeys(
+	bucket *bolt.Bucket,
+	repository string,
+	wanted map[string]struct{},
+) ([][]byte, error) {
 	var keys [][]byte
 	err := bucket.ForEach(func(key, value []byte) error {
 		comment, err := decodeComment(value)
@@ -238,7 +250,13 @@ func decodeComment(data []byte) (Comment, error) {
 		return Comment{}, fmt.Errorf("decode comment: %w", err)
 	}
 	if legacy.Comment != nil {
-		return Comment{ID: legacy.ID, Repository: legacy.Repository, CreatedAt: legacy.CreatedAt, Anchor: legacy.Comment.Anchor, Body: legacy.Comment.Body}, nil
+		return Comment{
+			ID:         legacy.ID,
+			Repository: legacy.Repository,
+			CreatedAt:  legacy.CreatedAt,
+			Anchor:     legacy.Comment.Anchor,
+			Body:       legacy.Comment.Body,
+		}, nil
 	}
 	var comment Comment
 	if err := json.Unmarshal(data, &comment); err != nil {

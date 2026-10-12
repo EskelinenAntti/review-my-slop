@@ -23,7 +23,14 @@ func render(filename, source, theme string) []string {
 		return nil
 	}
 	var buf bytes.Buffer
-	if err := quick.Highlight(&buf, source, filename, "terminal16m", theme); err != nil {
+	highlightErr := quick.Highlight(
+		&buf,
+		source,
+		filename,
+		"terminal16m",
+		theme,
+	)
+	if highlightErr != nil {
 		return strings.Split(strings.TrimSuffix(source, "\n"), "\n")
 	}
 	rendered, err := io.ReadAll(&buf)

@@ -15,7 +15,10 @@ import (
 	"github.com/eskelinenantti/review-my-slop/internal/patch"
 )
 
-type saveCommentFunc func(comments.Comment, patch.Patch) (comments.Comment, error)
+type saveCommentFunc func(
+	comments.Comment,
+	patch.Patch,
+) (comments.Comment, error)
 type deleteCommentFunc func(comments.Comment, patch.Patch) error
 type loadCommentsFunc func() ([]comments.Comment, error)
 type refreshDiffFunc func(patch.Kind) (patch.Patch, error)
@@ -71,7 +74,8 @@ const verticalScrollStep = 3
 
 var defaultSize = size{Width: 80, Height: 30}
 
-// commentState pairs stored comments with the revision used to reject stale loads.
+// commentState pairs stored comments with the revision used to reject stale
+// loads.
 type commentState struct {
 	items    []comments.Comment
 	revision uint64
@@ -108,7 +112,12 @@ type model struct {
 	quitting   bool
 }
 
-func newModel(p patch.Patch, items []comments.Comment, save saveCommentFunc, layout initialLayout) model {
+func newModel(
+	p patch.Patch,
+	items []comments.Comment,
+	save saveCommentFunc,
+	layout initialLayout,
+) model {
 	size := layout.size
 	if size.Width <= 0 || size.Height <= 0 {
 		size = defaultSize
@@ -123,14 +132,24 @@ func newModel(p patch.Patch, items []comments.Comment, save saveCommentFunc, lay
 		height:       size.Height,
 		save:         save,
 		saveLayout:   layout.SaveSideBySide,
-		diffOptions:  diffscreen.Options{SideBySide: layout.SideBySide, Dark: true},
-		kind:         p.Kind,
+		diffOptions: diffscreen.Options{
+			SideBySide: layout.SideBySide,
+			Dark:       true,
+		},
+		kind: p.Kind,
 		keys: keymap.New(
-			keymap.Sequence{Prefix: "g", Keys: []string{"g"}, RetryUnmatched: true},
+			keymap.Sequence{
+				Prefix:         "g",
+				Keys:           []string{"g"},
+				RetryUnmatched: true,
+			},
 			keymap.Sequence{Prefix: "z", Keys: []string{"z", "t", "b"}},
 			keymap.Sequence{Prefix: "[", Keys: []string{"f"}},
 			keymap.Sequence{Prefix: "]", Keys: []string{"f"}},
-			keymap.Sequence{Prefix: "ctrl+w", Keys: []string{"h", "l", "ctrl+w"}},
+			keymap.Sequence{
+				Prefix: "ctrl+w",
+				Keys:   []string{"h", "l", "ctrl+w"},
+			},
 		),
 	}
 	m.diffView = diffscreen.New(p, m.diffOptions)
@@ -138,12 +157,20 @@ func newModel(p patch.Patch, items []comments.Comment, save saveCommentFunc, lay
 	return m
 }
 
-func newWithStore(store commentStore, p patch.Patch, items []comments.Comment, size size) (model, error) {
+func newWithStore(
+	store commentStore,
+	p patch.Patch,
+	items []comments.Comment,
+	size size,
+) (model, error) {
 	preferences, err := settings.Load()
 	if err != nil {
 		return model{}, err
 	}
-	m := newModel(p, items, func(comment comments.Comment, current patch.Patch) (comments.Comment, error) {
+	m := newModel(p, items, func(
+		comment comments.Comment,
+		current patch.Patch,
+	) (comments.Comment, error) {
 		comment.Repository = current.Root
 		if comment.ID != "" {
 			if err := store.Update(comment); err != nil {
@@ -153,9 +180,11 @@ func newWithStore(store commentStore, p patch.Patch, items []comments.Comment, s
 		}
 		return store.Add(comment)
 	}, initialLayout{
-		SideBySide:     preferences.SideBySide,
-		SaveSideBySide: func(enabled bool) error { return settings.Save(settings.Preferences{SideBySide: enabled}) },
-		size:           size,
+		SideBySide: preferences.SideBySide,
+		SaveSideBySide: func(enabled bool) error {
+			return settings.Save(settings.Preferences{SideBySide: enabled})
+		},
+		size: size,
 	})
 	m.setDelete(func(comment comments.Comment, current patch.Patch) error {
 		return store.Delete(current.Root, comment.ID)
@@ -174,7 +203,9 @@ func (m *model) configureSideBySide(enabled bool, save saveSideBySideFunc) {
 	m.setSideBySide(enabled)
 }
 
-func (model) Init() tea.Cmd { return func() tea.Msg { return tea.RequestBackgroundColor() } }
+func (model) Init() tea.Cmd {
+	return func() tea.Msg { return tea.RequestBackgroundColor() }
+}
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
@@ -190,7 +221,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyPressMsg:
 		m.diffView.EndDrag()
 		return m.updateKey(msg)
-	case tea.MouseClickMsg, tea.MouseMotionMsg, tea.MouseReleaseMsg, tea.MouseWheelMsg:
+	case tea.MouseClickMsg, tea.MouseMotionMsg,
+		tea.MouseReleaseMsg, tea.MouseWheelMsg:
 		m.updateMouse(msg)
 	default:
 		return m.updateWorkflow(msg)
@@ -260,7 +292,10 @@ func (m model) loadRefresh() tea.Cmd {
 		return nil
 	}
 	kind := m.kind
-	return func() tea.Msg { p, err := m.refresh(kind); return refreshDiffMsg{patch: p, kind: kind, err: err} }
+	return func() tea.Msg {
+		p, err := m.refresh(kind)
+		return refreshDiffMsg{patch: p, kind: kind, err: err}
+	}
 }
 
 func (m model) loadComments() tea.Cmd {
@@ -270,7 +305,11 @@ func (m model) loadComments() tea.Cmd {
 	revision := m.comments.revision
 	return func() tea.Msg {
 		comments, err := m.load()
-		return commentsLoadedMsg{comments: comments, revision: revision, err: err}
+		return commentsLoadedMsg{
+			comments: comments,
+			revision: revision,
+			err:      err,
+		}
 	}
 }
 

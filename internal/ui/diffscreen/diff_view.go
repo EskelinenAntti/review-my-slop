@@ -39,9 +39,29 @@ func newDiffView(p patch.Patch, options Options) *diffView {
 }
 
 func (v *diffView) appendFileRows(fileIndex int, file patch.File) {
-	v.rows = append(v.rows, entry{kind: fileRow, file: fileIndex, hunk: -1, leftLine: -1, rightLine: -1, text: file.DisplayPath})
+	v.rows = append(
+		v.rows,
+		entry{
+			kind:      fileRow,
+			file:      fileIndex,
+			hunk:      -1,
+			leftLine:  -1,
+			rightLine: -1,
+			text:      file.DisplayPath,
+		},
+	)
 	for _, metadata := range file.Metadata {
-		v.rows = append(v.rows, entry{kind: metadataRow, file: fileIndex, hunk: -1, leftLine: -1, rightLine: -1, text: metadata})
+		v.rows = append(
+			v.rows,
+			entry{
+				kind:      metadataRow,
+				file:      fileIndex,
+				hunk:      -1,
+				leftLine:  -1,
+				rightLine: -1,
+				text:      metadata,
+			},
+		)
 	}
 	highlighted := v.highlight(&file)
 	for hunkIndex, hunk := range file.Hunks {
@@ -49,16 +69,40 @@ func (v *diffView) appendFileRows(fileIndex int, file patch.File) {
 	}
 }
 
-func (v *diffView) appendHunkRows(fileIndex, hunkIndex int, hunk patch.Hunk, highlighted pair) {
-	v.rows = append(v.rows, entry{kind: hunkRow, file: fileIndex, hunk: hunkIndex, leftLine: -1, rightLine: -1, text: hunkHeader(hunk.Header)})
+func (v *diffView) appendHunkRows(
+	fileIndex, hunkIndex int,
+	hunk patch.Hunk,
+	highlighted pair,
+) {
+	v.rows = append(
+		v.rows,
+		entry{
+			kind:      hunkRow,
+			file:      fileIndex,
+			hunk:      hunkIndex,
+			leftLine:  -1,
+			rightLine: -1,
+			text:      hunkHeader(hunk.Header),
+		},
+	)
 	for _, indices := range v.lineRows(hunk.Lines) {
-		row := entry{kind: lineRow, file: fileIndex, hunk: hunkIndex, leftLine: indices[0], rightLine: indices[1]}
+		row := entry{
+			kind:      lineRow,
+			file:      fileIndex,
+			hunk:      hunkIndex,
+			leftLine:  indices[0],
+			rightLine: indices[1],
+		}
 		v.highlightRow(&row, hunk.Lines, highlighted)
 		v.rows = append(v.rows, row)
 	}
 }
 
-func (v *diffView) highlightRow(row *entry, lines []patch.Line, highlighted pair) {
+func (v *diffView) highlightRow(
+	row *entry,
+	lines []patch.Line,
+	highlighted pair,
+) {
 	if !v.split {
 		row.text = sourceText(highlighted, lines[row.rightLine])
 		return

@@ -16,22 +16,38 @@ func TestWorkflowErrorKeepsDiffLabelWithinFooter(t *testing.T) {
 		for _, kind := range []patch.Kind{patch.Unstaged, patch.Branch} {
 			p := modelPatch()
 			p.Kind, p.Branch = kind, "main"
-			m := newModel(p, nil, nil, initialLayout{size: size{Width: width, Height: 8}})
-			m.err = errors.New("a very long storage failure\nthat exceeds the available footer width")
+			m := newModel(
+				p,
+				nil,
+				nil,
+				initialLayout{size: size{Width: width, Height: 8}},
+			)
+			m.err = errors.New(
+				"a very long storage failure\n" +
+					"that exceeds the available footer width",
+			)
 			lines := strings.Split(m.render(), "\n")
 			testutil.RequireEqual(t, len(lines), 8,
-				"error changed screen height: %d", len(lines))
+				"error changed screen height: %d", len(lines),
+			)
 
 			footer := lines[len(lines)-2]
 			label := "local changes"
 			if kind == patch.Branch {
 				label = "branch changes from main"
 			}
-			testutil.RequireEqual(t, strings.HasSuffix(ansi.Strip(footer), label), true, "footer lost label: %q", footer)
+			testutil.RequireEqual(t,
+				strings.HasSuffix(ansi.Strip(footer), label), true,
+				"footer lost label: %q", footer,
+			)
 			testutil.RequireEqual(
 
-				// Labels longer than the terminal are retained, matching existing behavior.
-				t, width < len(label)+1 || lipgloss.Width(footer) == width, true, "footer width=%d want=%d", lipgloss.Width(footer), width)
+				// Labels longer than the terminal retain
+				// the existing rendering behavior.
+				t,
+				width < len(label)+1 || lipgloss.Width(footer) == width, true,
+				"footer width=%d want=%d", lipgloss.Width(footer), width,
+			)
 		}
 	}
 }
