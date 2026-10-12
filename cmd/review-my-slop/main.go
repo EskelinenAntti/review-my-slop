@@ -17,7 +17,8 @@ const errorExitCode = 1
 
 func main() {
 	if err := run(context.Background(), os.Args[1:], os.Stdout); err != nil {
-		fmt.Fprintln(os.Stderr, "review-my-slop:", err)
+		// Exit with failure even when stderr cannot accept the diagnostic.
+		_, _ = fmt.Fprintln(os.Stderr, "review-my-slop:", err)
 		os.Exit(errorExitCode)
 	}
 }

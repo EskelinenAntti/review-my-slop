@@ -42,21 +42,22 @@ func commentDraft(body string, anchor comments.Anchor) string {
 		return body
 	}
 	lines := suggestionLines(anchor.QuotedLines)
+	// strings.Builder writes always succeed.
 	var draft strings.Builder
-	draft.WriteString(body)
+	_, _ = draft.WriteString(body)
 	if body != "" && !strings.HasSuffix(body, "\n") {
-		draft.WriteByte('\n')
+		_ = draft.WriteByte('\n')
 	}
-	draft.WriteByte('\n')
+	_ = draft.WriteByte('\n')
 	fence := contextFence(lines)
-	draft.WriteString(fence)
-	draft.WriteString("suggestion\n")
+	_, _ = draft.WriteString(fence)
+	_, _ = draft.WriteString("suggestion\n")
 	for _, line := range lines {
-		draft.WriteString(line)
-		draft.WriteByte('\n')
+		_, _ = draft.WriteString(line)
+		_ = draft.WriteByte('\n')
 	}
-	draft.WriteString(fence)
-	draft.WriteByte('\n')
+	_, _ = draft.WriteString(fence)
+	_ = draft.WriteByte('\n')
 	return draft.String()
 }
 
@@ -66,14 +67,15 @@ func stripUnchangedSuggestion(body string, quoted []string) string {
 	}
 	lines := suggestionLines(quoted)
 	fence := contextFence(lines)
+	// strings.Builder writes always succeed.
 	var suggestion strings.Builder
-	suggestion.WriteString(fence)
-	suggestion.WriteString("suggestion\n")
+	_, _ = suggestion.WriteString(fence)
+	_, _ = suggestion.WriteString("suggestion\n")
 	for _, line := range lines {
-		suggestion.WriteString(line)
-		suggestion.WriteByte('\n')
+		_, _ = suggestion.WriteString(line)
+		_ = suggestion.WriteByte('\n')
 	}
-	suggestion.WriteString(fence)
+	_, _ = suggestion.WriteString(fence)
 	start := strings.Index(body, suggestion.String())
 	if start < 0 {
 		return body

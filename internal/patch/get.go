@@ -376,17 +376,18 @@ func visibleStrings(values []string) []string {
 }
 
 func visibleSource(value string) string {
+	// strings.Builder writes always succeed.
 	var result strings.Builder
 	for _, r := range value {
 		switch {
 		case r == '\n' || r == '\t':
-			result.WriteRune(r)
+			_, _ = result.WriteRune(r)
 		case r == '\r':
-			result.WriteString(`\r`)
+			_, _ = result.WriteString(`\r`)
 		case r < 0x20 || r == 0x7f:
 			fmt.Fprintf(&result, `\x%02x`, r)
 		default:
-			result.WriteRune(r)
+			_, _ = result.WriteRune(r)
 		}
 	}
 	return result.String()

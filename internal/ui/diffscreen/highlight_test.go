@@ -62,17 +62,18 @@ func answer(value int) string {
 }
 
 func stripANSI(value string) string {
+	// strings.Builder writes always succeed.
 	var result strings.Builder
 	for len(value) > 0 {
 		start := strings.Index(value, "\x1b[")
 		if start < 0 {
-			result.WriteString(value)
+			_, _ = result.WriteString(value)
 			break
 		}
-		result.WriteString(value[:start])
+		_, _ = result.WriteString(value[:start])
 		end := strings.IndexByte(value[start:], 'm')
 		if end < 0 {
-			result.WriteString(value[start:])
+			_, _ = result.WriteString(value[start:])
 			break
 		}
 		value = value[start+end+1:]
