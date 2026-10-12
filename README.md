@@ -43,8 +43,7 @@ The project is licensed under the [MIT License](LICENSE).
 
 ## Development
 
-Run `make check` for Revive, `go vet`, and Staticcheck (install Staticcheck
-separately), and `make test` for race-enabled tests.
+Run `make check` for Revive and `go vet`, and `make test` for race-enabled tests.
 
 `make revive` runs pinned standalone [Revive](https://github.com/revive-lint/revive)
 v1.17.0 through `go run`, so no separate installation is needed. `revive.toml`
