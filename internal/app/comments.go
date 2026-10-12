@@ -1,7 +1,7 @@
 package app
 
 import (
-	"fmt"
+	"errors"
 	"path/filepath"
 	"strings"
 
@@ -54,7 +54,7 @@ func (m model) updateComments(name string) (tea.Model, tea.Cmd) {
 func (m *model) beginComment() (tea.Cmd, error) {
 	file, lines, ok := m.diffView.Selected()
 	if !ok {
-		return nil, fmt.Errorf("select code lines before commenting")
+		return nil, errors.New("select code lines before commenting")
 	}
 	anchor := commentAnchor(file, lines)
 	m.edit.body, m.edit.index, m.edit.anchor = "", -1, anchor
@@ -77,7 +77,7 @@ func (m *model) finishCommentEdit() {
 		return
 	}
 	if m.save == nil {
-		m.err = fmt.Errorf("comment storage is unavailable")
+		m.err = errors.New("comment storage is unavailable")
 		m.clearCommentEdit()
 		return
 	}
@@ -113,7 +113,7 @@ func (m *model) deleteComment(index int) {
 		return
 	}
 	if m.delete == nil {
-		m.err = fmt.Errorf("comment storage is unavailable")
+		m.err = errors.New("comment storage is unavailable")
 		return
 	}
 	if err := m.delete(m.comments.items[index], m.currentPatch); err != nil {
@@ -143,7 +143,7 @@ func (m model) openCurrentLine() (tea.Cmd, error) {
 func (m model) sourceLocation() (string, int, error) {
 	file, line, ok := m.diffView.Current()
 	if !ok {
-		return "", 0, fmt.Errorf("select a code line to open in $EDITOR")
+		return "", 0, errors.New("select a code line to open in $EDITOR")
 	}
 	path, number := file.NewPath, line.NewNumber
 	if path == "" || path == "/dev/null" {
@@ -153,7 +153,7 @@ func (m model) sourceLocation() (string, int, error) {
 		number = line.OldNumber
 	}
 	if path == "" || path == "/dev/null" || number < 1 {
-		return "", 0, fmt.Errorf("current line has no editable working-tree location")
+		return "", 0, errors.New("current line has no editable working-tree location")
 	}
 	if !filepath.IsAbs(path) {
 		path = filepath.Join(m.currentPatch.Root, filepath.FromSlash(path))

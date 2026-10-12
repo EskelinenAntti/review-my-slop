@@ -2,13 +2,14 @@ package patch
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
-	"sort"
+	"slices"
 	"strings"
 
 	"github.com/sourcegraph/go-diff/diff"
@@ -50,10 +51,10 @@ func Get(ctx context.Context, kind Kind) (Patch, error) {
 	if err != nil {
 		return Patch{}, fmt.Errorf("resolve working directory: %w", err)
 	}
-	return get(ctx, directory, kind, execRunner{})
+	return load(ctx, directory, kind, execRunner{})
 }
 
-func get(ctx context.Context, directory string, kind Kind, run runner) (Patch, error) {
+func load(ctx context.Context, directory string, kind Kind, run runner) (Patch, error) {
 	if kind != Unstaged && kind != Branch {
 		return Patch{}, fmt.Errorf("unknown patch kind %d", kind)
 	}
@@ -127,7 +128,7 @@ func build(ctx context.Context, run runner, root string, kind Kind, branch strin
 		return Patch{}, err
 	}
 	files = append(files, untracked...)
-	sort.SliceStable(files, func(i, j int) bool { return files[i].DisplayPath < files[j].DisplayPath })
+	slices.SortStableFunc(files, func(a, b File) int { return cmp.Compare(a.DisplayPath, b.DisplayPath) })
 
 	if err := ctx.Err(); err != nil {
 		return Patch{}, err

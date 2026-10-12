@@ -1,2 +1,50 @@
-# Enable only Revive's default checks, with their default configuration values.
-enable-default-rules = true
+# Enable every Revive rule with its default configuration values, except the
+# documented readability exceptions below. With enable-all-rules, exceptions
+# must be explicitly disabled; commenting out a rule table would re-enable it.
+enable-all-rules = true
+
+# Inline indices, dimensions, ANSI codes, and test fixtures are clearer than
+# constants for every literal. Name values when they express a domain concept.
+[rule.add-constant]
+disabled = true
+
+# Wrapping signatures and table fixtures at 80 columns obscures their structure.
+[rule.line-length-limit]
+disabled = true
+
+# Default complexity limits split cohesive parsers, navigation algorithms, and
+# sequential test scenarios into helpers that require more context to follow.
+[rule.cognitive-complexity]
+disabled = true
+[rule.cyclomatic]
+disabled = true
+
+# strings.Builder writes cannot fail; stderr diagnostics and cleanup after an
+# earlier failure are best effort. Check errors where callers can act on them.
+[rule.unhandled-error]
+disabled = true
+
+# Event and movement switches intentionally ignore unrelated input. Empty
+# default clauses add noise without explaining any additional behavior.
+[rule.enforce-switch-style]
+disabled = true
+
+# Split layout and dark background are boolean preferences. Separate entry
+# points or artificial enums would make these settings harder to pass through.
+[rule.flag-parameter]
+disabled = true
+
+# Inline transaction callbacks and comment fixtures keep the operation next to
+# its error handling, even when the initializer spans several lines.
+[rule.multiline-if-init]
+disabled = true
+
+# The legacy JSON envelope is used only while decoding. Keeping its nested
+# payload inline makes the old wire format visible without extra package types.
+[rule.nested-structs]
+disabled = true
+
+# Patch, file, hunk, line, and their kinds belong in one coherent data model;
+# splitting them across packages would expose more concepts to callers.
+[rule.max-public-structs]
+disabled = true

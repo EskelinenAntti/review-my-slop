@@ -17,7 +17,7 @@ func (v *diffView) render(viewport diffViewport, cursor diffCursor, selection *d
 	lines := make([]string, 0, viewport.Height)
 	if v.hasStickyHeader(viewport.top, viewport.Height) {
 		current := v.rows[viewport.top]
-		lines = append(lines, v.renderFileRow(v.patch.Files[current.file].DisplayPath, viewport.Width))
+		lines = append(lines, renderFileRow(v.patch.Files[current.file].DisplayPath, viewport.Width))
 	}
 	end := min(len(v.rows), viewport.top+v.contentHeight(viewport))
 	for y := viewport.top; y < end; y++ {
@@ -38,7 +38,7 @@ func (v *diffView) renderUnifiedRow(current entry, y int, viewport diffViewport,
 	width := max(20, viewport.Width)
 	switch current.kind {
 	case fileRow:
-		return v.renderFileRow(current.text, width)
+		return renderFileRow(current.text, width)
 	case metadataRow:
 		return metadataStyle.Render("  " + current.text)
 	case hunkRow:
@@ -68,7 +68,7 @@ func (v *diffView) renderUnifiedRow(current entry, y int, viewport diffViewport,
 	return ""
 }
 
-func (v *diffView) renderFileRow(path string, width int) string {
+func renderFileRow(path string, width int) string {
 	return fileStyle.Width(max(20, width)).Render(path)
 }
 
@@ -79,8 +79,8 @@ func (v *diffView) renderSplitRow(current entry, y int, viewport diffViewport, c
 	return left + " │ " + right
 }
 
-func splitPaneWidths(width int) (int, int) {
-	left := max(20, (width-3)/2)
+func splitPaneWidths(width int) (left, right int) {
+	left = max(20, (width-3)/2)
 	return left, max(20, width-3-left)
 }
 

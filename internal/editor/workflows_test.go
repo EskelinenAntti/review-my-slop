@@ -147,7 +147,7 @@ func (m workflowModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 	return m, nil
 }
-func (m workflowModel) View() tea.View { return tea.NewView("") }
+func (workflowModel) View() tea.View { return tea.NewView("") }
 
 func TestEditCommentThroughBubbleTea(t *testing.T) {
 	t.Setenv("EDITOR", "printf edited >")

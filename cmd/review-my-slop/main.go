@@ -3,6 +3,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -12,10 +13,12 @@ import (
 	"github.com/eskelinenantti/review-my-slop/internal/patch"
 )
 
+const errorExitCode = 1
+
 func main() {
 	if err := run(context.Background(), os.Args[1:], os.Stdout); err != nil {
 		fmt.Fprintln(os.Stderr, "review-my-slop:", err)
-		os.Exit(1)
+		os.Exit(errorExitCode)
 	}
 }
 
@@ -24,7 +27,7 @@ func run(ctx context.Context, args []string, output io.Writer) error {
 		return runCode(ctx)
 	}
 	if len(args) > 1 {
-		return fmt.Errorf("usage: review-my-slop [code|comments]")
+		return errors.New("usage: review-my-slop [code|comments]")
 	}
 	switch args[0] {
 	case "code":

@@ -2,6 +2,7 @@ package editor
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -53,7 +54,7 @@ func OpenSource(ctx context.Context, path string, line int, onComplete func(erro
 func editorCommand() (string, error) {
 	command := strings.TrimSpace(os.Getenv("EDITOR"))
 	if command == "" {
-		return "", fmt.Errorf("$EDITOR is not set")
+		return "", errors.New("$EDITOR is not set")
 	}
 	return command, nil
 }

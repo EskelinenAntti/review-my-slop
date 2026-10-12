@@ -30,7 +30,7 @@ func (v *View) DragTo(x, y int) {
 	if cursor == *v.drag && v.selection == nil {
 		return
 	}
-	selection, ok := v.view.extendSelection(v.view.beginSelection(*v.drag), cursor)
+	selection, ok := v.view.extendSelection(beginSelection(*v.drag), cursor)
 	if !ok {
 		return
 	}

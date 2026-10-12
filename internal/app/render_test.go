@@ -1,12 +1,13 @@
 package app
 
 import (
-	"charm.land/lipgloss/v2"
-	"fmt"
-	"github.com/charmbracelet/x/ansi"
-	"github.com/eskelinenantti/review-my-slop/internal/patch"
+	"errors"
 	"strings"
 	"testing"
+
+	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/x/ansi"
+	"github.com/eskelinenantti/review-my-slop/internal/patch"
 )
 
 func TestWorkflowErrorKeepsDiffLabelWithinFooter(t *testing.T) {
@@ -15,7 +16,7 @@ func TestWorkflowErrorKeepsDiffLabelWithinFooter(t *testing.T) {
 			p := modelPatch()
 			p.Kind, p.Branch = kind, "main"
 			m := newModel(p, nil, nil, initialLayout{size: size{Width: width, Height: 8}})
-			m.err = fmt.Errorf("a very long storage failure\nthat exceeds the available footer width")
+			m.err = errors.New("a very long storage failure\nthat exceeds the available footer width")
 			lines := strings.Split(m.render(), "\n")
 			if len(lines) != 8 {
 				t.Fatalf("error changed screen height: %d", len(lines))

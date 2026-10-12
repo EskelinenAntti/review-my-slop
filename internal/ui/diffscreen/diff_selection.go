@@ -4,7 +4,7 @@ import (
 	"github.com/eskelinenantti/review-my-slop/internal/patch"
 )
 
-func (v *diffView) beginSelection(cursor diffCursor) diffSelection {
+func beginSelection(cursor diffCursor) diffSelection {
 	return diffSelection{First: cursor, Last: cursor}
 }
 

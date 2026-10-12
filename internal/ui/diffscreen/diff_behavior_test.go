@@ -40,12 +40,12 @@ func TestSplitSelectionOnlyIncludesActivePane(t *testing.T) {
 	first := mustFirst(t, v)
 	removed, _ := v.search("removed one", first, forward)
 	added, _ := v.search("added one", first, forward)
-	left := v.beginSelection(removed)
+	left := beginSelection(removed)
 	left, ok := v.extendSelection(left, removed)
 	if !ok || len(v.lines(left)) != 1 || v.lines(left)[0].Kind != patch.Deletion {
 		t.Fatalf("left lines = %#v", v.lines(left))
 	}
-	right := v.beginSelection(added)
+	right := beginSelection(added)
 	if len(v.lines(right)) != 1 || v.lines(right)[0].Kind != patch.Addition {
 		t.Fatalf("right lines = %#v", v.lines(right))
 	}
@@ -243,7 +243,7 @@ func TestSelectionBackgroundKeepsDefaultWeight(t *testing.T) {
 	v := newUnifiedView(testPatch(), false)
 	first := mustFirst(t, v)
 	removed, _ := v.search("removed one", first, forward)
-	selection := v.beginSelection(removed)
+	selection := beginSelection(removed)
 	rendered := renderTarget(v, removed, first, 72, &selection)
 	if strings.Contains(rendered, "\x1b[1m") {
 		t.Fatalf("selection is bold: %q", rendered)

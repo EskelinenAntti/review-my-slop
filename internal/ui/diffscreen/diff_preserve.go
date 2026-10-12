@@ -65,7 +65,7 @@ func preserveSelection(old *diffView, selection *diffSelection, next *diffView) 
 	if !firstOK || !lastOK || !sameFile(first.file, last.file) || first.hunk.Header != last.hunk.Header {
 		return nil
 	}
-	translated := next.beginSelection(translatedFirst)
+	translated := beginSelection(translatedFirst)
 	translated, ok := next.extendSelection(translated, translatedLast)
 	if !ok {
 		return nil

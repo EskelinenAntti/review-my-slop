@@ -33,12 +33,12 @@ func TestCommandStartsAndQuitsInPTY(t *testing.T) {
 		{name: "code subcommand", args: []string{"code"}},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			testCommandStartsAndQuitsInPTY(t, binary, test.args)
+			checkCommandLifecycle(t, binary, test.args)
 		})
 	}
 }
 
-func testCommandStartsAndQuitsInPTY(t *testing.T, binary string, args []string) {
+func checkCommandLifecycle(t *testing.T, binary string, args []string) {
 	t.Helper()
 	repo, err := filepath.EvalSymlinks(t.TempDir())
 	if err != nil {

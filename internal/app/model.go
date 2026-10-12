@@ -108,7 +108,7 @@ type model struct {
 	quitting   bool
 }
 
-func newModel(p patch.Patch, comments []comments.Comment, save saveCommentFunc, layout initialLayout) model {
+func newModel(p patch.Patch, items []comments.Comment, save saveCommentFunc, layout initialLayout) model {
 	size := layout.size
 	if size.Width <= 0 || size.Height <= 0 {
 		size = defaultSize
@@ -116,8 +116,8 @@ func newModel(p patch.Patch, comments []comments.Comment, save saveCommentFunc, 
 	m := model{
 		ctx:          context.Background(),
 		currentPatch: p,
-		comments:     commentState{items: comments},
-		commentView:  commentscreen.New(comments),
+		comments:     commentState{items: items},
+		commentView:  commentscreen.New(items),
 		edit:         commentEdit{index: -1},
 		width:        size.Width,
 		height:       size.Height,
@@ -174,7 +174,7 @@ func (m *model) configureSideBySide(enabled bool, save saveSideBySideFunc) {
 	m.setSideBySide(enabled)
 }
 
-func (m model) Init() tea.Cmd { return func() tea.Msg { return tea.RequestBackgroundColor() } }
+func (model) Init() tea.Cmd { return func() tea.Msg { return tea.RequestBackgroundColor() } }
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
@@ -226,41 +226,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyPressMsg:
 		m.diffView.EndDrag()
 		return m.updateKey(msg)
-	case tea.MouseClickMsg:
-		if msg.Button == tea.MouseLeft {
-			switch m.mode {
-			case modeBrowse:
-				m.diffView.BeginDrag(msg.X, msg.Y)
-			case modeComments:
-				m.commentView.Click(msg.X, msg.Y)
-			}
-		}
-	case tea.MouseMotionMsg:
-		if msg.Button == tea.MouseLeft && m.mode == modeBrowse {
-			m.diffView.DragTo(msg.X, msg.Y)
-		}
-	case tea.MouseReleaseMsg:
-		if msg.Button == tea.MouseLeft || msg.Button == tea.MouseNone {
-			if m.mode == modeBrowse {
-				m.diffView.DragTo(msg.X, msg.Y)
-			}
-			m.diffView.EndDrag()
-		}
-	case tea.MouseWheelMsg:
-		m.diffView.EndDrag()
-		if m.mode != modeBrowse && m.mode != modeSearch {
-			break
-		}
-		switch msg.Button {
-		case tea.MouseWheelUp:
-			m.diffView.ScrollVertical(-verticalScrollStep)
-		case tea.MouseWheelDown:
-			m.diffView.ScrollVertical(verticalScrollStep)
-		case tea.MouseWheelLeft:
-			m.diffView.ScrollHorizontal(-horizontalScrollStep)
-		case tea.MouseWheelRight:
-			m.diffView.ScrollHorizontal(horizontalScrollStep)
-		}
+	case tea.MouseClickMsg, tea.MouseMotionMsg, tea.MouseReleaseMsg, tea.MouseWheelMsg:
+		m.updateMouse(msg)
 	}
 	return m, nil
 }
@@ -309,6 +276,9 @@ func (m model) updateKey(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	}
 	m.err = nil
 	name = m.keys.Feed(name)
+	if m.navigate(name) {
+		return m, nil
+	}
 	switch name {
 	case "ctrl+c", "q":
 		m.quitting = true
@@ -318,46 +288,6 @@ func (m model) updateKey(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	case "/":
 		m.mode = modeSearch
 		m.diffView.BeginSearch()
-	case "n":
-		m.diffView.Find(diffscreen.Forward)
-	case "N":
-		m.diffView.Find(diffscreen.Backward)
-	case "j", "down":
-		m.diffView.Move(diffscreen.NextLine)
-	case "k", "up":
-		m.diffView.Move(diffscreen.PreviousLine)
-	case "h", "left":
-		m.diffView.ScrollHorizontal(-horizontalScrollStep)
-	case "l", "right":
-		m.diffView.ScrollHorizontal(horizontalScrollStep)
-	case "0":
-		m.diffView.ScrollHorizontal(-int(^uint(0) >> 1))
-	case "$":
-		m.diffView.ScrollHorizontal(int(^uint(0) >> 1))
-	case "ctrl+d":
-		m.diffView.Move(diffscreen.NextPage)
-	case "ctrl+u":
-		m.diffView.Move(diffscreen.PreviousPage)
-	case "g g":
-		m.diffView.Move(diffscreen.FirstLine)
-	case "G":
-		m.diffView.Move(diffscreen.LastLine)
-	case "] f":
-		m.diffView.Move(diffscreen.NextFile)
-	case "[ f":
-		m.diffView.Move(diffscreen.PreviousFile)
-	case "z z":
-		m.diffView.Align(diffscreen.Center)
-	case "z t":
-		m.diffView.Align(diffscreen.Top)
-	case "z b":
-		m.diffView.Align(diffscreen.Bottom)
-	case "ctrl+w h":
-		m.diffView.Move(diffscreen.OldPane)
-	case "ctrl+w l":
-		m.diffView.Move(diffscreen.NewPane)
-	case "ctrl+w ctrl+w":
-		m.diffView.Move(diffscreen.OtherPane)
 	case "v":
 		m.diffView.ToggleSelection()
 	case "esc":

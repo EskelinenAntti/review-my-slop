@@ -127,9 +127,9 @@ func (v *View) Move(motion Motion) {
 	v.search.repeatMiss = false
 	switch motion {
 	case PreviousLine:
-		v.move(backward)
+		v.step(backward)
 	case NextLine:
-		v.move(forward)
+		v.step(forward)
 	case PreviousPage:
 		v.halfPage(backward)
 	case NextPage:
@@ -155,7 +155,7 @@ func (v *View) Move(motion Motion) {
 	}
 }
 
-func (v *View) move(direction direction) {
+func (v *View) step(direction direction) {
 	next, ok := v.view.move(v.cursor, direction)
 	if !ok {
 		return
@@ -206,7 +206,7 @@ func (v *View) switchPane(pane diffPane) {
 		if !firstOK || !lastOK {
 			return
 		}
-		selection := v.view.beginSelection(first)
+		selection := beginSelection(first)
 		selection, ok = v.view.extendSelection(selection, last)
 		if !ok {
 			return
@@ -250,7 +250,7 @@ func (v *View) ToggleSelection() {
 		return
 	}
 	if _, ok := v.view.line(v.cursor); ok {
-		selection := v.view.beginSelection(v.cursor)
+		selection := beginSelection(v.cursor)
 		v.selection = &selection
 	}
 }
@@ -263,7 +263,7 @@ func (v *View) ClearSelection() { v.EndDrag(); v.selection = nil; v.search.repea
 func (v *View) Selected() (patch.File, []patch.Line, bool) {
 	selection := v.selection
 	if selection == nil {
-		current := v.view.beginSelection(v.cursor)
+		current := beginSelection(v.cursor)
 		selection = &current
 	}
 	file, ok := v.view.file(selection.First)
@@ -421,7 +421,7 @@ func patchLineCounts(p patch.Patch) (added, removed int) {
 			}
 		}
 	}
-	return
+	return added, removed
 }
 
 var (

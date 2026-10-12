@@ -1,6 +1,7 @@
 package app
 
 import (
+	"errors"
 	"fmt"
 	"slices"
 	"strings"
@@ -39,7 +40,7 @@ func TestVisualSelectionCreatesMappedAnchorAndSubmits(t *testing.T) {
 func TestCommentSaveFailureClearsPendingEdit(t *testing.T) {
 	t.Setenv("EDITOR", "true")
 	m := testModel(coveragePatch(), nil, func(comments.Comment, patch.Patch) (comments.Comment, error) {
-		return comments.Comment{}, fmt.Errorf("storage unavailable")
+		return comments.Comment{}, errors.New("storage unavailable")
 	})
 	m = updateModel(t, m, textKey("c"))
 	m = updateModel(t, m, commentEditorFinishedMsg{body: "keep this"})
@@ -127,7 +128,7 @@ func TestOpeningCommentsReloadsPendingComments(t *testing.T) {
 	m.setLoadComments(func() ([]comments.Comment, error) { return nil, nil })
 
 	next, cmd := m.Update(textKey("C"))
-	m = next.(model)
+	m = requireModel(t, next)
 	if cmd == nil {
 		t.Fatal("opening comments did not request a refresh")
 	}
@@ -139,10 +140,10 @@ func TestOpeningCommentsReloadsPendingComments(t *testing.T) {
 
 func TestCommentReloadFailurePreservesCurrentComments(t *testing.T) {
 	m := testModel(coveragePatch(), []comments.Comment{{ID: "keep", Body: "keep"}}, nil)
-	m.setLoadComments(func() ([]comments.Comment, error) { return nil, fmt.Errorf("storage unavailable") })
+	m.setLoadComments(func() ([]comments.Comment, error) { return nil, errors.New("storage unavailable") })
 
 	next, cmd := m.Update(textKey("C"))
-	m = next.(model)
+	m = requireModel(t, next)
 	m = updateModel(t, m, cmd())
 	if len(m.comments.items) != 1 || m.err == nil || m.err.Error() != "refresh comments: storage unavailable" {
 		t.Fatalf("comments=%#v error=%v", m.comments.items, m.err)
@@ -164,7 +165,7 @@ func TestEmptyEditedCommentIsDeleted(t *testing.T) {
 
 func TestCommentDeleteFailureKeepsCommentAndShowsError(t *testing.T) {
 	m := testModel(coveragePatch(), []comments.Comment{{ID: "one", Body: "keep"}}, nil)
-	m.setDelete(func(comments.Comment, patch.Patch) error { return fmt.Errorf("delete failed") })
+	m.setDelete(func(comments.Comment, patch.Patch) error { return errors.New("delete failed") })
 	m = updateModel(t, m, textKey("C"))
 	m = updateModel(t, m, textKey("D"))
 	if len(m.comments.items) != 1 || !strings.Contains(ansi.Strip(m.render()), "delete failed") {
@@ -373,13 +374,13 @@ func TestFocusAndManualRefreshLoadCurrentView(t *testing.T) {
 		return p, nil
 	})
 	next, cmd := m.Update(tea.FocusMsg{})
-	m = next.(model)
+	m = requireModel(t, next)
 	if cmd == nil {
 		t.Fatal("focus did not refresh")
 	}
 	m = updateModel(t, m, cmd())
 	next, cmd = m.Update(textKey("R"))
-	m = next.(model)
+	m = requireModel(t, next)
 	if cmd == nil {
 		t.Fatal("R did not refresh")
 	}
@@ -396,7 +397,7 @@ func TestSourceEditorCompletionRefreshesDiff(t *testing.T) {
 	m.setRefresh(func(patch.Kind) (patch.Patch, error) { return refreshed, nil })
 
 	next, cmd := m.Update(sourceEditorFinishedMsg{})
-	m = next.(model)
+	m = requireModel(t, next)
 	if cmd == nil {
 		t.Fatal("editor completion did not refresh")
 	}
@@ -484,7 +485,7 @@ func TestTabTogglesDefaultBranchAndIgnoresStaleRefresh(t *testing.T) {
 		return p, nil
 	})
 	next, _ := m.Update(textKey("tab"))
-	m = next.(model)
+	m = requireModel(t, next)
 	if m.kind != patch.Branch {
 		t.Fatalf("kind=%v", m.kind)
 	}
@@ -508,7 +509,7 @@ func TestTabDoesNothingWithoutDefaultBranch(t *testing.T) {
 		return coveragePatch(), nil
 	})
 	next, cmd := m.Update(textKey("tab"))
-	m = next.(model)
+	m = requireModel(t, next)
 	if cmd != nil || refreshed || m.kind != patch.Unstaged {
 		t.Fatalf("tab changed model without default branch: cmd=%v refreshed=%v kind=%v", cmd != nil, refreshed, m.kind)
 	}
@@ -594,6 +595,11 @@ func TestMouseWheelScrollsContentWithoutMovingFocus(t *testing.T) {
 func updateModel(t *testing.T, m model, msg tea.Msg) model {
 	t.Helper()
 	next, _ := m.Update(msg)
+	return requireModel(t, next)
+}
+
+func requireModel(t *testing.T, next tea.Model) model {
+	t.Helper()
 	result, ok := next.(model)
 	if !ok {
 		t.Fatalf("model=%T", next)
