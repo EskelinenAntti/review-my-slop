@@ -167,7 +167,7 @@ func newWithStore(store commentStore, p patch.Patch, items []comments.Comment, s
 }
 
 func (m *model) setRefresh(refresh refreshDiffFunc)    { m.refresh = refresh }
-func (m *model) setDelete(delete deleteCommentFunc)    { m.delete = delete }
+func (m *model) setDelete(remove deleteCommentFunc)    { m.delete = remove }
 func (m *model) setLoadComments(load loadCommentsFunc) { m.load = load }
 func (m *model) configureSideBySide(enabled bool, save saveSideBySideFunc) {
 	m.saveLayout = save

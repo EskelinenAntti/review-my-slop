@@ -19,10 +19,12 @@ const (
 
 var messagesBucket = []byte("messages")
 
+// Store persists pending review comments in a database at Path.
 type Store struct {
 	Path string
 }
 
+// DefaultPath returns the database path in the application data directory.
 func DefaultPath() (string, error) {
 	data, err := DataDir()
 	if err != nil {
@@ -31,6 +33,7 @@ func DefaultPath() (string, error) {
 	return filepath.Join(data, "comments.db"), nil
 }
 
+// OpenDefault returns a Store configured with the default database path.
 func OpenDefault() (Store, error) {
 	path, err := DefaultPath()
 	if err != nil {
@@ -39,6 +42,7 @@ func OpenDefault() (Store, error) {
 	return Store{Path: path}, nil
 }
 
+// Add validates and stores a comment, assigning an ID and timestamp when absent.
 func (s Store) Add(comment Comment) (Comment, error) {
 	if comment.Repository == "" {
 		return Comment{}, errors.New("comment requires a repository")
@@ -73,6 +77,7 @@ func (s Store) Add(comment Comment) (Comment, error) {
 	return comment, err
 }
 
+// List returns pending comments for the repository.
 func (s Store) List(repository string) ([]Comment, error) {
 	var comments []Comment
 	err := s.view(func(bucket *bolt.Bucket) error {
@@ -90,6 +95,7 @@ func (s Store) List(repository string) ([]Comment, error) {
 	return comments, err
 }
 
+// Update replaces an existing comment in the repository.
 func (s Store) Update(comment Comment) error {
 	if comment.Repository == "" || comment.ID == "" {
 		return errors.New("repository and comment ID are required")
@@ -123,6 +129,7 @@ func (s Store) Update(comment Comment) error {
 	})
 }
 
+// Delete removes the identified comment from the repository.
 func (s Store) Delete(repository, id string) error {
 	if repository == "" || id == "" {
 		return errors.New("repository and comment ID are required")
@@ -143,6 +150,7 @@ func (s Store) Delete(repository, id string) error {
 	})
 }
 
+// Acknowledge removes the identified comments after their feedback is consumed.
 func (s Store) Acknowledge(repository string, ids []string) error {
 	if len(ids) == 0 {
 		return nil

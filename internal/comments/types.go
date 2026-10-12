@@ -2,6 +2,7 @@ package comments
 
 import "time"
 
+// Anchor identifies the reviewed diff range and its quoted lines.
 type Anchor struct {
 	FilePath    string   `json:"file"`
 	OldStart    int      `json:"old_start,omitempty"`
@@ -11,6 +12,7 @@ type Anchor struct {
 	QuotedLines []string `json:"quoted_lines"`
 }
 
+// Comment stores review feedback for a repository and diff anchor.
 type Comment struct {
 	ID         string    `json:"id"`
 	Repository string    `json:"repository"`

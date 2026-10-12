@@ -28,7 +28,7 @@ func TestRunLoadsCommentsAndWiresContext(t *testing.T) {
 			t.Fatalf("context=%v kind=%v", received, kind)
 		}
 		return p, nil
-	}, func() size { return size{Width: 120, Height: 40} }, func(m model, options ...tea.ProgramOption) error {
+	}, func() size { return size{Width: 120, Height: 40} }, func(m model, _ ...tea.ProgramOption) error {
 		if m.ctx != ctx || m.width != 120 || m.height != 40 || len(m.comments.items) != 1 {
 			t.Fatalf("model=%#v", m)
 		}

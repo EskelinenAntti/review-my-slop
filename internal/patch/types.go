@@ -19,6 +19,7 @@ type Patch struct {
 	Files  []File
 }
 
+// File holds paths, source text, metadata, and hunks for a changed file.
 type File struct {
 	// Paths are repository-relative; empty means absent on that side.
 	OldPath     string
@@ -30,11 +31,13 @@ type File struct {
 	Hunks       []Hunk
 }
 
+// Hunk groups diff lines under a unified diff header.
 type Hunk struct {
 	Header string
 	Lines  []Line
 }
 
+// Line holds diff text and its old and new source line numbers.
 type Line struct {
 	Kind      LineKind
 	Text      string
@@ -45,8 +48,10 @@ type Line struct {
 // LineNumber is one-based; zero means absent on that side.
 type LineNumber int
 
+// LineKind distinguishes unchanged, added, and deleted diff lines.
 type LineKind uint8
 
+// Context, Addition, and Deletion identify the kind of a diff line.
 const (
 	Context LineKind = iota
 	Addition

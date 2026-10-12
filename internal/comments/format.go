@@ -23,6 +23,7 @@ func (s Store) WritePending(w io.Writer, repository string) error {
 	return s.Acknowledge(repository, ids)
 }
 
+// WritePrompt writes comments as Markdown feedback for a coding agent.
 func WritePrompt(w io.Writer, comments []Comment) error {
 	if len(comments) == 0 {
 		_, err := fmt.Fprintln(w, "No pending review comments.")

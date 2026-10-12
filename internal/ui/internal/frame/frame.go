@@ -3,6 +3,7 @@ package frame
 
 import "strings"
 
+// BodyHeight returns the available body rows after reserving the header and footer.
 func BodyHeight(height int) int { return max(1, height-3) }
 
 // BodyRow maps a terminal cell to a body row, excluding header and footer cells
@@ -12,6 +13,7 @@ func BodyRow(x, y, width, height int) (int, bool) {
 	return row, x >= 0 && x < width && row >= 0 && row < BodyHeight(height) && y < height-2
 }
 
+// Render composes a header, padded body, footer, and final blank line.
 func Render(header string, body []string, footer string, height int) string {
 	bodyHeight := BodyHeight(height)
 	lines := make([]string, 0, bodyHeight+3)

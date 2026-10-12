@@ -9,6 +9,7 @@ import (
 	"github.com/eskelinenantti/review-my-slop/internal/ui/internal/frame"
 )
 
+// Binding pairs a keyboard shortcut with its help description.
 type Binding struct {
 	Keys        string
 	Description string
