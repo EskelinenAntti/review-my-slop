@@ -152,6 +152,8 @@ func (v *View) Move(motion Motion) {
 		v.switchPane(right)
 	case OtherPane:
 		v.switchPane(v.cursor.pane.other())
+	default:
+		return
 	}
 }
 

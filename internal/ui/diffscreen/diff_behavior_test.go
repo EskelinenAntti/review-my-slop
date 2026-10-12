@@ -364,6 +364,8 @@ func (s *sgrState) apply(parameters string) {
 				s.background = strings.Join(values[index+2:index+5], ";")
 				index += 4
 			}
+		default:
+			continue
 		}
 	}
 }

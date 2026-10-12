@@ -47,6 +47,8 @@ func (m model) updateComments(name string) (tea.Model, tea.Cmd) {
 				m.deleteComment(m.commentIndex(selected))
 			}
 		}
+	default:
+		return m, nil
 	}
 	return m, nil
 }

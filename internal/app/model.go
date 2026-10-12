@@ -228,6 +228,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.updateKey(msg)
 	case tea.MouseClickMsg, tea.MouseMotionMsg, tea.MouseReleaseMsg, tea.MouseWheelMsg:
 		m.updateMouse(msg)
+	default:
+		return m, nil
 	}
 	return m, nil
 }
@@ -325,6 +327,8 @@ func (m model) updateKey(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return m, m.loadRefresh()
 	case "t":
 		m.toggleSideBySide()
+	default:
+		return m, nil
 	}
 	return m, nil
 }
