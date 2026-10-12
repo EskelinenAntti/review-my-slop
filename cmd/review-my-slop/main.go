@@ -1,3 +1,4 @@
+// Command review-my-slop provides an interactive diff review and feedback tool.
 package main
 
 import (

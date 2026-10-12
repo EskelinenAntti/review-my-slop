@@ -12,9 +12,9 @@ func TestRenamedFileHighlightsEachSideUsingItsOwnPath(t *testing.T) {
 	file := patch.File{OldPath: "old.go", NewPath: "new.txt", OldSource: source, NewSource: source}
 	view := &diffView{dark: true}
 	pair := view.highlight(&file)
-	old, new := strings.Join(pair.Old, "\n"), strings.Join(pair.New, "\n")
-	if old == new || stripANSI(old) != strings.TrimSuffix(source, "\n") || stripANSI(new) != strings.TrimSuffix(source, "\n") {
-		t.Fatalf("highlighted old=%q new=%q", old, new)
+	old, updated := strings.Join(pair.Old, "\n"), strings.Join(pair.New, "\n")
+	if old == updated || stripANSI(old) != strings.TrimSuffix(source, "\n") || stripANSI(updated) != strings.TrimSuffix(source, "\n") {
+		t.Fatalf("highlighted old=%q new=%q", old, updated)
 	}
 }
 

@@ -376,7 +376,7 @@ func TestParseHunkBodyEscapesTerminalControls(t *testing.T) {
 func FuzzParseHunkBody(f *testing.F) {
 	f.Add([]byte("+hello\n-world\n"))
 	f.Add([]byte(" context\n"))
-	f.Fuzz(func(t *testing.T, body []byte) {
+	f.Fuzz(func(_ *testing.T, body []byte) {
 		_, _ = parseHunkBody(1, 1, body)
 	})
 }

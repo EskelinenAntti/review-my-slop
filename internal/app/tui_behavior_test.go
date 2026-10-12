@@ -59,7 +59,7 @@ func TestCommentRequiresEditor(t *testing.T) {
 func TestEmptyNewCommentIsDiscarded(t *testing.T) {
 	t.Setenv("EDITOR", "true")
 	called := false
-	m := testModel(coveragePatch(), nil, func(stored comments.Comment, p patch.Patch) (comments.Comment, error) {
+	m := testModel(coveragePatch(), nil, func(stored comments.Comment, _ patch.Patch) (comments.Comment, error) {
 		called = true
 		return stored, nil
 	})

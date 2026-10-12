@@ -1,0 +1,2 @@
+# Enable only Revive's default checks, with their default configuration values.
+enable-default-rules = true

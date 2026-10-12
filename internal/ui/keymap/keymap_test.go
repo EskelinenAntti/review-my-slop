@@ -33,11 +33,11 @@ func TestFeed(t *testing.T) {
 func TestIndependentCopies(t *testing.T) {
 	m := New(Sequence{Prefix: "g", Keys: []string{"g"}, RetryUnmatched: true})
 	m.Feed("g")
-	copy := m
+	cloned := m
 	if got := m.Feed("j"); got != "j" {
 		t.Fatalf("unmatched key: %q", got)
 	}
-	if got := copy.Feed("g"); got != "g g" {
+	if got := cloned.Feed("g"); got != "g g" {
 		t.Fatalf("copy: %q", got)
 	}
 	if got := m.Feed("g"); got != "" {

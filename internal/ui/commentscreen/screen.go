@@ -19,6 +19,7 @@ type View struct {
 	width, height int
 }
 
+// New creates a comment list view with default terminal dimensions.
 func New(items []comments.Comment) *View {
 	v := &View{width: 80, height: 30}
 	v.Update(items)
@@ -41,15 +42,21 @@ func (v *View) Update(items []comments.Comment) {
 	}
 	v.keepVisible()
 }
+
+// Resize updates terminal dimensions and keeps the focused comment visible.
 func (v *View) Resize(width, height int) {
 	v.width, v.height = width, height
 	v.keepVisible()
 }
+
+// Move shifts focus by delta comments within the list bounds.
 func (v *View) Move(delta int) {
 	delta = max(-v.row, min(delta, max(0, len(v.items)-1)-v.row))
 	v.row += delta
 	v.keepVisible()
 }
+
+// Selected returns the focused comment, or false when the list is empty.
 func (v *View) Selected() (comments.Comment, bool) {
 	if len(v.items) == 0 {
 		return comments.Comment{}, false

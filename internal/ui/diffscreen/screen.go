@@ -21,6 +21,7 @@ type Options struct {
 // Motion identifies navigation operations without exposing display coordinates.
 type Motion uint8
 
+// Navigation motions move focus between lines, pages, files, and panes.
 const (
 	PreviousLine Motion = iota
 	NextLine
@@ -38,6 +39,7 @@ const (
 // Alignment places the focused line within the visible body.
 type Alignment uint8
 
+// Top, Center, and Bottom select the focused line position in the viewport.
 const (
 	Top Alignment = iota
 	Center
@@ -47,6 +49,7 @@ const (
 // Direction chooses the order in which search matches are visited.
 type Direction int8
 
+// Backward and Forward select the search traversal direction.
 const (
 	Backward Direction = -1
 	Forward  Direction = 1
@@ -213,6 +216,7 @@ func (v *View) switchPane(pane diffPane) {
 	v.setCursor(cursor)
 }
 
+// Align positions the focused line at the requested viewport alignment.
 func (v *View) Align(alignment Alignment) {
 	v.search.repeatMiss = false
 	if _, ok := v.view.line(v.cursor); !ok {
@@ -220,6 +224,8 @@ func (v *View) Align(alignment Alignment) {
 	}
 	v.viewport = v.view.align(v.viewport, v.cursor, verticalAlignment(alignment))
 }
+
+// ScrollHorizontal shifts the visible content by the requested columns.
 func (v *View) ScrollHorizontal(columns int) {
 	v.search.repeatMiss = false
 	v.viewport = v.view.scrollHorizontal(v.viewport, columns)
@@ -235,6 +241,8 @@ func (v *View) ScrollVertical(rows int) {
 	}
 	v.viewport, v.cursor = viewport, cursor
 }
+
+// ToggleSelection starts a range at the focused line or clears the current range.
 func (v *View) ToggleSelection() {
 	v.search.repeatMiss = false
 	if v.selection != nil {
@@ -246,6 +254,8 @@ func (v *View) ToggleSelection() {
 		v.selection = &selection
 	}
 }
+
+// ClearSelection clears the selected range and ends any drag.
 func (v *View) ClearSelection() { v.EndDrag(); v.selection = nil; v.search.repeatMiss = false }
 
 // Selected returns the focused line when no explicit range is selected.
@@ -268,6 +278,7 @@ func (v *View) Current() (patch.File, patch.Line, bool) {
 	return file, line, fileOK && lineOK
 }
 
+// BeginSearch starts an empty search query at the current focus.
 func (v *View) BeginSearch() {
 	v.ClearSelection()
 	v.search.active = true
@@ -310,6 +321,8 @@ func (v *View) previewSearch(query string) {
 		v.setCursor(cursor)
 	}
 }
+
+// AcceptSearch remembers a successful query for subsequent searches.
 func (v *View) AcceptSearch() {
 	if !v.search.active {
 		return
@@ -320,6 +333,8 @@ func (v *View) AcceptSearch() {
 	v.search.active, v.search.miss = false, false
 	v.search.query = ""
 }
+
+// CancelSearch restores the focus from before the active search.
 func (v *View) CancelSearch() {
 	if !v.search.active {
 		return
@@ -328,6 +343,8 @@ func (v *View) CancelSearch() {
 	v.search.active, v.search.miss = false, false
 	v.search.query = ""
 }
+
+// Find moves to the next remembered search match in the requested direction.
 func (v *View) Find(d Direction) bool {
 	if v.search.term == "" {
 		return false
