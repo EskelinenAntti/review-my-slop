@@ -1,38 +1,6 @@
-# Enable every Revive rule with default values except the documented exceptions.
+# Enable every Revive rule with its default values except add-constant.
 enable-all-rules = true
 
-# Inline indices, dimensions, ANSI codes, and test fixtures are clearer than
-# constants for every literal. Name values when they express a domain concept.
+# Name literals when they express a domain concept; keep incidental values inline.
 [rule.add-constant]
-disabled = true
-
-# The 80-column default splits ordinary Go interfaces and calls across many
-# lines. Shorter APIs help some sites, but cannot simplify signatures such as
-# runner.Run(ctx, dir, args...) or exact JSON fixtures in tests.
-[rule.line-length-limit]
-disabled = true
-
-# The default limit of 7 penalizes cohesive cursor searches, ANSI parsing,
-# nested patch-line counting, and sequential test scenarios. Semantic helpers
-# simplify the parts with clear boundaries; splitting the remaining loops and
-# assertions further would hide the operation across more functions.
-[rule.cognitive-complexity]
-disabled = true
-
-# The default limit of 10 counts every explicit movement/event switch case and
-# test assertion. A dispatch table obscures the ordered behavior of View.Move
-# and splitting individual test steps loses their lifecycle context.
-[rule.cyclomatic]
-disabled = true
-
-# strings.Builder writes cannot fail. Ignoring errors from stderr diagnostics
-# and cleanup after an earlier file error is intentional; checking them adds
-# branches without an action the program can take.
-[rule.unhandled-error]
-disabled = true
-
-# Event and movement switches intentionally ignore unsupported inputs. Their
-# existing fallthrough already performs the no-op behavior; empty default
-# clauses or duplicate returns make these paths less clear.
-[rule.enforce-switch-style]
 disabled = true
