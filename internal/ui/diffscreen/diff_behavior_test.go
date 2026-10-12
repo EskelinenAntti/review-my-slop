@@ -286,7 +286,7 @@ func TestRenderedCodeRowsHaveExactTerminalWidth(t *testing.T) {
 
 func TestRenderStyledRowStripsSyntaxBackgroundColors(t *testing.T) {
 	value := strings.Join([]string{"\x1b[48;2;255;0;0;38;2;1;2;3mtruecolor", "\x1b[48;5;123;1mindexed", "\x1b[45mstandard", "\x1b[105mbright"}, " ")
-	rendered := renderStyledRow(lineStyle(patch.Addition, true), value, 80, false)
+	rendered := renderStyledRow(lineStyle(patch.Addition, true), value, 80, preserveForeground)
 	for _, forbidden := range []string{"48;2;255;0;0", "48;5;123", "[45m", "[105m"} {
 		if strings.Contains(rendered, forbidden) {
 			t.Fatalf("retains %q: %q", forbidden, rendered)

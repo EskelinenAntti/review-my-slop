@@ -24,7 +24,7 @@ func TestLicenseHighlightFixture(t *testing.T) {
 Copyright (c) 2026 Antti Eskelinen
 
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND.
-`, true)
+`, darkTheme)
 	if len(lines) != 5 {
 		t.Fatalf("highlighted lines = %d, want 5", len(lines))
 	}
@@ -46,8 +46,8 @@ func answer(value int) string {
 	return ""
 }
 `
-	dark := strings.Join(render("example.go", source, true), "\n")
-	light := strings.Join(render("example.go", source, false), "\n")
+	dark := strings.Join(render("example.go", source, darkTheme), "\n")
+	light := strings.Join(render("example.go", source, lightTheme), "\n")
 	if dark == light {
 		t.Fatal("light and dark terminal backgrounds use identical highlighting")
 	}

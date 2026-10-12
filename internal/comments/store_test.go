@@ -97,10 +97,11 @@ func TestWritePrompt(t *testing.T) {
 
 func TestWritePromptNumbersMessages(t *testing.T) {
 	var out bytes.Buffer
-	if err := WritePrompt(&out, []Comment{
+	comments := []Comment{
 		testComment("/repo", "First."),
 		testComment("/repo", "Second."),
-	}); err != nil {
+	}
+	if err := WritePrompt(&out, comments); err != nil {
 		t.Fatal(err)
 	}
 	for _, expected := range []string{"### 1.", "### 2."} {
@@ -191,9 +192,10 @@ func TestDeleteCommentRemovesMessage(t *testing.T) {
 func TestLegacyMessageCanBeReadAndUpdated(t *testing.T) {
 	store := Store{Path: filepath.Join(t.TempDir(), "comments.db")}
 	legacy := []byte(`{"id":"legacy","repository":"/repo","created_at":"1970-01-01T00:00:01Z","diff_fingerprint":"unused","comment":{"anchor":{"file":"main.go","hunk":"@@","start_row":1,"end_row":2,"new_start":3,"quoted_lines":["+line"]},"body":"old"}}`)
-	if err := store.transact(func(bucket *bolt.Bucket) error {
+	err := store.transact(func(bucket *bolt.Bucket) error {
 		return bucket.Put([]byte{0, 0, 0, 1}, legacy)
-	}); err != nil {
+	})
+	if err != nil {
 		t.Fatal(err)
 	}
 

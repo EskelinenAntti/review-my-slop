@@ -261,9 +261,9 @@ func longPatch() patch.Patch {
 }
 
 func newUnifiedView(p patch.Patch, dark bool) *diffView {
-	return newDiffView(p, false, dark)
+	return newDiffView(p, Options{Dark: dark})
 }
 
 func newSideBySideView(p patch.Patch, dark bool) *diffView {
-	return newDiffView(p, true, dark)
+	return newDiffView(p, Options{SideBySide: true, Dark: dark})
 }

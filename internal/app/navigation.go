@@ -42,15 +42,19 @@ func (m model) updateSearch(name string, key tea.KeyPressMsg) (tea.Model, tea.Cm
 
 // navigate applies a diff navigation binding and reports whether it handled the key.
 func (m *model) navigate(name string) bool {
+	if motion, ok := navigationMotions[name]; ok {
+		m.diffView.Move(motion)
+		return true
+	}
+	if alignment, ok := navigationAlignments[name]; ok {
+		m.diffView.Align(alignment)
+		return true
+	}
 	switch name {
 	case "n":
 		m.diffView.Find(diffscreen.Forward)
 	case "N":
 		m.diffView.Find(diffscreen.Backward)
-	case "j", "down":
-		m.diffView.Move(diffscreen.NextLine)
-	case "k", "up":
-		m.diffView.Move(diffscreen.PreviousLine)
 	case "h", "left":
 		m.diffView.ScrollHorizontal(-horizontalScrollStep)
 	case "l", "right":
@@ -59,32 +63,30 @@ func (m *model) navigate(name string) bool {
 		m.diffView.ScrollHorizontal(-int(^uint(0) >> 1))
 	case "$":
 		m.diffView.ScrollHorizontal(int(^uint(0) >> 1))
-	case "ctrl+d":
-		m.diffView.Move(diffscreen.NextPage)
-	case "ctrl+u":
-		m.diffView.Move(diffscreen.PreviousPage)
-	case "g g":
-		m.diffView.Move(diffscreen.FirstLine)
-	case "G":
-		m.diffView.Move(diffscreen.LastLine)
-	case "] f":
-		m.diffView.Move(diffscreen.NextFile)
-	case "[ f":
-		m.diffView.Move(diffscreen.PreviousFile)
-	case "z z":
-		m.diffView.Align(diffscreen.Center)
-	case "z t":
-		m.diffView.Align(diffscreen.Top)
-	case "z b":
-		m.diffView.Align(diffscreen.Bottom)
-	case "ctrl+w h":
-		m.diffView.Move(diffscreen.OldPane)
-	case "ctrl+w l":
-		m.diffView.Move(diffscreen.NewPane)
-	case "ctrl+w ctrl+w":
-		m.diffView.Move(diffscreen.OtherPane)
 	default:
 		return false
 	}
 	return true
+}
+
+var navigationMotions = map[string]diffscreen.Motion{
+	"j":             diffscreen.NextLine,
+	"down":          diffscreen.NextLine,
+	"k":             diffscreen.PreviousLine,
+	"up":            diffscreen.PreviousLine,
+	"ctrl+d":        diffscreen.NextPage,
+	"ctrl+u":        diffscreen.PreviousPage,
+	"g g":           diffscreen.FirstLine,
+	"G":             diffscreen.LastLine,
+	"] f":           diffscreen.NextFile,
+	"[ f":           diffscreen.PreviousFile,
+	"ctrl+w h":      diffscreen.OldPane,
+	"ctrl+w l":      diffscreen.NewPane,
+	"ctrl+w ctrl+w": diffscreen.OtherPane,
+}
+
+var navigationAlignments = map[string]diffscreen.Alignment{
+	"z z": diffscreen.Center,
+	"z t": diffscreen.Top,
+	"z b": diffscreen.Bottom,
 }

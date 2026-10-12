@@ -117,7 +117,7 @@ func (v *View) Resize(width, height int) {
 
 func (v *View) sideBySideActive() bool { return v.options.SideBySide && v.width >= 100 }
 func (v *View) newReviewView(p patch.Patch) *diffView {
-	return newDiffView(p, v.sideBySideActive(), v.options.Dark)
+	return newDiffView(p, Options{SideBySide: v.sideBySideActive(), Dark: v.options.Dark})
 }
 
 // Move performs navigation and keeps the resulting focus visible. Line and
