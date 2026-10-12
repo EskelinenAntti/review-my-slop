@@ -25,32 +25,35 @@ func (m model) updateComments(name string) (tea.Model, tea.Cmd) {
 	case "k", "up":
 		m.commentView.Move(-1)
 	case "enter", "e":
-		if len(m.comments.items) > 0 {
-			selected, ok := m.commentView.Selected()
-			if !ok {
-				return m, nil
-			}
-			m.edit.index = m.commentIndex(selected)
-			m.edit.body = m.comments.items[m.edit.index].Body
-			m.edit.anchor = m.comments.items[m.edit.index].Anchor
-			cmd, err := m.openCommentEditor()
-			if err != nil {
-				m.err = err
-				m.clearCommentEdit()
-				return m, nil
-			}
-			return m, cmd
-		}
+		return m.editSelectedComment()
 	case "D":
-		if len(m.comments.items) > 0 {
-			if selected, ok := m.commentView.Selected(); ok {
-				m.deleteComment(m.commentIndex(selected))
-			}
+		if selected, ok := m.commentView.Selected(); ok {
+			m.deleteComment(m.commentIndex(selected))
 		}
 	default:
 		return m, nil
 	}
 	return m, nil
+}
+
+func (m model) editSelectedComment() (tea.Model, tea.Cmd) {
+	selected, ok := m.commentView.Selected()
+	if !ok {
+		return m, nil
+	}
+	m.edit.index = m.commentIndex(selected)
+	if m.edit.index < 0 {
+		return m, nil
+	}
+	m.edit.body = m.comments.items[m.edit.index].Body
+	m.edit.anchor = m.comments.items[m.edit.index].Anchor
+	cmd, err := m.openCommentEditor()
+	if err != nil {
+		m.err = err
+		m.clearCommentEdit()
+		return m, nil
+	}
+	return m, cmd
 }
 
 func (m *model) beginComment() (tea.Cmd, error) {

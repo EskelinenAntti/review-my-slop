@@ -368,6 +368,18 @@ func (v *View) Find(d Direction) bool {
 func (v *View) Render(err error) string {
 	added, removed := patchLineCounts(v.view.patch)
 	header := titleStyle.Render("review-my-slop") + "  " + mutedStyle.Render(fmt.Sprintf("+%d-%d", added, removed))
+	body := v.renderBody()
+	status := v.renderStatus()
+	footer := mutedStyle.Render(status)
+	if v.search.repeatMiss {
+		footer = errorStyle.Render(fmt.Sprintf("no matches for %q", v.search.term))
+	}
+	if err != nil {
+		footer = errorStyle.Render(strings.ReplaceAll(err.Error(), "\n", " "))
+	}
+	return frame.Render(header, body, v.renderFooter(footer), v.height)
+}
+func (v *View) renderBody() []string {
 	var body []string
 	if len(v.view.patch.Files) == 0 {
 		empty := "No unstaged or untracked changes."
@@ -379,6 +391,10 @@ func (v *View) Render(err error) string {
 	} else {
 		body = strings.Split(v.view.render(v.viewport, v.cursor, v.selection), "\n")
 	}
+	return body
+}
+
+func (v *View) renderStatus() string {
 	status := "j/k/h/l move  c comment  ? help  q quit"
 	if v.search.active {
 		status = "/" + v.search.query + cursorStyle.Render(" ")
@@ -388,15 +404,9 @@ func (v *View) Render(err error) string {
 	} else if v.selection != nil {
 		status = "visual selection  j/k extend  c comment  Esc cancel"
 	}
-	footer := mutedStyle.Render(status)
-	if v.search.repeatMiss {
-		footer = errorStyle.Render(fmt.Sprintf("no matches for %q", v.search.term))
-	}
-	if err != nil {
-		footer = errorStyle.Render(strings.ReplaceAll(err.Error(), "\n", " "))
-	}
-	return frame.Render(header, body, v.renderFooter(footer), v.height)
+	return status
 }
+
 func (v *View) renderFooter(value string) string {
 	label := "local changes"
 	if v.view.patch.Kind == patch.Branch {
@@ -413,17 +423,27 @@ func (v *View) renderFooter(value string) string {
 func patchLineCounts(p patch.Patch) (added, removed int) {
 	for _, file := range p.Files {
 		for _, hunk := range file.Hunks {
-			for _, line := range hunk.Lines {
-				if line.Kind == patch.Addition {
-					added++
-				}
-				if line.Kind == patch.Deletion {
-					removed++
-				}
-			}
+			counts := hunkLineCounts(hunk)
+			added += counts[0]
+			removed += counts[1]
 		}
 	}
 	return added, removed
+}
+
+func hunkLineCounts(hunk patch.Hunk) [2]int {
+	counts := [2]int{}
+	for _, line := range hunk.Lines {
+		switch line.Kind {
+		case patch.Addition:
+			counts[0]++
+		case patch.Deletion:
+			counts[1]++
+		default:
+			continue
+		}
+	}
+	return counts
 }
 
 var (

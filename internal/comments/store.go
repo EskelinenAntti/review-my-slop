@@ -61,15 +61,19 @@ func (s Store) Add(comment Comment) (Comment, error) {
 		return Comment{}, fmt.Errorf("encode comment: %w", err)
 	}
 	err = s.transact(func(bucket *bolt.Bucket) error {
-		if pendingBytes(bucket)+len(data) > maxPendingBytes {
-			return fmt.Errorf("pending feedback exceeds %d bytes", maxPendingBytes)
-		}
-		if bucket.Get([]byte(comment.ID)) != nil {
-			return errors.New("comment ID already exists")
-		}
-		return bucket.Put([]byte(comment.ID), data)
+		return addComment(bucket, comment.ID, data)
 	})
 	return comment, err
+}
+
+func addComment(bucket *bolt.Bucket, id string, data []byte) error {
+	if pendingBytes(bucket)+len(data) > maxPendingBytes {
+		return fmt.Errorf("pending feedback exceeds %d bytes", maxPendingBytes)
+	}
+	if bucket.Get([]byte(id)) != nil {
+		return errors.New("comment ID already exists")
+	}
+	return bucket.Put([]byte(id), data)
 }
 
 // List returns pending comments for the repository.
@@ -136,13 +140,17 @@ func (s Store) Acknowledge(repository string, ids []string) error {
 		if err != nil {
 			return err
 		}
-		for _, key := range keys {
-			if err := bucket.Delete(key); err != nil {
-				return err
-			}
-		}
-		return nil
+		return deleteKeys(bucket, keys)
 	})
+}
+
+func deleteKeys(bucket *bolt.Bucket, keys [][]byte) error {
+	for _, key := range keys {
+		if err := bucket.Delete(key); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func pendingBytes(bucket *bolt.Bucket) int {

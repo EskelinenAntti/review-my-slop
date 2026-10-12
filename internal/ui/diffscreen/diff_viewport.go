@@ -139,15 +139,19 @@ func (v *diffView) nearest(target int, pane diffPane, direction direction, viewp
 	height := v.contentHeight(viewport)
 	for distance := 0; distance < height; distance++ {
 		for _, y := range []int{target + int(direction)*distance, target - int(direction)*distance} {
-			if y < viewport.top || y >= viewport.top+height || y >= len(v.rows) {
-				continue
-			}
-			if cursor, ok := v.cursorAt(y, pane); ok {
+			if cursor, ok := v.cursorInViewport(y, pane, viewport); ok {
 				return cursor, true
 			}
 		}
 	}
 	return diffCursor{}, false
+}
+
+func (v *diffView) cursorInViewport(y int, pane diffPane, viewport diffViewport) (diffCursor, bool) {
+	if y < viewport.top || y >= viewport.top+v.contentHeight(viewport) {
+		return diffCursor{}, false
+	}
+	return v.cursorAt(y, pane)
 }
 
 func (v *diffView) maxHorizontalOffset(width int) int {

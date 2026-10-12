@@ -25,31 +25,34 @@ func (v *diffView) lines(selection diffSelection) []patch.Line {
 	if _, ok := v.extendSelection(selection, selection.Last); !ok {
 		return nil
 	}
-	first, last := selection.First.row, selection.Last.row
-	if first > last {
-		first, last = last, first
+	first, last := min(selection.First.row, selection.Last.row), max(selection.First.row, selection.Last.row)
+	if first == last && selection.First.pane != selection.Last.pane {
+		return v.paneLines(selection)
 	}
 	lines := make([]patch.Line, 0, last-first+1)
-	if first == last && selection.First.pane != selection.Last.pane {
-		current := v.rows[first]
-		indices := []int{v.lineIndex(current, selection.First.pane), v.lineIndex(current, selection.Last.pane)}
-		for _, index := range indices {
-			if index >= 0 && (len(lines) == 0 || lines[len(lines)-1] != v.patch.Files[current.file].Hunks[current.hunk].Lines[index]) {
-				lines = append(lines, v.patch.Files[current.file].Hunks[current.hunk].Lines[index])
-			}
-		}
-		return lines
-	}
 	for y := first; y <= last; y++ {
-		pane := selection.First.pane
-		if y == selection.Last.row {
-			pane = selection.Last.pane
-		}
+		pane := selection.paneAt(y)
 		if line, ok := v.line(diffCursor{row: y, pane: pane}); ok {
 			lines = append(lines, line)
 		}
 	}
 	return lines
+}
+
+func (s diffSelection) paneAt(row int) diffPane {
+	if row == s.Last.row {
+		return s.Last.pane
+	}
+	return s.First.pane
+}
+
+func (v *diffView) paneLines(selection diffSelection) []patch.Line {
+	first, _ := v.line(selection.First)
+	last, _ := v.line(selection.Last)
+	if first == last {
+		return []patch.Line{first}
+	}
+	return []patch.Line{first, last}
 }
 
 func (v *diffView) file(cursor diffCursor) (patch.File, bool) {
@@ -73,39 +76,81 @@ func (v *diffView) findCursor(target cursorIdentity) (diffCursor, bool) {
 	if !target.valid {
 		return diffCursor{}, false
 	}
-	best := diffCursor{}
-	bestRank, bestDistance := 0, 0
-	for y, current := range v.rows {
-		if current.hunk < 0 || !sameFile(v.patch.Files[current.file], target.file) {
-			continue
+	best := cursorMatch{}
+	for y := range v.rows {
+		candidate := v.matchRow(y, target)
+		if candidate.rank == 3 {
+			return candidate.cursor, true
 		}
-		for _, pane := range [2]diffPane{target.cursor.pane, target.cursor.pane.other()} {
-			candidate, ok := v.cursorAt(y, pane)
-			if !ok {
-				continue
-			}
-			line, _ := v.line(candidate)
-			rank := 1
-			if line.Kind == target.line.Kind {
-				if line.OldNumber == target.line.OldNumber && line.NewNumber == target.line.NewNumber {
-					return candidate, true
-				}
-				if line.Text == target.line.Text {
-					rank = 2
-				}
-			}
-			distance := abs(y - target.cursor.row)
-			if line.NewNumber > 0 && target.line.NewNumber > 0 {
-				distance = abs(int(line.NewNumber - target.line.NewNumber))
-			} else if line.OldNumber > 0 && target.line.OldNumber > 0 {
-				distance = abs(int(line.OldNumber - target.line.OldNumber))
-			}
-			if rank > bestRank || rank == bestRank && distance < bestDistance {
-				best, bestRank, bestDistance = candidate, rank, distance
-			}
+		if candidate.betterThan(best) {
+			best = candidate
 		}
 	}
-	return best, bestRank > 0
+	return best.cursor, best.rank > 0
+}
+
+type cursorMatch struct {
+	cursor         diffCursor
+	rank, distance int
+}
+
+func (m cursorMatch) betterThan(other cursorMatch) bool {
+	return m.rank > other.rank || m.rank == other.rank && m.distance < other.distance
+}
+
+func (m cursorMatch) preferredTo(other cursorMatch) cursorMatch {
+	if m.betterThan(other) {
+		return m
+	}
+	return other
+}
+
+func (v *diffView) matchRow(y int, target cursorIdentity) cursorMatch {
+	current := v.rows[y]
+	if !v.rowInFile(current, target.file) {
+		return cursorMatch{}
+	}
+	best := cursorMatch{}
+	for _, pane := range [2]diffPane{target.cursor.pane, target.cursor.pane.other()} {
+		candidate, ok := v.cursorAt(y, pane)
+		if !ok {
+			continue
+		}
+		line, _ := v.line(candidate)
+		match := cursorMatch{cursor: candidate, rank: lineMatchRank(line, target.line), distance: lineDistance(line, target.line, y-target.cursor.row)}
+		if match.rank == 3 {
+			return match
+		}
+		best = match.preferredTo(best)
+	}
+	return best
+}
+
+func (v *diffView) rowInFile(current entry, file patch.File) bool {
+	return current.hunk >= 0 && sameFile(v.patch.Files[current.file], file)
+}
+
+func lineMatchRank(line, target patch.Line) int {
+	if line.Kind != target.Kind {
+		return 1
+	}
+	if line.OldNumber == target.OldNumber && line.NewNumber == target.NewNumber {
+		return 3
+	}
+	if line.Text == target.Text {
+		return 2
+	}
+	return 1
+}
+
+func lineDistance(line, target patch.Line, rowDistance int) int {
+	if line.NewNumber > 0 && target.NewNumber > 0 {
+		return abs(int(line.NewNumber - target.NewNumber))
+	}
+	if line.OldNumber > 0 && target.OldNumber > 0 {
+		return abs(int(line.OldNumber - target.OldNumber))
+	}
+	return abs(rowDistance)
 }
 
 func sameFile(candidate, target patch.File) bool {

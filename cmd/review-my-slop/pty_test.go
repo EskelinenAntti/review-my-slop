@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/creack/pty"
+	"github.com/eskelinenantti/review-my-slop/internal/testutil"
 )
 
 func TestCommandStartsAndQuitsInPTY(t *testing.T) {
@@ -41,13 +42,10 @@ func TestCommandStartsAndQuitsInPTY(t *testing.T) {
 func checkCommandLifecycle(t *testing.T, binary string, args []string) {
 	t.Helper()
 	repo, err := filepath.EvalSymlinks(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
+	testutil.NoError(t, err)
+
 	runGit(t, repo, "init", "-q")
-	if err := os.WriteFile(filepath.Join(repo, "main.go"), []byte("package main\n\nfunc main() {}\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
+	testutil.NoError(t, os.WriteFile(filepath.Join(repo, "main.go"), []byte("package main\n\nfunc main() {}\n"), 0o644))
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -59,9 +57,8 @@ func checkCommandLifecycle(t *testing.T, binary string, args []string) {
 		"XDG_STATE_HOME="+t.TempDir(),
 	)
 	terminal, err := pty.StartWithSize(command, &pty.Winsize{Rows: 24, Cols: 100})
-	if err != nil {
-		t.Fatal(err)
-	}
+	testutil.NoError(t, err)
+
 	defer terminal.Close()
 
 	var output lockedBuffer
@@ -75,9 +72,8 @@ func checkCommandLifecycle(t *testing.T, binary string, args []string) {
 	for !strings.Contains(output.String(), "review-my-slop") && time.Now().Before(deadline) {
 		time.Sleep(20 * time.Millisecond)
 	}
-	if !strings.Contains(output.String(), "main.go") {
-		t.Fatalf("TUI did not render untracked file:\n%s", output.String())
-	}
+	testutil.RequireEqual(t, strings.Contains(output.String(), "main.go"), true, "TUI did not render untracked file:\n%s", output.String())
+
 	if _, err := terminal.Write([]byte("q")); err != nil {
 		t.Fatalf("write quit: %v\n%s", err, output.String())
 	}

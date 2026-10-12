@@ -69,27 +69,33 @@ func load(ctx context.Context, directory string, kind Kind, run runner) (Patch, 
 	if err != nil {
 		return Patch{}, fmt.Errorf("discover default branch: %w", err)
 	}
-	readOld := readIndex
-	var revisions []string
-	if kind == Branch {
-		if branch == "" {
-			return Patch{}, errors.New("default branch is unavailable")
-		}
-		baseBytes, err := run.Run(ctx, root, "merge-base", branch, "HEAD")
-		if err != nil {
-			return Patch{}, fmt.Errorf("find branch point with %s: %w", branch, err)
-		}
-		base := strings.TrimSpace(string(baseBytes))
-		revisions = []string{base}
-		readOld = func(ctx context.Context, run runner, root, path string) string {
-			return readRevision(ctx, run, root, base, path)
-		}
+	revisions, readOld, err := comparisonBase(ctx, run, root, kind, branch)
+	if err != nil {
+		return Patch{}, err
 	}
 	raw, err := gitDiff(ctx, run, root, revisions...)
 	if err != nil {
 		return Patch{}, err
 	}
 	return build(ctx, run, root, kind, branch, raw, readOld)
+}
+
+func comparisonBase(ctx context.Context, run runner, root string, kind Kind, branch string) ([]string, sourceReader, error) {
+	if kind != Branch {
+		return nil, readIndex, nil
+	}
+	if branch == "" {
+		return nil, nil, errors.New("default branch is unavailable")
+	}
+	baseBytes, err := run.Run(ctx, root, "merge-base", branch, "HEAD")
+	if err != nil {
+		return nil, nil, fmt.Errorf("find branch point with %s: %w", branch, err)
+	}
+	base := strings.TrimSpace(string(baseBytes))
+	readOld := func(ctx context.Context, run runner, root, path string) string {
+		return readRevision(ctx, run, root, base, path)
+	}
+	return []string{base}, readOld, nil
 }
 
 func repositoryRoot(ctx context.Context, run runner, directory string) (string, error) {
@@ -214,15 +220,16 @@ func loadUntracked(ctx context.Context, run runner, root string) ([]File, error)
 	if err != nil {
 		return nil, err
 	}
+	return readUntrackedPaths(ctx, root, untrackedPaths(out))
+}
+
+func readUntrackedPaths(ctx context.Context, root string, paths []string) ([]File, error) {
 	var files []File
-	for rawPath := range bytes.SplitSeq(out, []byte{0}) {
+	for _, path := range paths {
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
-		if len(rawPath) == 0 {
-			continue
-		}
-		file, include, err := readUntrackedFile(root, string(rawPath))
+		file, include, err := readUntrackedFile(root, path)
 		if err != nil {
 			return nil, err
 		}
@@ -233,6 +240,16 @@ func loadUntracked(ctx context.Context, run runner, root string) ([]File, error)
 	return files, nil
 }
 
+func untrackedPaths(out []byte) []string {
+	var paths []string
+	for path := range bytes.SplitSeq(out, []byte{0}) {
+		if len(path) > 0 {
+			paths = append(paths, string(path))
+		}
+	}
+	return paths
+}
+
 func readUntrackedFile(root, path string) (File, bool, error) {
 	full := filepath.Join(root, filepath.FromSlash(path))
 	info, err := os.Lstat(full)
@@ -240,11 +257,7 @@ func readUntrackedFile(root, path string) (File, bool, error) {
 		return File{}, false, fmt.Errorf("stat untracked %q: %w", path, err)
 	}
 	if info.Mode()&os.ModeSymlink != 0 {
-		target, err := os.Readlink(full)
-		if err != nil {
-			return File{}, false, fmt.Errorf("read symlink %q: %w", path, err)
-		}
-		return addedFile(path, visibleText(target)), true, nil
+		return readUntrackedSymlink(full, path)
 	}
 	if !info.Mode().IsRegular() {
 		return File{}, false, nil
@@ -260,6 +273,14 @@ func readUntrackedFile(root, path string) (File, bool, error) {
 		return File{NewPath: path, DisplayPath: visibleText(path), Metadata: []string{"untracked binary file"}}, true, nil
 	}
 	return addedFile(path, visibleSource(string(content))), true, nil
+}
+
+func readUntrackedSymlink(full, path string) (File, bool, error) {
+	target, err := os.Readlink(full)
+	if err != nil {
+		return File{}, false, fmt.Errorf("read symlink %q: %w", path, err)
+	}
+	return addedFile(path, visibleText(target)), true, nil
 }
 
 func addedFile(path, content string) File {
@@ -281,12 +302,12 @@ func addedFile(path, content string) File {
 }
 
 func parseHunkBody(oldLine, newLine int32, body []byte) ([]Line, error) {
-	rawLines := bytes.Split(body, []byte("\n"))
+	rawLines := bytes.Split(bytes.TrimSuffix(body, []byte("\n")), []byte("\n"))
+	if len(body) == 0 {
+		return []Line{}, nil
+	}
 	lines := make([]Line, 0, len(rawLines))
-	for i, raw := range rawLines {
-		if i == len(rawLines)-1 && len(raw) == 0 {
-			continue
-		}
+	for _, raw := range rawLines {
 		if len(raw) == 0 {
 			return nil, errors.New("malformed empty diff line")
 		}

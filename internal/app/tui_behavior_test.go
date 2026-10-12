@@ -12,6 +12,7 @@ import (
 
 	"github.com/eskelinenantti/review-my-slop/internal/comments"
 	"github.com/eskelinenantti/review-my-slop/internal/patch"
+	"github.com/eskelinenantti/review-my-slop/internal/testutil"
 	"github.com/eskelinenantti/review-my-slop/internal/ui/diffscreen"
 )
 
@@ -28,13 +29,14 @@ func TestVisualSelectionCreatesMappedAnchorAndSubmits(t *testing.T) {
 	m = updateModel(t, m, textKey("j"))
 	m = updateModel(t, m, textKey("c"))
 	_ = updateModel(t, m, commentEditorFinishedMsg{body: "fix both lines"})
-	if len(saved) != 1 {
-		t.Fatalf("saved comments = %d", len(saved))
-	}
+	testutil.RequireEqual(t, len(saved), 1,
+		"saved comments = %d", len(saved))
+
 	anchor := saved[0].Anchor
-	if anchor.FilePath != "main.go" || anchor.OldStart != 2 || anchor.NewStart != 2 || !slices.Equal(anchor.QuotedLines, []string{"-old()", "+new()"}) {
-		t.Fatalf("anchor = %#v", anchor)
-	}
+	testutil.RequireEqual(t, anchor.FilePath, "main.go", "anchor = %#v", anchor)
+	testutil.RequireEqual(t, anchor.OldStart, 2, "anchor = %#v", anchor)
+	testutil.RequireEqual(t, anchor.NewStart, 2, "anchor = %#v", anchor)
+	testutil.RequireEqual(t, slices.Equal(anchor.QuotedLines, []string{"-old()", "+new()"}), true, "anchor = %#v", anchor)
 }
 
 func TestCommentSaveFailureClearsPendingEdit(t *testing.T) {
@@ -44,17 +46,16 @@ func TestCommentSaveFailureClearsPendingEdit(t *testing.T) {
 	})
 	m = updateModel(t, m, textKey("c"))
 	m = updateModel(t, m, commentEditorFinishedMsg{body: "keep this"})
-	if m.edit.body != "" || m.err == nil || m.err.Error() != "storage unavailable" {
-		t.Fatalf("body=%q err=%v", m.edit.body, m.err)
-	}
+	testutil.RequireEqual(t, m.edit.body, "", "body=%q err=%v", m.edit.body, m.err)
+	testutil.RequireEqual(t, m.err != nil, true, "body=%q err=%v", m.edit.body, m.err)
+	testutil.RequireEqual(t, m.err.Error(), "storage unavailable", "body=%q err=%v", m.edit.body, m.err)
 }
 
 func TestCommentRequiresEditor(t *testing.T) {
 	t.Setenv("EDITOR", "")
 	m := updateModel(t, testModel(coveragePatch(), nil, nil), textKey("c"))
-	if m.err == nil || m.err.Error() != "$EDITOR is not set" {
-		t.Fatalf("error = %v", m.err)
-	}
+	testutil.RequireEqual(t, m.err != nil, true, "error = %v", m.err)
+	testutil.RequireEqual(t, m.err.Error(), "$EDITOR is not set", "error = %v", m.err)
 }
 
 func TestEmptyNewCommentIsDiscarded(t *testing.T) {
@@ -66,9 +67,8 @@ func TestEmptyNewCommentIsDiscarded(t *testing.T) {
 	})
 	m = updateModel(t, m, textKey("c"))
 	m = updateModel(t, m, commentEditorFinishedMsg{body: " \n"})
-	if called || len(m.comments.items) != 0 {
-		t.Fatalf("called=%v comments=%d", called, len(m.comments.items))
-	}
+	testutil.RequireEqual(t, !called, true, "called=%v comments=%d", called, len(m.comments.items))
+	testutil.RequireEqual(t, len(m.comments.items), 0, "called=%v comments=%d", called, len(m.comments.items))
 }
 
 func TestOpenCurrentLineUsesEditorWithWorkingTreeLocation(t *testing.T) {
@@ -77,22 +77,20 @@ func TestOpenCurrentLineUsesEditorWithWorkingTreeLocation(t *testing.T) {
 	m.currentPatch.Root = "/tmp/repo with spaces"
 	focusLine(t, &m, "new()")
 	cmd, err := m.openCurrentLine()
-	if err != nil || cmd == nil {
-		t.Fatalf("command=%v err=%v", cmd, err)
-	}
+	testutil.RequireEqual(t, err, nil, "command=%v err=%v", cmd, err)
+	testutil.RequireEqual(t, cmd != nil, true, "command=%v err=%v", cmd, err)
 
 	path, line, err := m.sourceLocation()
-	if err != nil || path != "/tmp/repo with spaces/main.go" || line != 2 {
-		t.Fatalf("location=%q:%d err=%v", path, line, err)
-	}
+	testutil.RequireEqual(t, err, nil, "location=%q:%d err=%v", path, line, err)
+	testutil.RequireEqual(t, path, "/tmp/repo with spaces/main.go", "location=%q:%d err=%v", path, line, err)
+	testutil.RequireEqual(t, line, 2, "location=%q:%d err=%v", path, line, err)
 }
 
 func TestOpenCurrentLineRequiresEditor(t *testing.T) {
 	t.Setenv("EDITOR", "")
 	m := updateModel(t, testModel(coveragePatch(), nil, nil), textKey("e"))
-	if m.err == nil || m.err.Error() != "$EDITOR is not set" {
-		t.Fatalf("error = %v", m.err)
-	}
+	testutil.RequireEqual(t, m.err != nil, true, "error = %v", m.err)
+	testutil.RequireEqual(t, m.err.Error(), "$EDITOR is not set", "error = %v", m.err)
 }
 
 func TestCommentsCanBeViewedEditedAndDeleted(t *testing.T) {
@@ -105,22 +103,21 @@ func TestCommentsCanBeViewedEditedAndDeleted(t *testing.T) {
 	})
 	m.setDelete(func(stored comments.Comment, _ patch.Patch) error { deleted = stored; return nil })
 	m = updateModel(t, m, textKey("C"))
-	if m.mode != modeComments || !strings.Contains(m.render(), "old body") {
-		t.Fatal("comments did not open")
-	}
+	testutil.RequireEqual(t, m.mode, modeComments, "%s", "comments did not open")
+	testutil.RequireEqual(t, strings.Contains(m.render(), "old body"), true, "%s", "comments did not open")
+
 	m = updateModel(t, m, specialKey(tea.KeyEnter))
 	m = updateModel(t, m, commentEditorFinishedMsg{body: "edited body"})
-	if persisted.ID != "one" || persisted.Body != "edited body" {
-		t.Fatalf("persisted = %#v", persisted)
-	}
+	testutil.RequireEqual(t, persisted.ID, "one", "persisted = %#v", persisted)
+	testutil.RequireEqual(t, persisted.Body, "edited body", "persisted = %#v", persisted)
+
 	m = updateModel(t, m, textKey("D"))
-	if deleted.ID != "one" || len(m.comments.items) != 1 {
-		t.Fatalf("deleted=%#v comments=%#v", deleted, m.comments.items)
-	}
+	testutil.RequireEqual(t, deleted.ID, "one", "deleted=%#v comments=%#v", deleted, m.comments.items)
+	testutil.RequireEqual(t, len(m.comments.items), 1, "deleted=%#v comments=%#v", deleted, m.comments.items)
+
 	m = updateModel(t, m, textKey("q"))
-	if m.mode != modeBrowse || m.quitting {
-		t.Fatalf("mode=%v quitting=%v", m.mode, m.quitting)
-	}
+	testutil.RequireEqual(t, m.mode, modeBrowse, "mode=%v quitting=%v", m.mode, m.quitting)
+	testutil.RequireEqual(t, !m.quitting, true, "mode=%v quitting=%v", m.mode, m.quitting)
 }
 
 func TestOpeningCommentsReloadsPendingComments(t *testing.T) {
@@ -129,13 +126,11 @@ func TestOpeningCommentsReloadsPendingComments(t *testing.T) {
 
 	next, cmd := m.Update(textKey("C"))
 	m = requireModel(t, next)
-	if cmd == nil {
-		t.Fatal("opening comments did not request a refresh")
-	}
+	testutil.RequireEqual(t, cmd != nil, true, "%s", "opening comments did not request a refresh")
+
 	m = updateModel(t, m, cmd())
-	if m.mode != modeComments || len(m.comments.items) != 0 {
-		t.Fatalf("mode=%v comments=%#v", m.mode, m.comments.items)
-	}
+	testutil.RequireEqual(t, m.mode, modeComments, "mode=%v comments=%#v", m.mode, m.comments.items)
+	testutil.RequireEqual(t, len(m.comments.items), 0, "mode=%v comments=%#v", m.mode, m.comments.items)
 }
 
 func TestCommentReloadFailurePreservesCurrentComments(t *testing.T) {
@@ -145,9 +140,9 @@ func TestCommentReloadFailurePreservesCurrentComments(t *testing.T) {
 	next, cmd := m.Update(textKey("C"))
 	m = requireModel(t, next)
 	m = updateModel(t, m, cmd())
-	if len(m.comments.items) != 1 || m.err == nil || m.err.Error() != "refresh comments: storage unavailable" {
-		t.Fatalf("comments=%#v error=%v", m.comments.items, m.err)
-	}
+	testutil.RequireEqual(t, len(m.comments.items), 1, "comments=%#v error=%v", m.comments.items, m.err)
+	testutil.RequireEqual(t, m.err != nil, true, "comments=%#v error=%v", m.comments.items, m.err)
+	testutil.RequireEqual(t, m.err.Error(), "refresh comments: storage unavailable", "comments=%#v error=%v", m.comments.items, m.err)
 }
 
 func TestEmptyEditedCommentIsDeleted(t *testing.T) {
@@ -158,9 +153,8 @@ func TestEmptyEditedCommentIsDeleted(t *testing.T) {
 	m = updateModel(t, m, textKey("C"))
 	m = updateModel(t, m, specialKey(tea.KeyEnter))
 	m = updateModel(t, m, commentEditorFinishedMsg{body: "\n"})
-	if !deleted || len(m.comments.items) != 0 {
-		t.Fatalf("deleted=%v comments=%d", deleted, len(m.comments.items))
-	}
+	testutil.RequireEqual(t, deleted, true, "deleted=%v comments=%d", deleted, len(m.comments.items))
+	testutil.RequireEqual(t, len(m.comments.items), 0, "deleted=%v comments=%d", deleted, len(m.comments.items))
 }
 
 func TestCommentDeleteFailureKeepsCommentAndShowsError(t *testing.T) {
@@ -168,9 +162,8 @@ func TestCommentDeleteFailureKeepsCommentAndShowsError(t *testing.T) {
 	m.setDelete(func(comments.Comment, patch.Patch) error { return errors.New("delete failed") })
 	m = updateModel(t, m, textKey("C"))
 	m = updateModel(t, m, textKey("D"))
-	if len(m.comments.items) != 1 || !strings.Contains(ansi.Strip(m.render()), "delete failed") {
-		t.Fatalf("comments=%#v render=%q", m.comments.items, m.render())
-	}
+	testutil.RequireEqual(t, len(m.comments.items), 1, "comments=%#v render=%q", m.comments.items, m.render())
+	testutil.RequireEqual(t, strings.Contains(ansi.Strip(m.render()), "delete failed"), true, "comments=%#v render=%q", m.comments.items, m.render())
 }
 
 func TestSelectionCannotCrossHunk(t *testing.T) {
@@ -180,9 +173,7 @@ func TestSelectionCannotCrossHunk(t *testing.T) {
 		m = updateModel(t, m, textKey("j"))
 	}
 	_, line, _ := m.diffView.Current()
-	if line.Text == "more()" {
-		t.Fatal("diffSelection crossed hunk")
-	}
+	testutil.RequireEqual(t, line.Text != "more()", true, "%s", "diffSelection crossed hunk")
 }
 
 func TestVimSequencesAndLayoutToggle(t *testing.T) {
@@ -191,22 +182,21 @@ func TestVimSequencesAndLayoutToggle(t *testing.T) {
 	m.configureSideBySide(false, func(enabled bool) error { saved = append(saved, enabled); return nil })
 	m = updateModel(t, m, tea.WindowSizeMsg{Width: 120, Height: 20})
 	m = updateModel(t, m, textKey("G"))
-	if lineText(m) != "more()" {
-		t.Fatalf("G line=%q", lineText(m))
-	}
+	testutil.RequireEqual(t, lineText(m), "more()",
+		"G line=%q", lineText(m))
+
 	m = updateModel(t, m, textKey("g"))
 	m = updateModel(t, m, textKey("g"))
-	if lineText(m) != "package main" {
-		t.Fatalf("gg line=%q", lineText(m))
-	}
+	testutil.RequireEqual(t, lineText(m), "package main",
+		"gg line=%q", lineText(m))
+
 	m = updateModel(t, m, textKey("t"))
-	if !m.diffOptions.SideBySide || !strings.Contains(m.render(), "│") {
-		t.Fatal("split view not enabled")
-	}
+	testutil.RequireEqual(t, m.diffOptions.SideBySide, true, "%s", "split view not enabled")
+	testutil.RequireEqual(t, strings.Contains(m.render(), "│"), true, "%s", "split view not enabled")
+
 	m = updateModel(t, m, textKey("t"))
-	if m.diffOptions.SideBySide || !slices.Equal(saved, []bool{true, false}) {
-		t.Fatalf("saved=%v", saved)
-	}
+	testutil.RequireEqual(t, !m.diffOptions.SideBySide, true, "saved=%v", saved)
+	testutil.RequireEqual(t, slices.Equal(saved, []bool{true, false}), true, "saved=%v", saved)
 }
 
 func TestSavedSideBySideCanBeDisabledInNarrowTerminal(t *testing.T) {
@@ -215,9 +205,8 @@ func TestSavedSideBySideCanBeDisabledInNarrowTerminal(t *testing.T) {
 	m.configureSideBySide(true, func(enabled bool) error { saved = append(saved, enabled); return nil })
 	m = updateModel(t, m, tea.WindowSizeMsg{Width: 80, Height: 20})
 	m = updateModel(t, m, textKey("t"))
-	if m.diffOptions.SideBySide || !slices.Equal(saved, []bool{false}) {
-		t.Fatalf("sideBySide=%v saved=%v", m.diffOptions.SideBySide, saved)
-	}
+	testutil.RequireEqual(t, !m.diffOptions.SideBySide, true, "sideBySide=%v saved=%v", m.diffOptions.SideBySide, saved)
+	testutil.RequireEqual(t, slices.Equal(saved, []bool{false}), true, "sideBySide=%v saved=%v", m.diffOptions.SideBySide, saved)
 }
 
 func TestResizeAcrossSideBySideThresholdPreservesFocusedLine(t *testing.T) {
@@ -228,9 +217,8 @@ func TestResizeAcrossSideBySideThresholdPreservesFocusedLine(t *testing.T) {
 	m = updateModel(t, m, tea.WindowSizeMsg{Width: 80, Height: 20})
 	m = updateModel(t, m, tea.WindowSizeMsg{Width: 120, Height: 20})
 	_, got, ok := m.diffView.Current()
-	if !ok || got != before {
-		t.Fatalf("focused line=%#v, want %#v", got, before)
-	}
+	testutil.RequireEqual(t, ok, true, "focused line=%#v, want %#v", got, before)
+	testutil.RequireEqual(t, got, before, "focused line=%#v, want %#v", got, before)
 }
 
 func TestZSequencesPositionCurrentLineInViewport(t *testing.T) {
@@ -251,9 +239,8 @@ func TestZSequencesPositionCurrentLineInViewport(t *testing.T) {
 		want.Align(test.alignment)
 		m = updateModel(t, m, textKey("z"))
 		m = updateModel(t, m, textKey(test.key))
-		if m.diffView.Render(nil) != want.Render(nil) {
-			t.Fatalf("z%s did not align view", test.key)
-		}
+		testutil.RequireEqual(t, m.diffView.Render(nil), want.Render(nil),
+			"z%s did not align view", test.key)
 	}
 }
 
@@ -264,57 +251,46 @@ func TestPendingKeyIsConsumedByNextKey(t *testing.T) {
 	m = updateModel(t, m, textKey("g"))
 	m = updateModel(t, m, textKey("h"))
 	m = updateModel(t, m, textKey("g"))
-	if lineText(m) != last {
-		t.Fatal("pending prefix moved focus")
-	}
+	testutil.RequireEqual(t, lineText(m), last, "%s", "pending prefix moved focus")
+
 	m = updateModel(t, m, textKey("g"))
-	if lineText(m) != "package main" {
-		t.Fatalf("gg line=%q", lineText(m))
-	}
+	testutil.RequireEqual(t, lineText(m), "package main",
+		"gg line=%q", lineText(m))
 }
 
 func TestStatusShowsBasicBindingsAndHelpShowsCompleteKeyMap(t *testing.T) {
 	m := testModel(coveragePatch(), nil, nil)
 	status := ansi.Strip(strings.Split(m.render(), "\n")[m.height-2])
-	if !strings.HasPrefix(status, "j/k/h/l move") || !strings.HasSuffix(status, "local changes") {
-		t.Fatalf("status=%q", status)
-	}
+	testutil.RequireEqual(t, strings.HasPrefix(status, "j/k/h/l move"), true, "status=%q", status)
+	testutil.RequireEqual(t, strings.HasSuffix(status, "local changes"), true, "status=%q", status)
+
 	help := ansi.Strip(m.renderHelp())
 	for _, binding := range []string{"Ctrl-w h/l/w", "zz/zt/zb", "n/N", "]f/[f", "Tab", "t"} {
-		if !strings.Contains(help, binding) {
-			t.Fatalf("help missing %q", binding)
-		}
+		testutil.RequireEqual(t, strings.Contains(help, binding), true, "help missing %q", binding)
 	}
 }
 
 func TestStatusShowsProgressOnlyAfterViewportMoves(t *testing.T) {
 	m := testModel(longModelPatch(), nil, nil)
 	m = updateModel(t, m, tea.WindowSizeMsg{Width: 80, Height: 9})
-	if strings.Contains(m.render(), "%") {
-		t.Fatal("initial view shows progress")
-	}
+	testutil.RequireEqual(t, !strings.Contains(m.render(), "%"), true, "%s", "initial view shows progress")
+
 	m = updateModel(t, m, textKey("l"))
-	if strings.Contains(m.render(), "%") {
-		t.Fatal("horizontal scroll shows progress")
-	}
+	testutil.RequireEqual(t, !strings.Contains(m.render(), "%"), true, "%s", "horizontal scroll shows progress")
+
 	for range 10 {
 		m = updateModel(t, m, textKey("j"))
 	}
-	if !strings.Contains(m.render(), "%)") {
-		t.Fatal("scrolled view hides progress")
-	}
+	testutil.RequireEqual(t, strings.Contains(m.render(), "%)"), true, "%s", "scrolled view hides progress")
+
 	m = updateModel(t, m, textKey("G"))
-	if !strings.Contains(m.render(), "local changes (100%)") {
-		t.Fatal("final view hides progress")
-	}
+	testutil.RequireEqual(t, strings.Contains(m.render(), "local changes (100%)"), true, "%s", "final view hides progress")
 }
 
 func TestStatusHidesProgressWhenDiffFitsViewport(t *testing.T) {
 	m := testModel(coveragePatch(), nil, nil)
 	m = updateModel(t, m, tea.WindowSizeMsg{Width: 100, Height: 100})
-	if strings.Contains(m.render(), "%)") {
-		t.Fatal("fitting diff shows progress")
-	}
+	testutil.RequireEqual(t, !strings.Contains(m.render(), "%)"), true, "%s", "fitting diff shows progress")
 }
 
 func TestSideBySidePaneSwitchingUsesCtrlWSequences(t *testing.T) {
@@ -324,14 +300,13 @@ func TestSideBySidePaneSwitchingUsesCtrlWSequences(t *testing.T) {
 	focusLine(t, &m, "new()")
 	m = updateModel(t, m, controlKey('w'))
 	m = updateModel(t, m, textKey("h"))
-	if lineText(m) != "old()" {
-		t.Fatalf("old pane line=%q", lineText(m))
-	}
+	testutil.RequireEqual(t, lineText(m), "old()",
+		"old pane line=%q", lineText(m))
+
 	m = updateModel(t, m, controlKey('w'))
 	m = updateModel(t, m, controlKey('w'))
-	if lineText(m) != "new()" {
-		t.Fatalf("new pane line=%q", lineText(m))
-	}
+	testutil.RequireEqual(t, lineText(m), "new()",
+		"new pane line=%q", lineText(m))
 }
 
 func TestHorizontalScrollKeysMoveByStepAndReset(t *testing.T) {
@@ -343,22 +318,17 @@ func TestHorizontalScrollKeysMoveByStepAndReset(t *testing.T) {
 	want.ScrollHorizontal(2 * horizontalScrollStep)
 	m = updateModel(t, m, textKey("l"))
 	m = updateModel(t, m, tea.KeyPressMsg(tea.Key{Code: tea.KeyRight}))
-	if m.diffView.Render(nil) != want.Render(nil) {
-		t.Fatal("right keys did not scroll by two steps")
-	}
+	testutil.RequireEqual(t, m.diffView.Render(nil), want.Render(nil), "%s", "right keys did not scroll by two steps")
+
 	m = updateModel(t, m, textKey("h"))
 	m = updateModel(t, m, tea.KeyPressMsg(tea.Key{Code: tea.KeyLeft}))
-	if m.diffView.Render(nil) != initial {
-		t.Fatal("left keys did not restore initial offset")
-	}
+	testutil.RequireEqual(t, m.diffView.Render(nil), initial, "%s", "left keys did not restore initial offset")
+
 	m = updateModel(t, m, textKey("$"))
-	if m.diffView.Render(nil) == initial {
-		t.Fatal("$ did not scroll")
-	}
+	testutil.RequireEqual(t, m.diffView.Render(nil) != initial, true, "%s", "$ did not scroll")
+
 	m = updateModel(t, m, textKey("0"))
-	if m.diffView.Render(nil) != initial {
-		t.Fatal("0 did not restore initial offset")
-	}
+	testutil.RequireEqual(t, m.diffView.Render(nil), initial, "%s", "0 did not restore initial offset")
 }
 
 func TestFocusAndManualRefreshLoadCurrentView(t *testing.T) {
@@ -375,19 +345,16 @@ func TestFocusAndManualRefreshLoadCurrentView(t *testing.T) {
 	})
 	next, cmd := m.Update(tea.FocusMsg{})
 	m = requireModel(t, next)
-	if cmd == nil {
-		t.Fatal("focus did not refresh")
-	}
+	testutil.RequireEqual(t, cmd != nil, true, "%s", "focus did not refresh")
+
 	m = updateModel(t, m, cmd())
 	next, cmd = m.Update(textKey("R"))
 	m = requireModel(t, next)
-	if cmd == nil {
-		t.Fatal("R did not refresh")
-	}
+	testutil.RequireEqual(t, cmd != nil, true, "%s", "R did not refresh")
+
 	m = updateModel(t, m, cmd())
-	if !slices.Equal(requested, []patch.Kind{patch.Branch, patch.Branch}) || !slices.Equal(m.currentPatch.Files[0].Metadata, []string{"refresh-2"}) {
-		t.Fatalf("requested=%v metadata=%q", requested, m.currentPatch.Files[0].Metadata)
-	}
+	testutil.RequireEqual(t, slices.Equal(requested, []patch.Kind{patch.Branch, patch.Branch}), true, "requested=%v metadata=%q", requested, m.currentPatch.Files[0].Metadata)
+	testutil.RequireEqual(t, slices.Equal(m.currentPatch.Files[0].Metadata, []string{"refresh-2"}), true, "requested=%v metadata=%q", requested, m.currentPatch.Files[0].Metadata)
 }
 
 func TestSourceEditorCompletionRefreshesDiff(t *testing.T) {
@@ -398,20 +365,16 @@ func TestSourceEditorCompletionRefreshesDiff(t *testing.T) {
 
 	next, cmd := m.Update(sourceEditorFinishedMsg{})
 	m = requireModel(t, next)
-	if cmd == nil {
-		t.Fatal("editor completion did not refresh")
-	}
+	testutil.RequireEqual(t, cmd != nil, true, "%s", "editor completion did not refresh")
+
 	m = updateModel(t, m, cmd())
-	if !slices.Equal(m.currentPatch.Files[0].Metadata, []string{"after-editor"}) {
-		t.Fatalf("metadata=%q", m.currentPatch.Files[0].Metadata)
-	}
+	testutil.RequireEqual(t, slices.Equal(m.currentPatch.Files[0].Metadata, []string{"after-editor"}), true, "metadata=%q", m.currentPatch.Files[0].Metadata)
 }
 
 func TestHeaderShowsAddedAndRemovedLineCounts(t *testing.T) {
 	header := strings.SplitN(ansi.Strip(testModel(coveragePatch(), nil, nil).render()), "\n", 2)[0]
-	if header != "review-my-slop  +2-1" {
-		t.Fatalf("header = %q", header)
-	}
+	testutil.RequireEqual(t, header, "review-my-slop  +2-1",
+		"header = %q", header)
 }
 
 func TestSearchMovesIncrementallyRepeatsAndRestoresOrigin(t *testing.T) {
@@ -420,27 +383,25 @@ func TestSearchMovesIncrementallyRepeatsAndRestoresOrigin(t *testing.T) {
 	m = updateModel(t, m, textKey("/"))
 	m = updateModel(t, m, textKey("keep"))
 	first := screenBody(m.diffView.Render(nil))
-	if m.mode != modeSearch || lineText(m) != "keep()" {
-		t.Fatalf("mode=%v line=%q", m.mode, lineText(m))
-	}
+	testutil.RequireEqual(t, m.mode, modeSearch, "mode=%v line=%q", m.mode, lineText(m))
+	testutil.RequireEqual(t, lineText(m), "keep()", "mode=%v line=%q", m.mode, lineText(m))
+
 	m = updateModel(t, m, specialKey(tea.KeyEnter))
 	m = updateModel(t, m, textKey("n"))
-	if screenBody(m.diffView.Render(nil)) == first || lineText(m) != "keep()" {
-		t.Fatalf("next=%#v", screenBody(m.diffView.Render(nil)))
-	}
+	testutil.RequireEqual(t, screenBody(m.diffView.Render(nil)) != first, true, "next=%#v", screenBody(m.diffView.Render(nil)))
+	testutil.RequireEqual(t, lineText(m), "keep()", "next=%#v", screenBody(m.diffView.Render(nil)))
+
 	m = updateModel(t, m, textKey("N"))
-	if screenBody(m.diffView.Render(nil)) != first {
-		t.Fatalf("previous=%#v", screenBody(m.diffView.Render(nil)))
-	}
+	testutil.RequireEqual(t, screenBody(m.diffView.Render(nil)), first,
+		"previous=%#v", screenBody(m.diffView.Render(nil)))
+
 	m = updateModel(t, m, textKey("/"))
 	m = updateModel(t, m, textKey("missing"))
-	if !strings.Contains(m.render(), "no matches") {
-		t.Fatal("missing search did not miss")
-	}
+	testutil.RequireEqual(t, strings.Contains(m.render(), "no matches"), true, "%s", "missing search did not miss")
+
 	m = updateModel(t, m, specialKey(tea.KeyEsc))
-	if screenBody(m.diffView.Render(nil)) != first {
-		t.Fatalf("cancel=%#v origin=%#v", screenBody(m.diffView.Render(nil)), origin)
-	}
+	testutil.RequireEqual(t, screenBody(m.diffView.Render(nil)), first,
+		"cancel=%#v origin=%#v", screenBody(m.diffView.Render(nil)), origin)
 }
 
 func TestSearchMatchesFileNamesAndBackspaceRestoresOrigin(t *testing.T) {
@@ -449,15 +410,14 @@ func TestSearchMatchesFileNamesAndBackspaceRestoresOrigin(t *testing.T) {
 	m = updateModel(t, m, textKey("/"))
 	m = updateModel(t, m, textKey("main.go"))
 	file, _, _ := m.diffView.Current()
-	if file.DisplayPath != "main.go" {
-		t.Fatalf("file=%q", file.DisplayPath)
-	}
+	testutil.RequireEqual(t, file.DisplayPath, "main.go",
+		"file=%q", file.DisplayPath)
+
 	for range len("main.go") {
 		m = updateModel(t, m, specialKey(tea.KeyBackspace))
 	}
-	if screenBody(m.diffView.Render(nil)) != origin {
-		t.Fatalf("diffCursor=%#v", screenBody(m.diffView.Render(nil)))
-	}
+	testutil.RequireEqual(t, screenBody(m.diffView.Render(nil)), origin,
+		"diffCursor=%#v", screenBody(m.diffView.Render(nil)))
 }
 
 func TestSideBySideSearchActivatesPaneAndCancelRestoresIt(t *testing.T) {
@@ -467,13 +427,12 @@ func TestSideBySideSearchActivatesPaneAndCancelRestoresIt(t *testing.T) {
 	origin := screenBody(m.diffView.Render(nil))
 	m = updateModel(t, m, textKey("/"))
 	m = updateModel(t, m, textKey("old()"))
-	if lineText(m) != "old()" {
-		t.Fatalf("diffCursor=%#v line=%q", screenBody(m.diffView.Render(nil)), lineText(m))
-	}
+	testutil.RequireEqual(t, lineText(m), "old()",
+		"diffCursor=%#v line=%q", screenBody(m.diffView.Render(nil)), lineText(m))
+
 	m = updateModel(t, m, specialKey(tea.KeyEsc))
-	if screenBody(m.diffView.Render(nil)) != origin {
-		t.Fatalf("cancel=%#v want=%#v", screenBody(m.diffView.Render(nil)), origin)
-	}
+	testutil.RequireEqual(t, screenBody(m.diffView.Render(nil)), origin,
+		"cancel=%#v want=%#v", screenBody(m.diffView.Render(nil)), origin)
 }
 
 func TestTabTogglesDefaultBranchAndIgnoresStaleRefresh(t *testing.T) {
@@ -486,19 +445,17 @@ func TestTabTogglesDefaultBranchAndIgnoresStaleRefresh(t *testing.T) {
 	})
 	next, _ := m.Update(textKey("tab"))
 	m = requireModel(t, next)
-	if m.kind != patch.Branch {
-		t.Fatalf("kind=%v", m.kind)
-	}
+	testutil.RequireEqual(t, m.kind, patch.Branch,
+		"kind=%v", m.kind)
+
 	stale := coveragePatch()
 	stale.Files[0].Metadata = []string{"stale"}
 	m = updateModel(t, m, refreshDiffMsg{patch: stale})
-	if slices.Equal(m.currentPatch.Files[0].Metadata, []string{"stale"}) {
-		t.Fatal("stale refresh applied")
-	}
+	testutil.RequireEqual(t, !slices.Equal(m.currentPatch.Files[0].Metadata, []string{"stale"}), true, "%s", "stale refresh applied")
+
 	m = updateModel(t, m, textKey("tab"))
-	if m.kind != patch.Unstaged {
-		t.Fatalf("kind=%v after toggling back to local", m.kind)
-	}
+	testutil.RequireEqual(t, m.kind, patch.Unstaged,
+		"kind=%v after toggling back to local", m.kind)
 }
 
 func TestTabDoesNothingWithoutDefaultBranch(t *testing.T) {
@@ -510,17 +467,17 @@ func TestTabDoesNothingWithoutDefaultBranch(t *testing.T) {
 	})
 	next, cmd := m.Update(textKey("tab"))
 	m = requireModel(t, next)
-	if cmd != nil || refreshed || m.kind != patch.Unstaged {
-		t.Fatalf("tab changed model without default branch: cmd=%v refreshed=%v kind=%v", cmd != nil, refreshed, m.kind)
-	}
+	testutil.RequireEqual(t, cmd == nil, true, "tab changed model without default branch: cmd=%v refreshed=%v kind=%v", cmd != nil, refreshed, m.kind)
+	testutil.RequireEqual(t, !refreshed, true, "tab changed model without default branch: cmd=%v refreshed=%v kind=%v", cmd != nil, refreshed, m.kind)
+	testutil.RequireEqual(t, m.kind, patch.Unstaged, "tab changed model without default branch: cmd=%v refreshed=%v kind=%v", cmd != nil, refreshed, m.kind)
 }
 
 func TestDiffRefreshFallbackAndEmptyDiff(t *testing.T) {
 	m := testModel(patch.Patch{}, nil, nil)
 	m = updateModel(t, m, refreshDiffMsg{patch: coveragePatch()})
-	if lineText(m) != "package main" {
-		t.Fatalf("initial focus=%q", lineText(m))
-	}
+	testutil.RequireEqual(t, lineText(m), "package main",
+		"initial focus=%q", lineText(m))
+
 	focusLine(t, &m, "new()")
 	changed := coveragePatch()
 	changed.Files[0].Hunks[0].Lines[2].Text = "different()"
@@ -542,19 +499,16 @@ func TestCommentAfterRefreshUsesCurrentPatch(t *testing.T) {
 	m = updateModel(t, m, refreshDiffMsg{patch: refreshed})
 	m = updateModel(t, m, textKey("c"))
 	_ = updateModel(t, m, commentEditorFinishedMsg{body: "comment"})
-	if !slices.Equal(saved.Files[0].Metadata, []string{"refreshed"}) {
-		t.Fatalf("metadata=%q", saved.Files[0].Metadata)
-	}
+	testutil.RequireEqual(t, slices.Equal(saved.Files[0].Metadata, []string{"refreshed"}), true, "metadata=%q", saved.Files[0].Metadata)
 }
 
 func TestViewPreservesTerminalColors(t *testing.T) {
 	result := testModel(coveragePatch(), nil, nil).View()
-	if result.BackgroundColor != nil || result.ForegroundColor != nil || !result.AltScreen || !result.ReportFocus {
-		t.Fatalf("view=%#v", result)
-	}
-	if result.MouseMode != tea.MouseModeCellMotion {
-		t.Fatal("view does not capture terminal wheel events")
-	}
+	testutil.RequireEqual(t, result.BackgroundColor, nil, "view=%#v", result)
+	testutil.RequireEqual(t, result.ForegroundColor, nil, "view=%#v", result)
+	testutil.RequireEqual(t, result.AltScreen, true, "view=%#v", result)
+	testutil.RequireEqual(t, result.ReportFocus, true, "view=%#v", result)
+	testutil.RequireEqual(t, result.MouseMode, tea.MouseModeCellMotion, "%s", "view does not capture terminal wheel events")
 }
 
 func TestMouseWheelScrollsContentWithoutMovingFocus(t *testing.T) {
@@ -568,27 +522,24 @@ func TestMouseWheelScrollsContentWithoutMovingFocus(t *testing.T) {
 	for _, button := range []tea.MouseButton{tea.MouseWheelDown, tea.MouseWheelRight} {
 		m = updateModel(t, m, tea.MouseWheelMsg{Button: button})
 	}
-	if m.render() == initial || !strings.Contains(m.render(), "%)") {
-		t.Fatal("wheel did not scroll content")
-	}
+	testutil.RequireEqual(t, m.render() != initial, true, "%s", "wheel did not scroll content")
+	testutil.RequireEqual(t, strings.Contains(m.render(), "%)"), true, "%s", "wheel did not scroll content")
+
 	_, got, _ := m.diffView.Current()
 	_, gotSelected, _ := m.diffView.Selected()
-	if got != focus || !slices.Equal(selected, gotSelected) {
-		t.Fatal("wheel changed focus or selection")
-	}
+	testutil.RequireEqual(t, got, focus, "%s", "wheel changed focus or selection")
+	testutil.RequireEqual(t, slices.Equal(selected, gotSelected), true, "%s", "wheel changed focus or selection")
+
 	for _, button := range []tea.MouseButton{tea.MouseWheelUp, tea.MouseWheelLeft} {
 		m = updateModel(t, m, tea.MouseWheelMsg{Button: button})
 	}
-	if m.render() != initial {
-		t.Fatal("reverse wheel did not restore content")
-	}
+	testutil.RequireEqual(t, m.render(), initial, "%s", "reverse wheel did not restore content")
+
 	for _, mode := range []mode{modeComments, modeHelp} {
 		m.mode = mode
 		before := m.diffView.Render(nil)
 		m = updateModel(t, m, tea.MouseWheelMsg{Button: tea.MouseWheelDown})
-		if m.diffView.Render(nil) != before {
-			t.Fatal("wheel scrolled diff behind another screen")
-		}
+		testutil.RequireEqual(t, m.diffView.Render(nil), before, "%s", "wheel scrolled diff behind another screen")
 	}
 }
 
@@ -601,9 +552,8 @@ func updateModel(t *testing.T, m model, msg tea.Msg) model {
 func requireModel(t *testing.T, next tea.Model) model {
 	t.Helper()
 	result, ok := next.(model)
-	if !ok {
-		t.Fatalf("model=%T", next)
-	}
+	testutil.RequireEqual(t, ok, true, "model=%T", next)
+
 	return result
 }
 func textKey(text string) tea.KeyPressMsg {

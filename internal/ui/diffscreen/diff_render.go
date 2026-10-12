@@ -44,28 +44,32 @@ func (v *diffView) renderUnifiedRow(current entry, y int, viewport diffViewport,
 	case hunkRow:
 		return hunkStyle.Render(current.text)
 	case lineRow:
-		line := v.patch.Files[current.file].Hunks[current.hunk].Lines[current.rightLine]
-		prefix := " "
-		if line.Kind == patch.Addition {
-			prefix = addedStyle.Render("+")
-		}
-		if line.Kind == patch.Deletion {
-			prefix = removedStyle.Render("-")
-		}
-		gutter := fmt.Sprintf("%5s %5s %s ", number(line.OldNumber), number(line.NewNumber), prefix)
-		value := gutter + fitANSIWindow(current.text, viewport.LeftColumn, width-lipgloss.Width(gutter))
-		style := lineStyle(line.Kind, v.dark)
-		colors := preserveForeground
-		candidate := diffCursor{row: y, pane: cursor.pane}
-		if selected(selection, candidate) {
-			style, colors = selectionRowStyle(v.dark), discardForeground
-		}
-		if cursor.row == y {
-			style, colors = cursorStyle, discardForeground
-		}
-		return renderStyledRow(style, value, width, colors)
+		return v.renderUnifiedLine(current, y, viewport, cursor, selection, width)
 	}
 	return ""
+}
+
+func (v *diffView) renderUnifiedLine(current entry, y int, viewport diffViewport, cursor diffCursor, selection *diffSelection, width int) string {
+	line := v.patch.Files[current.file].Hunks[current.hunk].Lines[current.rightLine]
+	prefix := " "
+	if line.Kind == patch.Addition {
+		prefix = addedStyle.Render("+")
+	}
+	if line.Kind == patch.Deletion {
+		prefix = removedStyle.Render("-")
+	}
+	gutter := fmt.Sprintf("%5s %5s %s ", number(line.OldNumber), number(line.NewNumber), prefix)
+	value := gutter + fitANSIWindow(current.text, viewport.LeftColumn, width-lipgloss.Width(gutter))
+	style := lineStyle(line.Kind, v.dark)
+	colors := preserveForeground
+	candidate := diffCursor{row: y, pane: cursor.pane}
+	if selected(selection, candidate) {
+		style, colors = selectionRowStyle(v.dark), discardForeground
+	}
+	if cursor.row == y {
+		style, colors = cursorStyle, discardForeground
+	}
+	return renderStyledRow(style, value, width, colors)
 }
 
 func renderFileRow(path string, width int) string {
@@ -183,6 +187,14 @@ func filterSGR(sequence string, colors foregroundPolicy) string {
 		return sequence
 	}
 	parts := strings.Split(parameters, ";")
+	filtered := filterSGRParts(parts, colors)
+	if len(filtered) == 0 {
+		return ""
+	}
+	return "\x1b[" + strings.Join(filtered, ";") + "m"
+}
+
+func filterSGRParts(parts []string, colors foregroundPolicy) []string {
 	filtered := make([]string, 0, len(parts))
 	for index := 0; index < len(parts); index++ {
 		code, err := strconv.Atoi(parts[index])
@@ -190,19 +202,24 @@ func filterSGR(sequence string, colors foregroundPolicy) string {
 			filtered = append(filtered, parts[index])
 			continue
 		}
-		if code == 48 || colors == discardForeground && code == 38 {
+		if extendedColorRemoved(code, colors) {
 			index = colorParameterEnd(parts, index)
 			continue
 		}
-		if backgroundColor(code) || colors == discardForeground && foregroundColor(code) {
+		if simpleColorRemoved(code, colors) {
 			continue
 		}
 		filtered = append(filtered, parts[index])
 	}
-	if len(filtered) == 0 {
-		return ""
-	}
-	return "\x1b[" + strings.Join(filtered, ";") + "m"
+	return filtered
+}
+
+func extendedColorRemoved(code int, colors foregroundPolicy) bool {
+	return code == 48 || colors == discardForeground && code == 38
+}
+
+func simpleColorRemoved(code int, colors foregroundPolicy) bool {
+	return backgroundColor(code) || colors == discardForeground && foregroundColor(code)
 }
 
 func colorParameterEnd(parts []string, index int) int {

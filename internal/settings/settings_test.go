@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/eskelinenantti/review-my-slop/internal/testutil"
 )
 
 func TestLayoutSettingsRoundTrip(t *testing.T) {
@@ -13,15 +15,13 @@ func TestLayoutSettingsRoundTrip(t *testing.T) {
 	if enabled, err := readPreferences(path); err != nil || enabled.SideBySide {
 		t.Fatalf("default layout = %+v, error = %v", enabled, err)
 	}
-	if err := writePreferences(path, Preferences{SideBySide: true}); err != nil {
-		t.Fatal(err)
-	}
+	testutil.NoError(t, writePreferences(path, Preferences{SideBySide: true}))
+
 	if enabled, err := readPreferences(path); err != nil || !enabled.SideBySide {
 		t.Fatalf("saved layout = %+v, error = %v", enabled, err)
 	}
-	if err := writePreferences(path, Preferences{}); err != nil {
-		t.Fatal(err)
-	}
+	testutil.NoError(t, writePreferences(path, Preferences{}))
+
 	if enabled, err := readPreferences(path); err != nil || enabled.SideBySide {
 		t.Fatalf("updated layout = %+v, error = %v", enabled, err)
 	}
@@ -33,30 +33,24 @@ func TestLoadSaveUserPreferences(t *testing.T) {
 	if got, err := Load(); err != nil || got.SideBySide {
 		t.Fatalf("defaults=%+v err=%v", got, err)
 	}
-	if err := Save(Preferences{SideBySide: true}); err != nil {
-		t.Fatal(err)
-	}
+	testutil.NoError(t, Save(Preferences{SideBySide: true}))
+
 	if got, err := Load(); err != nil || !got.SideBySide {
 		t.Fatalf("saved=%+v err=%v", got, err)
 	}
 	path, err := settingsPath()
-	if err != nil {
-		t.Fatal(err)
-	}
+	testutil.NoError(t, err)
+
 	info, err := os.Stat(path)
-	if err != nil {
-		t.Fatal(err)
-	}
+	testutil.NoError(t, err)
+
 	if got := info.Mode().Perm(); got != 0600 {
 		t.Fatalf("permissions=%o", got)
 	}
 	entries, err := os.ReadDir(filepath.Dir(path))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(entries) != 1 || entries[0].Name() != "ui.json" {
-		t.Fatalf("unexpected files after atomic save: %v", entries)
-	}
+	testutil.NoError(t, err)
+	testutil.RequireEqual(t, len(entries), 1, "unexpected files after atomic save: %v", entries)
+	testutil.RequireEqual(t, entries[0].Name(), "ui.json", "unexpected files after atomic save: %v", entries)
 }
 
 func TestReadErrors(t *testing.T) {
@@ -66,15 +60,18 @@ func TestReadErrors(t *testing.T) {
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			path := filepath.Join(t.TempDir(), "ui.json")
-			if err := os.WriteFile(path, []byte(test.data), 0600); err != nil {
-				t.Fatal(err)
-			}
-			if _, err := readPreferences(path); err == nil || !strings.Contains(err.Error(), "decode UI settings") {
-				t.Fatalf("expected decode error, got %v", err)
-			}
+			testutil.NoError(t, os.WriteFile(path, []byte(test.data), 0600))
+
+			_, err := readPreferences(path)
+			assertPreferenceError(t, err, "decode UI settings")
 		})
 	}
-	if _, err := readPreferences(t.TempDir()); err == nil || !strings.Contains(err.Error(), "read UI settings") {
-		t.Fatalf("expected read error, got %v", err)
-	}
+	_, err := readPreferences(t.TempDir())
+	assertPreferenceError(t, err, "read UI settings")
+}
+
+func assertPreferenceError(t *testing.T, err error, message string) {
+	t.Helper()
+	testutil.RequireEqual(t, err != nil, true, "expected %s error", message)
+	testutil.RequireEqual(t, strings.Contains(err.Error(), message), true, "expected %s error, got %v", message, err)
 }

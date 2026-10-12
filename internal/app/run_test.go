@@ -11,6 +11,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/eskelinenantti/review-my-slop/internal/comments"
 	"github.com/eskelinenantti/review-my-slop/internal/patch"
+	"github.com/eskelinenantti/review-my-slop/internal/testutil"
 )
 
 func TestRunLoadsCommentsAndWiresContext(t *testing.T) {
@@ -24,27 +25,24 @@ func TestRunLoadsCommentsAndWiresContext(t *testing.T) {
 	defer cancel()
 	sentinel := errors.New("program startup failed")
 	err := start(ctx, p, store, func(received context.Context, kind patch.Kind) (patch.Patch, error) {
-		if received != ctx || kind != p.Kind {
-			t.Fatalf("context=%v kind=%v", received, kind)
-		}
+		testutil.RequireEqual(t, received, ctx, "context=%v kind=%v", received, kind)
+		testutil.RequireEqual(t, kind, p.Kind, "context=%v kind=%v", received, kind)
+
 		return p, nil
 	}, func() size { return size{Width: 120, Height: 40} }, func(m model, _ ...tea.ProgramOption) error {
-		if m.ctx != ctx || m.width != 120 || m.height != 40 || len(m.comments.items) != 1 {
-			t.Fatalf("model=%#v", m)
-		}
+		testutil.RequireEqual(t, m.ctx, ctx, "model=%#v", m)
+		testutil.RequireEqual(t, m.width, 120, "model=%#v", m)
+		testutil.RequireEqual(t, m.height, 40, "model=%#v", m)
+		testutil.RequireEqual(t, len(m.comments.items), 1, "model=%#v", m)
+
 		result := m.loadRefresh()()
 		msg, ok := result.(refreshDiffMsg)
-		if !ok {
-			t.Fatalf("refresh message=%T", result)
-		}
-		if msg.err != nil {
-			t.Fatal(msg.err)
-		}
+		testutil.RequireEqual(t, ok, true, "refresh message=%T", result)
+		testutil.RequireEqual(t, msg.err, nil, "%s", msg.err)
+
 		return sentinel
 	})
-	if !errors.Is(err, sentinel) {
-		t.Fatalf("error=%v", err)
-	}
+	testutil.RequireEqual(t, errors.Is(err, sentinel), true, "error=%v", err)
 }
 
 func TestRunStartupFailures(t *testing.T) {
@@ -54,29 +52,13 @@ func TestRunStartupFailures(t *testing.T) {
 			t.Setenv("HOME", config)
 			t.Setenv("XDG_CONFIG_HOME", config)
 			config, err := os.UserConfigDir()
-			if err != nil {
-				t.Fatal(err)
-			}
-			if err := os.MkdirAll(config, 0700); err != nil {
-				t.Fatal(err)
-			}
+			testutil.NoError(t, err)
+			testutil.NoError(t, os.MkdirAll(config, 0700))
+
 			store := comments.Store{Path: filepath.Join(t.TempDir(), "comments.db")}
-			if failure == "comments" {
-				if err := os.WriteFile(store.Path, []byte("invalid database"), 0600); err != nil {
-					t.Fatal(err)
-				}
-			} else {
-				if err := os.Mkdir(filepath.Join(config, "review-my-slop"), 0700); err != nil {
-					t.Fatal(err)
-				}
-				if err := os.WriteFile(filepath.Join(config, "review-my-slop", "ui.json"), []byte("invalid json"), 0600); err != nil {
-					t.Fatal(err)
-				}
-			}
+			prepareStartupFailure(t, failure, config, store.Path)
 			err = start(context.Background(), modelPatch(), store, nil, func() size { return defaultSize }, func(model, ...tea.ProgramOption) error { t.Fatal("program started after startup failure"); return nil })
-			if err == nil {
-				t.Fatal("expected startup error")
-			}
+			testutil.RequireEqual(t, err != nil, true, "%s", "expected startup error")
 		})
 	}
 }
@@ -90,35 +72,52 @@ func TestRunContextCancellation(t *testing.T) {
 		_, err := tea.NewProgram(m, options...).Run()
 		return err
 	})
-	if !errors.Is(err, tea.ErrProgramKilled) {
-		t.Fatalf("error=%v", err)
-	}
+	testutil.RequireEqual(t, errors.Is(err, tea.ErrProgramKilled), true, "error=%v", err)
 }
 
 func TestTerminalSizeDiscoveryOrder(t *testing.T) {
-	for _, success := range []int{0, 1, 2} {
-		calls := 0
-		got := discoverTerminalSize(func(fd uintptr) (int, int, error) {
-			expected := os.Stdin.Fd()
-			if calls == 1 {
-				expected = os.Stdout.Fd()
-			}
-			if fd != expected {
-				t.Fatalf("fd=%v want=%v", fd, expected)
-			}
-			current := calls
-			calls++
-			if current == success {
-				return 120, 40, nil
-			}
-			return 0, 0, errors.New("not a terminal")
+	for _, tc := range []struct {
+		name           string
+		success, calls int
+		want           size
+	}{
+		{"stdin", 0, 1, size{Width: 120, Height: 40}},
+		{"stdout", 1, 2, size{Width: 120, Height: 40}},
+		{"fallback", 2, 2, defaultSize},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			probe := terminalSizeProbe{t: t, success: tc.success}
+			got := discoverTerminalSize(probe.getSize)
+			testutil.RequireEqual(t, got, tc.want, "size=%v want=%v", got, tc.want)
+			testutil.RequireEqual(t, probe.calls, tc.calls, "calls=%d want=%d", probe.calls, tc.calls)
 		})
-		want := size{Width: 120, Height: 40}
-		if success == 2 {
-			want = defaultSize
-		}
-		if got != want || calls != min(success+1, 2) {
-			t.Fatalf("size=%v calls=%d", got, calls)
-		}
 	}
+}
+
+func prepareStartupFailure(t *testing.T, failure, config, database string) {
+	t.Helper()
+	if failure == "comments" {
+		testutil.NoError(t, os.WriteFile(database, []byte("invalid database"), 0600))
+	} else {
+		testutil.NoError(t, os.Mkdir(filepath.Join(config, "review-my-slop"), 0700))
+		testutil.NoError(t, os.WriteFile(filepath.Join(config, "review-my-slop", "ui.json"), []byte("invalid json"), 0600))
+	}
+}
+
+type terminalSizeProbe struct {
+	t              *testing.T
+	success, calls int
+}
+
+func (p *terminalSizeProbe) getSize(fd uintptr) (width, height int, err error) {
+	p.t.Helper()
+	descriptors := []uintptr{os.Stdin.Fd(), os.Stdout.Fd()}
+	testutil.RequireEqual(p.t, p.calls < len(descriptors), true, "unexpected terminal size call: %d", p.calls)
+	testutil.RequireEqual(p.t, fd, descriptors[p.calls], "fd=%v want=%v", fd, descriptors[p.calls])
+	current := p.calls
+	p.calls++
+	if current == p.success {
+		return 120, 40, nil
+	}
+	return 0, 0, errors.New("not a terminal")
 }

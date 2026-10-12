@@ -187,24 +187,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.width, m.height = msg.Width, msg.Height
 		m.resizeScreens()
 	case commentEditorFinishedMsg:
-		if msg.err != nil {
-			m.err = msg.err
-			m.clearCommentEdit()
-		} else {
-			m.edit.body = msg.body
-			m.finishCommentEdit()
-		}
+		m.finishCommentEditor(msg)
 	case commentsLoadedMsg:
-		if msg.revision != m.comments.revision {
-			break
-		}
-		if msg.err != nil {
-			m.err = fmt.Errorf("refresh comments: %w", msg.err)
-		} else {
-			m.comments.items = msg.comments
-			m.commentView.Update(m.comments.items)
-			m.err = nil
-		}
+		m.finishCommentsLoad(msg)
 	case sourceEditorFinishedMsg:
 		if msg.err != nil {
 			m.err = fmt.Errorf("editor: %w", msg.err)
@@ -214,15 +199,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.FocusMsg:
 		return m, m.loadRefresh()
 	case refreshDiffMsg:
-		if msg.kind != m.kind {
-			return m, nil
-		}
-		if msg.err != nil {
-			m.err = fmt.Errorf("refresh diff: %w", msg.err)
-		} else {
-			m.updatePatch(msg.patch)
-			m.err = nil
-		}
+		m.finishDiffRefresh(msg)
 	case tea.KeyPressMsg:
 		m.diffView.EndDrag()
 		return m.updateKey(msg)
@@ -232,6 +209,41 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	return m, nil
+}
+
+func (m *model) finishCommentEditor(msg commentEditorFinishedMsg) {
+	if msg.err != nil {
+		m.err = msg.err
+		m.clearCommentEdit()
+		return
+	}
+	m.edit.body = msg.body
+	m.finishCommentEdit()
+}
+
+func (m *model) finishCommentsLoad(msg commentsLoadedMsg) {
+	if msg.revision != m.comments.revision {
+		return
+	}
+	if msg.err != nil {
+		m.err = fmt.Errorf("refresh comments: %w", msg.err)
+		return
+	}
+	m.comments.items = msg.comments
+	m.commentView.Update(m.comments.items)
+	m.err = nil
+}
+
+func (m *model) finishDiffRefresh(msg refreshDiffMsg) {
+	if msg.kind != m.kind {
+		return
+	}
+	if msg.err != nil {
+		m.err = fmt.Errorf("refresh diff: %w", msg.err)
+		return
+	}
+	m.updatePatch(msg.patch)
+	m.err = nil
 }
 
 func (m model) loadRefresh() tea.Cmd {
@@ -276,6 +288,10 @@ func (m model) updateKey(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	if m.mode == modeSearch {
 		return m.updateSearch(name, key)
 	}
+	return m.updateBrowseKey(name)
+}
+
+func (m model) updateBrowseKey(name string) (tea.Model, tea.Cmd) {
 	m.err = nil
 	name = m.keys.Feed(name)
 	if m.navigate(name) {
@@ -295,19 +311,9 @@ func (m model) updateKey(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	case "esc":
 		m.diffView.ClearSelection()
 	case "c":
-		cmd, err := m.beginComment()
-		if err != nil {
-			m.err = err
-			return m, nil
-		}
-		return m, cmd
+		return m.startCommentEditor()
 	case "e":
-		cmd, err := m.openCurrentLine()
-		if err != nil {
-			m.err = err
-			return m, nil
-		}
-		return m, cmd
+		return m.startSourceEditor()
 	case "C":
 		m.mode = modeComments
 		m.commentView.Update(m.comments.items)
@@ -315,20 +321,41 @@ func (m model) updateKey(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	case "R":
 		return m, m.loadRefresh()
 	case "tab":
-		if m.currentPatch.Branch == "" {
-			return m, nil
-		}
-		if m.kind == patch.Unstaged {
-			m.kind = patch.Branch
-		} else {
-			m.kind = patch.Unstaged
-		}
-		m.diffView.ClearSelection()
-		return m, m.loadRefresh()
+		return m.switchPatchKind()
 	case "t":
 		m.toggleSideBySide()
 	default:
 		return m, nil
 	}
 	return m, nil
+}
+func (m model) startCommentEditor() (tea.Model, tea.Cmd) {
+	cmd, err := m.beginComment()
+	if err != nil {
+		m.err = err
+		return m, nil
+	}
+	return m, cmd
+}
+
+func (m model) startSourceEditor() (tea.Model, tea.Cmd) {
+	cmd, err := m.openCurrentLine()
+	if err != nil {
+		m.err = err
+		return m, nil
+	}
+	return m, cmd
+}
+
+func (m model) switchPatchKind() (tea.Model, tea.Cmd) {
+	if m.currentPatch.Branch == "" {
+		return m, nil
+	}
+	if m.kind == patch.Unstaged {
+		m.kind = patch.Branch
+	} else {
+		m.kind = patch.Unstaged
+	}
+	m.diffView.ClearSelection()
+	return m, m.loadRefresh()
 }

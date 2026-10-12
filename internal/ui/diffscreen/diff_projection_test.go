@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/eskelinenantti/review-my-slop/internal/patch"
+	"github.com/eskelinenantti/review-my-slop/internal/testutil"
 )
 
 func TestSplitRowsPairOnlyAdjacentChangeBlocks(t *testing.T) {
@@ -29,25 +30,33 @@ func TestSplitRowsPairOnlyAdjacentChangeBlocks(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			p := patch.Patch{Files: []patch.File{{DisplayPath: "file.go", Hunks: []patch.Hunk{{Header: "@@", Lines: tc.lines}}}}}
 			v := newSideBySideView(p, true)
-			var got [][2]string
-			for row, entry := range v.rows {
-				if entry.kind != lineRow {
-					continue
-				}
-				var texts [2]string
-				for _, pane := range []diffPane{left, right} {
-					if cursor, ok := v.cursorAt(row, pane); ok {
-						line, _ := v.line(cursor)
-						texts[pane] = line.Text
-					}
-				}
-				got = append(got, texts)
-			}
-			if !slices.Equal(got, tc.want) {
-				t.Fatalf("paired source lines=%v, want %v", got, tc.want)
-			}
+			got := projectedTexts(v)
+			testutil.RequireEqual(t, slices.Equal(got, tc.want), true, "paired source lines=%v, want %v", got, tc.want)
 		})
 	}
+}
+
+func projectedTexts(v *diffView) [][2]string {
+	var got [][2]string
+	for row, entry := range v.rows {
+		if entry.kind != lineRow {
+			continue
+		}
+		texts := projectedRowTexts(v, row)
+		got = append(got, texts)
+	}
+	return got
+}
+
+func projectedRowTexts(v *diffView, row int) [2]string {
+	var texts [2]string
+	for _, pane := range []diffPane{left, right} {
+		if cursor, ok := v.cursorAt(row, pane); ok {
+			line, _ := v.line(cursor)
+			texts[pane] = line.Text
+		}
+	}
+	return texts
 }
 
 func TestCursorRestorationPrioritizesIdentityBeforeDistance(t *testing.T) {
@@ -75,18 +84,21 @@ func TestCursorRestorationPrioritizesIdentityBeforeDistance(t *testing.T) {
 		{"nearest remaining line", []patch.Line{context, code(patch.Context, "nearby", 2)}, code(patch.Context, "nearby", 2)},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			for _, header := range []string{"@@", "@@ -10,2 +10,3 @@"} {
-				t.Run(header, func(t *testing.T) {
-					p := makePatch(tc.lines)
-					p.Files[0].Hunks[0].Header = header
-					next := newUnifiedView(p, true)
-					restored, ok := next.findCursor(identity)
-					line, _ := next.line(restored)
-					if !ok || line != tc.want {
-						t.Fatalf("restored=%#v, want %#v", line, tc.want)
-					}
-				})
-			}
+			assertCursorRestoration(t, makePatch(tc.lines), identity, tc.want)
+		})
+	}
+}
+
+func assertCursorRestoration(t *testing.T, p patch.Patch, identity cursorIdentity, want patch.Line) {
+	t.Helper()
+	for _, header := range []string{"@@", "@@ -10,2 +10,3 @@"} {
+		t.Run(header, func(t *testing.T) {
+			p.Files[0].Hunks[0].Header = header
+			next := newUnifiedView(p, true)
+			restored, ok := next.findCursor(identity)
+			line, _ := next.line(restored)
+			testutil.RequireEqual(t, ok, true, "restored=%#v, want %#v", line, want)
+			testutil.RequireEqual(t, line, want, "restored=%#v, want %#v", line, want)
 		})
 	}
 }
