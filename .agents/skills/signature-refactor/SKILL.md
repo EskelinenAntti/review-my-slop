@@ -13,6 +13,9 @@ description: Refactor this repository's production Go abstractions until fresh L
   including file headers, but no source, documentation, diffs, or prior reviews.
   They score responsibility/inputs/outputs together and cohesion separately
   from 1 to 3; cohesion below 3 identifies every affected level with `S/F/P`.
+- Score 3 only when the name tells an unfamiliar Go developer what concretely
+  happens. Flag vague verbs, stacked nouns, and unspecified representations or
+  transformations. Familiar words do not make their combination clear.
 - Verify copied inventory bytes and SHA-256 digests, exactly one judgment per
   signature (no file headers), valid scores, and reasons for every score below
   3. Reject invalid rounds. Do not automate judgments or steer scores.
