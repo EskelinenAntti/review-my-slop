@@ -42,7 +42,6 @@ func commentDraft(body string, anchor comments.Anchor) string {
 		return body
 	}
 	lines := suggestionLines(anchor.QuotedLines)
-	// strings.Builder writes always succeed.
 	var draft strings.Builder
 	_, _ = draft.WriteString(body)
 	if body != "" && !strings.HasSuffix(body, "\n") {
@@ -67,7 +66,6 @@ func stripUnchangedSuggestion(body string, quoted []string) string {
 	}
 	lines := suggestionLines(quoted)
 	fence := contextFence(lines)
-	// strings.Builder writes always succeed.
 	var suggestion strings.Builder
 	_, _ = suggestion.WriteString(fence)
 	_, _ = suggestion.WriteString("suggestion\n")

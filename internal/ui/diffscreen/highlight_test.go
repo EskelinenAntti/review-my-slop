@@ -83,7 +83,6 @@ func answer(value int) string {
 }
 
 func stripANSI(value string) string {
-	// strings.Builder writes always succeed.
 	var result strings.Builder
 	for len(value) > 0 {
 		start := strings.Index(value, "\x1b[")

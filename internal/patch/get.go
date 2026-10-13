@@ -536,7 +536,6 @@ func visibleStrings(values []string) []string {
 }
 
 func visibleSource(value string) string {
-	// strings.Builder writes always succeed.
 	var result strings.Builder
 	for _, r := range value {
 		switch {
