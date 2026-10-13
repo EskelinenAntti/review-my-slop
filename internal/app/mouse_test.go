@@ -75,7 +75,7 @@ func TestMouseClickCommentsAndIgnoreInformationalUI(t *testing.T) {
 		modeSearch,
 	} {
 		m.mode = mode
-		before := m.renderReviewScreenANSI()
+		before := m.render()
 		m = updateModel(
 			t,
 			m,
@@ -92,7 +92,7 @@ func TestMouseClickCommentsAndIgnoreInformationalUI(t *testing.T) {
 		testutil.RequireEqual(t, !m.quitting, true, "%s",
 			"header/footer click triggered an action",
 		)
-		testutil.RequireEqual(t, m.renderReviewScreenANSI(), before, "%s",
+		testutil.RequireEqual(t, m.render(), before, "%s",
 			"header/footer click triggered an action",
 		)
 	}

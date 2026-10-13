@@ -40,7 +40,7 @@ func TestCommentEditorSuggestionBehaviors(t *testing.T) {
 		if !strings.Contains(
 			draft,
 			"`````suggestion",
-		) || removeUnchangedQuotedSuggestion(
+		) || stripUnchangedSuggestion(
 			draft,
 			anchor.QuotedLines,
 		) != "explain this" {
@@ -59,7 +59,7 @@ func TestCommentEditorSuggestionBehaviors(t *testing.T) {
 	t.Run("edited suggestion remains", func(t *testing.T) {
 		body := "comment\n\n```suggestion\nbetter()\n```\n"
 		quoted := []string{"-old()", "+new()"}
-		if got := removeUnchangedQuotedSuggestion(body, quoted); got != body {
+		if got := stripUnchangedSuggestion(body, quoted); got != body {
 			t.Fatalf("body = %q", got)
 		}
 	})
@@ -90,7 +90,7 @@ func TestExternalEditorCommandReadsEditedDraft(t *testing.T) {
 func TestCommentDraftRoundTrip(t *testing.T) {
 	anchor := comments.Anchor{QuotedLines: []string{" old", "-gone", "+new"}}
 	draft := commentDraft("body", anchor)
-	got := removeUnchangedQuotedSuggestion(draft, anchor.QuotedLines)
+	got := stripUnchangedSuggestion(draft, anchor.QuotedLines)
 	if got != "body" {
 		t.Fatalf("unchanged suggestion result = %q", got)
 	}

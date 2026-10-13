@@ -12,9 +12,9 @@ import (
 	"github.com/eskelinenantti/review-my-slop/internal/patch"
 )
 
-func (m model) handleCommentsScreenKey(keyName string) (tea.Model, tea.Cmd) {
+func (m model) updateComments(name string) (tea.Model, tea.Cmd) {
 	m.err = nil
-	switch keyName {
+	switch name {
 	case "esc", "C", "q":
 		m.mode = modeBrowse
 	case "ctrl+c":
@@ -50,7 +50,7 @@ func (m model) editSelectedComment() (tea.Model, tea.Cmd) {
 	cmd, err := m.openCommentEditor()
 	if err != nil {
 		m.err = err
-		m.edit.resetDraft()
+		m.clearCommentEdit()
 		return m, nil
 	}
 	return m, cmd
@@ -65,42 +65,42 @@ func (m *model) beginComment() (tea.Cmd, error) {
 	m.edit.body, m.edit.index, m.edit.anchor = "", -1, anchor
 	cmd, err := m.openCommentEditor()
 	if err != nil {
-		m.edit.resetDraft()
+		m.clearCommentEdit()
 		return nil, err
 	}
 	return cmd, nil
 }
 
-func (m *model) persistCommentEdit(draft commentEdit) {
-	body := strings.TrimSpace(draft.body)
+func (m *model) finishCommentEdit() {
+	body := strings.TrimSpace(m.edit.body)
 	if body == "" {
-		if draft.index >= 0 {
-			m.deleteComment(draft.index)
+		if m.edit.index >= 0 {
+			m.deleteComment(m.edit.index)
 		}
-		m.edit.resetDraft()
+		m.clearCommentEdit()
 		m.diffView.ClearSelection()
 		return
 	}
 	if m.save == nil {
 		m.err = errors.New("comment storage is unavailable")
-		m.edit.resetDraft()
+		m.clearCommentEdit()
 		return
 	}
 	var comment comments.Comment
-	if draft.index >= 0 {
-		comment = m.comments.items[draft.index]
+	if m.edit.index >= 0 {
+		comment = m.comments.items[m.edit.index]
 		comment.Body = body
 	} else {
-		comment = comments.Comment{Anchor: draft.anchor, Body: body}
+		comment = comments.Comment{Anchor: m.edit.anchor, Body: body}
 	}
 	saved, err := m.save(comment, m.currentPatch)
 	if err != nil {
 		m.err = err
-		m.edit.resetDraft()
+		m.clearCommentEdit()
 		return
 	}
-	if draft.index >= 0 {
-		m.comments.items[draft.index] = saved
+	if m.edit.index >= 0 {
+		m.comments.items[m.edit.index] = saved
 	} else {
 		m.comments.items = append(m.comments.items, saved)
 		m.commentView.Update(m.comments.items)
@@ -108,7 +108,7 @@ func (m *model) persistCommentEdit(draft commentEdit) {
 	}
 	m.comments.revision++
 	m.commentView.Update(m.comments.items)
-	m.edit.resetDraft()
+	m.clearCommentEdit()
 	m.err = nil
 	m.diffView.ClearSelection()
 }
@@ -134,8 +134,8 @@ func (m *model) deleteComment(index int) {
 	m.err = nil
 }
 
-func (draft *commentEdit) resetDraft() {
-	*draft = commentEdit{index: -1}
+func (m *model) clearCommentEdit() {
+	m.edit = commentEdit{index: -1}
 }
 
 func (m model) openCurrentLine() (tea.Cmd, error) {
@@ -197,7 +197,6 @@ func commentAnchor(file patch.File, lines []patch.Line) comments.Anchor {
 		path = file.OldPath
 	}
 	anchor := comments.Anchor{FilePath: path}
-	var oldLines, newLines sourceLineRange
 	for _, line := range lines {
 		prefix := " "
 		if line.Kind == patch.Addition {
@@ -207,27 +206,19 @@ func commentAnchor(file patch.File, lines []patch.Line) comments.Anchor {
 			prefix = "-"
 		}
 		anchor.QuotedLines = append(anchor.QuotedLines, prefix+line.Text)
-		oldLines.includeLine(line.OldNumber)
-		newLines.includeLine(line.NewNumber)
+		accumulateRange(&anchor.OldStart, &anchor.OldEnd, int(line.OldNumber))
+		accumulateRange(&anchor.NewStart, &anchor.NewEnd, int(line.NewNumber))
 	}
-	anchor.OldStart, anchor.OldEnd = oldLines.first, oldLines.last
-	anchor.NewStart, anchor.NewEnd = newLines.first, newLines.last
 	return anchor
 }
-
-// sourceLineRange tracks inclusive bounds, ignoring absent diff line numbers.
-type sourceLineRange struct {
-	first, last int
-}
-
-func (r *sourceLineRange) includeLine(number patch.LineNumber) {
-	if number == 0 {
+func accumulateRange(start, end *int, value int) {
+	if value == 0 {
 		return
 	}
-	if r.first == 0 || int(number) < r.first {
-		r.first = int(number)
+	if *start == 0 || value < *start {
+		*start = value
 	}
-	if int(number) > r.last {
-		r.last = int(number)
+	if value > *end {
+		*end = value
 	}
 }

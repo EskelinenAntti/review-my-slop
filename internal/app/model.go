@@ -153,7 +153,7 @@ func newModel(
 		),
 	}
 	m.diffView = diffscreen.New(p, m.diffOptions)
-	m.fitReviewScreensToWindow()
+	m.resizeScreens()
 	return m
 }
 
@@ -216,21 +216,21 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
-		m.fitReviewScreensToWindow()
+		m.resizeScreens()
 
 	case tea.KeyPressMsg:
 		m.diffView.EndDrag()
-		return m.handleActiveScreenKey(msg)
+		return m.updateKey(msg)
 	case tea.MouseClickMsg, tea.MouseMotionMsg,
 		tea.MouseReleaseMsg, tea.MouseWheelMsg:
 		m.updateMouse(msg)
 	default:
-		return m.handleEditorAndRefreshEvents(msg)
+		return m.updateWorkflow(msg)
 	}
 	return m, nil
 }
 
-func (m model) handleEditorAndRefreshEvents(msg tea.Msg) (tea.Model, tea.Cmd) {
+func (m model) updateWorkflow(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case commentEditorFinishedMsg:
 		m.finishCommentEditor(msg)
@@ -241,9 +241,9 @@ func (m model) handleEditorAndRefreshEvents(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.err = fmt.Errorf("editor: %w", msg.err)
 			break
 		}
-		return m, m.requestDiffRefresh()
+		return m, m.loadRefresh()
 	case tea.FocusMsg:
-		return m, m.requestDiffRefresh()
+		return m, m.loadRefresh()
 	case refreshDiffMsg:
 		m.finishDiffRefresh(msg)
 	default:
@@ -255,11 +255,11 @@ func (m model) handleEditorAndRefreshEvents(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m *model) finishCommentEditor(msg commentEditorFinishedMsg) {
 	if msg.err != nil {
 		m.err = msg.err
-		m.edit.resetDraft()
+		m.clearCommentEdit()
 		return
 	}
 	m.edit.body = msg.body
-	m.persistCommentEdit(m.edit)
+	m.finishCommentEdit()
 }
 
 func (m *model) finishCommentsLoad(msg commentsLoadedMsg) {
@@ -287,7 +287,7 @@ func (m *model) finishDiffRefresh(msg refreshDiffMsg) {
 	m.err = nil
 }
 
-func (m model) requestDiffRefresh() tea.Cmd {
+func (m model) loadRefresh() tea.Cmd {
 	if m.refresh == nil {
 		return nil
 	}
@@ -317,15 +317,15 @@ func (m *model) updatePatch(p patch.Patch) {
 	m.currentPatch = p
 	m.diffView.Update(p)
 }
-func (m *model) fitReviewScreensToWindow() {
+func (m *model) resizeScreens() {
 	m.diffView.Resize(m.width, m.height)
 	m.commentView.Resize(m.width, m.height)
 }
 
-func (m model) handleActiveScreenKey(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+func (m model) updateKey(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	name := key.String()
 	if m.mode == modeComments {
-		return m.handleCommentsScreenKey(name)
+		return m.updateComments(name)
 	}
 	if m.mode == modeHelp {
 		if name == "esc" || name == "?" || name == "q" {
@@ -336,16 +336,16 @@ func (m model) handleActiveScreenKey(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	if m.mode == modeSearch {
 		return m.updateSearch(name, key)
 	}
-	return m.handleDiffReviewKey(name)
+	return m.updateBrowseKey(name)
 }
 
-func (m model) handleDiffReviewKey(keyName string) (tea.Model, tea.Cmd) {
+func (m model) updateBrowseKey(name string) (tea.Model, tea.Cmd) {
 	m.err = nil
-	keyName = m.keys.Feed(keyName)
-	if m.applyDiffNavigationKey(keyName) {
+	name = m.keys.Feed(name)
+	if m.navigate(name) {
 		return m, nil
 	}
-	switch keyName {
+	switch name {
 	case "ctrl+c", "q":
 		m.quitting = true
 		return m, tea.Quit
@@ -354,15 +354,15 @@ func (m model) handleDiffReviewKey(keyName string) (tea.Model, tea.Cmd) {
 	case "e":
 		return m.startSourceEditor()
 	case "R":
-		return m, m.requestDiffRefresh()
+		return m, m.loadRefresh()
 	case "tab":
-		return m.toggleWorkingTreeAndBranchDiff()
+		return m.switchPatchKind()
 	default:
-		return m.handleReviewScreenModeKey(keyName)
+		return m.updateBrowseView(name)
 	}
 }
-func (m model) handleReviewScreenModeKey(keyName string) (tea.Model, tea.Cmd) {
-	switch keyName {
+func (m model) updateBrowseView(name string) (tea.Model, tea.Cmd) {
+	switch name {
 	case "?":
 		m.mode = modeHelp
 	case "/":
@@ -402,7 +402,7 @@ func (m model) startSourceEditor() (tea.Model, tea.Cmd) {
 	return m, cmd
 }
 
-func (m model) toggleWorkingTreeAndBranchDiff() (tea.Model, tea.Cmd) {
+func (m model) switchPatchKind() (tea.Model, tea.Cmd) {
 	if m.currentPatch.Branch == "" {
 		return m, nil
 	}
@@ -412,5 +412,5 @@ func (m model) toggleWorkingTreeAndBranchDiff() (tea.Model, tea.Cmd) {
 		m.kind = patch.Unstaged
 	}
 	m.diffView.ClearSelection()
-	return m, m.requestDiffRefresh()
+	return m, m.loadRefresh()
 }

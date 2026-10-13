@@ -63,7 +63,7 @@ func (v *diffView) appendFileRows(fileIndex int, file patch.File) {
 			},
 		)
 	}
-	highlighted := v.highlightFileSources(&file)
+	highlighted := v.highlight(&file)
 	for hunkIndex, hunk := range file.Hunks {
 		v.appendHunkRows(fileIndex, hunkIndex, hunk, highlighted)
 	}
@@ -72,7 +72,7 @@ func (v *diffView) appendFileRows(fileIndex int, file patch.File) {
 func (v *diffView) appendHunkRows(
 	fileIndex, hunkIndex int,
 	hunk patch.Hunk,
-	highlighted highlightedFileSources,
+	highlighted pair,
 ) {
 	v.rows = append(
 		v.rows,
@@ -82,58 +82,51 @@ func (v *diffView) appendHunkRows(
 			hunk:      hunkIndex,
 			leftLine:  -1,
 			rightLine: -1,
-			text:      formatHunkHeader(hunk.Header),
+			text:      hunkHeader(hunk.Header),
 		},
 	)
-	for _, indices := range v.projectPaneLineIndices(hunk.Lines) {
+	for _, indices := range v.lineRows(hunk.Lines) {
 		row := entry{
 			kind:      lineRow,
 			file:      fileIndex,
 			hunk:      hunkIndex,
-			leftLine:  indices.Left,
-			rightLine: indices.Right,
+			leftLine:  indices[0],
+			rightLine: indices[1],
 		}
-		v.setHighlightedRowText(&row, hunk.Lines, highlighted)
+		v.highlightRow(&row, hunk.Lines, highlighted)
 		v.rows = append(v.rows, row)
 	}
 }
 
-func (v *diffView) setHighlightedRowText(
+func (v *diffView) highlightRow(
 	row *entry,
 	lines []patch.Line,
-	highlighted highlightedFileSources,
+	highlighted pair,
 ) {
 	if !v.split {
-		row.text = highlighted.lineText(lines[row.rightLine])
+		row.text = sourceText(highlighted, lines[row.rightLine])
 		return
 	}
 	if row.leftLine >= 0 {
-		row.left = highlighted.lineText(lines[row.leftLine])
+		row.left = sourceText(highlighted, lines[row.leftLine])
 	}
 	if row.rightLine >= 0 {
-		row.right = highlighted.lineText(lines[row.rightLine])
+		row.right = sourceText(highlighted, lines[row.rightLine])
 	}
 }
 
-// projectPaneLineIndices maps source lines to display rows. Split mode pairs
-// each deletion
+// lineRows maps source lines to display rows. Split mode pairs each deletion
 // block with the immediately following additions; unmatched panes use -1.
-type paneLineIndices struct {
-	Left, Right int
-}
-
-func (v *diffView) projectPaneLineIndices(
-	lines []patch.Line,
-) []paneLineIndices {
-	rows := make([]paneLineIndices, 0, len(lines))
+func (v *diffView) lineRows(lines []patch.Line) [][2]int {
+	rows := make([][2]int, 0, len(lines))
 	for index := 0; index < len(lines); {
 		if !v.split || lines[index].Kind == patch.Context {
-			rows = append(rows, paneLineIndices{Left: index, Right: index})
+			rows = append(rows, [2]int{index, index})
 			index++
 			continue
 		}
 		if lines[index].Kind == patch.Addition {
-			rows = append(rows, paneLineIndices{Left: -1, Right: index})
+			rows = append(rows, [2]int{-1, index})
 			index++
 			continue
 		}
@@ -152,43 +145,41 @@ func changeBlockEnd(lines []patch.Line, start int, kind patch.LineKind) int {
 	return start
 }
 
-func pairedChangeRows(removedStart, addedStart, end int) []paneLineIndices {
+func pairedChangeRows(removedStart, addedStart, end int) [][2]int {
 	count := max(addedStart-removedStart, end-addedStart)
-	rows := make([]paneLineIndices, 0, count)
+	rows := make([][2]int, 0, count)
 	for offset := 0; offset < count; offset++ {
-		pair := paneLineIndices{Left: -1, Right: -1}
+		pair := [2]int{-1, -1}
 		if removedStart+offset < addedStart {
-			pair.Left = removedStart + offset
+			pair[0] = removedStart + offset
 		}
 		if addedStart+offset < end {
-			pair.Right = addedStart + offset
+			pair[1] = addedStart + offset
 		}
 		rows = append(rows, pair)
 	}
 	return rows
 }
 
-func (highlighted highlightedFileSources) lineText(line patch.Line) string {
+func sourceText(highlighted pair, line patch.Line) string {
 	if line.Kind == patch.Deletion {
 		return highlightedLine(highlighted.Old, line.OldNumber, line.Text)
 	}
 	return highlightedLine(highlighted.New, line.NewNumber, line.Text)
 }
 
-func (v *diffView) highlightFileSources(
-	file *patch.File,
-) highlightedFileSources {
+func (v *diffView) highlight(file *patch.File) pair {
 	theme := lightTheme
 	if v.dark {
 		theme = darkTheme
 	}
-	return highlightedFileSources{
-		Old: renderHighlightedSourceLines(file.OldPath, file.OldSource, theme),
-		New: renderHighlightedSourceLines(file.NewPath, file.NewSource, theme),
+	return pair{
+		Old: render(file.OldPath, file.OldSource, theme),
+		New: render(file.NewPath, file.NewSource, theme),
 	}
 }
 
-func formatHunkHeader(header string) string {
+func hunkHeader(header string) string {
 	if strings.HasPrefix(header, "@@") {
 		return header
 	}

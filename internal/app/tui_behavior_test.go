@@ -147,10 +147,7 @@ func TestCommentsCanBeViewedEditedAndDeleted(t *testing.T) {
 	testutil.RequireEqual(t, m.mode, modeComments, "%s",
 		"comments did not open",
 	)
-	testutil.RequireEqual(t,
-		strings.Contains(m.renderReviewScreenANSI(),
-			"old body"),
-		true,
+	testutil.RequireEqual(t, strings.Contains(m.render(), "old body"), true,
 		"%s", "comments did not open",
 	)
 
@@ -276,13 +273,11 @@ func TestCommentDeleteFailureKeepsCommentAndShowsError(t *testing.T) {
 	m = updateModel(t, m, textKey("C"))
 	m = updateModel(t, m, textKey("D"))
 	testutil.RequireEqual(t, len(m.comments.items), 1, "comments=%#v render=%q",
-		m.comments.items, m.renderReviewScreenANSI(),
+		m.comments.items, m.render(),
 	)
 	testutil.RequireEqual(t,
-		strings.Contains(ansi.Strip(m.renderReviewScreenANSI()),
-			"delete failed"),
-		true,
-		"comments=%#v render=%q", m.comments.items, m.renderReviewScreenANSI(),
+		strings.Contains(ansi.Strip(m.render()), "delete failed"), true,
+		"comments=%#v render=%q", m.comments.items, m.render(),
 	)
 }
 
@@ -319,11 +314,7 @@ func TestVimSequencesAndLayoutToggle(t *testing.T) {
 	testutil.RequireEqual(t, m.diffOptions.SideBySide, true, "%s",
 		"split view not enabled",
 	)
-	testutil.RequireEqual(t,
-		strings.Contains(m.renderReviewScreenANSI(),
-			"│"),
-		true,
-		"%s",
+	testutil.RequireEqual(t, strings.Contains(m.render(), "│"), true, "%s",
 		"split view not enabled",
 	)
 
@@ -413,8 +404,7 @@ func TestPendingKeyIsConsumedByNextKey(t *testing.T) {
 
 func TestStatusShowsBasicBindingsAndHelpShowsCompleteKeyMap(t *testing.T) {
 	m := testModel(coveragePatch(), nil, nil)
-	status := ansi.Strip(strings.Split(m.renderReviewScreenANSI(),
-		"\n")[m.height-2])
+	status := ansi.Strip(strings.Split(m.render(), "\n")[m.height-2])
 	testutil.RequireEqual(t, strings.HasPrefix(status, "j/k/h/l move"), true,
 		"status=%q", status,
 	)
@@ -440,40 +430,25 @@ func TestStatusShowsBasicBindingsAndHelpShowsCompleteKeyMap(t *testing.T) {
 func TestStatusShowsProgressOnlyAfterViewportMoves(t *testing.T) {
 	m := testModel(longModelPatch(), nil, nil)
 	m = updateModel(t, m, tea.WindowSizeMsg{Width: 80, Height: 9})
-	testutil.RequireEqual(t,
-		!strings.Contains(m.renderReviewScreenANSI(),
-			"%"),
-		true,
-		"%s",
+	testutil.RequireEqual(t, !strings.Contains(m.render(), "%"), true, "%s",
 		"initial view shows progress",
 	)
 
 	m = updateModel(t, m, textKey("l"))
-	testutil.RequireEqual(t,
-		!strings.Contains(m.renderReviewScreenANSI(),
-			"%"),
-		true,
-		"%s",
+	testutil.RequireEqual(t, !strings.Contains(m.render(), "%"), true, "%s",
 		"horizontal scroll shows progress",
 	)
 
 	for range 10 {
 		m = updateModel(t, m, textKey("j"))
 	}
-	testutil.RequireEqual(t,
-		strings.Contains(m.renderReviewScreenANSI(),
-			"%)"),
-		true,
-		"%s",
+	testutil.RequireEqual(t, strings.Contains(m.render(), "%)"), true, "%s",
 		"scrolled view hides progress",
 	)
 
 	m = updateModel(t, m, textKey("G"))
 	testutil.RequireEqual(t,
-		strings.Contains(m.renderReviewScreenANSI(),
-			"local changes (100%)"),
-		true,
-		"%s",
+		strings.Contains(m.render(), "local changes (100%)"), true, "%s",
 		"final view hides progress",
 	)
 }
@@ -481,11 +456,7 @@ func TestStatusShowsProgressOnlyAfterViewportMoves(t *testing.T) {
 func TestStatusHidesProgressWhenDiffFitsViewport(t *testing.T) {
 	m := testModel(coveragePatch(), nil, nil)
 	m = updateModel(t, m, tea.WindowSizeMsg{Width: 100, Height: 100})
-	testutil.RequireEqual(t,
-		!strings.Contains(m.renderReviewScreenANSI(),
-			"%)"),
-		true,
-		"%s",
+	testutil.RequireEqual(t, !strings.Contains(m.render(), "%)"), true, "%s",
 		"fitting diff shows progress",
 	)
 }
@@ -601,9 +572,7 @@ func TestSourceEditorCompletionRefreshesDiff(t *testing.T) {
 
 func TestHeaderShowsAddedAndRemovedLineCounts(t *testing.T) {
 	header := strings.SplitN(
-		ansi.Strip(testModel(coveragePatch(),
-			nil,
-			nil).renderReviewScreenANSI()),
+		ansi.Strip(testModel(coveragePatch(), nil, nil).render()),
 		"\n",
 		2,
 	)[0]
@@ -641,10 +610,7 @@ func TestSearchMovesIncrementallyRepeatsAndRestoresOrigin(t *testing.T) {
 
 	m = updateModel(t, m, textKey("/"))
 	m = updateModel(t, m, textKey("missing"))
-	testutil.RequireEqual(t,
-		strings.Contains(m.renderReviewScreenANSI(),
-			"no matches"),
-		true,
+	testutil.RequireEqual(t, strings.Contains(m.render(), "no matches"), true,
 		"%s", "missing search did not miss",
 	)
 
@@ -796,21 +762,17 @@ func TestMouseWheelScrollsContentWithoutMovingFocus(t *testing.T) {
 	m = updateModel(t, m, textKey("j"))
 	_, focus, _ := m.diffView.Current()
 	_, selected, _ := m.diffView.Selected()
-	initial := m.renderReviewScreenANSI()
+	initial := m.render()
 	for _, button := range []tea.MouseButton{
 		tea.MouseWheelDown,
 		tea.MouseWheelRight,
 	} {
 		m = updateModel(t, m, tea.MouseWheelMsg{Button: button})
 	}
-	testutil.RequireEqual(t, m.renderReviewScreenANSI() != initial, true, "%s",
+	testutil.RequireEqual(t, m.render() != initial, true, "%s",
 		"wheel did not scroll content",
 	)
-	testutil.RequireEqual(t,
-		strings.Contains(m.renderReviewScreenANSI(),
-			"%)"),
-		true,
-		"%s",
+	testutil.RequireEqual(t, strings.Contains(m.render(), "%)"), true, "%s",
 		"wheel did not scroll content",
 	)
 
@@ -829,7 +791,7 @@ func TestMouseWheelScrollsContentWithoutMovingFocus(t *testing.T) {
 	} {
 		m = updateModel(t, m, tea.MouseWheelMsg{Button: button})
 	}
-	testutil.RequireEqual(t, m.renderReviewScreenANSI(), initial, "%s",
+	testutil.RequireEqual(t, m.render(), initial, "%s",
 		"reverse wheel did not restore content",
 	)
 

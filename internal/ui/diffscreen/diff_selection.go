@@ -37,7 +37,7 @@ func (v *diffView) lines(selection diffSelection) []patch.Line {
 	}
 	lines := make([]patch.Line, 0, last-first+1)
 	for y := first; y <= last; y++ {
-		pane := selection.selectedPaneAtRow(y)
+		pane := selection.paneAt(y)
 		if line, ok := v.line(diffCursor{row: y, pane: pane}); ok {
 			lines = append(lines, line)
 		}
@@ -45,7 +45,7 @@ func (v *diffView) lines(selection diffSelection) []patch.Line {
 	return lines
 }
 
-func (s diffSelection) selectedPaneAtRow(row int) diffPane {
+func (s diffSelection) paneAt(row int) diffPane {
 	if row == s.Last.row {
 		return s.Last.pane
 	}
@@ -91,7 +91,7 @@ func (v *diffView) findCursor(target cursorIdentity) (diffCursor, bool) {
 		if candidate.rank == 3 {
 			return candidate.cursor, true
 		}
-		if candidate.hasHigherRankOrCloserDistanceThan(best) {
+		if candidate.betterThan(best) {
 			best = candidate
 		}
 	}
@@ -103,13 +103,13 @@ type cursorMatch struct {
 	rank, distance int
 }
 
-func (m cursorMatch) hasHigherRankOrCloserDistanceThan(other cursorMatch) bool {
+func (m cursorMatch) betterThan(other cursorMatch) bool {
 	return m.rank > other.rank ||
 		m.rank == other.rank && m.distance < other.distance
 }
 
-func (m cursorMatch) bestRankedMatch(other cursorMatch) cursorMatch {
-	if m.hasHigherRankOrCloserDistanceThan(other) {
+func (m cursorMatch) preferredTo(other cursorMatch) cursorMatch {
+	if m.betterThan(other) {
 		return m
 	}
 	return other
@@ -117,13 +117,13 @@ func (m cursorMatch) bestRankedMatch(other cursorMatch) cursorMatch {
 
 func (v *diffView) matchRow(y int, target cursorIdentity) cursorMatch {
 	current := v.rows[y]
-	if !v.rowBelongsToFileHunk(current, target.file) {
+	if !v.rowInFile(current, target.file) {
 		return cursorMatch{}
 	}
 	best := cursorMatch{}
 	for _, pane := range [2]diffPane{
 		target.cursor.pane,
-		target.cursor.pane.oppositePane(),
+		target.cursor.pane.other(),
 	} {
 		candidate, ok := v.cursorAt(y, pane)
 		if !ok {
@@ -138,12 +138,12 @@ func (v *diffView) matchRow(y int, target cursorIdentity) cursorMatch {
 		if match.rank == 3 {
 			return match
 		}
-		best = match.bestRankedMatch(best)
+		best = match.preferredTo(best)
 	}
 	return best
 }
 
-func (v *diffView) rowBelongsToFileHunk(current entry, file patch.File) bool {
+func (v *diffView) rowInFile(current entry, file patch.File) bool {
 	return current.hunk >= 0 && sameFile(v.patch.Files[current.file], file)
 }
 
@@ -163,12 +163,12 @@ func lineMatchRank(line, target patch.Line) int {
 
 func lineDistance(line, target patch.Line, rowDistance int) int {
 	if line.NewNumber > 0 && target.NewNumber > 0 {
-		return absoluteLineDistance(int(line.NewNumber - target.NewNumber))
+		return abs(int(line.NewNumber - target.NewNumber))
 	}
 	if line.OldNumber > 0 && target.OldNumber > 0 {
-		return absoluteLineDistance(int(line.OldNumber - target.OldNumber))
+		return abs(int(line.OldNumber - target.OldNumber))
 	}
-	return absoluteLineDistance(rowDistance)
+	return abs(rowDistance)
 }
 
 func sameFile(candidate, target patch.File) bool {
@@ -176,11 +176,11 @@ func sameFile(candidate, target patch.File) bool {
 		candidate.NewPath != "" && candidate.NewPath == target.NewPath
 }
 
-func absoluteLineDistance(signedLineOffset int) int {
-	if signedLineOffset < 0 {
-		return -signedLineOffset
+func abs(value int) int {
+	if value < 0 {
+		return -value
 	}
-	return signedLineOffset
+	return value
 }
 
 func highlightedLine(

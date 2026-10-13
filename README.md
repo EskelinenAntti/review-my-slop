@@ -45,11 +45,6 @@ The project is licensed under the [MIT License](LICENSE).
 
 Run `make check` for Revive and `go vet`, and `make test` for race-enabled tests.
 
-Use `go run ./scripts/signatures` to list production function and method
-signatures without implementations. Test files are excluded. See the
-[signature responsibility review workflow](docs/signature-review.md) for the
-fresh-context Luna scoring loop.
-
 `make revive` runs pinned standalone [Revive](https://github.com/revive-lint/revive)
 v1.17.0 through `go run`, so no separate installation is needed. `revive.toml`
 enables only the default checks and keeps all configuration values at their

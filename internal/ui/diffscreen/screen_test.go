@@ -230,7 +230,7 @@ func TestEmptyAndMetadataOnlyPatches(t *testing.T) {
 			t.Fatal("empty view returned focused code")
 		}
 		if _, _, ok := v.Selected(); ok {
-			t.Fatal("empty view returned selectionContainsCursor code")
+			t.Fatal("empty view returned selected code")
 		}
 		testutil.RequireEqual(t, !v.Find(Forward), true, "%s",
 			"empty view found a match",

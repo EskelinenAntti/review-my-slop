@@ -26,22 +26,21 @@ func (v *diffView) cursorAt(y int, pane diffPane) (diffCursor, bool) {
 	return cursor, v.valid(cursor)
 }
 
-func (v *diffView) firstLineCursor() (diffCursor, bool) {
-	if cursor, ok := v.nextLineCursor(-1, right, forward); ok {
+func (v *diffView) first() (diffCursor, bool) {
+	if cursor, ok := v.scan(-1, right, forward); ok {
 		return cursor, true
 	}
-	return v.nextLineCursor(-1, left, forward)
+	return v.scan(-1, left, forward)
 }
 
-func (v *diffView) lastLineCursor() (diffCursor, bool) {
-	cursor, ok := v.nextLineCursor(len(v.rows), right, backward)
-	if ok {
+func (v *diffView) last() (diffCursor, bool) {
+	if cursor, ok := v.scan(len(v.rows), right, backward); ok {
 		return cursor, true
 	}
-	return v.nextLineCursor(len(v.rows), left, backward)
+	return v.scan(len(v.rows), left, backward)
 }
 
-func (v *diffView) nextLineCursor(
+func (v *diffView) scan(
 	start int,
 	pane diffPane,
 	direction direction,
@@ -62,7 +61,7 @@ func (v *diffView) move(
 	if !v.valid(cursor) {
 		return diffCursor{}, false
 	}
-	return v.nextLineCursor(cursor.row, cursor.pane, direction)
+	return v.scan(cursor.row, cursor.pane, direction)
 }
 
 func (v *diffView) search(
@@ -95,7 +94,7 @@ func (v *diffView) searchRow(
 	}
 	panes := []diffPane{pane}
 	if v.split {
-		panes = append(panes, pane.oppositePane())
+		panes = append(panes, pane.other())
 	}
 	for _, candidatePane := range panes {
 		candidate, ok := v.cursorAt(y, candidatePane)
@@ -151,7 +150,7 @@ func (v *diffView) cursorInFile(
 		return candidate, true
 	}
 	if v.split {
-		return v.cursorAt(y, pane.oppositePane())
+		return v.cursorAt(y, pane.other())
 	}
 	return diffCursor{}, false
 }
@@ -166,7 +165,7 @@ func (v *diffView) jumpFile(
 	file, _ := v.file(cursor)
 	y := cursor.row
 	for {
-		next, ok := v.nextLineCursor(y, cursor.pane, direction)
+		next, ok := v.scan(y, cursor.pane, direction)
 		if !ok {
 			return diffCursor{}, false
 		}
@@ -192,7 +191,7 @@ func (v *diffView) switchPane(
 	if candidate, ok := v.previousInFile(cursor, pane); ok {
 		return candidate, true
 	}
-	return v.nextLineCursor(cursor.row, pane, forward)
+	return v.scan(cursor.row, pane, forward)
 }
 
 func (v *diffView) previousInFile(

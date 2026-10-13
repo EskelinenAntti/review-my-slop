@@ -67,11 +67,11 @@ func (v *View) Selected() (comments.Comment, bool) {
 // Click focuses a visible comment at zero-based terminal coordinates.
 func (v *View) Click(x, y int) bool {
 	height := frame.BodyHeight(v.height)
-	row, ok := frame.BodyRowAtTerminalCell(x, y, v.width, v.height)
+	row, ok := frame.BodyRow(x, y, v.width, v.height)
 	if !ok {
 		return false
 	}
-	row += v.firstVisibleCommentIndex(height)
+	row += v.startRow(height)
 	if row >= len(v.items) {
 		return false
 	}
@@ -79,15 +79,15 @@ func (v *View) Click(x, y int) bool {
 	return true
 }
 
-func (v *View) firstVisibleCommentIndex(visibleRows int) int {
-	return min(max(0, v.top), max(0, len(v.items)-visibleRows))
+func (v *View) startRow(height int) int {
+	return min(max(0, v.top), max(0, len(v.items)-height))
 }
 
 func (v *View) keepVisible() {
 	height := frame.BodyHeight(v.height)
 	v.top = min(v.top, v.row)
 	v.top = max(v.top, v.row-height+1)
-	v.top = v.firstVisibleCommentIndex(height)
+	v.top = v.startRow(height)
 }
 
 // Render composes the screen, showing a non-nil error in place of its hints.
@@ -100,7 +100,7 @@ func (v *View) Render(err error) string {
 		body = make([]string, height)
 		body[min(1, height-1)] = mutedStyle.Render("No pending comments.")
 	} else {
-		start := v.firstVisibleCommentIndex(height)
+		start := v.startRow(height)
 		end := min(len(v.items), start+height)
 		for index := start; index < end; index++ {
 			body = append(body, v.renderRow(index))

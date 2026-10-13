@@ -36,7 +36,7 @@ func TestGetIncludesUnstagedAndUntrackedButNotStagedOnly(t *testing.T) {
 	writeFile(t, repo, "new.py", "def hello():\n    return 'world'\n")
 
 	t.Chdir(repo)
-	got, err := LoadGitDiff(context.Background(), Unstaged)
+	got, err := Get(context.Background(), Unstaged)
 	testutil.NoError(t, err)
 	testutil.RequireEqual(t, got.Root, repo, "root = %q, kind = %v", got.Root,
 		got.Kind,
@@ -105,7 +105,7 @@ func TestGetFromSubdirectoryKeepsRawUntrackedPaths(t *testing.T) {
 	writeFile(t, repo, "nested/odd\nname.go", "package main\n")
 	t.Chdir(filepath.Join(repo, "nested"))
 
-	got, err := LoadGitDiff(context.Background(), Unstaged)
+	got, err := Get(context.Background(), Unstaged)
 	testutil.NoError(t, err)
 	testutil.RequireEqual(t, got.Root, repo, "patch = %#v", got)
 	testutil.RequireEqual(t, len(got.Files), 1, "patch = %#v", got)
@@ -122,7 +122,7 @@ func TestGetFromSubdirectoryKeepsRawUntrackedPaths(t *testing.T) {
 
 func TestGetReportsUnavailableBranchAndInvalidKind(t *testing.T) {
 	t.Chdir(newRepository(t))
-	local, err := LoadGitDiff(context.Background(), Unstaged)
+	local, err := Get(context.Background(), Unstaged)
 	testutil.RequireEqual(t, err, nil, "local patch = %#v, error = %v", local,
 		err,
 	)
@@ -137,7 +137,7 @@ func TestGetReportsUnavailableBranchAndInvalidKind(t *testing.T) {
 		{Branch, "default branch is unavailable"},
 		{Kind(255), "unknown patch kind"},
 	} {
-		got, err := LoadGitDiff(context.Background(), test.kind)
+		got, err := Get(context.Background(), test.kind)
 		testutil.RequireEqual(t, err != nil, true,
 			"kind %v: patch = %#v, error = %v", test.kind, got, err,
 		)
@@ -152,7 +152,7 @@ func TestGetReportsUnavailableBranchAndInvalidKind(t *testing.T) {
 
 func TestGetOutsideRepositoryReturnsZeroPatch(t *testing.T) {
 	t.Chdir(t.TempDir())
-	got, err := LoadGitDiff(context.Background(), Unstaged)
+	got, err := Get(context.Background(), Unstaged)
 	testutil.RequireEqual(t, err != nil, true, "patch = %#v, error = %v", got,
 		err,
 	)
@@ -165,7 +165,7 @@ func TestGetHonorsCanceledContext(t *testing.T) {
 	t.Chdir(newRepository(t))
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	got, err := LoadGitDiff(ctx, Unstaged)
+	got, err := Get(ctx, Unstaged)
 	testutil.RequireEqual(t, errors.Is(err, context.Canceled), true,
 		"patch = %#v, error = %v", got, err,
 	)
@@ -178,7 +178,7 @@ func TestGetOmitsLargeUntrackedContents(t *testing.T) {
 	repo := newRepository(t)
 	writeFile(t, repo, "large.txt", strings.Repeat("x", maxFileBytes+1))
 	t.Chdir(repo)
-	got, err := LoadGitDiff(context.Background(), Unstaged)
+	got, err := Get(context.Background(), Unstaged)
 	testutil.NoError(t, err)
 	testutil.RequireEqual(t, len(got.Files), 1, "files = %#v", got.Files)
 
@@ -205,7 +205,7 @@ func TestGetShowsBinaryMetadataWithoutBinaryDiffLines(t *testing.T) {
 	writeFile(t, repo, "untracked.bin", "\x00content")
 
 	t.Chdir(repo)
-	got, err := LoadGitDiff(context.Background(), Unstaged)
+	got, err := Get(context.Background(), Unstaged)
 	testutil.NoError(t, err)
 	testutil.RequireEqual(t, len(got.Files), 2, "files = %d, want 2: %#v",
 		len(got.Files), got.Files,
@@ -259,7 +259,7 @@ func TestGetBranchIncludesCommittedStagedUnstagedAndUntrackedChanges(
 	writeFile(t, repo, "untracked.txt", "untracked on feature\n")
 
 	t.Chdir(repo)
-	got, err := LoadGitDiff(context.Background(), Branch)
+	got, err := Get(context.Background(), Branch)
 	testutil.NoError(t, err)
 	testutil.RequireEqual(t, got.Root, repo, "patch metadata = %#v", got)
 	testutil.RequireEqual(t, got.Kind, Branch, "patch metadata = %#v", got)
@@ -379,7 +379,7 @@ func TestGetBranchKeepsPathsForAdditionsDeletionsAndRenames(t *testing.T) {
 	git(t, repo, "commit", "-m", "changes")
 	writeFile(t, repo, "untracked.txt", "untracked content\n")
 	t.Chdir(repo)
-	got, err := LoadGitDiff(context.Background(), Branch)
+	got, err := Get(context.Background(), Branch)
 	testutil.NoError(t, err)
 
 	want := []struct {
@@ -446,7 +446,7 @@ func TestGetDoesNotFollowUntrackedSymlink(t *testing.T) {
 	testutil.NoError(t, os.Symlink(outside, filepath.Join(repo, "link")))
 
 	t.Chdir(repo)
-	got, err := LoadGitDiff(context.Background(), Unstaged)
+	got, err := Get(context.Background(), Unstaged)
 	testutil.NoError(t, err)
 	testutil.RequireEqual(t, len(got.Files), 1, "files = %d, want 1",
 		len(got.Files),

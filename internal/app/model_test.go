@@ -43,7 +43,7 @@ func TestStoreBackedCommentLifecycle(t *testing.T) {
 	}
 	m.edit.body = "check this"
 	m.edit.anchor = anchor
-	m.persistCommentEdit(m.edit)
+	m.finishCommentEdit()
 	testutil.RequireEqual(t, m.err, nil, "%s", m.err)
 
 	loaded, err := m.load()
@@ -65,7 +65,7 @@ func TestStoreBackedCommentLifecycle(t *testing.T) {
 	id := loaded[0].ID
 	m.edit.index = 0
 	m.edit.body = "edited"
-	m.persistCommentEdit(m.edit)
+	m.finishCommentEdit()
 	testutil.RequireEqual(t, m.err, nil, "%s", m.err)
 
 	loaded, err = m.load()
@@ -98,17 +98,10 @@ func TestNewUsesSavedSideBySideForWideInitialSize(t *testing.T) {
 		size:       size{Width: 120, Height: 30},
 	})
 	testutil.RequireEqual(t, m.diffOptions.SideBySide, true,
-		"sideBySide=%v render=%q",
-		m.diffOptions.SideBySide,
-		m.renderReviewScreenANSI(),
+		"sideBySide=%v render=%q", m.diffOptions.SideBySide, m.render(),
 	)
-	testutil.RequireEqual(t,
-		strings.Contains(m.renderReviewScreenANSI(),
-			"│"),
-		true,
-		"sideBySide=%v render=%q",
-		m.diffOptions.SideBySide,
-		m.renderReviewScreenANSI(),
+	testutil.RequireEqual(t, strings.Contains(m.render(), "│"), true,
+		"sideBySide=%v render=%q", m.diffOptions.SideBySide, m.render(),
 	)
 }
 
@@ -118,32 +111,18 @@ func TestNewKeepsSavedSideBySideInactiveForNarrowInitialSize(t *testing.T) {
 		size:       size{Width: 80, Height: 30},
 	})
 	testutil.RequireEqual(t, m.diffOptions.SideBySide, true,
-		"sideBySide=%v render=%q",
-		m.diffOptions.SideBySide,
-		m.renderReviewScreenANSI(),
+		"sideBySide=%v render=%q", m.diffOptions.SideBySide, m.render(),
 	)
-	testutil.RequireEqual(t,
-		!strings.Contains(m.renderReviewScreenANSI(),
-			"│"),
-		true,
-		"sideBySide=%v render=%q",
-		m.diffOptions.SideBySide,
-		m.renderReviewScreenANSI(),
+	testutil.RequireEqual(t, !strings.Contains(m.render(), "│"), true,
+		"sideBySide=%v render=%q", m.diffOptions.SideBySide, m.render(),
 	)
 
 	m = updateModel(t, m, tea.WindowSizeMsg{Width: 120, Height: 30})
 	testutil.RequireEqual(t, m.diffOptions.SideBySide, true,
-		"sideBySide=%v render=%q",
-		m.diffOptions.SideBySide,
-		m.renderReviewScreenANSI(),
+		"sideBySide=%v render=%q", m.diffOptions.SideBySide, m.render(),
 	)
-	testutil.RequireEqual(t,
-		strings.Contains(m.renderReviewScreenANSI(),
-			"│"),
-		true,
-		"sideBySide=%v render=%q",
-		m.diffOptions.SideBySide,
-		m.renderReviewScreenANSI(),
+	testutil.RequireEqual(t, strings.Contains(m.render(), "│"), true,
+		"sideBySide=%v render=%q", m.diffOptions.SideBySide, m.render(),
 	)
 }
 
@@ -242,7 +221,7 @@ func TestCommentSaveUsesPatchAndPreservesAnchor(t *testing.T) {
 	})
 	m.edit.body = "comment"
 	m.edit.anchor = comments.Anchor{FilePath: "main.go"}
-	m.persistCommentEdit(m.edit)
+	m.finishCommentEdit()
 	testutil.RequireEqual(t, savedPatch.Root, "/repo",
 		"saved patch/comments = %#v %#v", savedPatch, m.comments.items,
 	)
@@ -257,9 +236,9 @@ func TestCommentSaveUsesPatchAndPreservesAnchor(t *testing.T) {
 func TestRenderingAndKeyBindingsRemainAvailable(t *testing.T) {
 	m := testModel(modelPatch(), nil, nil)
 	m.width, m.height = 80, 10
-	m.fitReviewScreensToWindow()
-	m.fitReviewScreensToWindow()
-	rendered := m.renderReviewScreenANSI()
+	m.resizeScreens()
+	m.resizeScreens()
+	rendered := m.render()
 	for _, value := range []string{
 		"review-my-slop",
 		"+1-1",
@@ -268,14 +247,11 @@ func TestRenderingAndKeyBindingsRemainAvailable(t *testing.T) {
 		"local changes",
 	} {
 		testutil.RequireEqual(t, strings.Contains(rendered, value), true,
-			"renderActiveScreen missing %q: %q", value, rendered,
+			"render missing %q: %q", value, rendered,
 		)
 	}
 	m.mode = modeHelp
-	testutil.RequireEqual(t,
-		strings.Contains(m.renderReviewScreenANSI(),
-			"Ctrl-w h/l/w"),
-		true,
+	testutil.RequireEqual(t, strings.Contains(m.render(), "Ctrl-w h/l/w"), true,
 		"%s", "help lost diffPane binding",
 	)
 }
@@ -283,9 +259,9 @@ func TestRenderingAndKeyBindingsRemainAvailable(t *testing.T) {
 func TestEmptyViewKeepsKeyboardHintAtBottom(t *testing.T) {
 	m := testModel(patch.Patch{}, nil, nil)
 	m.width, m.height = 80, 10
-	m.fitReviewScreensToWindow()
+	m.resizeScreens()
 
-	lines := strings.Split(m.renderReviewScreenANSI(), "\n")
+	lines := strings.Split(m.render(), "\n")
 	if got, want := lines[m.height-2], "j/k/h/l move"; !strings.Contains(
 		got,
 		want,
@@ -312,7 +288,7 @@ func TestMenuKeyboardHintsStayAtBottom(t *testing.T) {
 		nil,
 	)
 	m.width, m.height = 80, 10
-	m.fitReviewScreensToWindow()
+	m.resizeScreens()
 
 	tests := []struct {
 		name string
@@ -325,7 +301,7 @@ func TestMenuKeyboardHintsStayAtBottom(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			m.mode = test.mode
-			lines := strings.Split(m.renderReviewScreenANSI(), "\n")
+			lines := strings.Split(m.render(), "\n")
 			if got := lines[m.height-2]; !strings.Contains(got, test.hint) {
 				t.Fatalf(
 					"line %d = %q, want it to contain %q",
@@ -349,10 +325,10 @@ func TestCommentsMenuScrollsWithinScreenBody(t *testing.T) {
 	m := testModel(modelPatch(), items, nil)
 	m.width, m.height = 80, 7
 	m.mode = modeComments
-	m.fitReviewScreensToWindow()
+	m.resizeScreens()
 	m.commentView.Move(len(items))
 
-	rendered := strings.Split(ansi.Strip(m.renderReviewScreenANSI()), "\n")
+	rendered := strings.Split(ansi.Strip(m.render()), "\n")
 	testutil.RequireEqual(t,
 		strings.Contains(
 			strings.Join(rendered[1:m.height-2], "\n"),
@@ -406,33 +382,17 @@ func TestNarrowLayoutToggleSavesPreferenceWithoutApplicationGeometryRules(
 	})
 	m = updateModel(t, m, textKey("t"))
 	testutil.RequireEqual(t, m.err, nil,
-		"narrow toggle: saved=%v err=%v render=%q",
-		saved,
-		m.err,
-		m.renderReviewScreenANSI(),
+		"narrow toggle: saved=%v err=%v render=%q", saved, m.err, m.render(),
 	)
 	testutil.RequireEqual(t, slices.Equal(saved, []bool{true}), true,
-		"narrow toggle: saved=%v err=%v render=%q",
-		saved,
-		m.err,
-		m.renderReviewScreenANSI(),
+		"narrow toggle: saved=%v err=%v render=%q", saved, m.err, m.render(),
 	)
-	testutil.RequireEqual(t,
-		!strings.Contains(m.renderReviewScreenANSI(),
-			" │ "),
-		true,
-		"narrow toggle: saved=%v err=%v render=%q",
-		saved,
-		m.err,
-		m.renderReviewScreenANSI(),
+	testutil.RequireEqual(t, !strings.Contains(m.render(), " │ "), true,
+		"narrow toggle: saved=%v err=%v render=%q", saved, m.err, m.render(),
 	)
 
 	m = updateModel(t, m, tea.WindowSizeMsg{Width: 120, Height: 30})
-	testutil.RequireEqual(t,
-		strings.Contains(m.renderReviewScreenANSI(),
-			" │ "),
-		true,
-		"%s",
+	testutil.RequireEqual(t, strings.Contains(m.render(), " │ "), true, "%s",
 		"widening did not activate preferred layout",
 	)
 }

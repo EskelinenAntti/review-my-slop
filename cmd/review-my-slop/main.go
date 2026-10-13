@@ -24,14 +24,14 @@ func main() {
 
 func run(ctx context.Context, args []string, output io.Writer) error {
 	if len(args) == 0 {
-		return runWorkingTreeDiffReview(ctx)
+		return runCode(ctx)
 	}
 	if len(args) > 1 {
 		return errors.New("usage: review-my-slop [code|comments]")
 	}
 	switch args[0] {
 	case "code":
-		return runWorkingTreeDiffReview(ctx)
+		return runCode(ctx)
 	case "comments":
 		return runComments(ctx, output)
 	default:
@@ -42,16 +42,16 @@ func run(ctx context.Context, args []string, output io.Writer) error {
 	}
 }
 
-func runWorkingTreeDiffReview(ctx context.Context) error {
+func runCode(ctx context.Context) error {
 	commentStore, err := comments.OpenDefault()
 	if err != nil {
 		return err
 	}
-	currentPatch, err := patch.LoadGitDiff(ctx, patch.Unstaged)
+	currentPatch, err := patch.Get(ctx, patch.Unstaged)
 	if err != nil {
 		return err
 	}
-	return app.Run(ctx, currentPatch, commentStore, patch.LoadGitDiff)
+	return app.Run(ctx, currentPatch, commentStore, patch.Get)
 }
 
 func runComments(ctx context.Context, output io.Writer) error {
@@ -59,7 +59,7 @@ func runComments(ctx context.Context, output io.Writer) error {
 	if err != nil {
 		return err
 	}
-	currentPatch, err := patch.LoadGitDiff(ctx, patch.Unstaged)
+	currentPatch, err := patch.Get(ctx, patch.Unstaged)
 	if err != nil {
 		return err
 	}
