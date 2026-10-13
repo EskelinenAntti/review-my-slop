@@ -25,11 +25,12 @@ func TestRunCommentsPrintsAndConsumesCurrentRepositoryFeedback(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.Add(comments.Comment{
+	comment := comments.Comment{
 		Repository: repo,
 		Anchor:     comments.Anchor{FilePath: "main.go", NewStart: 3, NewEnd: 3},
 		Body:       "Check this error.",
-	}); err != nil {
+	}
+	if _, err := store.Add(comment); err != nil {
 		t.Fatal(err)
 	}
 
@@ -72,23 +73,24 @@ func TestRunCommentsPreservesFeedbackWhenOutputFails(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.Add(comments.Comment{
+	comment := comments.Comment{
 		Repository: repo,
 		Anchor:     comments.Anchor{FilePath: "main.go", NewStart: 1},
 		Body:       "Preserve me.",
-	}); err != nil {
+	}
+	if _, err := store.Add(comment); err != nil {
 		t.Fatal(err)
 	}
 
 	if err := runComments(context.Background(), failingWriter{}); err == nil {
 		t.Fatal("output failure was ignored")
 	}
-	comments, err := store.List(repo)
+	pending, err := store.List(repo)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(comments) != 1 {
-		t.Fatalf("pending comments = %d, want 1", len(comments))
+	if len(pending) != 1 {
+		t.Fatalf("pending comments = %d, want 1", len(pending))
 	}
 }
 

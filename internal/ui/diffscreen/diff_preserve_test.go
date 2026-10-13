@@ -14,7 +14,7 @@ func TestPreserveTranslatesCursorSelectionAndViewport(t *testing.T) {
 	if !ok {
 		t.Fatal("cursor not found")
 	}
-	selection := old.beginSelection(first)
+	selection := beginSelection(first)
 	selection, ok = old.extendSelection(selection, cursor)
 	if !ok {
 		t.Fatal("selection not created")
@@ -50,7 +50,7 @@ func TestPreserveTranslatesCursorSelectionAndViewport(t *testing.T) {
 func TestPreserveReturnsEmptyStateForEmptyView(t *testing.T) {
 	old := newUnifiedView(testPatch(), true)
 	cursor := mustFirst(t, old)
-	screen := &View{view: old, cursor: cursor, selection: ptr(old.beginSelection(cursor)), viewport: old.newViewport(80, 10)}
+	screen := &View{view: old, cursor: cursor, selection: ptr(beginSelection(cursor)), viewport: old.newViewport(80, 10)}
 
 	screen.replaceView(newUnifiedView(patch.Patch{}, true))
 	preserved := screen

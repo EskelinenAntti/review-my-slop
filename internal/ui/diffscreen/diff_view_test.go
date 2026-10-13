@@ -93,7 +93,7 @@ func TestSelectionLines(t *testing.T) {
 	first, _ := v.first()
 	last, _ := v.move(first, forward)
 	last, _ = v.move(last, forward)
-	selection := v.beginSelection(first)
+	selection := beginSelection(first)
 	selection, ok := v.extendSelection(selection, last)
 	if !ok {
 		t.Fatal("selection extension failed")
@@ -261,9 +261,9 @@ func longPatch() patch.Patch {
 }
 
 func newUnifiedView(p patch.Patch, dark bool) *diffView {
-	return newDiffView(p, false, dark)
+	return newDiffView(p, Options{Dark: dark})
 }
 
 func newSideBySideView(p patch.Patch, dark bool) *diffView {
-	return newDiffView(p, true, dark)
+	return newDiffView(p, Options{SideBySide: true, Dark: dark})
 }

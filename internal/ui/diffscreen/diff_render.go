@@ -17,7 +17,7 @@ func (v *diffView) render(viewport diffViewport, cursor diffCursor, selection *d
 	lines := make([]string, 0, viewport.Height)
 	if v.hasStickyHeader(viewport.top, viewport.Height) {
 		current := v.rows[viewport.top]
-		lines = append(lines, v.renderFileRow(v.patch.Files[current.file].DisplayPath, viewport.Width))
+		lines = append(lines, renderFileRow(v.patch.Files[current.file].DisplayPath, viewport.Width))
 	}
 	end := min(len(v.rows), viewport.top+v.contentHeight(viewport))
 	for y := viewport.top; y < end; y++ {
@@ -38,7 +38,7 @@ func (v *diffView) renderUnifiedRow(current entry, y int, viewport diffViewport,
 	width := max(20, viewport.Width)
 	switch current.kind {
 	case fileRow:
-		return v.renderFileRow(current.text, width)
+		return renderFileRow(current.text, width)
 	case metadataRow:
 		return metadataStyle.Render("  " + current.text)
 	case hunkRow:
@@ -55,20 +55,20 @@ func (v *diffView) renderUnifiedRow(current entry, y int, viewport diffViewport,
 		gutter := fmt.Sprintf("%5s %5s %s ", number(line.OldNumber), number(line.NewNumber), prefix)
 		value := gutter + fitANSIWindow(current.text, viewport.LeftColumn, width-lipgloss.Width(gutter))
 		style := lineStyle(line.Kind, v.dark)
-		strip := false
+		colors := preserveForeground
 		candidate := diffCursor{row: y, pane: cursor.pane}
 		if selected(selection, candidate) {
-			style, strip = selectionRowStyle(v.dark), true
+			style, colors = selectionRowStyle(v.dark), discardForeground
 		}
 		if cursor.row == y {
-			style, strip = cursorStyle, true
+			style, colors = cursorStyle, discardForeground
 		}
-		return renderStyledRow(style, value, width, strip)
+		return renderStyledRow(style, value, width, colors)
 	}
 	return ""
 }
 
-func (v *diffView) renderFileRow(path string, width int) string {
+func renderFileRow(path string, width int) string {
 	return fileStyle.Width(max(20, width)).Render(path)
 }
 
@@ -79,8 +79,8 @@ func (v *diffView) renderSplitRow(current entry, y int, viewport diffViewport, c
 	return left + " │ " + right
 }
 
-func splitPaneWidths(width int) (int, int) {
-	left := max(20, (width-3)/2)
+func splitPaneWidths(width int) (left, right int) {
+	left = max(20, (width-3)/2)
 	return left, max(20, width-3-left)
 }
 
@@ -105,32 +105,29 @@ func (v *diffView) renderPane(current entry, y int, pane diffPane, width, offset
 	gutter := fmt.Sprintf("%5s ", number(numberValue))
 	value := gutter + fitANSIWindow(prefix+text, offset, width-lipgloss.Width(gutter))
 	style := lineStyle(line.Kind, v.dark)
-	strip := false
+	colors := preserveForeground
 	candidate := diffCursor{row: y, pane: pane}
 	if selected(selection, candidate) {
-		style, strip = selectionRowStyle(v.dark), true
+		style, colors = selectionRowStyle(v.dark), discardForeground
 	}
 	if cursor == candidate {
-		style, strip = cursorStyle, true
+		style, colors = cursorStyle, discardForeground
 	}
-	return renderStyledRow(style, value, width, strip)
+	return renderStyledRow(style, value, width, colors)
 }
 
 func selected(selection *diffSelection, cursor diffCursor) bool {
 	if selection == nil {
 		return false
 	}
-	first, last := selection.First.row, selection.Last.row
-	if first == last && selection.First.pane != selection.Last.pane {
-		return cursor.row == first && (cursor.pane == selection.First.pane || cursor.pane == selection.Last.pane)
+	first, last := selection.First, selection.Last
+	if first.row == last.row && first.pane != last.pane {
+		return cursor.row == first.row && (cursor.pane == first.pane || cursor.pane == last.pane)
 	}
-	if selection.First.pane != cursor.pane {
+	if first.pane != cursor.pane {
 		return false
 	}
-	if first > last {
-		first, last = last, first
-	}
-	return cursor.row >= first && cursor.row <= last
+	return cursor.row >= min(first.row, last.row) && cursor.row <= max(first.row, last.row)
 }
 
 func lineStyle(kind patch.LineKind, dark bool) lipgloss.Style {
@@ -156,8 +153,15 @@ func number(value patch.LineNumber) string {
 	return strconv.Itoa(int(value))
 }
 
-func renderStyledRow(style lipgloss.Style, value string, width int, stripForeground bool) string {
-	value = filterANSIColors(value, stripForeground)
+type foregroundPolicy uint8
+
+const (
+	preserveForeground foregroundPolicy = iota
+	discardForeground
+)
+
+func renderStyledRow(style lipgloss.Style, value string, width int, colors foregroundPolicy) string {
+	value = filterANSIColors(value, colors)
 	fitted := fitANSIWindow(value, 0, width)
 	prefix := stylePrefix(style)
 	if prefix != "" {
@@ -167,42 +171,60 @@ func renderStyledRow(style lipgloss.Style, value string, width int, stripForegro
 	return style.Render(fitted)
 }
 
-func filterANSIColors(value string, stripForeground bool) string {
+func filterANSIColors(value string, colors foregroundPolicy) string {
 	return ansiSGRPattern.ReplaceAllStringFunc(value, func(sequence string) string {
-		parameters := sequence[2 : len(sequence)-1]
-		if parameters == "" {
-			return sequence
-		}
-		parts := strings.Split(parameters, ";")
-		filtered := make([]string, 0, len(parts))
-		for index := 0; index < len(parts); index++ {
-			code, err := strconv.Atoi(parts[index])
-			if err != nil {
-				filtered = append(filtered, parts[index])
-				continue
-			}
-			switch {
-			case code == 48 || stripForeground && code == 38:
-				if index+1 < len(parts) {
-					mode := parts[index+1]
-					if mode == "2" {
-						index = min(index+4, len(parts)-1)
-					}
-					if mode == "5" {
-						index = min(index+2, len(parts)-1)
-					}
-				}
-			case code >= 40 && code <= 49, code >= 100 && code <= 107,
-				stripForeground && code >= 30 && code <= 39, stripForeground && code >= 90 && code <= 97:
-			default:
-				filtered = append(filtered, parts[index])
-			}
-		}
-		if len(filtered) == 0 {
-			return ""
-		}
-		return "\x1b[" + strings.Join(filtered, ";") + "m"
+		return filterSGR(sequence, colors)
 	})
+}
+
+func filterSGR(sequence string, colors foregroundPolicy) string {
+	parameters := sequence[2 : len(sequence)-1]
+	if parameters == "" {
+		return sequence
+	}
+	parts := strings.Split(parameters, ";")
+	filtered := make([]string, 0, len(parts))
+	for index := 0; index < len(parts); index++ {
+		code, err := strconv.Atoi(parts[index])
+		if err != nil {
+			filtered = append(filtered, parts[index])
+			continue
+		}
+		if code == 48 || colors == discardForeground && code == 38 {
+			index = colorParameterEnd(parts, index)
+			continue
+		}
+		if backgroundColor(code) || colors == discardForeground && foregroundColor(code) {
+			continue
+		}
+		filtered = append(filtered, parts[index])
+	}
+	if len(filtered) == 0 {
+		return ""
+	}
+	return "\x1b[" + strings.Join(filtered, ";") + "m"
+}
+
+func colorParameterEnd(parts []string, index int) int {
+	if index+1 >= len(parts) {
+		return index
+	}
+	switch parts[index+1] {
+	case "2":
+		return min(index+4, len(parts)-1)
+	case "5":
+		return min(index+2, len(parts)-1)
+	default:
+		return index
+	}
+}
+
+func backgroundColor(code int) bool {
+	return code >= 40 && code <= 49 || code >= 100 && code <= 107
+}
+
+func foregroundColor(code int) bool {
+	return code >= 30 && code <= 39 || code >= 90 && code <= 97
 }
 
 func fitANSIWindow(value string, offset, width int) string {

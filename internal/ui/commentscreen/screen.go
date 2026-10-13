@@ -102,20 +102,7 @@ func (v *View) Render(err error) string {
 		start := v.startRow(height)
 		end := min(len(v.items), start+height)
 		for index := start; index < end; index++ {
-			comment := v.items[index]
-			prefix, style := "  ", lipgloss.NewStyle()
-			if index == v.row {
-				prefix, style = "> ", lipgloss.NewStyle().Reverse(true)
-			}
-			location := comment.Anchor.FilePath
-			if comment.Anchor.NewStart > 0 {
-				location += fmt.Sprintf(":%d", comment.Anchor.NewStart)
-			} else if comment.Anchor.OldStart > 0 {
-				location += fmt.Sprintf(":%d", comment.Anchor.OldStart)
-			}
-			text := strings.ReplaceAll(strings.TrimSpace(comment.Body), "\n", " ")
-			line := ansi.Truncate(fmt.Sprintf("%s%s  %s", prefix, location, text), max(20, v.width), "")
-			body = append(body, style.Width(max(20, v.width)).Render(line))
+			body = append(body, v.renderRow(index))
 		}
 	}
 	footer := mutedStyle.Render("j/k move  Enter/e edit  D delete  Esc/q return")
@@ -124,6 +111,23 @@ func (v *View) Render(err error) string {
 		footer = errorStyle.Render(ansi.Truncate(message, max(20, v.width), ""))
 	}
 	return frame.Render(header, body, footer, v.height)
+}
+
+func (v *View) renderRow(index int) string {
+	comment := v.items[index]
+	prefix, style := "  ", lipgloss.NewStyle()
+	if index == v.row {
+		prefix, style = "> ", lipgloss.NewStyle().Reverse(true)
+	}
+	location := comment.Anchor.FilePath
+	if comment.Anchor.NewStart > 0 {
+		location += fmt.Sprintf(":%d", comment.Anchor.NewStart)
+	} else if comment.Anchor.OldStart > 0 {
+		location += fmt.Sprintf(":%d", comment.Anchor.OldStart)
+	}
+	text := strings.ReplaceAll(strings.TrimSpace(comment.Body), "\n", " ")
+	line := ansi.Truncate(fmt.Sprintf("%s%s  %s", prefix, location, text), max(20, v.width), "")
+	return style.Width(max(20, v.width)).Render(line)
 }
 
 var (

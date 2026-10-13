@@ -2,13 +2,14 @@ package patch
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
-	"sort"
+	"slices"
 	"strings"
 
 	"github.com/sourcegraph/go-diff/diff"
@@ -50,10 +51,10 @@ func Get(ctx context.Context, kind Kind) (Patch, error) {
 	if err != nil {
 		return Patch{}, fmt.Errorf("resolve working directory: %w", err)
 	}
-	return get(ctx, directory, kind, execRunner{})
+	return load(ctx, directory, kind, execRunner{})
 }
 
-func get(ctx context.Context, directory string, kind Kind, run runner) (Patch, error) {
+func load(ctx context.Context, directory string, kind Kind, run runner) (Patch, error) {
 	if kind != Unstaged && kind != Branch {
 		return Patch{}, fmt.Errorf("unknown patch kind %d", kind)
 	}
@@ -127,7 +128,7 @@ func build(ctx context.Context, run runner, root string, kind Kind, branch strin
 		return Patch{}, err
 	}
 	files = append(files, untracked...)
-	sort.SliceStable(files, func(i, j int) bool { return files[i].DisplayPath < files[j].DisplayPath })
+	slices.SortStableFunc(files, func(a, b File) int { return cmp.Compare(a.DisplayPath, b.DisplayPath) })
 
 	if err := ctx.Err(); err != nil {
 		return Patch{}, err
@@ -174,33 +175,38 @@ func parseTracked(ctx context.Context, run runner, root string, raw []byte, read
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
-		oldPath := cleanDiffPath(fd.OrigName)
-		newPath := cleanDiffPath(fd.NewName)
-		display := newPath
-		if display == "" || display == "/dev/null" {
-			display = oldPath
-		}
-		file := File{
-			OldPath:     oldPath,
-			NewPath:     newPath,
-			DisplayPath: visibleText(display),
-			Metadata:    visibleStrings(fd.Extended),
-		}
-		file.OldSource = readOld(ctx, run, root, oldPath)
-		file.NewSource = readWorkingTree(root, newPath)
-		for _, h := range fd.Hunks {
-			lines, parseErr := parseHunkBody(h.OrigStartLine, h.NewStartLine, h.Body)
-			if parseErr != nil {
-				return nil, fmt.Errorf("%s: %w", display, parseErr)
-			}
-			file.Hunks = append(file.Hunks, Hunk{
-				Header: formatHunkHeader(h),
-				Lines:  lines,
-			})
+		file, err := parseTrackedFile(ctx, run, root, fd, readOld)
+		if err != nil {
+			return nil, err
 		}
 		files = append(files, file)
 	}
 	return files, nil
+}
+
+func parseTrackedFile(ctx context.Context, run runner, root string, fd *diff.FileDiff, readOld sourceReader) (File, error) {
+	oldPath := cleanDiffPath(fd.OrigName)
+	newPath := cleanDiffPath(fd.NewName)
+	display := newPath
+	if display == "" || display == "/dev/null" {
+		display = oldPath
+	}
+	file := File{
+		OldPath:     oldPath,
+		NewPath:     newPath,
+		DisplayPath: visibleText(display),
+		Metadata:    visibleStrings(fd.Extended),
+	}
+	file.OldSource = readOld(ctx, run, root, oldPath)
+	file.NewSource = readWorkingTree(root, newPath)
+	for _, h := range fd.Hunks {
+		lines, err := parseHunkBody(h.OrigStartLine, h.NewStartLine, h.Body)
+		if err != nil {
+			return File{}, fmt.Errorf("%s: %w", display, err)
+		}
+		file.Hunks = append(file.Hunks, Hunk{Header: formatHunkHeader(h), Lines: lines})
+	}
+	return file, nil
 }
 
 func loadUntracked(ctx context.Context, run runner, root string) ([]File, error) {
@@ -216,47 +222,44 @@ func loadUntracked(ctx context.Context, run runner, root string) ([]File, error)
 		if len(rawPath) == 0 {
 			continue
 		}
-		path := string(rawPath)
-		display := visibleText(path)
-		full := filepath.Join(root, filepath.FromSlash(path))
-		info, statErr := os.Lstat(full)
-		if statErr != nil {
-			return nil, fmt.Errorf("stat untracked %q: %w", path, statErr)
+		file, include, err := readUntrackedFile(root, string(rawPath))
+		if err != nil {
+			return nil, err
 		}
-		if info.Mode()&os.ModeSymlink != 0 {
-			target, readErr := os.Readlink(full)
-			if readErr != nil {
-				return nil, fmt.Errorf("read symlink %q: %w", path, readErr)
-			}
-			files = append(files, addedFile(path, visibleText(target)))
-			continue
+		if include {
+			files = append(files, file)
 		}
-		if !info.Mode().IsRegular() {
-			continue
-		}
-		if info.Size() > maxFileBytes {
-			files = append(files, File{
-				NewPath:     path,
-				DisplayPath: display,
-				Metadata:    []string{"untracked file", "content omitted: file exceeds 2 MiB"},
-			})
-			continue
-		}
-		content, readErr := os.ReadFile(full)
-		if readErr != nil {
-			return nil, fmt.Errorf("read untracked %q: %w", path, readErr)
-		}
-		if bytes.IndexByte(content, 0) >= 0 {
-			files = append(files, File{
-				NewPath:     path,
-				DisplayPath: display,
-				Metadata:    []string{"untracked binary file"},
-			})
-			continue
-		}
-		files = append(files, addedFile(path, visibleSource(string(content))))
 	}
 	return files, nil
+}
+
+func readUntrackedFile(root, path string) (File, bool, error) {
+	full := filepath.Join(root, filepath.FromSlash(path))
+	info, err := os.Lstat(full)
+	if err != nil {
+		return File{}, false, fmt.Errorf("stat untracked %q: %w", path, err)
+	}
+	if info.Mode()&os.ModeSymlink != 0 {
+		target, err := os.Readlink(full)
+		if err != nil {
+			return File{}, false, fmt.Errorf("read symlink %q: %w", path, err)
+		}
+		return addedFile(path, visibleText(target)), true, nil
+	}
+	if !info.Mode().IsRegular() {
+		return File{}, false, nil
+	}
+	if info.Size() > maxFileBytes {
+		return File{NewPath: path, DisplayPath: visibleText(path), Metadata: []string{"untracked file", "content omitted: file exceeds 2 MiB"}}, true, nil
+	}
+	content, err := os.ReadFile(full)
+	if err != nil {
+		return File{}, false, fmt.Errorf("read untracked %q: %w", path, err)
+	}
+	if bytes.IndexByte(content, 0) >= 0 {
+		return File{NewPath: path, DisplayPath: visibleText(path), Metadata: []string{"untracked binary file"}}, true, nil
+	}
+	return addedFile(path, visibleSource(string(content))), true, nil
 }
 
 func addedFile(path, content string) File {

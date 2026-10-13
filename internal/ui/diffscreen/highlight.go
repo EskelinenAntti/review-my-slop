@@ -13,13 +13,14 @@ type pair struct {
 	New []string
 }
 
-func render(filename, source string, darkBackground bool) []string {
+const (
+	lightTheme = "catppuccin-latte"
+	darkTheme  = "catppuccin-mocha"
+)
+
+func render(filename, source, theme string) []string {
 	if source == "" {
 		return nil
-	}
-	theme := "catppuccin-latte"
-	if darkBackground {
-		theme = "catppuccin-mocha"
 	}
 	var buf bytes.Buffer
 	if err := quick.Highlight(&buf, source, filename, "terminal16m", theme); err != nil {

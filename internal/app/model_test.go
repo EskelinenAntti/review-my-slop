@@ -1,6 +1,7 @@
 package app
 
 import (
+	"errors"
 	"fmt"
 	"path/filepath"
 	"slices"
@@ -15,8 +16,8 @@ import (
 	"github.com/eskelinenantti/review-my-slop/internal/ui/diffscreen"
 )
 
-func testModel(p patch.Patch, comments []comments.Comment, save saveCommentFunc) model {
-	return newModel(p, comments, save, initialLayout{size: size{Width: 100, Height: 30}})
+func testModel(p patch.Patch, items []comments.Comment, save saveCommentFunc) model {
+	return newModel(p, items, save, initialLayout{size: size{Width: 100, Height: 30}})
 }
 
 func TestStoreBackedCommentLifecycle(t *testing.T) {
@@ -130,7 +131,7 @@ func TestUnchangedRefreshPreservesStateAndClearsError(t *testing.T) {
 	m.diffView.Move(diffscreen.NextLine)
 	m.diffView.ScrollHorizontal(12)
 	before := m.diffView.Render(nil)
-	m.err = fmt.Errorf("previous refresh failed")
+	m.err = errors.New("previous refresh failed")
 	m = updateModel(t, m, refreshDiffMsg{patch: p})
 	if got := m.diffView.Render(nil); got != before {
 		t.Fatal("refresh changed presentation state")
@@ -143,7 +144,7 @@ func TestUnchangedRefreshPreservesStateAndClearsError(t *testing.T) {
 func TestRefreshFailureRetainsView(t *testing.T) {
 	m := testModel(modelPatch(), nil, nil)
 	before := m.diffView.Render(nil)
-	m = updateModel(t, m, refreshDiffMsg{err: fmt.Errorf("git failed")})
+	m = updateModel(t, m, refreshDiffMsg{err: errors.New("git failed")})
 	if m.err == nil || m.diffView.Render(nil) != before || m.currentPatch.Root != "/repo" {
 		t.Fatalf("patch=%#v error=%v", m.currentPatch, m.err)
 	}

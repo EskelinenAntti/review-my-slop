@@ -23,7 +23,7 @@ func TestRunLoadsCommentsAndWiresContext(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	sentinel := errors.New("program startup failed")
-	err := run(ctx, p, store, func(received context.Context, kind patch.Kind) (patch.Patch, error) {
+	err := start(ctx, p, store, func(received context.Context, kind patch.Kind) (patch.Patch, error) {
 		if received != ctx || kind != p.Kind {
 			t.Fatalf("context=%v kind=%v", received, kind)
 		}
@@ -32,7 +32,12 @@ func TestRunLoadsCommentsAndWiresContext(t *testing.T) {
 		if m.ctx != ctx || m.width != 120 || m.height != 40 || len(m.comments.items) != 1 {
 			t.Fatalf("model=%#v", m)
 		}
-		if msg := m.loadRefresh()().(refreshDiffMsg); msg.err != nil {
+		result := m.loadRefresh()()
+		msg, ok := result.(refreshDiffMsg)
+		if !ok {
+			t.Fatalf("refresh message=%T", result)
+		}
+		if msg.err != nil {
 			t.Fatal(msg.err)
 		}
 		return sentinel
@@ -68,7 +73,7 @@ func TestRunStartupFailures(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			err = run(context.Background(), modelPatch(), store, nil, func() size { return defaultSize }, func(model, ...tea.ProgramOption) error { t.Fatal("program started after startup failure"); return nil })
+			err = start(context.Background(), modelPatch(), store, nil, func() size { return defaultSize }, func(model, ...tea.ProgramOption) error { t.Fatal("program started after startup failure"); return nil })
 			if err == nil {
 				t.Fatal("expected startup error")
 			}
@@ -80,7 +85,7 @@ func TestRunContextCancellation(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	err := run(ctx, modelPatch(), comments.Store{Path: filepath.Join(t.TempDir(), "comments.db")}, nil, func() size { return defaultSize }, func(m model, options ...tea.ProgramOption) error {
+	err := start(ctx, modelPatch(), comments.Store{Path: filepath.Join(t.TempDir(), "comments.db")}, nil, func() size { return defaultSize }, func(m model, options ...tea.ProgramOption) error {
 		options = append(options, tea.WithInput(nil), tea.WithOutput(io.Discard), tea.WithoutRenderer())
 		_, err := tea.NewProgram(m, options...).Run()
 		return err

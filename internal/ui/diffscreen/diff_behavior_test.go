@@ -40,12 +40,12 @@ func TestSplitSelectionOnlyIncludesActivePane(t *testing.T) {
 	first := mustFirst(t, v)
 	removed, _ := v.search("removed one", first, forward)
 	added, _ := v.search("added one", first, forward)
-	left := v.beginSelection(removed)
+	left := beginSelection(removed)
 	left, ok := v.extendSelection(left, removed)
 	if !ok || len(v.lines(left)) != 1 || v.lines(left)[0].Kind != patch.Deletion {
 		t.Fatalf("left lines = %#v", v.lines(left))
 	}
-	right := v.beginSelection(added)
+	right := beginSelection(added)
 	if len(v.lines(right)) != 1 || v.lines(right)[0].Kind != patch.Addition {
 		t.Fatalf("right lines = %#v", v.lines(right))
 	}
@@ -243,7 +243,7 @@ func TestSelectionBackgroundKeepsDefaultWeight(t *testing.T) {
 	v := newUnifiedView(testPatch(), false)
 	first := mustFirst(t, v)
 	removed, _ := v.search("removed one", first, forward)
-	selection := v.beginSelection(removed)
+	selection := beginSelection(removed)
 	rendered := renderTarget(v, removed, first, 72, &selection)
 	if strings.Contains(rendered, "\x1b[1m") {
 		t.Fatalf("selection is bold: %q", rendered)
@@ -286,7 +286,7 @@ func TestRenderedCodeRowsHaveExactTerminalWidth(t *testing.T) {
 
 func TestRenderStyledRowStripsSyntaxBackgroundColors(t *testing.T) {
 	value := strings.Join([]string{"\x1b[48;2;255;0;0;38;2;1;2;3mtruecolor", "\x1b[48;5;123;1mindexed", "\x1b[45mstandard", "\x1b[105mbright"}, " ")
-	rendered := renderStyledRow(lineStyle(patch.Addition, true), value, 80, false)
+	rendered := renderStyledRow(lineStyle(patch.Addition, true), value, 80, preserveForeground)
 	for _, forbidden := range []string{"48;2;255;0;0", "48;5;123", "[45m", "[105m"} {
 		if strings.Contains(rendered, forbidden) {
 			t.Fatalf("retains %q: %q", forbidden, rendered)
