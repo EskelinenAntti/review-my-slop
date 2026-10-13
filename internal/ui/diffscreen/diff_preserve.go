@@ -17,8 +17,8 @@ func (v *View) replaceView(next *diffView) {
 	old := v.view
 	leftColumn := v.viewport.LeftColumn
 	rowsAbove := v.cursor.row - v.viewport.top
-	cursor := identify(old, v.cursor)
-	origin := identify(old, v.search.from)
+	cursor := captureCursorSourceIdentity(old, v.cursor)
+	origin := captureCursorSourceIdentity(old, v.search.from)
 	v.viewport = next.newViewport(v.viewport.Width, v.viewport.Height)
 	v.viewport = next.scrollHorizontal(v.viewport, leftColumn)
 	translated, ok := next.findCursor(cursor)
@@ -41,7 +41,10 @@ func (v *View) replaceView(next *diffView) {
 	}
 }
 
-func identify(v *diffView, cursor diffCursor) cursorIdentity {
+func captureCursorSourceIdentity(
+	v *diffView,
+	cursor diffCursor,
+) cursorIdentity {
 	if !v.valid(cursor) {
 		return cursorIdentity{}
 	}
@@ -66,8 +69,8 @@ func preserveSelection(
 	if selection == nil {
 		return nil
 	}
-	first := identify(old, selection.First)
-	last := identify(old, selection.Last)
+	first := captureCursorSourceIdentity(old, selection.First)
+	last := captureCursorSourceIdentity(old, selection.Last)
 	if !first.valid || !last.valid {
 		return nil
 	}

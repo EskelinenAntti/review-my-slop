@@ -197,6 +197,7 @@ func commentAnchor(file patch.File, lines []patch.Line) comments.Anchor {
 		path = file.OldPath
 	}
 	anchor := comments.Anchor{FilePath: path}
+	var oldLines, newLines sourceLineRange
 	for _, line := range lines {
 		prefix := " "
 		if line.Kind == patch.Addition {
@@ -206,19 +207,27 @@ func commentAnchor(file patch.File, lines []patch.Line) comments.Anchor {
 			prefix = "-"
 		}
 		anchor.QuotedLines = append(anchor.QuotedLines, prefix+line.Text)
-		accumulateRange(&anchor.OldStart, &anchor.OldEnd, int(line.OldNumber))
-		accumulateRange(&anchor.NewStart, &anchor.NewEnd, int(line.NewNumber))
+		oldLines.includeLine(line.OldNumber)
+		newLines.includeLine(line.NewNumber)
 	}
+	anchor.OldStart, anchor.OldEnd = oldLines.first, oldLines.last
+	anchor.NewStart, anchor.NewEnd = newLines.first, newLines.last
 	return anchor
 }
-func accumulateRange(start, end *int, value int) {
-	if value == 0 {
+
+// sourceLineRange tracks inclusive bounds, ignoring absent diff line numbers.
+type sourceLineRange struct {
+	first, last int
+}
+
+func (r *sourceLineRange) includeLine(number patch.LineNumber) {
+	if number == 0 {
 		return
 	}
-	if *start == 0 || value < *start {
-		*start = value
+	if r.first == 0 || int(number) < r.first {
+		r.first = int(number)
 	}
-	if value > *end {
-		*end = value
+	if int(number) > r.last {
+		r.last = int(number)
 	}
 }

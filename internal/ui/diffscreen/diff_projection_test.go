@@ -111,7 +111,7 @@ func TestCursorRestorationPrioritizesIdentityBeforeDistance(t *testing.T) {
 	makePatch := patchWithLines
 	old := newUnifiedView(makePatch([]patch.Line{context, target}), true)
 	cursor, _ := old.last()
-	identity := identify(old, cursor)
+	identity := captureCursorSourceIdentity(old, cursor)
 	for _, tc := range []struct {
 		name  string
 		lines []patch.Line

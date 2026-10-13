@@ -60,10 +60,10 @@ func Get(ctx context.Context, kind Kind) (Patch, error) {
 	if err != nil {
 		return Patch{}, fmt.Errorf("resolve working directory: %w", err)
 	}
-	return load(ctx, directory, kind, execRunner{})
+	return loadRepositoryPatch(ctx, directory, kind, execRunner{})
 }
 
-func load(
+func loadRepositoryPatch(
 	ctx context.Context,
 	directory string,
 	kind Kind,
@@ -83,35 +83,71 @@ func load(
 	if err != nil {
 		return Patch{}, fmt.Errorf("discover default branch: %w", err)
 	}
-	revisions, readOld, err := comparisonBase(ctx, run, root, kind, branch)
+	comparison, err := resolveGitComparison(ctx, run, root, kind, branch)
 	if err != nil {
 		return Patch{}, err
 	}
-	raw, err := gitDiff(ctx, run, root, revisions...)
+	files, err := comparison.loadPatchFiles(ctx, run, root)
 	if err != nil {
 		return Patch{}, err
 	}
-	return build(ctx, run, root, kind, branch, raw, readOld)
+	return Patch{Root: root, Kind: kind, Branch: branch, Files: files}, nil
 }
 
-func comparisonBase(
+func (comparison gitComparison) loadPatchFiles(
+	ctx context.Context,
+	run runner,
+	repositoryRoot string,
+) ([]File, error) {
+	rawDiff, err := gitDiff(ctx, run, repositoryRoot, comparison.revisions...)
+	if err != nil {
+		return nil, err
+	}
+	files, err := parseTracked(
+		ctx, run, repositoryRoot, rawDiff, comparison.readOriginal,
+	)
+	if err != nil {
+		return nil, err
+	}
+	untracked, err := loadUntracked(ctx, run, repositoryRoot)
+	if err != nil {
+		return nil, err
+	}
+	files = append(files, untracked...)
+	slices.SortStableFunc(files, func(a, b File) int {
+		return cmp.Compare(a.DisplayPath, b.DisplayPath)
+	})
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	return files, nil
+}
+
+// gitComparison keeps diff revisions and original-source reads on the same
+// baseline: the index for unstaged changes, or the branch merge base.
+type gitComparison struct {
+	revisions    []string
+	readOriginal sourceReader
+}
+
+func resolveGitComparison(
 	ctx context.Context,
 	run runner,
 	root string,
 	kind Kind,
-	branch string,
-) ([]string, sourceReader, error) {
+	defaultBranch string,
+) (gitComparison, error) {
 	if kind != Branch {
-		return nil, readIndex, nil
+		return gitComparison{readOriginal: readGitIndexFileSource}, nil
 	}
-	if branch == "" {
-		return nil, nil, errors.New("default branch is unavailable")
+	if defaultBranch == "" {
+		return gitComparison{}, errors.New("default branch is unavailable")
 	}
-	baseBytes, err := run.Run(ctx, root, "merge-base", branch, "HEAD")
+	baseBytes, err := run.Run(ctx, root, "merge-base", defaultBranch, "HEAD")
 	if err != nil {
-		return nil, nil, fmt.Errorf(
+		return gitComparison{}, fmt.Errorf(
 			"find branch point with %s: %w",
-			branch,
+			defaultBranch,
 			err,
 		)
 	}
@@ -119,7 +155,7 @@ func comparisonBase(
 	readOld := func(ctx context.Context, run runner, root, path string) string {
 		return readRevision(ctx, run, root, base, path)
 	}
-	return []string{base}, readOld, nil
+	return gitComparison{revisions: []string{base}, readOriginal: readOld}, nil
 }
 
 func repositoryRoot(
@@ -156,43 +192,6 @@ func gitDiff(
 }
 
 type sourceReader func(context.Context, runner, string, string) string
-
-func build(
-	ctx context.Context,
-	run runner,
-	root string,
-	kind Kind,
-	branch string,
-	raw []byte,
-	readOld sourceReader,
-) (Patch, error) {
-	files, err := parseTracked(ctx, run, root, raw, readOld)
-	if err != nil {
-		return Patch{}, err
-	}
-	untracked, err := loadUntracked(ctx, run, root)
-	if err != nil {
-		return Patch{}, err
-	}
-	files = append(files, untracked...)
-	slices.SortStableFunc(
-		files,
-		func(a, b File) int {
-			return cmp.Compare(a.DisplayPath, b.DisplayPath)
-		},
-	)
-
-	if err := ctx.Err(); err != nil {
-		return Patch{}, err
-	}
-
-	return Patch{
-		Root:   root,
-		Kind:   kind,
-		Branch: branch,
-		Files:  files,
-	}, nil
-}
 
 func defaultBranch(
 	ctx context.Context,
@@ -281,8 +280,8 @@ func parseTrackedFile(
 	file := File{
 		OldPath:     oldPath,
 		NewPath:     newPath,
-		DisplayPath: visibleText(display),
-		Metadata:    visibleStrings(fd.Extended),
+		DisplayPath: escapeSingleLineControls(display),
+		Metadata:    escapeMetadataControls(fd.Extended),
 	}
 	file.OldSource = readOld(ctx, run, root, oldPath)
 	file.NewSource = readWorkingTree(root, newPath)
@@ -364,7 +363,7 @@ func readUntrackedFile(root, path string) (File, bool, error) {
 	if info.Size() > maxFileBytes {
 		return File{
 			NewPath:     path,
-			DisplayPath: visibleText(path),
+			DisplayPath: escapeSingleLineControls(path),
 			Metadata: []string{
 				"untracked file",
 				"content omitted: file exceeds 2 MiB",
@@ -378,11 +377,11 @@ func readUntrackedFile(root, path string) (File, bool, error) {
 	if bytes.IndexByte(content, 0) >= 0 {
 		return File{
 			NewPath:     path,
-			DisplayPath: visibleText(path),
+			DisplayPath: escapeSingleLineControls(path),
 			Metadata:    []string{"untracked binary file"},
 		}, true, nil
 	}
-	return addedFile(path, visibleSource(string(content))), true, nil
+	return addedFile(path, escapeSourceControls(string(content))), true, nil
 }
 
 func readUntrackedSymlink(full, path string) (File, bool, error) {
@@ -390,7 +389,7 @@ func readUntrackedSymlink(full, path string) (File, bool, error) {
 	if err != nil {
 		return File{}, false, fmt.Errorf("read symlink %q: %w", path, err)
 	}
-	return addedFile(path, visibleText(target)), true, nil
+	return addedFile(path, escapeSingleLineControls(target)), true, nil
 }
 
 func addedFile(path, content string) File {
@@ -404,7 +403,7 @@ func addedFile(path, content string) File {
 	}
 	return File{
 		NewPath:     path,
-		DisplayPath: visibleText(path),
+		DisplayPath: escapeSingleLineControls(path),
 		NewSource:   content,
 		Metadata:    []string{"untracked file"},
 		Hunks: []Hunk{{
@@ -424,7 +423,7 @@ func parseHunkBody(oldLine, newLine int32, body []byte) ([]Line, error) {
 		if len(raw) == 0 {
 			return nil, errors.New("malformed empty diff line")
 		}
-		text := visibleText(string(raw[1:]))
+		text := escapeSingleLineControls(string(raw[1:]))
 		switch raw[0] {
 		case ' ':
 			lines = append(
@@ -467,15 +466,19 @@ func parseHunkBody(oldLine, newLine int32, body []byte) ([]Line, error) {
 	return lines, nil
 }
 
-func readIndex(ctx context.Context, run runner, root, path string) string {
-	if path == "" || path == "/dev/null" {
+func readGitIndexFileSource(
+	ctx context.Context,
+	run runner,
+	repositoryRoot, repositoryRelativePath string,
+) string {
+	if repositoryRelativePath == "" || repositoryRelativePath == "/dev/null" {
 		return ""
 	}
-	out, err := run.Run(ctx, root, "show", ":"+path)
+	out, err := run.Run(ctx, repositoryRoot, "show", ":"+repositoryRelativePath)
 	if err != nil || len(out) > maxFileBytes || bytes.IndexByte(out, 0) >= 0 {
 		return ""
 	}
-	return visibleSource(string(out))
+	return escapeSourceControls(string(out))
 }
 
 func readRevision(
@@ -490,7 +493,7 @@ func readRevision(
 	if err != nil || len(out) > maxFileBytes || bytes.IndexByte(out, 0) >= 0 {
 		return ""
 	}
-	return visibleSource(string(out))
+	return escapeSourceControls(string(out))
 }
 
 func readWorkingTree(root, path string) string {
@@ -506,7 +509,7 @@ func readWorkingTree(root, path string) string {
 	if err != nil || bytes.IndexByte(out, 0) >= 0 {
 		return ""
 	}
-	return visibleSource(string(out))
+	return escapeSourceControls(string(out))
 }
 
 func cleanDiffPath(path string) string {
@@ -527,15 +530,15 @@ func splitSourceLines(content string) []string {
 	return strings.Split(content, "\n")
 }
 
-func visibleStrings(values []string) []string {
+func escapeMetadataControls(values []string) []string {
 	result := make([]string, len(values))
 	for index, value := range values {
-		result[index] = visibleText(value)
+		result[index] = escapeSingleLineControls(value)
 	}
 	return result
 }
 
-func visibleSource(value string) string {
+func escapeSourceControls(value string) string {
 	var result strings.Builder
 	for _, r := range value {
 		switch {
@@ -552,8 +555,8 @@ func visibleSource(value string) string {
 	return result.String()
 }
 
-func visibleText(value string) string {
-	return strings.ReplaceAll(visibleSource(value), "\n", `\n`)
+func escapeSingleLineControls(value string) string {
+	return strings.ReplaceAll(escapeSourceControls(value), "\n", `\n`)
 }
 
 func formatHunkHeader(h *diff.Hunk) string {

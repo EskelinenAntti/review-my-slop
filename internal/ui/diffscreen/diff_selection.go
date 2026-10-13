@@ -37,7 +37,7 @@ func (v *diffView) lines(selection diffSelection) []patch.Line {
 	}
 	lines := make([]patch.Line, 0, last-first+1)
 	for y := first; y <= last; y++ {
-		pane := selection.paneAt(y)
+		pane := selection.selectedPaneAtRow(y)
 		if line, ok := v.line(diffCursor{row: y, pane: pane}); ok {
 			lines = append(lines, line)
 		}
@@ -45,7 +45,7 @@ func (v *diffView) lines(selection diffSelection) []patch.Line {
 	return lines
 }
 
-func (s diffSelection) paneAt(row int) diffPane {
+func (s diffSelection) selectedPaneAtRow(row int) diffPane {
 	if row == s.Last.row {
 		return s.Last.pane
 	}
@@ -91,7 +91,7 @@ func (v *diffView) findCursor(target cursorIdentity) (diffCursor, bool) {
 		if candidate.rank == 3 {
 			return candidate.cursor, true
 		}
-		if candidate.betterThan(best) {
+		if candidate.hasHigherRankOrCloserDistanceThan(best) {
 			best = candidate
 		}
 	}
@@ -103,13 +103,13 @@ type cursorMatch struct {
 	rank, distance int
 }
 
-func (m cursorMatch) betterThan(other cursorMatch) bool {
+func (m cursorMatch) hasHigherRankOrCloserDistanceThan(other cursorMatch) bool {
 	return m.rank > other.rank ||
 		m.rank == other.rank && m.distance < other.distance
 }
 
-func (m cursorMatch) preferredTo(other cursorMatch) cursorMatch {
-	if m.betterThan(other) {
+func (m cursorMatch) bestRankedMatch(other cursorMatch) cursorMatch {
+	if m.hasHigherRankOrCloserDistanceThan(other) {
 		return m
 	}
 	return other
@@ -138,7 +138,7 @@ func (v *diffView) matchRow(y int, target cursorIdentity) cursorMatch {
 		if match.rank == 3 {
 			return match
 		}
-		best = match.preferredTo(best)
+		best = match.bestRankedMatch(best)
 	}
 	return best
 }

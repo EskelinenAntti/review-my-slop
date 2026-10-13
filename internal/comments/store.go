@@ -68,7 +68,7 @@ func (s Store) Add(comment Comment) (Comment, error) {
 }
 
 func addComment(bucket *bolt.Bucket, id string, data []byte) error {
-	if pendingBytes(bucket)+len(data) > maxPendingBytes {
+	if storedCommentBytes(bucket)+len(data) > maxPendingBytes {
 		return fmt.Errorf("pending feedback exceeds %d bytes", maxPendingBytes)
 	}
 	if bucket.Get([]byte(id)) != nil {
@@ -158,9 +158,9 @@ func deleteKeys(bucket *bolt.Bucket, keys [][]byte) error {
 	return nil
 }
 
-func pendingBytes(bucket *bolt.Bucket) int {
+func storedCommentBytes(commentsBucket *bolt.Bucket) int {
 	var total int
-	cursor := bucket.Cursor()
+	cursor := commentsBucket.Cursor()
 	for _, value := cursor.First(); value != nil; _, value = cursor.Next() {
 		total += len(value)
 	}

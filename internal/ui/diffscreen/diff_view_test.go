@@ -196,7 +196,9 @@ func TestFindCursorUsesSemanticIdentityAcrossChangedCoordinates(t *testing.T) {
 	changed := testPatch()
 	changed.Files[0].Metadata = []string{"mode changed", "more metadata"}
 	newView := newUnifiedView(changed, true)
-	translated, ok := newView.findCursor(identify(oldView, cursor))
+	translated, ok := newView.findCursor(
+		captureCursorSourceIdentity(oldView, cursor),
+	)
 	testutil.RequireEqual(t, ok, true, "%s", "semantic cursor was not found")
 	testutil.RequireEqual(t, translated.row != cursor.row, true, "%s",
 		"cursor coordinate was reused after rows shifted",
@@ -242,7 +244,9 @@ func TestFindCursorFallsBackNearRemovedLine(t *testing.T) {
 	changed := testPatch()
 	changed.Files[0].Hunks[0].Lines = changed.Files[0].Hunks[0].Lines[:2]
 	newView := newUnifiedView(changed, true)
-	fallback, ok := newView.findCursor(identify(oldView, cursor))
+	fallback, ok := newView.findCursor(
+		captureCursorSourceIdentity(oldView, cursor),
+	)
 	testutil.RequireEqual(t, ok, true, "%s", "nearby cursor was not found")
 
 	fallbackLine, _ := newView.line(fallback)

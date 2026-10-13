@@ -264,7 +264,7 @@ func renderStyledRow(
 ) string {
 	value = filterANSIColors(value, colors)
 	fitted := fitANSIWindow(value, 0, width)
-	prefix := stylePrefix(style)
+	prefix := styleOpeningANSISequence(style)
 	if prefix != "" {
 		fitted = strings.ReplaceAll(fitted, "\x1b[0m", "\x1b[0m"+prefix)
 		fitted = strings.ReplaceAll(fitted, "\x1b[m", "\x1b[m"+prefix)
@@ -286,14 +286,19 @@ func filterSGR(sequence string, colors foregroundPolicy) string {
 		return sequence
 	}
 	parts := strings.Split(parameters, ";")
-	filtered := filterSGRParts(parts, colors)
+	filtered := colors.stripConflictingRowColors(parts)
 	if len(filtered) == 0 {
 		return ""
 	}
 	return "\x1b[" + strings.Join(filtered, ";") + "m"
 }
 
-func filterSGRParts(parts []string, colors foregroundPolicy) []string {
+// stripConflictingRowColors always removes background overrides, preserving
+// syntax foregrounds unless the row's focus or selection style owns them.
+func (colors foregroundPolicy) stripConflictingRowColors(
+	sgrParameters []string,
+) []string {
+	parts := sgrParameters
 	filtered := make([]string, 0, len(parts))
 	for index := 0; index < len(parts); index++ {
 		code, err := strconv.Atoi(parts[index])
@@ -301,11 +306,11 @@ func filterSGRParts(parts []string, colors foregroundPolicy) []string {
 			filtered = append(filtered, parts[index])
 			continue
 		}
-		if extendedColorRemoved(code, colors) {
-			index = colorParameterEnd(parts, index)
+		if colors.discardsExtendedSGRColor(code) {
+			index = extendedSGRColorLastParameter(parts, index)
 			continue
 		}
-		if simpleColorRemoved(code, colors) {
+		if colors.discardsBasicSGRColor(code) {
 			continue
 		}
 		filtered = append(filtered, parts[index])
@@ -313,16 +318,20 @@ func filterSGRParts(parts []string, colors foregroundPolicy) []string {
 	return filtered
 }
 
-func extendedColorRemoved(code int, colors foregroundPolicy) bool {
-	return code == 48 || colors == discardForeground && code == 38
+func (colors foregroundPolicy) discardsExtendedSGRColor(sgrCode int) bool {
+	return sgrCode == 48 || colors == discardForeground && sgrCode == 38
 }
 
-func simpleColorRemoved(code int, colors foregroundPolicy) bool {
-	return backgroundColor(code) ||
-		colors == discardForeground && foregroundColor(code)
+func (colors foregroundPolicy) discardsBasicSGRColor(sgrCode int) bool {
+	return backgroundColor(sgrCode) ||
+		colors == discardForeground && foregroundColor(sgrCode)
 }
 
-func colorParameterEnd(parts []string, index int) int {
+func extendedSGRColorLastParameter(
+	parameters []string,
+	colorCodeIndex int,
+) int {
+	parts, index := parameters, colorCodeIndex
 	if index+1 >= len(parts) {
 		return index
 	}
@@ -363,7 +372,7 @@ func expandTabs(value string) string {
 	return strings.ReplaceAll(value, "\t", "    ")
 }
 
-func stylePrefix(style lipgloss.Style) string {
+func styleOpeningANSISequence(style lipgloss.Style) string {
 	const marker = "\x00"
 	rendered := style.Render(marker)
 	index := strings.Index(rendered, marker)
