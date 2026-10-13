@@ -17,7 +17,7 @@ func Run(
 	commentStore comments.Store,
 	refresh func(context.Context, patch.Kind) (patch.Patch, error),
 ) error {
-	return start(
+	return launchReviewProgram(
 		ctx,
 		currentPatch,
 		commentStore,
@@ -33,7 +33,7 @@ func Run(
 	)
 }
 
-func start(
+func launchReviewProgram(
 	ctx context.Context,
 	currentPatch patch.Patch,
 	store commentStore,

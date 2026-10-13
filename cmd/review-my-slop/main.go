@@ -24,16 +24,16 @@ func main() {
 
 func run(ctx context.Context, args []string, output io.Writer) error {
 	if len(args) == 0 {
-		return runCode(ctx)
+		return runInteractiveReview(ctx)
 	}
 	if len(args) > 1 {
 		return errors.New("usage: review-my-slop [code|comments]")
 	}
 	switch args[0] {
 	case "code":
-		return runCode(ctx)
+		return runInteractiveReview(ctx)
 	case "comments":
-		return runComments(ctx, output)
+		return writePendingFeedback(ctx, output)
 	default:
 		return fmt.Errorf(
 			"unknown subcommand %q; usage: review-my-slop [code|comments]",
@@ -42,7 +42,7 @@ func run(ctx context.Context, args []string, output io.Writer) error {
 	}
 }
 
-func runCode(ctx context.Context) error {
+func runInteractiveReview(ctx context.Context) error {
 	commentStore, err := comments.OpenDefault()
 	if err != nil {
 		return err
@@ -54,7 +54,7 @@ func runCode(ctx context.Context) error {
 	return app.Run(ctx, currentPatch, commentStore, patch.Get)
 }
 
-func runComments(ctx context.Context, output io.Writer) error {
+func writePendingFeedback(ctx context.Context, output io.Writer) error {
 	commentStore, err := comments.OpenDefault()
 	if err != nil {
 		return err

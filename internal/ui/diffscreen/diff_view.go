@@ -63,7 +63,7 @@ func (v *diffView) appendFileRows(fileIndex int, file patch.File) {
 			},
 		)
 	}
-	highlighted := v.highlight(&file)
+	highlighted := v.highlightFileSources(&file)
 	for hunkIndex, hunk := range file.Hunks {
 		v.appendHunkRows(fileIndex, hunkIndex, hunk, highlighted)
 	}
@@ -85,7 +85,7 @@ func (v *diffView) appendHunkRows(
 			text:      hunkHeader(hunk.Header),
 		},
 	)
-	for _, indices := range v.lineRows(hunk.Lines) {
+	for _, indices := range v.projectHunkLineIndexes(hunk.Lines) {
 		row := entry{
 			kind:      lineRow,
 			file:      fileIndex,
@@ -104,20 +104,20 @@ func (v *diffView) highlightRow(
 	highlighted pair,
 ) {
 	if !v.split {
-		row.text = sourceText(highlighted, lines[row.rightLine])
+		row.text = highlightedSourceLine(highlighted, lines[row.rightLine])
 		return
 	}
 	if row.leftLine >= 0 {
-		row.left = sourceText(highlighted, lines[row.leftLine])
+		row.left = highlightedSourceLine(highlighted, lines[row.leftLine])
 	}
 	if row.rightLine >= 0 {
-		row.right = sourceText(highlighted, lines[row.rightLine])
+		row.right = highlightedSourceLine(highlighted, lines[row.rightLine])
 	}
 }
 
 // lineRows maps source lines to display rows. Split mode pairs each deletion
 // block with the immediately following additions; unmatched panes use -1.
-func (v *diffView) lineRows(lines []patch.Line) [][2]int {
+func (v *diffView) projectHunkLineIndexes(lines []patch.Line) [][2]int {
 	rows := make([][2]int, 0, len(lines))
 	for index := 0; index < len(lines); {
 		if !v.split || lines[index].Kind == patch.Context {
@@ -130,22 +130,28 @@ func (v *diffView) lineRows(lines []patch.Line) [][2]int {
 			index++
 			continue
 		}
-		addedStart := changeBlockEnd(lines, index, patch.Deletion)
-		end := changeBlockEnd(lines, addedStart, patch.Addition)
-		rows = append(rows, pairedChangeRows(index, addedStart, end)...)
+		addedStart := contiguousLineKindEndIndex(lines, index, patch.Deletion)
+		end := contiguousLineKindEndIndex(lines, addedStart, patch.Addition)
+		rows = append(rows, pairChangedHunkLineIndexes(
+			index, addedStart, end,
+		)...)
 		index = end
 	}
 	return rows
 }
 
-func changeBlockEnd(lines []patch.Line, start int, kind patch.LineKind) int {
+func contiguousLineKindEndIndex(
+	lines []patch.Line,
+	start int,
+	kind patch.LineKind,
+) int {
 	for start < len(lines) && lines[start].Kind == kind {
 		start++
 	}
 	return start
 }
 
-func pairedChangeRows(removedStart, addedStart, end int) [][2]int {
+func pairChangedHunkLineIndexes(removedStart, addedStart, end int) [][2]int {
 	count := max(addedStart-removedStart, end-addedStart)
 	rows := make([][2]int, 0, count)
 	for offset := 0; offset < count; offset++ {
@@ -161,21 +167,21 @@ func pairedChangeRows(removedStart, addedStart, end int) [][2]int {
 	return rows
 }
 
-func sourceText(highlighted pair, line patch.Line) string {
+func highlightedSourceLine(highlighted pair, line patch.Line) string {
 	if line.Kind == patch.Deletion {
 		return highlightedLine(highlighted.Old, line.OldNumber, line.Text)
 	}
 	return highlightedLine(highlighted.New, line.NewNumber, line.Text)
 }
 
-func (v *diffView) highlight(file *patch.File) pair {
+func (v *diffView) highlightFileSources(file *patch.File) pair {
 	theme := lightTheme
 	if v.dark {
 		theme = darkTheme
 	}
 	return pair{
-		Old: render(file.OldPath, file.OldSource, theme),
-		New: render(file.NewPath, file.NewSource, theme),
+		Old: renderSyntaxHighlightedSource(file.OldPath, file.OldSource, theme),
+		New: renderSyntaxHighlightedSource(file.NewPath, file.NewSource, theme),
 	}
 }
 

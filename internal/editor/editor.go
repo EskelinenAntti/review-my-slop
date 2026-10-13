@@ -48,7 +48,7 @@ func commentDraft(body string, anchor comments.Anchor) string {
 		_ = draft.WriteByte('\n')
 	}
 	_ = draft.WriteByte('\n')
-	fence := contextFence(lines)
+	fence := markdownContextFence(lines)
 	_, _ = draft.WriteString(fence)
 	_, _ = draft.WriteString("suggestion\n")
 	for _, line := range lines {
@@ -65,7 +65,7 @@ func stripUnchangedSuggestion(body string, quoted []string) string {
 		return body
 	}
 	lines := suggestionLines(quoted)
-	fence := contextFence(lines)
+	fence := markdownContextFence(lines)
 	var suggestion strings.Builder
 	_, _ = suggestion.WriteString(fence)
 	_, _ = suggestion.WriteString("suggestion\n")
@@ -114,7 +114,7 @@ func suggestionLines(quoted []string) []string {
 	return lines
 }
 
-func contextFence(lines []string) string {
+func markdownContextFence(lines []string) string {
 	longest := 0
 	for _, line := range lines {
 		run := 0

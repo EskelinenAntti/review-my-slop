@@ -9,12 +9,11 @@ import (
 
 	"github.com/eskelinenantti/review-my-slop/internal/comments"
 	"github.com/eskelinenantti/review-my-slop/internal/editor"
-	"github.com/eskelinenantti/review-my-slop/internal/patch"
 )
 
-func (m model) updateComments(name string) (tea.Model, tea.Cmd) {
+func (m model) updateCommentsKey(keyName string) (tea.Model, tea.Cmd) {
 	m.err = nil
-	switch name {
+	switch keyName {
 	case "esc", "C", "q":
 		m.mode = modeBrowse
 	case "ctrl+c":
@@ -56,7 +55,7 @@ func (m model) editSelectedComment() (tea.Model, tea.Cmd) {
 	return m, cmd
 }
 
-func (m *model) beginComment() (tea.Cmd, error) {
+func (m *model) editSelectedCodeComment() (tea.Cmd, error) {
 	file, lines, ok := m.diffView.Selected()
 	if !ok {
 		return nil, errors.New("select code lines before commenting")
@@ -71,7 +70,7 @@ func (m *model) beginComment() (tea.Cmd, error) {
 	return cmd, nil
 }
 
-func (m *model) finishCommentEdit() {
+func (m *model) saveCommentEdit() {
 	body := strings.TrimSpace(m.edit.body)
 	if body == "" {
 		if m.edit.index >= 0 {
@@ -189,36 +188,4 @@ func (m model) commentIndex(selected comments.Comment) int {
 		}
 	}
 	return -1
-}
-
-func commentAnchor(file patch.File, lines []patch.Line) comments.Anchor {
-	path := file.NewPath
-	if path == "" {
-		path = file.OldPath
-	}
-	anchor := comments.Anchor{FilePath: path}
-	for _, line := range lines {
-		prefix := " "
-		if line.Kind == patch.Addition {
-			prefix = "+"
-		}
-		if line.Kind == patch.Deletion {
-			prefix = "-"
-		}
-		anchor.QuotedLines = append(anchor.QuotedLines, prefix+line.Text)
-		accumulateRange(&anchor.OldStart, &anchor.OldEnd, int(line.OldNumber))
-		accumulateRange(&anchor.NewStart, &anchor.NewEnd, int(line.NewNumber))
-	}
-	return anchor
-}
-func accumulateRange(start, end *int, value int) {
-	if value == 0 {
-		return
-	}
-	if *start == 0 || value < *start {
-		*start = value
-	}
-	if value > *end {
-		*end = value
-	}
 }

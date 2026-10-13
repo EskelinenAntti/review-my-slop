@@ -81,7 +81,7 @@ func New(p patch.Patch, options Options) *View {
 	v := &View{options: options, width: 80, height: 30}
 	v.view = v.newReviewView(p)
 	v.viewport = v.view.newViewport(v.width, frame.BodyHeight(v.height))
-	v.cursor, _ = v.view.first()
+	v.cursor, _ = v.view.firstLineCursor()
 	return v
 }
 
@@ -141,20 +141,20 @@ func (v *View) Move(motion Motion) {
 	case NextPage:
 		v.halfPage(forward)
 	case FirstLine:
-		if cursor, ok := v.view.first(); ok {
+		if cursor, ok := v.view.firstLineCursor(); ok {
 			v.setCursor(cursor)
 		}
 	case LastLine:
-		if cursor, ok := v.view.last(); ok {
+		if cursor, ok := v.view.lastLineCursor(); ok {
 			v.setCursor(cursor)
 		}
 
 	default:
-		v.moveBetweenSections(motion)
+		v.moveBetweenFilesAndPanes(motion)
 	}
 }
 
-func (v *View) moveBetweenSections(motion Motion) {
+func (v *View) moveBetweenFilesAndPanes(motion Motion) {
 	switch motion {
 	case PreviousFile:
 		v.jumpFile(backward)
@@ -165,14 +165,14 @@ func (v *View) moveBetweenSections(motion Motion) {
 	case NewPane:
 		v.switchPane(right)
 	case OtherPane:
-		v.switchPane(v.cursor.pane.other())
+		v.switchPane(v.cursor.pane.oppositePane())
 	default:
 		return
 	}
 }
 
 func (v *View) step(direction direction) {
-	next, ok := v.view.move(v.cursor, direction)
+	next, ok := v.view.adjacentLineCursor(v.cursor, direction)
 	if !ok {
 		return
 	}
@@ -292,7 +292,7 @@ func (v *View) Selected() (patch.File, []patch.Line, bool) {
 		selection = &current
 	}
 	file, ok := v.view.file(selection.First)
-	lines := v.view.lines(*selection)
+	lines := v.view.selectedLines(*selection)
 	return file, lines, ok && len(lines) > 0
 }
 
@@ -318,7 +318,7 @@ func (v *View) InsertSearch(text string) {
 	if !v.search.active {
 		v.BeginSearch()
 	}
-	v.previewSearch(v.search.query + text)
+	v.focusQueryMatchOrSearchOrigin(v.search.query + text)
 }
 
 // BackspaceSearch removes the last Unicode code point from the active query.
@@ -331,10 +331,10 @@ func (v *View) BackspaceSearch() {
 	if len(query) > 0 {
 		query = query[:len(query)-1]
 	}
-	v.previewSearch(string(query))
+	v.focusQueryMatchOrSearchOrigin(string(query))
 }
 
-func (v *View) previewSearch(query string) {
+func (v *View) focusQueryMatchOrSearchOrigin(query string) {
 	v.search.query = query
 	if query == "" {
 		v.setCursor(v.search.from)
@@ -442,7 +442,8 @@ func (v *View) renderFooter(value string) string {
 		label = "branch changes from " + v.view.patch.Branch
 	}
 	if v.viewport.top > 0 {
-		label += fmt.Sprintf(" (%d%%)", v.view.viewportProgress(v.viewport))
+		label += fmt.Sprintf(" (%d%%)",
+			v.view.viewportScrollPercent(v.viewport))
 	}
 	right := mutedStyle.Render(label)
 	width := max(20, v.width)

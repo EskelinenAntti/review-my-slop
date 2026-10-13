@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/alecthomas/chroma/v2/quick"
+	"github.com/eskelinenantti/review-my-slop/internal/patch"
 )
 
 type pair struct {
@@ -18,7 +19,7 @@ const (
 	darkTheme  = "catppuccin-mocha"
 )
 
-func render(filename, source, theme string) []string {
+func renderSyntaxHighlightedSource(filename, source, theme string) []string {
 	if source == "" {
 		return nil
 	}
@@ -38,4 +39,15 @@ func render(filename, source, theme string) []string {
 		return strings.Split(strings.TrimSuffix(source, "\n"), "\n")
 	}
 	return strings.Split(strings.TrimSuffix(string(rendered), "\n"), "\n")
+}
+
+func highlightedLine(
+	lines []string,
+	number patch.LineNumber,
+	fallback string,
+) string {
+	if number <= 0 || int(number) > len(lines) {
+		return fallback
+	}
+	return lines[int(number)-1]
 }

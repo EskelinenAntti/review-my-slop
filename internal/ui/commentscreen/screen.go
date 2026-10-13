@@ -71,7 +71,7 @@ func (v *View) Click(x, y int) bool {
 	if !ok {
 		return false
 	}
-	row += v.startRow(height)
+	row += v.firstVisibleCommentIndex(height)
 	if row >= len(v.items) {
 		return false
 	}
@@ -79,7 +79,7 @@ func (v *View) Click(x, y int) bool {
 	return true
 }
 
-func (v *View) startRow(height int) int {
+func (v *View) firstVisibleCommentIndex(height int) int {
 	return min(max(0, v.top), max(0, len(v.items)-height))
 }
 
@@ -87,7 +87,7 @@ func (v *View) keepVisible() {
 	height := frame.BodyHeight(v.height)
 	v.top = min(v.top, v.row)
 	v.top = max(v.top, v.row-height+1)
-	v.top = v.startRow(height)
+	v.top = v.firstVisibleCommentIndex(height)
 }
 
 // Render composes the screen, showing a non-nil error in place of its hints.
@@ -100,7 +100,7 @@ func (v *View) Render(err error) string {
 		body = make([]string, height)
 		body[min(1, height-1)] = mutedStyle.Render("No pending comments.")
 	} else {
-		start := v.startRow(height)
+		start := v.firstVisibleCommentIndex(height)
 		end := min(len(v.items), start+height)
 		for index := start; index < end; index++ {
 			body = append(body, v.renderRow(index))

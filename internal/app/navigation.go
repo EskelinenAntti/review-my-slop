@@ -22,11 +22,11 @@ func (m *model) setSideBySide(enabled bool) {
 	m.diffView.Configure(m.diffOptions)
 }
 
-func (m model) updateSearch(
-	name string,
+func (m model) updateDiffSearchKey(
+	keyName string,
 	key tea.KeyPressMsg,
 ) (tea.Model, tea.Cmd) {
-	switch name {
+	switch keyName {
 	case "esc":
 		m.diffView.CancelSearch()
 		m.mode = modeBrowse
@@ -43,18 +43,18 @@ func (m model) updateSearch(
 	return m, nil
 }
 
-// navigate applies a diff navigation binding and reports whether it handled the
-// key.
-func (m *model) navigate(name string) bool {
-	if motion, ok := navigationMotions[name]; ok {
+// applyDiffNavigationKey applies a diff navigation binding and reports whether
+// it handled the key.
+func (m *model) applyDiffNavigationKey(keyName string) bool {
+	if motion, ok := navigationMotions[keyName]; ok {
 		m.diffView.Move(motion)
 		return true
 	}
-	if alignment, ok := navigationAlignments[name]; ok {
+	if alignment, ok := navigationAlignments[keyName]; ok {
 		m.diffView.Align(alignment)
 		return true
 	}
-	switch name {
+	switch keyName {
 	case "n":
 		m.diffView.Find(diffscreen.Forward)
 	case "N":

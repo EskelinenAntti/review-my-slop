@@ -47,7 +47,7 @@ func writePromptComment(w io.Writer, number int, comment Comment) error {
 		"\n### %d. `%s` (%s)\n\n",
 		number,
 		anchor.FilePath,
-		describeRange(anchor),
+		describeAnchorLineRange(anchor),
 	)
 	if headingErr != nil {
 		return headingErr
@@ -75,13 +75,17 @@ func writeQuotedLines(w io.Writer, lines []string) error {
 	return err
 }
 
-func describeRange(anchor Anchor) string {
+func describeAnchorLineRange(anchor Anchor) string {
 	var sides []string
 	if anchor.OldStart > 0 {
-		sides = append(sides, lineRange("old", anchor.OldStart, anchor.OldEnd))
+		sides = append(sides, formatSourceLineRange(
+			"old", anchor.OldStart, anchor.OldEnd,
+		))
 	}
 	if anchor.NewStart > 0 {
-		sides = append(sides, lineRange("new", anchor.NewStart, anchor.NewEnd))
+		sides = append(sides, formatSourceLineRange(
+			"new", anchor.NewStart, anchor.NewEnd,
+		))
 	}
 	if len(sides) == 0 {
 		return "diff lines"
@@ -89,9 +93,9 @@ func describeRange(anchor Anchor) string {
 	return strings.Join(sides, ", ")
 }
 
-func lineRange(side string, start, end int) string {
+func formatSourceLineRange(sourceSide string, start, end int) string {
 	if end == 0 || end == start {
-		return fmt.Sprintf("%s line %d", side, start)
+		return fmt.Sprintf("%s line %d", sourceSide, start)
 	}
-	return fmt.Sprintf("%s lines %d-%d", side, start, end)
+	return fmt.Sprintf("%s lines %d-%d", sourceSide, start, end)
 }

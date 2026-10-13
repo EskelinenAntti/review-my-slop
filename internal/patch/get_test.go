@@ -291,14 +291,12 @@ func TestGetBranchIncludesCommittedStagedUnstagedAndUntrackedChanges(
 			"unstaged on feature",
 		), true, "branch diff lacks expected changes: %#v", got.Files)
 	testutil.RequireEqual(t,
-
 		containsKind(
 			got.Files[2],
 			Addition,
 			"staged on feature",
 		), true, "branch diff lacks expected changes: %#v", got.Files)
 	testutil.RequireEqual(t,
-
 		containsKind(
 			got.Files[3],
 			Addition,

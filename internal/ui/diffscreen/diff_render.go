@@ -164,7 +164,7 @@ func (v *diffView) renderPane(
 	cursor diffCursor,
 	selection *diffSelection,
 ) string {
-	index := v.lineIndex(current, pane)
+	index := v.sourceLineIndexInHunk(current, pane)
 	if index < 0 {
 		return strings.Repeat(" ", width)
 	}
@@ -264,7 +264,7 @@ func renderStyledRow(
 ) string {
 	value = filterANSIColors(value, colors)
 	fitted := fitANSIWindow(value, 0, width)
-	prefix := stylePrefix(style)
+	prefix := ansiStyleEscapePrefix(style)
 	if prefix != "" {
 		fitted = strings.ReplaceAll(fitted, "\x1b[0m", "\x1b[0m"+prefix)
 		fitted = strings.ReplaceAll(fitted, "\x1b[m", "\x1b[m"+prefix)
@@ -302,7 +302,7 @@ func filterSGRParts(parts []string, colors foregroundPolicy) []string {
 			continue
 		}
 		if extendedColorRemoved(code, colors) {
-			index = colorParameterEnd(parts, index)
+			index = sgrColorSequenceEndIndex(parts, index)
 			continue
 		}
 		if simpleColorRemoved(code, colors) {
@@ -322,7 +322,7 @@ func simpleColorRemoved(code int, colors foregroundPolicy) bool {
 		colors == discardForeground && foregroundColor(code)
 }
 
-func colorParameterEnd(parts []string, index int) int {
+func sgrColorSequenceEndIndex(parts []string, index int) int {
 	if index+1 >= len(parts) {
 		return index
 	}
@@ -363,7 +363,7 @@ func expandTabs(value string) string {
 	return strings.ReplaceAll(value, "\t", "    ")
 }
 
-func stylePrefix(style lipgloss.Style) string {
+func ansiStyleEscapePrefix(style lipgloss.Style) string {
 	const marker = "\x00"
 	rendered := style.Render(marker)
 	index := strings.Index(rendered, marker)

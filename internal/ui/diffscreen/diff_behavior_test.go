@@ -71,20 +71,27 @@ func TestSplitSelectionOnlyIncludesActivePane(t *testing.T) {
 	added, _ := v.search("added one", first, forward)
 	left := beginSelection(removed)
 	left, ok := v.extendSelection(left, removed)
-	testutil.RequireEqual(t, ok, true, "left lines = %#v", v.lines(left))
-	testutil.RequireEqual(t, len(v.lines(left)), 1, "left lines = %#v",
-		v.lines(left),
+	testutil.RequireEqual(t,
+		ok,
+		true,
+		"left lines = %#v",
+		v.selectedLines(left))
+	testutil.RequireEqual(t, len(v.selectedLines(left)), 1, "left lines = %#v",
+		v.selectedLines(left),
 	)
-	testutil.RequireEqual(t, v.lines(left)[0].Kind, patch.Deletion,
-		"left lines = %#v", v.lines(left),
+	testutil.RequireEqual(t, v.selectedLines(left)[0].Kind, patch.Deletion,
+		"left lines = %#v", v.selectedLines(left),
 	)
 
 	right := beginSelection(added)
-	testutil.RequireEqual(t, len(v.lines(right)), 1, "right lines = %#v",
-		v.lines(right),
+	testutil.RequireEqual(t,
+		len(v.selectedLines(right)),
+		1,
+		"right lines = %#v",
+		v.selectedLines(right),
 	)
-	testutil.RequireEqual(t, v.lines(right)[0].Kind, patch.Addition,
-		"right lines = %#v", v.lines(right),
+	testutil.RequireEqual(t, v.selectedLines(right)[0].Kind, patch.Addition,
+		"right lines = %#v", v.selectedLines(right),
 	)
 }
 
@@ -116,7 +123,7 @@ func TestSplitPaneSwitchingFindsRowsAboveAndBelowEmptyTargets(t *testing.T) {
 		line.Text,
 	)
 
-	last, _ := v.last()
+	last, _ := v.lastLineCursor()
 	right, ok := v.switchPane(last, right)
 	testutil.RequireEqual(t, ok, true, "%s", "did not find earlier right pane")
 
@@ -188,12 +195,12 @@ func TestSplitVerticalMovementSkipsEmptyActivePane(t *testing.T) {
 	v := newSideBySideView(p, true)
 	first := mustFirst(t, v)
 	left, _ := v.switchPane(first, left)
-	nextLeft, _ := v.move(left, forward)
+	nextLeft, _ := v.adjacentLineCursor(left, forward)
 	line, _ := v.line(nextLeft)
 	testutil.RequireEqual(t, line.Text, "two", "left movement = %q", line.Text)
 
 	rightAtContext, _ := v.switchPane(nextLeft, right)
-	nextRight, _ := v.move(rightAtContext, forward)
+	nextRight, _ := v.adjacentLineCursor(rightAtContext, forward)
 	line, _ = v.line(nextRight)
 	testutil.RequireEqual(t, line.Text, "three", "right movement = %q",
 		line.Text,
@@ -349,7 +356,7 @@ func stickyHeaderPatch() patch.Patch {
 
 func TestKeepVisibleAccountsForStickyFileHeader(t *testing.T) {
 	v := newUnifiedView(longPatch(), true)
-	cursor, _ := v.last()
+	cursor, _ := v.lastLineCursor()
 	viewport := v.keepVisible(v.newViewport(50, 4), cursor)
 	rendered := ansi.Strip(v.render(viewport, cursor, nil))
 	line, _ := v.line(cursor)
@@ -542,7 +549,7 @@ func TestRenderedCodeRowsHaveExactTerminalWidth(t *testing.T) {
 			testutil.RequireEqual(t, width, test.width, "width=%d want=%d",
 				width, test.width,
 			)
-			next, ok := v.move(cursor, forward)
+			next, ok := v.adjacentLineCursor(cursor, forward)
 			if !ok {
 				break
 			}

@@ -17,18 +17,18 @@ func (v *View) replaceView(next *diffView) {
 	old := v.view
 	leftColumn := v.viewport.LeftColumn
 	rowsAbove := v.cursor.row - v.viewport.top
-	cursor := identify(old, v.cursor)
-	origin := identify(old, v.search.from)
+	cursor := captureCursorSourceIdentity(old, v.cursor)
+	origin := captureCursorSourceIdentity(old, v.search.from)
 	v.viewport = next.newViewport(v.viewport.Width, v.viewport.Height)
 	v.viewport = next.scrollHorizontal(v.viewport, leftColumn)
 	translated, ok := next.findCursor(cursor)
 	if !ok {
-		translated, _ = next.first()
+		translated, _ = next.firstLineCursor()
 	}
 	v.cursor = translated
 	v.selection = preserveSelection(old, v.selection, next)
 	v.view = next
-	if next.valid(v.cursor) {
+	if next.hasSourceLine(v.cursor) {
 		v.viewport.top = max(0, v.cursor.row-rowsAbove)
 		v.viewport = next.keepVisible(v.viewport, v.cursor)
 	}
@@ -37,18 +37,21 @@ func (v *View) replaceView(next *diffView) {
 		if translated, ok := next.findCursor(origin); ok {
 			v.search.from = translated
 		}
-		v.previewSearch(v.search.query)
+		v.focusQueryMatchOrSearchOrigin(v.search.query)
 	}
 }
 
-func identify(v *diffView, cursor diffCursor) cursorIdentity {
-	if !v.valid(cursor) {
+func captureCursorSourceIdentity(
+	v *diffView,
+	cursor diffCursor,
+) cursorIdentity {
+	if !v.hasSourceLine(cursor) {
 		return cursorIdentity{}
 	}
 	row := v.rows[cursor.row]
 	file := v.patch.Files[row.file]
 	hunk := file.Hunks[row.hunk]
-	line := hunk.Lines[v.lineIndex(row, cursor.pane)]
+	line := hunk.Lines[v.sourceLineIndexInHunk(row, cursor.pane)]
 	return cursorIdentity{
 		file:   file,
 		hunk:   hunk,
@@ -66,8 +69,8 @@ func preserveSelection(
 	if selection == nil {
 		return nil
 	}
-	first := identify(old, selection.First)
-	last := identify(old, selection.Last)
+	first := captureCursorSourceIdentity(old, selection.First)
+	last := captureCursorSourceIdentity(old, selection.Last)
 	if !first.valid || !last.valid {
 		return nil
 	}
@@ -85,4 +88,110 @@ func preserveSelection(
 		return nil
 	}
 	return &translated
+}
+
+// findCursor searches the file by line numbers, then matching text and kind,
+// then source proximity. Ties keep the preferred pane.
+func (v *diffView) findCursor(target cursorIdentity) (diffCursor, bool) {
+	if !target.valid {
+		return diffCursor{}, false
+	}
+	best := cursorMatch{}
+	for y := range v.rows {
+		candidate := v.matchRow(y, target)
+		if candidate.rank == 3 {
+			return candidate.cursor, true
+		}
+		if candidate.betterThan(best) {
+			best = candidate
+		}
+	}
+	return best.cursor, best.rank > 0
+}
+
+type cursorMatch struct {
+	cursor         diffCursor
+	rank, distance int
+}
+
+func (m cursorMatch) betterThan(other cursorMatch) bool {
+	return m.rank > other.rank ||
+		m.rank == other.rank && m.distance < other.distance
+}
+
+func (m cursorMatch) bestMatchWith(other cursorMatch) cursorMatch {
+	if m.betterThan(other) {
+		return m
+	}
+	return other
+}
+
+func (v *diffView) matchRow(y int, target cursorIdentity) cursorMatch {
+	current := v.rows[y]
+	if !v.rowInFile(current, target.file) {
+		return cursorMatch{}
+	}
+	best := cursorMatch{}
+	for _, pane := range [2]diffPane{
+		target.cursor.pane,
+		target.cursor.pane.oppositePane(),
+	} {
+		candidate, ok := v.cursorAt(y, pane)
+		if !ok {
+			continue
+		}
+		line, _ := v.line(candidate)
+		match := cursorMatch{
+			cursor: candidate,
+			rank:   rankSourceLineIdentityMatch(line, target.line),
+			distance: sourceLineNumberDistance(
+				line, target.line, y-target.cursor.row,
+			),
+		}
+		if match.rank == 3 {
+			return match
+		}
+		best = match.bestMatchWith(best)
+	}
+	return best
+}
+
+func (v *diffView) rowInFile(current entry, file patch.File) bool {
+	return current.hunk >= 0 && sameFile(v.patch.Files[current.file], file)
+}
+
+func rankSourceLineIdentityMatch(line, target patch.Line) int {
+	if line.Kind != target.Kind {
+		return 1
+	}
+	if line.OldNumber == target.OldNumber &&
+		line.NewNumber == target.NewNumber {
+		return 3
+	}
+	if line.Text == target.Text {
+		return 2
+	}
+	return 1
+}
+
+func sourceLineNumberDistance(line, target patch.Line, rowDistance int) int {
+	if line.NewNumber > 0 && target.NewNumber > 0 {
+		return abs(int(line.NewNumber - target.NewNumber))
+	}
+	if line.OldNumber > 0 && target.OldNumber > 0 {
+		return abs(int(line.OldNumber - target.OldNumber))
+	}
+	return abs(rowDistance)
+}
+
+func sameFile(candidate, target patch.File) bool {
+	return candidate.OldPath != "" && candidate.OldPath == target.OldPath ||
+		candidate.NewPath != "" && candidate.NewPath == target.NewPath
+}
+
+func abs(value int) int {
+	if value < 0 {
+		return -value
+	}
+	return value
 }

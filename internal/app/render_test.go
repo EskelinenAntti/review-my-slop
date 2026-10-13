@@ -16,17 +16,17 @@ func TestWorkflowErrorKeepsDiffLabelWithinFooter(t *testing.T) {
 		for _, kind := range []patch.Kind{patch.Unstaged, patch.Branch} {
 			p := modelPatch()
 			p.Kind, p.Branch = kind, "main"
-			m := newModel(
+			m := newReviewModel(
 				p,
 				nil,
 				nil,
-				initialLayout{size: size{Width: width, Height: 8}},
+				initialReviewLayout{size: size{Width: width, Height: 8}},
 			)
 			m.err = errors.New(
 				"a very long storage failure\n" +
 					"that exceeds the available footer width",
 			)
-			lines := strings.Split(m.render(), "\n")
+			lines := strings.Split(m.renderActiveScreen(), "\n")
 			testutil.RequireEqual(t, len(lines), 8,
 				"error changed screen height: %d", len(lines),
 			)

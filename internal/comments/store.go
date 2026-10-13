@@ -61,14 +61,14 @@ func (s Store) Add(comment Comment) (Comment, error) {
 	if err != nil {
 		return Comment{}, fmt.Errorf("encode comment: %w", err)
 	}
-	err = s.transact(func(bucket *bolt.Bucket) error {
-		return addComment(bucket, comment.ID, data)
+	err = s.updateCommentsBucket(func(bucket *bolt.Bucket) error {
+		return insertEncodedComment(bucket, comment.ID, data)
 	})
 	return comment, err
 }
 
-func addComment(bucket *bolt.Bucket, id string, data []byte) error {
-	if pendingBytes(bucket)+len(data) > maxPendingBytes {
+func insertEncodedComment(bucket *bolt.Bucket, id string, data []byte) error {
+	if totalEncodedCommentBytes(bucket)+len(data) > maxPendingBytes {
 		return fmt.Errorf("pending feedback exceeds %d bytes", maxPendingBytes)
 	}
 	if bucket.Get([]byte(id)) != nil {
@@ -80,7 +80,7 @@ func addComment(bucket *bolt.Bucket, id string, data []byte) error {
 // List returns pending comments for the repository.
 func (s Store) List(repository string) ([]Comment, error) {
 	var comments []Comment
-	err := s.view(func(bucket *bolt.Bucket) error {
+	err := s.readCommentsBucket(func(bucket *bolt.Bucket) error {
 		return bucket.ForEach(func(_, value []byte) error {
 			comment, err := decodeComment(value)
 			if err != nil {
@@ -107,7 +107,7 @@ func (s Store) Update(comment Comment) error {
 	if err != nil {
 		return fmt.Errorf("encode comment: %w", err)
 	}
-	return s.transact(
+	return s.updateCommentsBucket(
 		func(bucket *bolt.Bucket) error {
 			return replaceComment(bucket, comment, data)
 		},
@@ -119,7 +119,7 @@ func (s Store) Delete(repository, id string) error {
 	if repository == "" || id == "" {
 		return errors.New("repository and comment ID are required")
 	}
-	return s.transact(func(bucket *bolt.Bucket) error {
+	return s.updateCommentsBucket(func(bucket *bolt.Bucket) error {
 		key, err := findCommentKey(bucket, repository, id)
 		if err != nil {
 			return err
@@ -140,7 +140,7 @@ func (s Store) Acknowledge(repository string, ids []string) error {
 	for _, id := range ids {
 		wanted[id] = struct{}{}
 	}
-	return s.transact(func(bucket *bolt.Bucket) error {
+	return s.updateCommentsBucket(func(bucket *bolt.Bucket) error {
 		keys, err := findPendingKeys(bucket, repository, wanted)
 		if err != nil {
 			return err
@@ -158,7 +158,7 @@ func deleteKeys(bucket *bolt.Bucket, keys [][]byte) error {
 	return nil
 }
 
-func pendingBytes(bucket *bolt.Bucket) int {
+func totalEncodedCommentBytes(bucket *bolt.Bucket) int {
 	var total int
 	cursor := bucket.Cursor()
 	for _, value := cursor.First(); value != nil; _, value = cursor.Next() {
@@ -265,7 +265,7 @@ func decodeComment(data []byte) (Comment, error) {
 	return comment, nil
 }
 
-func (s Store) transact(fn func(*bolt.Bucket) error) error {
+func (s Store) updateCommentsBucket(fn func(*bolt.Bucket) error) error {
 	db, err := s.open()
 	if err != nil {
 		return err
@@ -280,7 +280,7 @@ func (s Store) transact(fn func(*bolt.Bucket) error) error {
 	})
 }
 
-func (s Store) view(fn func(*bolt.Bucket) error) error {
+func (s Store) readCommentsBucket(fn func(*bolt.Bucket) error) error {
 	db, err := s.open()
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {

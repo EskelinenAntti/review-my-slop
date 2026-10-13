@@ -21,7 +21,6 @@ func TestCommentAnchorUsesSemanticSelection(t *testing.T) {
 		anchor.NewStart != 1 || anchor.NewEnd != 2 || !slices.Equal(
 
 		anchor.QuotedLines,
-
 		[]string{" before", "-removed", "+added"},
 	) {
 		t.Fatalf("anchor=%#v", anchor)

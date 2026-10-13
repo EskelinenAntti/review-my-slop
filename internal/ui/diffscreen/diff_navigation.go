@@ -6,12 +6,12 @@ import (
 	"github.com/charmbracelet/x/ansi"
 )
 
-func (v *diffView) valid(cursor diffCursor) bool {
+func (v *diffView) hasSourceLine(cursor diffCursor) bool {
 	return cursor.row >= 0 && cursor.row < len(v.rows) &&
-		v.lineIndex(v.rows[cursor.row], cursor.pane) >= 0
+		v.sourceLineIndexInHunk(v.rows[cursor.row], cursor.pane) >= 0
 }
 
-func (v *diffView) lineIndex(current entry, pane diffPane) int {
+func (v *diffView) sourceLineIndexInHunk(current entry, pane diffPane) int {
 	if current.kind != lineRow {
 		return -1
 	}
@@ -23,24 +23,24 @@ func (v *diffView) lineIndex(current entry, pane diffPane) int {
 
 func (v *diffView) cursorAt(y int, pane diffPane) (diffCursor, bool) {
 	cursor := diffCursor{row: y, pane: pane}
-	return cursor, v.valid(cursor)
+	return cursor, v.hasSourceLine(cursor)
 }
 
-func (v *diffView) first() (diffCursor, bool) {
-	if cursor, ok := v.scan(-1, right, forward); ok {
+func (v *diffView) firstLineCursor() (diffCursor, bool) {
+	if cursor, ok := v.scanSourceLineCursor(-1, right, forward); ok {
 		return cursor, true
 	}
-	return v.scan(-1, left, forward)
+	return v.scanSourceLineCursor(-1, left, forward)
 }
 
-func (v *diffView) last() (diffCursor, bool) {
-	if cursor, ok := v.scan(len(v.rows), right, backward); ok {
+func (v *diffView) lastLineCursor() (diffCursor, bool) {
+	if cursor, ok := v.scanSourceLineCursor(len(v.rows), right, backward); ok {
 		return cursor, true
 	}
-	return v.scan(len(v.rows), left, backward)
+	return v.scanSourceLineCursor(len(v.rows), left, backward)
 }
 
-func (v *diffView) scan(
+func (v *diffView) scanSourceLineCursor(
 	start int,
 	pane diffPane,
 	direction direction,
@@ -54,14 +54,14 @@ func (v *diffView) scan(
 	return diffCursor{}, false
 }
 
-func (v *diffView) move(
+func (v *diffView) adjacentLineCursor(
 	cursor diffCursor,
 	direction direction,
 ) (diffCursor, bool) {
-	if !v.valid(cursor) {
+	if !v.hasSourceLine(cursor) {
 		return diffCursor{}, false
 	}
-	return v.scan(cursor.row, cursor.pane, direction)
+	return v.scanSourceLineCursor(cursor.row, cursor.pane, direction)
 }
 
 func (v *diffView) search(
@@ -69,7 +69,7 @@ func (v *diffView) search(
 	cursor diffCursor,
 	direction direction,
 ) (diffCursor, bool) {
-	if query == "" || !v.valid(cursor) {
+	if query == "" || !v.hasSourceLine(cursor) {
 		return diffCursor{}, false
 	}
 	query = strings.ToLower(query)
@@ -94,7 +94,7 @@ func (v *diffView) searchRow(
 	}
 	panes := []diffPane{pane}
 	if v.split {
-		panes = append(panes, pane.other())
+		panes = append(panes, pane.oppositePane())
 	}
 	for _, candidatePane := range panes {
 		candidate, ok := v.cursorAt(y, candidatePane)
@@ -150,7 +150,7 @@ func (v *diffView) cursorInFile(
 		return candidate, true
 	}
 	if v.split {
-		return v.cursorAt(y, pane.other())
+		return v.cursorAt(y, pane.oppositePane())
 	}
 	return diffCursor{}, false
 }
@@ -159,13 +159,13 @@ func (v *diffView) jumpFile(
 	cursor diffCursor,
 	direction direction,
 ) (diffCursor, bool) {
-	if !v.valid(cursor) {
+	if !v.hasSourceLine(cursor) {
 		return diffCursor{}, false
 	}
 	file, _ := v.file(cursor)
 	y := cursor.row
 	for {
-		next, ok := v.scan(y, cursor.pane, direction)
+		next, ok := v.scanSourceLineCursor(y, cursor.pane, direction)
 		if !ok {
 			return diffCursor{}, false
 		}
@@ -182,7 +182,7 @@ func (v *diffView) switchPane(
 	cursor diffCursor,
 	pane diffPane,
 ) (diffCursor, bool) {
-	if !v.split || !v.valid(cursor) {
+	if !v.split || !v.hasSourceLine(cursor) {
 		return diffCursor{}, false
 	}
 	if candidate, ok := v.cursorAt(cursor.row, pane); ok {
@@ -191,7 +191,7 @@ func (v *diffView) switchPane(
 	if candidate, ok := v.previousInFile(cursor, pane); ok {
 		return candidate, true
 	}
-	return v.scan(cursor.row, pane, forward)
+	return v.scanSourceLineCursor(cursor.row, pane, forward)
 }
 
 func (v *diffView) previousInFile(

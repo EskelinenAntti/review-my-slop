@@ -12,13 +12,13 @@ import (
 
 func TestUnifiedNavigationSearchAndFileJumps(t *testing.T) {
 	v := newUnifiedView(testPatch(), true)
-	first, ok := v.first()
+	first, ok := v.firstLineCursor()
 	testutil.RequireEqual(t, ok, true, "%s", "First returned no cursor")
 
 	line, _ := v.line(first)
 	testutil.RequireEqual(t, line.Text, "before", "first line = %q", line.Text)
 
-	next, ok := v.move(first, forward)
+	next, ok := v.adjacentLineCursor(first, forward)
 	testutil.RequireEqual(t, ok, true, "%s", "Move returned no cursor")
 
 	line, _ = v.line(next)
@@ -47,8 +47,8 @@ func TestUnifiedNavigationSearchAndFileJumps(t *testing.T) {
 
 func TestSplitPairsChangeBlocksAndSupportsEmptyPanes(t *testing.T) {
 	v := newSideBySideView(testPatch(), true)
-	first, _ := v.first()
-	removed, _ := v.move(first, forward)
+	first, _ := v.firstLineCursor()
+	removed, _ := v.adjacentLineCursor(first, forward)
 	testutil.RequireEqual(t, removed.pane, right, "initial pane = %v",
 		removed.pane,
 	)
@@ -71,7 +71,7 @@ func TestSplitPairsChangeBlocksAndSupportsEmptyPanes(t *testing.T) {
 		line.Text,
 	)
 
-	secondRemoved, _ := v.move(removed, forward)
+	secondRemoved, _ := v.adjacentLineCursor(removed, forward)
 	if _, ok := v.switchPane(secondRemoved, right); !ok {
 		t.Fatal("pane switch should find a nearby right line")
 	}
@@ -95,14 +95,14 @@ func TestSplitPairsChangeBlocksAndSupportsEmptyPanes(t *testing.T) {
 
 func TestSelectionLines(t *testing.T) {
 	v := newUnifiedView(testPatch(), true)
-	first, _ := v.first()
-	last, _ := v.move(first, forward)
-	last, _ = v.move(last, forward)
+	first, _ := v.firstLineCursor()
+	last, _ := v.adjacentLineCursor(first, forward)
+	last, _ = v.adjacentLineCursor(last, forward)
 	selection := beginSelection(first)
 	selection, ok := v.extendSelection(selection, last)
 	testutil.RequireEqual(t, ok, true, "%s", "selection extension failed")
 
-	lines := v.lines(selection)
+	lines := v.selectedLines(selection)
 	testutil.RequireEqual(t, len(lines), 3, "selected lines = %d", len(lines))
 
 	nextFile, _ := v.jumpFile(first, forward)
@@ -113,10 +113,10 @@ func TestSelectionLines(t *testing.T) {
 
 func TestViewportAlignmentResizeAndScrolling(t *testing.T) {
 	v := newUnifiedView(longPatch(), true)
-	first, _ := v.first()
+	first, _ := v.firstLineCursor()
 	cursor := first
 	for range 8 {
-		cursor, _ = v.move(cursor, forward)
+		cursor, _ = v.adjacentLineCursor(cursor, forward)
 	}
 	viewport := v.newViewport(30, 5)
 	viewport = v.keepVisible(viewport, cursor)
@@ -155,21 +155,21 @@ func TestViewportAlignmentResizeAndScrolling(t *testing.T) {
 func TestViewportProgressUsesVisibleBottom(t *testing.T) {
 	v := newUnifiedView(longPatch(), true)
 	viewport := v.newViewport(30, 5)
-	progress := v.viewportProgress(viewport)
+	progress := v.viewportScrollPercent(viewport)
 	if progress <= 0 || progress >= 100 {
 		t.Fatalf("initial progress=%d", progress)
 	}
-	last, _ := v.last()
+	last, _ := v.lastLineCursor()
 	viewport = v.keepVisible(viewport, last)
-	if progress := v.viewportProgress(viewport); progress != 100 {
+	if progress := v.viewportScrollPercent(viewport); progress != 100 {
 		t.Fatalf("final progress=%d", progress)
 	}
 }
 
 func TestHalfPageScrollingMovesCursorToFileBoundaries(t *testing.T) {
 	v := newUnifiedView(longPatch(), true)
-	first, _ := v.first()
-	last, _ := v.last()
+	first, _ := v.firstLineCursor()
+	last, _ := v.lastLineCursor()
 	viewport := v.newViewport(30, 5)
 	cursor := first
 
@@ -196,7 +196,9 @@ func TestFindCursorUsesSemanticIdentityAcrossChangedCoordinates(t *testing.T) {
 	changed := testPatch()
 	changed.Files[0].Metadata = []string{"mode changed", "more metadata"}
 	newView := newUnifiedView(changed, true)
-	translated, ok := newView.findCursor(identify(oldView, cursor))
+	translated, ok := newView.findCursor(
+		captureCursorSourceIdentity(oldView, cursor),
+	)
 	testutil.RequireEqual(t, ok, true, "%s", "semantic cursor was not found")
 	testutil.RequireEqual(t, translated.row != cursor.row, true, "%s",
 		"cursor coordinate was reused after rows shifted",
@@ -225,7 +227,7 @@ func TestSplitViewWithOnlyDeletionsStartsInLeftPane(t *testing.T) {
 		},
 	}
 	v := newSideBySideView(p, true)
-	cursor, ok := v.first()
+	cursor, ok := v.firstLineCursor()
 	testutil.RequireEqual(t, ok, true, "first cursor = %#v, %v", cursor, ok)
 	testutil.RequireEqual(t, cursor.pane, left, "first cursor = %#v, %v",
 		cursor, ok,
@@ -242,7 +244,9 @@ func TestFindCursorFallsBackNearRemovedLine(t *testing.T) {
 	changed := testPatch()
 	changed.Files[0].Hunks[0].Lines = changed.Files[0].Hunks[0].Lines[:2]
 	newView := newUnifiedView(changed, true)
-	fallback, ok := newView.findCursor(identify(oldView, cursor))
+	fallback, ok := newView.findCursor(
+		captureCursorSourceIdentity(oldView, cursor),
+	)
 	testutil.RequireEqual(t, ok, true, "%s", "nearby cursor was not found")
 
 	fallbackLine, _ := newView.line(fallback)
@@ -253,7 +257,7 @@ func TestFindCursorFallsBackNearRemovedLine(t *testing.T) {
 
 func mustFirst(t *testing.T, v *diffView) diffCursor {
 	t.Helper()
-	cursor, ok := v.first()
+	cursor, ok := v.firstLineCursor()
 	testutil.RequireEqual(t, ok, true, "%s", "no first cursor")
 
 	return cursor

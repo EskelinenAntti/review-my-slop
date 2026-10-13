@@ -24,16 +24,22 @@ func EditComment(
 	if err != nil {
 		return nil, err
 	}
-	adapter, complete := commentWorkflow(ctx, command, body, anchor, onComplete)
+	adapter, complete := prepareCommentEditorExecution(
+		ctx,
+		command,
+		body,
+		anchor,
+		onComplete,
+	)
 	return tea.Exec(adapter, complete), nil
 }
 
-func commentWorkflow(
+func prepareCommentEditorExecution(
 	ctx context.Context,
 	command, body string,
 	anchor comments.Anchor,
 	onComplete func(string, error) tea.Msg,
-) (*commandAdapter, tea.ExecCallback) {
+) (execution *commandAdapter, completion tea.ExecCallback) {
 	adapter := &commandAdapter{}
 	adapter.run = func() error {
 		path, err := createCommentFile(body, anchor)
