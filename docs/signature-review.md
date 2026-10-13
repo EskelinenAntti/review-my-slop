@@ -6,55 +6,50 @@ Extract production Go function and method signatures with:
 go run ./scripts/signatures -output /tmp/review-my-slop-signatures.txt
 ```
 
-The extractor includes exported and unexported declarations and explicitly
-declared interface methods. Each line includes the relative package directory,
-package name, receiver (where applicable), name, parameters, and results.
-It excludes `_test.go` files and hidden, vendor, node_modules, testdata, and
-testutil directories (including test fixtures and test-only assertion helpers).
-Declarations are included regardless of build tags. Bodies and documentation
-are omitted. `-root` selects another source tree; omit `-output` for stdout.
+The extractor includes exported and unexported declarations and explicit
+interface methods, including anonymous and local interfaces. Each line includes
+the relative package directory, package name, receiver where applicable, name,
+parameters, and results. Anonymous interfaces also include their source location.
+Bodies and documentation are omitted. Declarations are included regardless of
+build tags. Use `-root` for another source tree; omit `-output` for stdout.
 
-For every review round, start an independent Luna agent with fresh context.
-Instruct it to run the extractor and read only the resulting signatures, never
-source code, implementation, documentation, diffs, or earlier reviews. Score
-every line using only the package and signature:
+Go test files, test-only helpers in `testutil`, and fixtures in `testdata` are
+excluded. Hidden directories and dependency directories (`vendor` and
+`node_modules`) are also excluded. Do not exclude unclear production code to
+improve review results.
+
+Each round starts independent Luna agents with fresh contexts. Reviewers run
+the extractor and read only their assigned signature lines. They must not read
+source code, implementations, documentation, diffs, or earlier assessments.
+Large inventories may use non-overlapping batches. Each signature is judged
+individually using only its package, receiver, name, parameter names and types,
+and result types:
 
 - **3:** The responsibility and intended inputs are clear.
-- **2:** The responsibility or inputs are somewhat clear.
-- **1:** The responsibility or intended inputs cannot be understood.
+- **2:** The responsibility or intended inputs are only somewhat clear.
+- **1:** The responsibility or intended inputs cannot be inferred.
 
-Keep the full scored inventory and reasons. Refactor any score-1 production
-abstractions to expose a clear responsibility and intuitive inputs; validate
-behavior with the existing tests. Repeat extraction and fresh-context review
-until every signature scores at least 2, then create a PR. Test functions and
-test helpers are excluded from scoring and refactoring scope.
+Do not use automated name-pattern scoring or a desired score distribution.
+Respect established Go and framework contracts. Preserve required names and
+contracts and improve the surrounding abstractions where needed.
 
-## Recorded reviews
+Record each signature and judgment, with a specific reason for each judgment
+below 3. Compare every reviewer's extracted bytes with the canonical inventory,
+record its SHA-256 digest, and check that each line has exactly one judgment.
+Duplicate, omitted, invalid, or unexplained judgments invalidate a round.
 
-Each complete round used three fresh independent `gpt-6-luna` agents, assigned
-non-overlapping batches of at most 100 signatures. Each agent ran the extractor
-and read only its assigned output lines. All three extracted inventories were
-checked for equality, and their scores were checked for complete line coverage.
-Reports retain the canonical extracted signature text alongside the agents'
-numeric judgments. Report formatting and signature transcription differences
-were normalized against the corresponding inventory without changing scores.
+Refactor every production abstraction below 3, preserving behavior. Prefer
+coherent responsibilities and explicit input types to shallow helpers. Existing
+tests validate each change; update their production references as needed without
+changing tests solely to improve review results. Test names are never extracted
+or scored.
 
-| Round | Signatures | Score 1 | Score 2 | Score 3 | Report |
-| --- | ---: | ---: | ---: | ---: | --- |
-| 1 | 282 | 19 | 141 | 122 | [Scores](reviews/signatures-round-1.tsv) |
-| 2 | 291 | 1 | 17 | 273 | [Scores](reviews/signatures-round-2.tsv) |
-| 3 | 288 | 1 | 43 | 244 | [Scores](reviews/signatures-round-3.tsv) |
-| 4 | 289 | 0 | 45 | 244 | [Scores](reviews/signatures-round-4.tsv) |
+Repeat extraction, fresh review, validation, and refactoring until every
+production signature receives 3 in a complete round. Confirm the final extracted
+bytes still match that round, then run `make check`, `make test`, and `make build`.
 
-Rounds 1 and 2 excluded `_test.go` files; rounds 3 and 4 additionally excluded
-testutil and testdata directories. The inventory also changed as abstractions
-and extractor helpers were refactored. No test functions were scored.
-
-The first pass introduced a source-line range abstraction, coupled Git diff
-revisions with their original-source reader, moved ANSI color decisions onto
-the foreground policy, and clarified escaping, cursor identity, navigation,
-matching, and comment viewport responsibilities. Round 2 identified `readIndex`,
-which became `readGitIndexFileSource` with explicit repository path parameters.
-Round 3 identified the extractor's required Go `main` entry point; its behavior
-was moved into `extractProductionSignaturesCLI`, leaving `main` as the launcher.
-The final full inventory received no score below 2.
+Retain the full review evidence in a separate archive before removing loose
+inventories and score reports from the working tree. The archive preserves
+historical reports, each new canonical snapshot, reviewer snapshots, judgments,
+and consolidated reports with snapshot digests. Deliver that archive alongside
+the pull request; do not leave generated name or score lists in the repository.
