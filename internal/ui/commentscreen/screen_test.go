@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/charmbracelet/x/ansi"
+
 	"github.com/eskelinenantti/review-my-slop/internal/comments"
 	"github.com/eskelinenantti/review-my-slop/internal/testutil"
 )
@@ -17,19 +18,25 @@ func TestUpdatePreservesFocusByID(t *testing.T) {
 	v.Move(1)
 	v.Update([]comments.Comment{second, first})
 	selected, ok := v.Selected()
-	testutil.RequireEqual(t, ok, true, "selected=%#v", selected)
-	testutil.RequireEqual(t, selected.ID, "second", "selected=%#v", selected)
+	testutil.RequireEqual(t, ok, true, fmt.Sprintf("selected=%#v", selected))
+	testutil.RequireEqual(t, selected.ID, "second",
+		fmt.Sprintf("selected=%#v", selected),
+	)
 
 	second.Body = "edited"
 	v.Update([]comments.Comment{first, second})
 	selected, _ = v.Selected()
-	testutil.RequireEqual(t, selected.ID, "second", "selected=%#v", selected)
-	testutil.RequireEqual(t, selected.Body, "edited", "selected=%#v", selected)
+	testutil.RequireEqual(t, selected.ID, "second",
+		fmt.Sprintf("selected=%#v", selected),
+	)
+	testutil.RequireEqual(t, selected.Body, "edited",
+		fmt.Sprintf("selected=%#v", selected),
+	)
 
 	v.Update([]comments.Comment{first})
 	selected, _ = v.Selected()
 	testutil.RequireEqual(t, selected.ID, "first",
-		"deleted selection fallback=%#v", selected,
+		fmt.Sprintf("deleted selection fallback=%#v", selected),
 	)
 }
 
@@ -46,21 +53,23 @@ func TestMovementKeepsSelectedCommentVisible(t *testing.T) {
 	v.Move(100)
 	lines := strings.Split(ansi.Strip(v.Render(nil)), "\n")
 	testutil.RequireEqual(t,
-		strings.Contains(strings.Join(lines[1:5], "\n"), ">   comment 9"), true,
-		"last selection hidden: %q", lines,
+		strings.Contains(strings.Join(lines[1:5], "\n"), ">   comment 9"),
+		true, fmt.Sprintf("last selection hidden: %q", lines),
 	)
 	testutil.RequireEqual(t, strings.Contains(lines[5], "j/k move"), true,
-		"footer misplaced: %q", lines,
+		fmt.Sprintf("footer misplaced: %q", lines),
 	)
 
 	v.Resize(80, 5)
-	testutil.RequireEqual(t, strings.Contains(v.Render(nil), "comment 9"), true,
-		"%s", "resize hid selection",
+	testutil.RequireEqual(t, strings.Contains(v.Render(nil), "comment 9"),
+		true, "resize hid selection",
 	)
 
 	v.Move(-100)
 	selected, _ := v.Selected()
-	testutil.RequireEqual(t, selected.ID, "0", "first selection=%#v", selected)
+	testutil.RequireEqual(t, selected.ID, "0",
+		fmt.Sprintf("first selection=%#v", selected),
+	)
 }
 
 func TestEmptyListAndInputOwnership(t *testing.T) {
@@ -71,7 +80,7 @@ func TestEmptyListAndInputOwnership(t *testing.T) {
 		t.Fatal("empty list has a selection")
 	}
 	testutil.RequireEqual(t,
-		strings.Contains(v.Render(nil), "No pending comments."), true, "%s",
+		strings.Contains(v.Render(nil), "No pending comments."), true,
 		"empty state missing",
 	)
 
@@ -79,7 +88,7 @@ func TestEmptyListAndInputOwnership(t *testing.T) {
 	v.Update(items)
 	items[0].Body = "changed outside view"
 	selected, _ := v.Selected()
-	testutil.RequireEqual(t, selected.Body, "original", "%s",
+	testutil.RequireEqual(t, selected.Body, "original",
 		"view borrowed mutable input slice",
 	)
 
@@ -99,21 +108,21 @@ func TestRenderErrorKeepsScreenLayout(t *testing.T) {
 		),
 		"\n",
 	)
-	testutil.RequireEqual(t, len(failed), len(normal), "%s",
+	testutil.RequireEqual(t, len(failed), len(normal),
 		"error changed the screen body or height",
 	)
 	testutil.RequireEqual(t, strings.Join(failed[:5], "\n"),
-		strings.Join(normal[:5], "\n"), "%s",
+		strings.Join(normal[:5], "\n"),
 		"error changed the screen body or height",
 	)
 	testutil.RequireEqual(t, strings.HasPrefix(failed[5], "storage failed "),
-		true, "error footer=%q", failed[5],
+		true, fmt.Sprintf("error footer=%q", failed[5]),
 	)
-	testutil.RequireEqual(t, ansi.StringWidth(failed[5]), 25, "error footer=%q",
-		failed[5],
+	testutil.RequireEqual(t, ansi.StringWidth(failed[5]), 25,
+		fmt.Sprintf("error footer=%q", failed[5]),
 	)
 	testutil.RequireEqual(t, strings.Contains(v.Render(nil), "j/k move"), true,
-		"error footer=%q", failed[5],
+		fmt.Sprintf("error footer=%q", failed[5]),
 	)
 }
 
@@ -125,38 +134,36 @@ func TestClickUsesVisibleRowsWithoutScrollingList(t *testing.T) {
 	v := New(items)
 	v.Resize(80, 7)
 	v.Move(100)
-	testutil.RequireEqual(t, v.Click(20, 1), true, "%s",
+	testutil.RequireEqual(t, v.Click(20, 1), true,
 		"visible comment click rejected",
 	)
 
 	selected, _ := v.Selected()
-	testutil.RequireEqual(t, selected.ID, "6", "%s",
+	testutil.RequireEqual(t, selected.ID, "6",
 		"click did not preserve the visible list position",
 	)
-	testutil.RequireEqual(t, v.top, 6, "%s",
+	testutil.RequireEqual(t, v.top, 6,
 		"click did not preserve the visible list position",
 	)
-	testutil.RequireEqual(t, v.Click(20, 4), true, "%s",
+	testutil.RequireEqual(t, v.Click(20, 4), true,
 		"last visible row click rejected",
 	)
 
 	selected, _ = v.Selected()
-	testutil.RequireEqual(t, selected.ID, "9", "%s",
+	testutil.RequireEqual(t, selected.ID, "9",
 		"last visible row mapped to wrong comment",
 	)
 
 	for _, point := range [][2]int{{0, 0}, {0, 5}, {0, 6}, {-1, 1}, {80, 1}} {
 		testutil.RequireEqual(t, !v.Click(point[0], point[1]), true,
-			"invalid point accepted: %v", point,
+			fmt.Sprintf("invalid point accepted: %v", point),
 		)
 	}
 	v.Update(items[:1])
-	testutil.RequireEqual(t, !v.Click(20, 2), true, "%s",
-		"blank row click accepted",
-	)
+	testutil.RequireEqual(t, !v.Click(20, 2), true, "blank row click accepted")
 
 	v.Update(nil)
-	testutil.RequireEqual(t, !v.Click(20, 1), true, "%s",
+	testutil.RequireEqual(t, !v.Click(20, 1), true,
 		"empty list click accepted",
 	)
 }

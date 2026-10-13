@@ -3,12 +3,14 @@ package app
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
+
 	"github.com/eskelinenantti/review-my-slop/internal/comments"
 	"github.com/eskelinenantti/review-my-slop/internal/patch"
 	"github.com/eskelinenantti/review-my-slop/internal/testutil"
@@ -25,37 +27,47 @@ func TestRunLoadsCommentsAndWiresContext(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	sentinel := errors.New("program startup failed")
-	err := start(ctx, p, store, func(
+	runtime := programRuntime{
+		terminalSize: func() size {
+			return size{
+				Width:  120,
+				Height: 40,
+			}
+		},
+		launch: func(m model, _ ...tea.ProgramOption) error {
+			testutil.RequireEqual(t, m.ctx, ctx, fmt.Sprintf("model=%#v", m))
+			testutil.RequireEqual(t, m.width, 120, fmt.Sprintf("model=%#v", m))
+			testutil.RequireEqual(t, m.height, 40, fmt.Sprintf("model=%#v", m))
+			testutil.RequireEqual(t, len(m.comments.items), 1,
+				fmt.Sprintf("model=%#v", m),
+			)
+
+			result := m.loadRefresh()()
+			msg, ok := result.(refreshDiffMsg)
+			testutil.RequireEqual(t, ok, true,
+				fmt.Sprintf("refresh message=%T", result),
+			)
+			testutil.RequireEqual(t, msg.err, nil, fmt.Sprintf("%s", msg.err))
+
+			return sentinel
+		},
+	}
+	err := runtime.start(ctx, p, store, func(
 		received context.Context,
 		kind patch.Kind,
 	) (patch.Patch, error) {
-		testutil.RequireEqual(t, received, ctx, "context=%v kind=%v", received,
-			kind,
+		testutil.RequireEqual(t, received, ctx,
+			fmt.Sprintf("context=%v kind=%v", received, kind),
 		)
-		testutil.RequireEqual(t, kind, p.Kind, "context=%v kind=%v", received,
-			kind,
+		testutil.RequireEqual(t, kind, p.Kind,
+			fmt.Sprintf("context=%v kind=%v", received, kind),
 		)
 
 		return p, nil
-	}, func() size {
-		return size{
-			Width:  120,
-			Height: 40,
-		}
-	}, func(m model, _ ...tea.ProgramOption) error {
-		testutil.RequireEqual(t, m.ctx, ctx, "model=%#v", m)
-		testutil.RequireEqual(t, m.width, 120, "model=%#v", m)
-		testutil.RequireEqual(t, m.height, 40, "model=%#v", m)
-		testutil.RequireEqual(t, len(m.comments.items), 1, "model=%#v", m)
-
-		result := m.loadRefresh()()
-		msg, ok := result.(refreshDiffMsg)
-		testutil.RequireEqual(t, ok, true, "refresh message=%T", result)
-		testutil.RequireEqual(t, msg.err, nil, "%s", msg.err)
-
-		return sentinel
 	})
-	testutil.RequireEqual(t, errors.Is(err, sentinel), true, "error=%v", err)
+	testutil.RequireEqual(t, errors.Is(err, sentinel), true,
+		fmt.Sprintf("error=%v", err),
+	)
 }
 
 func TestRunStartupFailures(t *testing.T) {
@@ -72,21 +84,18 @@ func TestRunStartupFailures(t *testing.T) {
 				Path: filepath.Join(t.TempDir(), "comments.db"),
 			}
 			prepareStartupFailure(t, failure, config, store.Path)
-			err = start(
-				context.Background(),
-				modelPatch(),
-				store,
-				nil,
-				func() size { return defaultSize },
-				func(
+			runtime := programRuntime{
+				terminalSize: func() size { return defaultSize },
+				launch: func(
 					model,
 					...tea.ProgramOption,
 				) error {
 					t.Fatal("program started after startup failure")
 					return nil
 				},
-			)
-			testutil.RequireEqual(t, err != nil, true, "%s",
+			}
+			err = runtime.start(context.Background(), modelPatch(), store, nil)
+			testutil.RequireEqual(t, err != nil, true,
 				"expected startup error",
 			)
 		})
@@ -97,23 +106,27 @@ func TestRunContextCancellation(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	err := start(ctx, modelPatch(), comments.Store{
+	runtime := programRuntime{
+		terminalSize: func() size { return defaultSize },
+		launch: func(
+			m model,
+			options ...tea.ProgramOption,
+		) error {
+			options = append(
+				options,
+				tea.WithInput(nil),
+				tea.WithOutput(io.Discard),
+				tea.WithoutRenderer(),
+			)
+			_, err := tea.NewProgram(m, options...).Run()
+			return err
+		},
+	}
+	err := runtime.start(ctx, modelPatch(), comments.Store{
 		Path: filepath.Join(t.TempDir(), "comments.db"),
-	}, nil, func() size { return defaultSize }, func(
-		m model,
-		options ...tea.ProgramOption,
-	) error {
-		options = append(
-			options,
-			tea.WithInput(nil),
-			tea.WithOutput(io.Discard),
-			tea.WithoutRenderer(),
-		)
-		_, err := tea.NewProgram(m, options...).Run()
-		return err
-	})
+	}, nil)
 	testutil.RequireEqual(t, errors.Is(err, tea.ErrProgramKilled), true,
-		"error=%v", err,
+		fmt.Sprintf("error=%v", err),
 	)
 }
 
@@ -130,11 +143,11 @@ func TestTerminalSizeDiscoveryOrder(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			probe := terminalSizeProbe{t: t, success: tc.success}
 			got := discoverTerminalSize(probe.getSize)
-			testutil.RequireEqual(t, got, tc.want, "size=%v want=%v", got,
-				tc.want,
+			testutil.RequireEqual(t, got, tc.want,
+				fmt.Sprintf("size=%v want=%v", got, tc.want),
 			)
-			testutil.RequireEqual(t, probe.calls, tc.calls, "calls=%d want=%d",
-				probe.calls, tc.calls,
+			testutil.RequireEqual(t, probe.calls, tc.calls,
+				fmt.Sprintf("calls=%d want=%d", probe.calls, tc.calls),
 			)
 		})
 	}
@@ -170,10 +183,10 @@ func (p *terminalSizeProbe) getSize(fd uintptr) (width, height int, err error) {
 	p.t.Helper()
 	descriptors := []uintptr{os.Stdin.Fd(), os.Stdout.Fd()}
 	testutil.RequireEqual(p.t, p.calls < len(descriptors), true,
-		"unexpected terminal size call: %d", p.calls,
+		fmt.Sprintf("unexpected terminal size call: %d", p.calls),
 	)
-	testutil.RequireEqual(p.t, fd, descriptors[p.calls], "fd=%v want=%v", fd,
-		descriptors[p.calls],
+	testutil.RequireEqual(p.t, fd, descriptors[p.calls],
+		fmt.Sprintf("fd=%v want=%v", fd, descriptors[p.calls]),
 	)
 	current := p.calls
 	p.calls++

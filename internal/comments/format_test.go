@@ -2,6 +2,7 @@ package comments
 
 import (
 	"bytes"
+	"fmt"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -28,18 +29,16 @@ func TestWritePendingAcknowledgesOnlyExportedComments(t *testing.T) {
 	}}
 	testutil.NoError(t, store.WritePending(writer, "/repo"))
 	testutil.RequireEqual(t, strings.Contains(output.String(), "exported"),
-		true, "output = %q", output.String(),
+		true, fmt.Sprintf("output = %q", output.String()),
 	)
-	testutil.RequireEqual(t,
-		!strings.Contains(
-			output.String(),
-			"other repository",
-		), true, "output = %q",
+	testutil.RequireEqual(t, !strings.Contains(
 		output.String(),
+		"other repository",
+	), true, fmt.Sprintf("output = %q", output.String()),
 	)
 	testutil.RequireEqual(t,
 		!strings.Contains(output.String(), "added during output"), true,
-		"output = %q", output.String(),
+		fmt.Sprintf("output = %q", output.String()),
 	)
 
 	for repository, want := range map[string]string{
@@ -48,11 +47,11 @@ func TestWritePendingAcknowledgesOnlyExportedComments(t *testing.T) {
 	} {
 		pending, err := store.List(repository)
 		testutil.NoError(t, err)
-		testutil.RequireEqual(t, len(pending), 1, "%s pending = %#v",
-			repository, pending,
+		testutil.RequireEqual(t, len(pending), 1,
+			fmt.Sprintf("%s pending = %#v", repository, pending),
 		)
-		testutil.RequireEqual(t, pending[0].Body, want, "%s pending = %#v",
-			repository, pending,
+		testutil.RequireEqual(t, pending[0].Body, want,
+			fmt.Sprintf("%s pending = %#v", repository, pending),
 		)
 	}
 }

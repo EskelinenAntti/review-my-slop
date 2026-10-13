@@ -1,9 +1,10 @@
 package helpscreen
 
 import (
-	"github.com/charmbracelet/x/ansi"
 	"strings"
 	"testing"
+
+	"github.com/charmbracelet/x/ansi"
 )
 
 func TestRenderAlignsBindingsAndKeepsHintAtBottom(t *testing.T) {

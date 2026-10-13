@@ -1,6 +1,7 @@
 package diffscreen
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/eskelinenantti/review-my-slop/internal/testutil"
@@ -9,50 +10,58 @@ import (
 func TestClickAndDragSelectCode(t *testing.T) {
 	v := New(testPatch(), Options{})
 	v.Resize(80, 20)
-	testutil.RequireEqual(t, v.BeginDrag(20, 4), true, "%s",
+	testutil.RequireEqual(t, v.BeginDrag(20, 4), true,
 		"code click was ignored",
 	)
 
 	_, line, _ := v.Current()
-	testutil.RequireEqual(t, line.Text, "removed one", "%s",
+	testutil.RequireEqual(t, line.Text, "removed one",
 		"click did not focus code without selecting a range",
 	)
-	testutil.RequireEqual(t, v.selection, nil, "%s",
+	testutil.RequireEqual(t, v.selection, nil,
 		"click did not focus code without selecting a range",
 	)
 
 	v.DragTo(30, 6)
 	v.EndDrag()
 	_, lines, ok := v.Selected()
-	testutil.RequireEqual(t, ok, true, "drag selection = %#v", lines)
-	testutil.RequireEqual(t, len(lines), 3, "drag selection = %#v", lines)
-	testutil.RequireEqual(t, lines[0].Text, "removed one",
-		"drag selection = %#v", lines,
+	testutil.RequireEqual(t, ok, true,
+		fmt.Sprintf("drag selection = %#v", lines),
 	)
-	testutil.RequireEqual(t, lines[2].Text, "added one", "drag selection = %#v",
-		lines,
+	testutil.RequireEqual(t, len(lines), 3,
+		fmt.Sprintf("drag selection = %#v", lines),
+	)
+	testutil.RequireEqual(t, lines[0].Text, "removed one",
+		fmt.Sprintf("drag selection = %#v", lines),
+	)
+	testutil.RequireEqual(t, lines[2].Text, "added one",
+		fmt.Sprintf("drag selection = %#v", lines),
 	)
 
 	end := v.cursor
 	v.DragTo(20, 3)
-	testutil.RequireEqual(t, v.cursor, end, "%s",
+	testutil.RequireEqual(t, v.cursor, end,
 		"motion after release changed selection",
 	)
-	testutil.RequireEqual(t, v.BeginDrag(20, 6), true, "%s",
+	testutil.RequireEqual(t, v.BeginDrag(20, 6), true,
 		"new click did not clear old selection",
 	)
-	testutil.RequireEqual(t, v.selection, nil, "%s",
+	testutil.RequireEqual(t, v.selection, nil,
 		"new click did not clear old selection",
 	)
 
 	v.DragTo(20, 3)
 	_, lines, ok = v.Selected()
-	testutil.RequireEqual(t, ok, true, "backward drag = %#v", lines)
-	testutil.RequireEqual(t, len(lines), 4, "backward drag = %#v", lines)
+	testutil.RequireEqual(t, ok, true,
+		fmt.Sprintf("backward drag = %#v", lines),
+	)
+	testutil.RequireEqual(t, len(lines), 4,
+		fmt.Sprintf("backward drag = %#v", lines),
+	)
 
 	v.DragTo(20, 6)
 	_, lines, _ = v.Selected()
-	testutil.RequireEqual(t, len(lines), 1, "%s",
+	testutil.RequireEqual(t, len(lines), 1,
 		"drag back to origin did not shrink selection",
 	)
 }
@@ -72,26 +81,26 @@ func TestMouseHitTestingMatchesScrolledProjection(t *testing.T) {
 			{121, 3},
 		} {
 			testutil.RequireEqual(t, !v.BeginDrag(point[0], point[1]), true,
-				"non-code point %v accepted", point,
+				fmt.Sprintf("non-code point %v accepted", point),
 			)
 		}
-		testutil.RequireEqual(t, v.BeginDrag(100, 2), true, "%s",
+		testutil.RequireEqual(t, v.BeginDrag(100, 2), true,
 			"click did not account for viewport and sticky header",
 		)
-		testutil.RequireEqual(t, v.cursor.row, 5, "%s",
+		testutil.RequireEqual(t, v.cursor.row, 5,
 			"click did not account for viewport and sticky header",
 		)
-		testutil.RequireEqual(t, v.cursor.pane, right, "%s",
+		testutil.RequireEqual(t, v.cursor.pane, right,
 			"click did not account for viewport and sticky header",
 		)
 
 		v.DragTo(100, 4)
 		_, lines, ok := v.Selected()
-		testutil.RequireEqual(t, ok, true, "scrolled drag selection = %#v",
-			lines,
+		testutil.RequireEqual(t, ok, true,
+			fmt.Sprintf("scrolled drag selection = %#v", lines),
 		)
-		testutil.RequireEqual(t, len(lines), 3, "scrolled drag selection = %#v",
-			lines,
+		testutil.RequireEqual(t, len(lines), 3,
+			fmt.Sprintf("scrolled drag selection = %#v", lines),
 		)
 	}
 }
@@ -100,31 +109,33 @@ func TestSplitMouseRejectsDividerEmptyPaneAndCrossPaneDrag(t *testing.T) {
 	v := New(testPatch(), Options{SideBySide: true})
 	v.Resize(120, 20)
 	for _, x := range []int{58, 59, 60} {
-		testutil.RequireEqual(t, !v.BeginDrag(x, 3), true, "%s",
-			"divider accepted",
-		)
+		testutil.RequireEqual(t, !v.BeginDrag(x, 3), true, "divider accepted")
 	}
-	testutil.RequireEqual(t, !v.BeginDrag(80, 5), true, "%s",
+	testutil.RequireEqual(t, !v.BeginDrag(80, 5), true,
 		"empty right pane accepted",
 	)
-	testutil.RequireEqual(t, v.BeginDrag(10, 4), true, "%s",
+	testutil.RequireEqual(t, v.BeginDrag(10, 4), true,
 		"deletion click did not focus old pane",
 	)
-	testutil.RequireEqual(t, v.cursor.pane, left, "%s",
+	testutil.RequireEqual(t, v.cursor.pane, left,
 		"deletion click did not focus old pane",
 	)
 
 	origin := v.cursor
 	v.DragTo(80, 4)
-	testutil.RequireEqual(t, v.cursor, origin, "%s", "drag crossed panes")
-	testutil.RequireEqual(t, v.selection, nil, "%s", "drag crossed panes")
+	testutil.RequireEqual(t, v.cursor, origin, "drag crossed panes")
+	testutil.RequireEqual(t, v.selection, nil, "drag crossed panes")
 
 	v.DragTo(10, 5)
 	_, lines, ok := v.Selected()
-	testutil.RequireEqual(t, ok, true, "old-pane drag = %#v", lines)
-	testutil.RequireEqual(t, len(lines), 2, "old-pane drag = %#v", lines)
+	testutil.RequireEqual(t, ok, true,
+		fmt.Sprintf("old-pane drag = %#v", lines),
+	)
+	testutil.RequireEqual(t, len(lines), 2,
+		fmt.Sprintf("old-pane drag = %#v", lines),
+	)
 	testutil.RequireEqual(t, lines[1].Text, "removed two",
-		"old-pane drag = %#v", lines,
+		fmt.Sprintf("old-pane drag = %#v", lines),
 	)
 }
 
@@ -135,10 +146,10 @@ func TestDragRejectsOtherHunksAndCancelsOnStateChanges(t *testing.T) {
 	v.DragTo(10, 4)
 	cursor, selection := v.cursor, *v.selection
 	v.DragTo(10, 10)
-	testutil.RequireEqual(t, v.cursor, cursor, "%s",
+	testutil.RequireEqual(t, v.cursor, cursor,
 		"drag crossed file/hunk boundary",
 	)
-	testutil.RequireEqual(t, *v.selection, selection, "%s",
+	testutil.RequireEqual(t, *v.selection, selection,
 		"drag crossed file/hunk boundary",
 	)
 
@@ -150,7 +161,7 @@ func TestDragRejectsOtherHunksAndCancelsOnStateChanges(t *testing.T) {
 	} {
 		v.BeginDrag(10, 3)
 		change()
-		testutil.RequireEqual(t, v.drag, nil, "%s",
+		testutil.RequireEqual(t, v.drag, nil,
 			"stale drag survived state change",
 		)
 	}

@@ -5,6 +5,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"io"
 	"os"
 	"os/exec"
@@ -15,6 +16,7 @@ import (
 	"time"
 
 	"github.com/creack/pty"
+
 	"github.com/eskelinenantti/review-my-slop/internal/testutil"
 )
 
@@ -85,8 +87,9 @@ func checkCommandLifecycle(t *testing.T, binary string, args []string) {
 	) && time.Now().Before(deadline) {
 		time.Sleep(20 * time.Millisecond)
 	}
-	testutil.RequireEqual(t, strings.Contains(output.String(), "main.go"), true,
-		"TUI did not render untracked file:\n%s", output.String(),
+	testutil.RequireEqual(t, strings.Contains(output.String(), "main.go"),
+		true,
+		fmt.Sprintf("TUI did not render untracked file:\n%s", output.String()),
 	)
 
 	if _, err := terminal.Write([]byte("q")); err != nil {

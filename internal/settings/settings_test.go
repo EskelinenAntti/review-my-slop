@@ -1,6 +1,7 @@
 package settings
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -19,7 +20,9 @@ func TestLayoutSettingsRoundTrip(t *testing.T) {
 
 	saved, err := readPreferences(path)
 	testutil.NoError(t, err)
-	testutil.RequireEqual(t, saved.SideBySide, true, "saved layout=%+v", saved)
+	testutil.RequireEqual(t, saved.SideBySide, true,
+		fmt.Sprintf("saved layout=%+v", saved),
+	)
 	testutil.NoError(t, writePreferences(path, Preferences{}))
 
 	if enabled, err := readPreferences(path); err != nil || enabled.SideBySide {
@@ -50,10 +53,10 @@ func TestLoadSaveUserPreferences(t *testing.T) {
 	entries, err := os.ReadDir(filepath.Dir(path))
 	testutil.NoError(t, err)
 	testutil.RequireEqual(t, len(entries), 1,
-		"unexpected files after atomic save: %v", entries,
+		fmt.Sprintf("unexpected files after atomic save: %v", entries),
 	)
 	testutil.RequireEqual(t, entries[0].Name(), "ui.json",
-		"unexpected files after atomic save: %v", entries,
+		fmt.Sprintf("unexpected files after atomic save: %v", entries),
 	)
 }
 
@@ -76,8 +79,10 @@ func TestReadErrors(t *testing.T) {
 
 func assertPreferenceError(t *testing.T, err error, message string) {
 	t.Helper()
-	testutil.RequireEqual(t, err != nil, true, "expected %s error", message)
+	testutil.RequireEqual(t, err != nil, true,
+		fmt.Sprintf("expected %s error", message),
+	)
 	testutil.RequireEqual(t, strings.Contains(err.Error(), message), true,
-		"expected %s error, got %v", message, err,
+		fmt.Sprintf("expected %s error, got %v", message, err),
 	)
 }

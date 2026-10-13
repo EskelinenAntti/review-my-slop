@@ -2,11 +2,12 @@ package editor
 
 import (
 	"context"
-	"github.com/eskelinenantti/review-my-slop/internal/comments"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/eskelinenantti/review-my-slop/internal/comments"
 )
 
 func TestCommentOpensMarkdownFileInEditor(t *testing.T) {

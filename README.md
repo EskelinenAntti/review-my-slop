@@ -47,6 +47,7 @@ Run `make check` for Revive and `go vet`, and `make test` for race-enabled tests
 
 `make revive` runs pinned standalone [Revive](https://github.com/revive-lint/revive)
 v1.17.0 through `go run`, so no separate installation is needed. `revive.toml`
-enables only the default checks and keeps all configuration values at their
-upstream defaults. The `-set_exit_status` flag makes findings fail local checks
-and the required CI step on both Linux and macOS.
+enables all rules except `add-constant`, limits functions to four parameters,
+and limits files to 200 lines, including comments and blank lines. Other rule
+settings use upstream defaults. The `-set_exit_status` flag makes findings fail
+local checks and the required CI step on both Linux and macOS.

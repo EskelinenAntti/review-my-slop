@@ -6,6 +6,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/term"
+
 	"github.com/eskelinenantti/review-my-slop/internal/comments"
 	"github.com/eskelinenantti/review-my-slop/internal/patch"
 )
@@ -17,35 +18,35 @@ func Run(
 	commentStore comments.Store,
 	refresh func(context.Context, patch.Kind) (patch.Patch, error),
 ) error {
-	return start(
-		ctx,
-		currentPatch,
-		commentStore,
-		refresh,
-		initialTerminalSize,
-		func(
+	runtime := programRuntime{
+		terminalSize: initialTerminalSize,
+		launch: func(
 			m model,
 			options ...tea.ProgramOption,
 		) error {
 			_, err := tea.NewProgram(m, options...).Run()
 			return err
 		},
-	)
+	}
+	return runtime.start(ctx, currentPatch, commentStore, refresh)
 }
 
-func start(
+type programRuntime struct {
+	terminalSize func() size
+	launch       func(model, ...tea.ProgramOption) error
+}
+
+func (r programRuntime) start(
 	ctx context.Context,
 	currentPatch patch.Patch,
 	store commentStore,
 	refresh func(context.Context, patch.Kind) (patch.Patch, error),
-	terminalSize func() size,
-	launch func(model, ...tea.ProgramOption) error,
 ) error {
 	pending, err := store.List(currentPatch.Root)
 	if err != nil {
 		return err
 	}
-	dimensions := terminalSize()
+	dimensions := r.terminalSize()
 	m, err := newWithStore(store, currentPatch, pending, dimensions)
 	if err != nil {
 		return err
@@ -58,7 +59,7 @@ func start(
 			},
 		)
 	}
-	return launch(
+	return r.launch(
 		m,
 		tea.WithContext(ctx),
 		tea.WithWindowSize(dimensions.Width, dimensions.Height),

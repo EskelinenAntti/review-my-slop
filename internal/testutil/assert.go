@@ -6,20 +6,20 @@ import "testing"
 // RequireEqual stops the test when the actual and expected values differ.
 func RequireEqual[
 	T comparable,
-](t *testing.T, got, want T, format string, args ...any) {
+](t *testing.T, got, want T, message string) {
 	t.Helper()
 	if got != want {
-		t.Fatalf(format, args...)
+		t.Fatal(message)
 	}
 }
 
 // CheckEqual reports unequal values and lets the test continue.
 func CheckEqual[
 	T comparable,
-](t *testing.T, got, want T, format string, args ...any) {
+](t *testing.T, got, want T, message string) {
 	t.Helper()
 	if got != want {
-		t.Errorf(format, args...)
+		t.Error(message)
 	}
 }
 

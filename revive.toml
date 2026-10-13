@@ -1,5 +1,11 @@
-# Enable every Revive rule with its default values except add-constant.
+# Enable every Revive rule, with the overrides below.
 enable-all-rules = true
+
+[rule.argument-limit]
+arguments = [4]
+
+[rule.file-length-limit]
+arguments = [{ max = 200 }]
 
 # Name literals when they express a domain concept; keep incidental values inline.
 [rule.add-constant]

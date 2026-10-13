@@ -2,11 +2,13 @@ package app
 
 import (
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
+
 	"github.com/eskelinenantti/review-my-slop/internal/patch"
 	"github.com/eskelinenantti/review-my-slop/internal/testutil"
 )
@@ -28,7 +30,7 @@ func TestWorkflowErrorKeepsDiffLabelWithinFooter(t *testing.T) {
 			)
 			lines := strings.Split(m.render(), "\n")
 			testutil.RequireEqual(t, len(lines), 8,
-				"error changed screen height: %d", len(lines),
+				fmt.Sprintf("error changed screen height: %d", len(lines)),
 			)
 
 			footer := lines[len(lines)-2]
@@ -38,15 +40,15 @@ func TestWorkflowErrorKeepsDiffLabelWithinFooter(t *testing.T) {
 			}
 			testutil.RequireEqual(t,
 				strings.HasSuffix(ansi.Strip(footer), label), true,
-				"footer lost label: %q", footer,
+				fmt.Sprintf("footer lost label: %q", footer),
 			)
-			testutil.RequireEqual(
-
-				// Labels longer than the terminal retain
+			testutil.RequireEqual( // Labels longer than the terminal retain
 				// the existing rendering behavior.
-				t,
-				width < len(label)+1 || lipgloss.Width(footer) == width, true,
-				"footer width=%d want=%d", lipgloss.Width(footer), width,
+				t, width < len(label)+1 || lipgloss.Width(footer) == width,
+				true,
+				fmt.Sprintf("footer width=%d want=%d", lipgloss.Width(footer),
+					width,
+				),
 			)
 		}
 	}

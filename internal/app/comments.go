@@ -2,14 +2,12 @@ package app
 
 import (
 	"errors"
-	"path/filepath"
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/eskelinenantti/review-my-slop/internal/comments"
 	"github.com/eskelinenantti/review-my-slop/internal/editor"
-	"github.com/eskelinenantti/review-my-slop/internal/patch"
 )
 
 func (m model) updateComments(name string) (tea.Model, tea.Cmd) {
@@ -138,39 +136,6 @@ func (m *model) clearCommentEdit() {
 	m.edit = commentEdit{index: -1}
 }
 
-func (m model) openCurrentLine() (tea.Cmd, error) {
-	path, number, err := m.sourceLocation()
-	if err != nil {
-		return nil, err
-	}
-	return editor.OpenSource(m.ctx, path, number, func(err error) tea.Msg {
-		return sourceEditorFinishedMsg{err: err}
-	})
-}
-
-func (m model) sourceLocation() (string, int, error) {
-	file, line, ok := m.diffView.Current()
-	if !ok {
-		return "", 0, errors.New("select a code line to open in $EDITOR")
-	}
-	path, number := file.NewPath, line.NewNumber
-	if path == "" || path == "/dev/null" {
-		path = file.OldPath
-	}
-	if number == 0 {
-		number = line.OldNumber
-	}
-	if path == "" || path == "/dev/null" || number < 1 {
-		return "", 0, errors.New(
-			"current line has no editable working-tree location",
-		)
-	}
-	if !filepath.IsAbs(path) {
-		path = filepath.Join(m.currentPatch.Root, filepath.FromSlash(path))
-	}
-	return path, int(number), nil
-}
-
 func (m model) openCommentEditor() (tea.Cmd, error) {
 	return editor.EditComment(m.ctx, m.edit.body, m.edit.anchor, func(
 		body string,
@@ -189,36 +154,4 @@ func (m model) commentIndex(selected comments.Comment) int {
 		}
 	}
 	return -1
-}
-
-func commentAnchor(file patch.File, lines []patch.Line) comments.Anchor {
-	path := file.NewPath
-	if path == "" {
-		path = file.OldPath
-	}
-	anchor := comments.Anchor{FilePath: path}
-	for _, line := range lines {
-		prefix := " "
-		if line.Kind == patch.Addition {
-			prefix = "+"
-		}
-		if line.Kind == patch.Deletion {
-			prefix = "-"
-		}
-		anchor.QuotedLines = append(anchor.QuotedLines, prefix+line.Text)
-		accumulateRange(&anchor.OldStart, &anchor.OldEnd, int(line.OldNumber))
-		accumulateRange(&anchor.NewStart, &anchor.NewEnd, int(line.NewNumber))
-	}
-	return anchor
-}
-func accumulateRange(start, end *int, value int) {
-	if value == 0 {
-		return
-	}
-	if *start == 0 || value < *start {
-		*start = value
-	}
-	if value > *end {
-		*end = value
-	}
 }

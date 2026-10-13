@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
+
 	"github.com/eskelinenantti/review-my-slop/internal/comments"
 )
 
@@ -24,19 +25,32 @@ func EditComment(
 	if err != nil {
 		return nil, err
 	}
-	adapter, complete := commentWorkflow(ctx, command, body, anchor, onComplete)
+	adapter, complete := commentWorkflow(
+		ctx,
+		command,
+		commentDraftInput{
+			body:   body,
+			anchor: anchor,
+		},
+		onComplete,
+	)
 	return tea.Exec(adapter, complete), nil
+}
+
+type commentDraftInput struct {
+	body   string
+	anchor comments.Anchor
 }
 
 func commentWorkflow(
 	ctx context.Context,
-	command, body string,
-	anchor comments.Anchor,
+	command string,
+	draft commentDraftInput,
 	onComplete func(string, error) tea.Msg,
 ) (*commandAdapter, tea.ExecCallback) {
 	adapter := &commandAdapter{}
 	adapter.run = func() error {
-		path, err := createCommentFile(body, anchor)
+		path, err := createCommentFile(draft.body, draft.anchor)
 		if err != nil {
 			return err
 		}
@@ -45,7 +59,7 @@ func commentWorkflow(
 		if err := adapter.execute(editorCommand); err != nil {
 			return fmt.Errorf("editor: %w", err)
 		}
-		adapter.body, err = readCommentFile(path, anchor)
+		adapter.body, err = readCommentFile(path, draft.anchor)
 		return err
 	}
 	return adapter, func(err error) tea.Msg {

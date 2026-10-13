@@ -1,9 +1,10 @@
 package app
 
 import (
-	"github.com/eskelinenantti/review-my-slop/internal/patch"
 	"slices"
 	"testing"
+
+	"github.com/eskelinenantti/review-my-slop/internal/patch"
 )
 
 func TestCommentAnchorUsesSemanticSelection(t *testing.T) {
