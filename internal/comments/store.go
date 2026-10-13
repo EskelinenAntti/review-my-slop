@@ -42,7 +42,8 @@ func OpenDefault() (Store, error) {
 	return Store{Path: path}, nil
 }
 
-// Add validates and stores a comment, assigning an ID and timestamp when absent.
+// Add validates and stores a comment, assigning an ID and timestamp when
+// absent.
 func (s Store) Add(comment Comment) (Comment, error) {
 	if comment.Repository == "" {
 		return Comment{}, errors.New("comment requires a repository")
@@ -61,15 +62,19 @@ func (s Store) Add(comment Comment) (Comment, error) {
 		return Comment{}, fmt.Errorf("encode comment: %w", err)
 	}
 	err = s.transact(func(bucket *bolt.Bucket) error {
-		if pendingBytes(bucket)+len(data) > maxPendingBytes {
-			return fmt.Errorf("pending feedback exceeds %d bytes", maxPendingBytes)
-		}
-		if bucket.Get([]byte(comment.ID)) != nil {
-			return errors.New("comment ID already exists")
-		}
-		return bucket.Put([]byte(comment.ID), data)
+		return addComment(bucket, comment.ID, data)
 	})
 	return comment, err
+}
+
+func addComment(bucket *bolt.Bucket, id string, data []byte) error {
+	if pendingBytes(bucket)+len(data) > maxPendingBytes {
+		return fmt.Errorf("pending feedback exceeds %d bytes", maxPendingBytes)
+	}
+	if bucket.Get([]byte(id)) != nil {
+		return errors.New("comment ID already exists")
+	}
+	return bucket.Put([]byte(id), data)
 }
 
 // List returns pending comments for the repository.
@@ -102,7 +107,11 @@ func (s Store) Update(comment Comment) error {
 	if err != nil {
 		return fmt.Errorf("encode comment: %w", err)
 	}
-	return s.transact(func(bucket *bolt.Bucket) error { return replaceComment(bucket, comment, data) })
+	return s.transact(
+		func(bucket *bolt.Bucket) error {
+			return replaceComment(bucket, comment, data)
+		},
+	)
 }
 
 // Delete removes the identified comment from the repository.
@@ -136,13 +145,17 @@ func (s Store) Acknowledge(repository string, ids []string) error {
 		if err != nil {
 			return err
 		}
-		for _, key := range keys {
-			if err := bucket.Delete(key); err != nil {
-				return err
-			}
-		}
-		return nil
+		return deleteKeys(bucket, keys)
 	})
+}
+
+func deleteKeys(bucket *bolt.Bucket, keys [][]byte) error {
+	for _, key := range keys {
+		if err := bucket.Delete(key); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func pendingBytes(bucket *bolt.Bucket) int {
@@ -170,7 +183,10 @@ func replaceComment(bucket *bolt.Bucket, comment Comment, data []byte) error {
 	return bucket.Put([]byte(comment.ID), data)
 }
 
-func findCommentKey(bucket *bolt.Bucket, repository, id string) ([]byte, error) {
+func findCommentKey(
+	bucket *bolt.Bucket,
+	repository, id string,
+) ([]byte, error) {
 	cursor := bucket.Cursor()
 	for key, value := cursor.First(); key != nil; key, value = cursor.Next() {
 		comment, err := decodeComment(value)
@@ -184,7 +200,11 @@ func findCommentKey(bucket *bolt.Bucket, repository, id string) ([]byte, error) 
 	return nil, nil
 }
 
-func findPendingKeys(bucket *bolt.Bucket, repository string, wanted map[string]struct{}) ([][]byte, error) {
+func findPendingKeys(
+	bucket *bolt.Bucket,
+	repository string,
+	wanted map[string]struct{},
+) ([][]byte, error) {
 	var keys [][]byte
 	err := bucket.ForEach(func(key, value []byte) error {
 		comment, err := decodeComment(value)
@@ -230,7 +250,13 @@ func decodeComment(data []byte) (Comment, error) {
 		return Comment{}, fmt.Errorf("decode comment: %w", err)
 	}
 	if legacy.Comment != nil {
-		return Comment{ID: legacy.ID, Repository: legacy.Repository, CreatedAt: legacy.CreatedAt, Anchor: legacy.Comment.Anchor, Body: legacy.Comment.Body}, nil
+		return Comment{
+			ID:         legacy.ID,
+			Repository: legacy.Repository,
+			CreatedAt:  legacy.CreatedAt,
+			Anchor:     legacy.Comment.Anchor,
+			Body:       legacy.Comment.Body,
+		}, nil
 	}
 	var comment Comment
 	if err := json.Unmarshal(data, &comment); err != nil {

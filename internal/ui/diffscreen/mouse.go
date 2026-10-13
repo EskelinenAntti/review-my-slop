@@ -59,6 +59,8 @@ func (v *View) cursorAtPoint(x, y int) (diffCursor, bool) {
 			pane = left
 		case x < leftWidth+3:
 			return diffCursor{}, false
+		default:
+			pane = right
 		}
 	}
 	return v.view.cursorAt(v.viewport.top+row, pane)

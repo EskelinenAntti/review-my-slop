@@ -12,6 +12,8 @@ func (m *model) updateMouse(msg tea.Msg) {
 		m.release(msg)
 	case tea.MouseWheelMsg:
 		m.wheel(msg)
+	default:
+		return
 	}
 }
 
@@ -24,6 +26,8 @@ func (m *model) click(msg tea.MouseClickMsg) {
 		m.diffView.BeginDrag(msg.X, msg.Y)
 	case modeComments:
 		m.commentView.Click(msg.X, msg.Y)
+	default:
+		return
 	}
 }
 
@@ -57,5 +61,7 @@ func (m *model) wheel(msg tea.MouseWheelMsg) {
 		m.diffView.ScrollHorizontal(-horizontalScrollStep)
 	case tea.MouseWheelRight:
 		m.diffView.ScrollHorizontal(horizontalScrollStep)
+	default:
+		return
 	}
 }

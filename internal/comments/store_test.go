@@ -9,6 +9,8 @@ import (
 	"time"
 
 	bolt "go.etcd.io/bbolt"
+
+	"github.com/eskelinenantti/review-my-slop/internal/testutil"
 )
 
 func TestStoreQueuesByRepositoryAndDeletesExactPeek(t *testing.T) {
@@ -23,49 +25,50 @@ func TestStoreQueuesByRepositoryAndDeletesExactPeek(t *testing.T) {
 	}
 
 	comments, err := store.List("/repo/a")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(comments) != 2 || comments[0].Body != "first" || comments[1].Body != "third" {
-		t.Fatalf("unexpected comments: %#v", comments)
-	}
+	testutil.NoError(t, err)
+	testutil.RequireEqual(t, len(comments), 2, "unexpected comments: %#v",
+		comments,
+	)
+	testutil.RequireEqual(t, comments[0].Body, "first",
+		"unexpected comments: %#v", comments,
+	)
+	testutil.RequireEqual(t, comments[1].Body, "third",
+		"unexpected comments: %#v", comments,
+	)
 
 	if _, err := store.Add(testComment("/repo/a", "newer")); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.Acknowledge("/repo/a", []string{comments[0].ID, comments[1].ID}); err != nil {
-		t.Fatal(err)
-	}
+	testutil.NoError(t,
+		store.Acknowledge("/repo/a", []string{comments[0].ID, comments[1].ID}),
+	)
 
 	remainingA, err := store.List("/repo/a")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(remainingA) != 1 || remainingA[0].Body != "newer" {
-		t.Fatalf("newer comment was not preserved: %#v", remainingA)
-	}
+	testutil.NoError(t, err)
+	testutil.RequireEqual(t, len(remainingA), 1,
+		"newer comment was not preserved: %#v", remainingA,
+	)
+	testutil.RequireEqual(t, remainingA[0].Body, "newer",
+		"newer comment was not preserved: %#v", remainingA,
+	)
+
 	remainingB, err := store.List("/repo/b")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(remainingB) != 1 {
-		t.Fatalf("other repository comments = %d, want 1", len(remainingB))
-	}
+	testutil.NoError(t, err)
+	testutil.RequireEqual(t, len(remainingB), 1,
+		"other repository comments = %d, want 1", len(remainingB),
+	)
 
 	dirInfo, err := os.Stat(filepath.Dir(store.Path))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if dirInfo.Mode().Perm() != 0o700 {
-		t.Fatalf("directory mode = %o, want 700", dirInfo.Mode().Perm())
-	}
+	testutil.NoError(t, err)
+	testutil.RequireEqual(t, dirInfo.Mode().Perm(), 0o700,
+		"directory mode = %o, want 700", dirInfo.Mode().Perm(),
+	)
+
 	dbInfo, err := os.Stat(store.Path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if dbInfo.Mode().Perm() != 0o600 {
-		t.Fatalf("database mode = %o, want 600", dbInfo.Mode().Perm())
-	}
+	testutil.NoError(t, err)
+	testutil.RequireEqual(t, dbInfo.Mode().Perm(), 0o600,
+		"database mode = %o, want 600", dbInfo.Mode().Perm(),
+	)
 }
 
 func TestWritePrompt(t *testing.T) {
@@ -75,9 +78,8 @@ func TestWritePrompt(t *testing.T) {
 		FilePath: "main.go", OldStart: 10, OldEnd: 11, NewStart: 12, NewEnd: 13,
 		QuotedLines: []string{"-old()", "+new()"},
 	}
-	if err := WritePrompt(&out, []Comment{comment}); err != nil {
-		t.Fatal(err)
-	}
+	testutil.NoError(t, WritePrompt(&out, []Comment{comment}))
+
 	for _, expected := range []string{
 		"New comments since last run:",
 		"`main.go`",
@@ -86,13 +88,13 @@ func TestWritePrompt(t *testing.T) {
 		"```diff",
 		"Handle the nil case.",
 	} {
-		if !strings.Contains(out.String(), expected) {
-			t.Fatalf("output lacks %q:\n%s", expected, out.String())
-		}
+		testutil.RequireEqual(t, strings.Contains(out.String(), expected), true,
+			"output lacks %q:\n%s", expected, out.String(),
+		)
 	}
-	if strings.Contains(out.String(), "batch") {
-		t.Fatalf("output exposes internal batches:\n%s", out.String())
-	}
+	testutil.RequireEqual(t, !strings.Contains(out.String(), "batch"), true,
+		"output exposes internal batches:\n%s", out.String(),
+	)
 }
 
 func TestWritePromptNumbersMessages(t *testing.T) {
@@ -101,13 +103,12 @@ func TestWritePromptNumbersMessages(t *testing.T) {
 		testComment("/repo", "First."),
 		testComment("/repo", "Second."),
 	}
-	if err := WritePrompt(&out, comments); err != nil {
-		t.Fatal(err)
-	}
+	testutil.NoError(t, WritePrompt(&out, comments))
+
 	for _, expected := range []string{"### 1.", "### 2."} {
-		if !strings.Contains(out.String(), expected) {
-			t.Fatalf("output lacks %q:\n%s", expected, out.String())
-		}
+		testutil.RequireEqual(t, strings.Contains(out.String(), expected), true,
+			"output lacks %q:\n%s", expected, out.String(),
+		)
 	}
 }
 
@@ -135,21 +136,18 @@ func TestListAndUpdateComments(t *testing.T) {
 	}
 
 	comments, err := store.List("/repo")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(comments) != 2 || comments[1].Body != "second" {
-		t.Fatalf("comments = %#v", comments)
-	}
+	testutil.NoError(t, err)
+	testutil.RequireEqual(t, len(comments), 2, "comments = %#v", comments)
+	testutil.RequireEqual(t, comments[1].Body, "second", "comments = %#v",
+		comments,
+	)
+
 	comments[1].Body = "edited"
-	if err := store.Update(comments[1]); err != nil {
-		t.Fatal(err)
-	}
+	testutil.NoError(t, store.Update(comments[1]))
 
 	updated, err := store.List("/repo")
-	if err != nil {
-		t.Fatal(err)
-	}
+	testutil.NoError(t, err)
+
 	if got := updated[1].Body; got != "edited" {
 		t.Fatalf("body = %q, want edited", got)
 	}
@@ -164,59 +162,74 @@ func TestDeleteCommentRemovesMessage(t *testing.T) {
 		t.Fatal(err)
 	}
 	comments, err := store.List("/repo")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := store.Delete("/repo", comments[0].ID); err != nil {
-		t.Fatal(err)
-	}
+	testutil.NoError(t, err)
+	testutil.NoError(t, store.Delete("/repo", comments[0].ID))
+
 	remaining, err := store.List("/repo")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(remaining) != 1 || remaining[0].Body != "second" {
-		t.Fatalf("remaining = %#v", remaining)
-	}
-	if err := store.Delete("/repo", remaining[0].ID); err != nil {
-		t.Fatal(err)
-	}
+	testutil.NoError(t, err)
+	testutil.RequireEqual(t, len(remaining), 1, "remaining = %#v", remaining)
+	testutil.RequireEqual(t, remaining[0].Body, "second", "remaining = %#v",
+		remaining,
+	)
+	testutil.NoError(t, store.Delete("/repo", remaining[0].ID))
+
 	remaining, err = store.List("/repo")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(remaining) != 0 {
-		t.Fatalf("remaining = %#v, want empty", remaining)
-	}
+	testutil.NoError(t, err)
+	testutil.RequireEqual(t, len(remaining), 0, "remaining = %#v, want empty",
+		remaining,
+	)
 }
 
 func TestLegacyMessageCanBeReadAndUpdated(t *testing.T) {
 	store := Store{Path: filepath.Join(t.TempDir(), "comments.db")}
-	legacy := []byte(`{"id":"legacy","repository":"/repo","created_at":"1970-01-01T00:00:01Z","diff_fingerprint":"unused","comment":{"anchor":{"file":"main.go","hunk":"@@","start_row":1,"end_row":2,"new_start":3,"quoted_lines":["+line"]},"body":"old"}}`)
+	legacy := []byte(
+		`{
+  "id": "legacy",
+  "repository": "/repo",
+  "created_at": "1970-01-01T00:00:01Z",
+  "diff_fingerprint": "unused",
+  "comment": {
+    "anchor": {
+      "file": "main.go",
+      "hunk": "@@",
+      "start_row": 1,
+      "end_row": 2,
+      "new_start": 3,
+      "quoted_lines": [
+        "+line"
+      ]
+    },
+    "body": "old"
+  }
+}`,
+	)
 	err := store.transact(func(bucket *bolt.Bucket) error {
 		return bucket.Put([]byte{0, 0, 0, 1}, legacy)
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	testutil.NoError(t, err)
 
 	comments, err := store.List("/repo")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(comments) != 1 || comments[0].ID != "legacy" || comments[0].Body != "old" || comments[0].Anchor.NewStart != 3 {
-		t.Fatalf("legacy comment = %#v", comments)
-	}
+	testutil.NoError(t, err)
+	testutil.RequireEqual(t, len(comments), 1, "legacy comment = %#v", comments)
+	testutil.RequireEqual(t, comments[0].ID, "legacy", "legacy comment = %#v",
+		comments,
+	)
+	testutil.RequireEqual(t, comments[0].Body, "old", "legacy comment = %#v",
+		comments,
+	)
+	testutil.RequireEqual(t, comments[0].Anchor.NewStart, 3,
+		"legacy comment = %#v", comments,
+	)
+
 	comments[0].Body = "updated"
-	if err := store.Update(comments[0]); err != nil {
-		t.Fatal(err)
-	}
+	testutil.NoError(t, store.Update(comments[0]))
+
 	updated, err := store.List("/repo")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(updated) != 1 || updated[0].Body != "updated" {
-		t.Fatalf("updated comments = %#v", updated)
-	}
+	testutil.NoError(t, err)
+	testutil.RequireEqual(t, len(updated), 1, "updated comments = %#v", updated)
+	testutil.RequireEqual(t, updated[0].Body, "updated",
+		"updated comments = %#v", updated,
+	)
 }
 
 func testComment(repository, body string) Comment {

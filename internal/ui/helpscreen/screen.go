@@ -24,11 +24,16 @@ func Render(bindings []Binding, width, height int) string {
 	}
 	body := []string{""}
 	for _, binding := range bindings {
-		line := binding.Keys + strings.Repeat(" ", column-lipgloss.Width(binding.Keys)) + "  " + binding.Description
+		line := binding.Keys + strings.Repeat(
+			" ",
+			column-lipgloss.Width(binding.Keys),
+		) + "  " + binding.Description
 		body = append(body, ansi.Truncate(line, max(20, width), ""))
 	}
 	return frame.Render(
-		lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Cyan).Render("review-my-slop help"),
+		lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Cyan).Render(
+			"review-my-slop help",
+		),
 		body,
 		lipgloss.NewStyle().Faint(true).Render("? or Esc closes help"),
 		height,

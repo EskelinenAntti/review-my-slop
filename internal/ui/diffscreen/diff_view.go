@@ -39,9 +39,29 @@ func newDiffView(p patch.Patch, options Options) *diffView {
 }
 
 func (v *diffView) appendFileRows(fileIndex int, file patch.File) {
-	v.rows = append(v.rows, entry{kind: fileRow, file: fileIndex, hunk: -1, leftLine: -1, rightLine: -1, text: file.DisplayPath})
+	v.rows = append(
+		v.rows,
+		entry{
+			kind:      fileRow,
+			file:      fileIndex,
+			hunk:      -1,
+			leftLine:  -1,
+			rightLine: -1,
+			text:      file.DisplayPath,
+		},
+	)
 	for _, metadata := range file.Metadata {
-		v.rows = append(v.rows, entry{kind: metadataRow, file: fileIndex, hunk: -1, leftLine: -1, rightLine: -1, text: metadata})
+		v.rows = append(
+			v.rows,
+			entry{
+				kind:      metadataRow,
+				file:      fileIndex,
+				hunk:      -1,
+				leftLine:  -1,
+				rightLine: -1,
+				text:      metadata,
+			},
+		)
 	}
 	highlighted := v.highlight(&file)
 	for hunkIndex, hunk := range file.Hunks {
@@ -49,21 +69,49 @@ func (v *diffView) appendFileRows(fileIndex int, file patch.File) {
 	}
 }
 
-func (v *diffView) appendHunkRows(fileIndex, hunkIndex int, hunk patch.Hunk, highlighted pair) {
-	v.rows = append(v.rows, entry{kind: hunkRow, file: fileIndex, hunk: hunkIndex, leftLine: -1, rightLine: -1, text: hunkHeader(hunk.Header)})
+func (v *diffView) appendHunkRows(
+	fileIndex, hunkIndex int,
+	hunk patch.Hunk,
+	highlighted pair,
+) {
+	v.rows = append(
+		v.rows,
+		entry{
+			kind:      hunkRow,
+			file:      fileIndex,
+			hunk:      hunkIndex,
+			leftLine:  -1,
+			rightLine: -1,
+			text:      hunkHeader(hunk.Header),
+		},
+	)
 	for _, indices := range v.lineRows(hunk.Lines) {
-		row := entry{kind: lineRow, file: fileIndex, hunk: hunkIndex, leftLine: indices[0], rightLine: indices[1]}
-		if !v.split {
-			row.text = sourceText(highlighted, hunk.Lines[row.rightLine])
-		} else {
-			if row.leftLine >= 0 {
-				row.left = sourceText(highlighted, hunk.Lines[row.leftLine])
-			}
-			if row.rightLine >= 0 {
-				row.right = sourceText(highlighted, hunk.Lines[row.rightLine])
-			}
+		row := entry{
+			kind:      lineRow,
+			file:      fileIndex,
+			hunk:      hunkIndex,
+			leftLine:  indices[0],
+			rightLine: indices[1],
 		}
+		v.highlightRow(&row, hunk.Lines, highlighted)
 		v.rows = append(v.rows, row)
+	}
+}
+
+func (v *diffView) highlightRow(
+	row *entry,
+	lines []patch.Line,
+	highlighted pair,
+) {
+	if !v.split {
+		row.text = sourceText(highlighted, lines[row.rightLine])
+		return
+	}
+	if row.leftLine >= 0 {
+		row.left = sourceText(highlighted, lines[row.leftLine])
+	}
+	if row.rightLine >= 0 {
+		row.right = sourceText(highlighted, lines[row.rightLine])
 	}
 }
 
@@ -82,24 +130,33 @@ func (v *diffView) lineRows(lines []patch.Line) [][2]int {
 			index++
 			continue
 		}
-		removedStart := index
-		for index < len(lines) && lines[index].Kind == patch.Deletion {
-			index++
+		addedStart := changeBlockEnd(lines, index, patch.Deletion)
+		end := changeBlockEnd(lines, addedStart, patch.Addition)
+		rows = append(rows, pairedChangeRows(index, addedStart, end)...)
+		index = end
+	}
+	return rows
+}
+
+func changeBlockEnd(lines []patch.Line, start int, kind patch.LineKind) int {
+	for start < len(lines) && lines[start].Kind == kind {
+		start++
+	}
+	return start
+}
+
+func pairedChangeRows(removedStart, addedStart, end int) [][2]int {
+	count := max(addedStart-removedStart, end-addedStart)
+	rows := make([][2]int, 0, count)
+	for offset := 0; offset < count; offset++ {
+		pair := [2]int{-1, -1}
+		if removedStart+offset < addedStart {
+			pair[0] = removedStart + offset
 		}
-		addedStart := index
-		for index < len(lines) && lines[index].Kind == patch.Addition {
-			index++
+		if addedStart+offset < end {
+			pair[1] = addedStart + offset
 		}
-		for offset := 0; offset < max(addedStart-removedStart, index-addedStart); offset++ {
-			pair := [2]int{-1, -1}
-			if removedStart+offset < addedStart {
-				pair[0] = removedStart + offset
-			}
-			if addedStart+offset < index {
-				pair[1] = addedStart + offset
-			}
-			rows = append(rows, pair)
-		}
+		rows = append(rows, pair)
 	}
 	return rows
 }

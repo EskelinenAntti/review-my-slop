@@ -7,7 +7,8 @@ import (
 )
 
 func (v *diffView) valid(cursor diffCursor) bool {
-	return cursor.row >= 0 && cursor.row < len(v.rows) && v.lineIndex(v.rows[cursor.row], cursor.pane) >= 0
+	return cursor.row >= 0 && cursor.row < len(v.rows) &&
+		v.lineIndex(v.rows[cursor.row], cursor.pane) >= 0
 }
 
 func (v *diffView) lineIndex(current entry, pane diffPane) int {
@@ -39,8 +40,13 @@ func (v *diffView) last() (diffCursor, bool) {
 	return v.scan(len(v.rows), left, backward)
 }
 
-func (v *diffView) scan(start int, pane diffPane, direction direction) (diffCursor, bool) {
-	for y := start + int(direction); y >= 0 && y < len(v.rows); y += int(direction) {
+func (v *diffView) scan(
+	start int,
+	pane diffPane,
+	direction direction,
+) (diffCursor, bool) {
+	step := int(direction)
+	for y := start + step; y >= 0 && y < len(v.rows); y += step {
 		if cursor, ok := v.cursorAt(y, pane); ok {
 			return cursor, true
 		}
@@ -48,70 +54,111 @@ func (v *diffView) scan(start int, pane diffPane, direction direction) (diffCurs
 	return diffCursor{}, false
 }
 
-func (v *diffView) move(cursor diffCursor, direction direction) (diffCursor, bool) {
+func (v *diffView) move(
+	cursor diffCursor,
+	direction direction,
+) (diffCursor, bool) {
 	if !v.valid(cursor) {
 		return diffCursor{}, false
 	}
 	return v.scan(cursor.row, cursor.pane, direction)
 }
 
-func (v *diffView) search(query string, cursor diffCursor, direction direction) (diffCursor, bool) {
+func (v *diffView) search(
+	query string,
+	cursor diffCursor,
+	direction direction,
+) (diffCursor, bool) {
 	if query == "" || !v.valid(cursor) {
 		return diffCursor{}, false
 	}
 	query = strings.ToLower(query)
 	y := cursor.row
 	for count := 0; count < len(v.rows)-1; count++ {
-		y += int(direction)
-		if y < 0 {
-			y = len(v.rows) - 1
-		}
-		if y >= len(v.rows) {
-			y = 0
-		}
-		current := v.rows[y]
-		for _, pane := range []diffPane{cursor.pane, cursor.pane.other()} {
-			candidate, ok := v.cursorAt(y, pane)
-			if !ok || !v.split && pane != cursor.pane {
-				continue
-			}
-			line, _ := v.line(candidate)
-			if strings.Contains(strings.ToLower(line.Text), query) {
-				return candidate, true
-			}
-		}
-		if current.kind != lineRow && strings.Contains(strings.ToLower(ansi.Strip(current.text)), query) {
-			if candidate, ok := v.cursorNearRow(y, cursor.pane, direction); ok {
-				return candidate, true
-			}
+		y = (y + int(direction) + len(v.rows)) % len(v.rows)
+		if candidate, ok := v.searchRow(query, y, cursor.pane, direction); ok {
+			return candidate, true
 		}
 	}
 	return diffCursor{}, false
 }
 
-func (v *diffView) cursorNearRow(y int, pane diffPane, direction direction) (diffCursor, bool) {
+func (v *diffView) searchRow(
+	query string,
+	y int,
+	pane diffPane,
+	direction direction,
+) (diffCursor, bool) {
+	if v.rows[y].kind != lineRow {
+		return v.searchMetadata(query, y, pane, direction)
+	}
+	panes := []diffPane{pane}
+	if v.split {
+		panes = append(panes, pane.other())
+	}
+	for _, candidatePane := range panes {
+		candidate, ok := v.cursorAt(y, candidatePane)
+		if !ok {
+			continue
+		}
+		line, _ := v.line(candidate)
+		if strings.Contains(strings.ToLower(line.Text), query) {
+			return candidate, true
+		}
+	}
+	return diffCursor{}, false
+}
+
+func (v *diffView) searchMetadata(
+	query string,
+	y int,
+	pane diffPane,
+	direction direction,
+) (diffCursor, bool) {
+	if strings.Contains(strings.ToLower(ansi.Strip(v.rows[y].text)), query) {
+		return v.cursorNearRow(y, pane, direction)
+	}
+	return diffCursor{}, false
+}
+
+func (v *diffView) cursorNearRow(
+	y int,
+	pane diffPane,
+	direction direction,
+) (diffCursor, bool) {
 	for distance := 1; distance <= len(v.rows); distance++ {
-		for _, candidateY := range []int{y + int(direction)*distance, y - int(direction)*distance} {
-			if candidateY < 0 || candidateY >= len(v.rows) {
-				continue
-			}
-			if v.rows[candidateY].file != v.rows[y].file {
-				continue
-			}
-			if candidate, ok := v.cursorAt(candidateY, pane); ok {
+		for _, candidateY := range []int{
+			y + int(direction)*distance,
+			y - int(direction)*distance,
+		} {
+			if candidate, ok := v.cursorInFile(candidateY, y, pane); ok {
 				return candidate, true
-			}
-			if v.split {
-				if candidate, ok := v.cursorAt(candidateY, pane.other()); ok {
-					return candidate, true
-				}
 			}
 		}
 	}
 	return diffCursor{}, false
 }
 
-func (v *diffView) jumpFile(cursor diffCursor, direction direction) (diffCursor, bool) {
+func (v *diffView) cursorInFile(
+	y, origin int,
+	pane diffPane,
+) (diffCursor, bool) {
+	if y < 0 || y >= len(v.rows) || v.rows[y].file != v.rows[origin].file {
+		return diffCursor{}, false
+	}
+	if candidate, ok := v.cursorAt(y, pane); ok {
+		return candidate, true
+	}
+	if v.split {
+		return v.cursorAt(y, pane.other())
+	}
+	return diffCursor{}, false
+}
+
+func (v *diffView) jumpFile(
+	cursor diffCursor,
+	direction direction,
+) (diffCursor, bool) {
 	if !v.valid(cursor) {
 		return diffCursor{}, false
 	}
@@ -123,29 +170,38 @@ func (v *diffView) jumpFile(cursor diffCursor, direction direction) (diffCursor,
 			return diffCursor{}, false
 		}
 		nextFile, _ := v.file(next)
-		if nextFile.OldPath != file.OldPath || nextFile.NewPath != file.NewPath {
+		if nextFile.OldPath != file.OldPath ||
+			nextFile.NewPath != file.NewPath {
 			return next, true
 		}
 		y = next.row
 	}
 }
 
-func (v *diffView) switchPane(cursor diffCursor, pane diffPane) (diffCursor, bool) {
+func (v *diffView) switchPane(
+	cursor diffCursor,
+	pane diffPane,
+) (diffCursor, bool) {
 	if !v.split || !v.valid(cursor) {
 		return diffCursor{}, false
 	}
 	if candidate, ok := v.cursorAt(cursor.row, pane); ok {
 		return candidate, true
 	}
+	if candidate, ok := v.previousInFile(cursor, pane); ok {
+		return candidate, true
+	}
+	return v.scan(cursor.row, pane, forward)
+}
+
+func (v *diffView) previousInFile(
+	cursor diffCursor,
+	pane diffPane,
+) (diffCursor, bool) {
 	for y := cursor.row - 1; y >= 0; y-- {
 		if v.rows[y].file != v.rows[cursor.row].file {
 			break
 		}
-		if candidate, ok := v.cursorAt(y, pane); ok {
-			return candidate, true
-		}
-	}
-	for y := cursor.row + 1; y < len(v.rows); y++ {
 		if candidate, ok := v.cursorAt(y, pane); ok {
 			return candidate, true
 		}

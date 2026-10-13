@@ -1,4 +1,5 @@
-// Package diffscreen presents patches and owns their interactive browsing state.
+// Package diffscreen presents patches and owns their interactive browsing
+// state.
 package diffscreen
 
 import (
@@ -115,9 +116,14 @@ func (v *View) Resize(width, height int) {
 	}
 }
 
-func (v *View) sideBySideActive() bool { return v.options.SideBySide && v.width >= 100 }
+func (v *View) sideBySideActive() bool {
+	return v.options.SideBySide && v.width >= 100
+}
 func (v *View) newReviewView(p patch.Patch) *diffView {
-	return newDiffView(p, Options{SideBySide: v.sideBySideActive(), Dark: v.options.Dark})
+	return newDiffView(
+		p,
+		Options{SideBySide: v.sideBySideActive(), Dark: v.options.Dark},
+	)
 }
 
 // Move performs navigation and keeps the resulting focus visible. Line and
@@ -142,6 +148,14 @@ func (v *View) Move(motion Motion) {
 		if cursor, ok := v.view.last(); ok {
 			v.setCursor(cursor)
 		}
+
+	default:
+		v.moveBetweenSections(motion)
+	}
+}
+
+func (v *View) moveBetweenSections(motion Motion) {
+	switch motion {
 	case PreviousFile:
 		v.jumpFile(backward)
 	case NextFile:
@@ -152,6 +166,8 @@ func (v *View) Move(motion Motion) {
 		v.switchPane(right)
 	case OtherPane:
 		v.switchPane(v.cursor.pane.other())
+	default:
+		return
 	}
 }
 
@@ -222,7 +238,11 @@ func (v *View) Align(alignment Alignment) {
 	if _, ok := v.view.line(v.cursor); !ok {
 		return
 	}
-	v.viewport = v.view.align(v.viewport, v.cursor, verticalAlignment(alignment))
+	v.viewport = v.view.align(
+		v.viewport,
+		v.cursor,
+		verticalAlignment(alignment),
+	)
 }
 
 // ScrollHorizontal shifts the visible content by the requested columns.
@@ -242,7 +262,8 @@ func (v *View) ScrollVertical(rows int) {
 	v.viewport, v.cursor = viewport, cursor
 }
 
-// ToggleSelection starts a range at the focused line or clears the current range.
+// ToggleSelection starts a range at the focused line or clears the current
+// range.
 func (v *View) ToggleSelection() {
 	v.search.repeatMiss = false
 	if v.selection != nil {
@@ -256,7 +277,11 @@ func (v *View) ToggleSelection() {
 }
 
 // ClearSelection clears the selected range and ends any drag.
-func (v *View) ClearSelection() { v.EndDrag(); v.selection = nil; v.search.repeatMiss = false }
+func (v *View) ClearSelection() {
+	v.EndDrag()
+	v.selection = nil
+	v.search.repeatMiss = false
+}
 
 // Selected returns the focused line when no explicit range is selected.
 // The bool is false when the patch has no selectable code.
@@ -287,7 +312,8 @@ func (v *View) BeginSearch() {
 }
 
 // InsertSearch appends text to the query and previews from the search origin.
-// It starts a search session if needed; a miss retains the last successful focus.
+// It starts a search session if needed; a miss retains the last successful
+// focus.
 func (v *View) InsertSearch(text string) {
 	if !v.search.active {
 		v.BeginSearch()
@@ -365,7 +391,21 @@ func (v *View) Find(d Direction) bool {
 // position label. Dimensions are configured through Resize.
 func (v *View) Render(err error) string {
 	added, removed := patchLineCounts(v.view.patch)
-	header := titleStyle.Render("review-my-slop") + "  " + mutedStyle.Render(fmt.Sprintf("+%d-%d", added, removed))
+	counts := mutedStyle.Render(fmt.Sprintf("+%d-%d", added, removed))
+	header := titleStyle.Render("review-my-slop") + "  " + counts
+	body := v.renderBody()
+	status := v.renderStatus()
+	footer := mutedStyle.Render(status)
+	if v.search.repeatMiss {
+		message := fmt.Sprintf("no matches for %q", v.search.term)
+		footer = errorStyle.Render(message)
+	}
+	if err != nil {
+		footer = errorStyle.Render(strings.ReplaceAll(err.Error(), "\n", " "))
+	}
+	return frame.Render(header, body, v.renderFooter(footer), v.height)
+}
+func (v *View) renderBody() []string {
 	var body []string
 	if len(v.view.patch.Files) == 0 {
 		empty := "No unstaged or untracked changes."
@@ -375,8 +415,15 @@ func (v *View) Render(err error) string {
 		body = make([]string, frame.BodyHeight(v.height))
 		body[min(1, len(body)-1)] = mutedStyle.Render(empty)
 	} else {
-		body = strings.Split(v.view.render(v.viewport, v.cursor, v.selection), "\n")
+		body = strings.Split(
+			v.view.render(v.viewport, v.cursor, v.selection),
+			"\n",
+		)
 	}
+	return body
+}
+
+func (v *View) renderStatus() string {
 	status := "j/k/h/l move  c comment  ? help  q quit"
 	if v.search.active {
 		status = "/" + v.search.query + cursorStyle.Render(" ")
@@ -386,15 +433,9 @@ func (v *View) Render(err error) string {
 	} else if v.selection != nil {
 		status = "visual selection  j/k extend  c comment  Esc cancel"
 	}
-	footer := mutedStyle.Render(status)
-	if v.search.repeatMiss {
-		footer = errorStyle.Render(fmt.Sprintf("no matches for %q", v.search.term))
-	}
-	if err != nil {
-		footer = errorStyle.Render(strings.ReplaceAll(err.Error(), "\n", " "))
-	}
-	return frame.Render(header, body, v.renderFooter(footer), v.height)
+	return status
 }
+
 func (v *View) renderFooter(value string) string {
 	label := "local changes"
 	if v.view.patch.Kind == patch.Branch {
@@ -406,22 +447,35 @@ func (v *View) renderFooter(value string) string {
 	right := mutedStyle.Render(label)
 	width := max(20, v.width)
 	value = ansi.Truncate(value, max(0, width-lipgloss.Width(right)-1), "")
-	return value + strings.Repeat(" ", max(1, width-lipgloss.Width(value)-lipgloss.Width(right))) + right
+	return value + strings.Repeat(
+		" ",
+		max(1, width-lipgloss.Width(value)-lipgloss.Width(right)),
+	) + right
 }
 func patchLineCounts(p patch.Patch) (added, removed int) {
 	for _, file := range p.Files {
 		for _, hunk := range file.Hunks {
-			for _, line := range hunk.Lines {
-				if line.Kind == patch.Addition {
-					added++
-				}
-				if line.Kind == patch.Deletion {
-					removed++
-				}
-			}
+			counts := hunkLineCounts(hunk)
+			added += counts[0]
+			removed += counts[1]
 		}
 	}
 	return added, removed
+}
+
+func hunkLineCounts(hunk patch.Hunk) [2]int {
+	counts := [2]int{}
+	for _, line := range hunk.Lines {
+		switch line.Kind {
+		case patch.Addition:
+			counts[0]++
+		case patch.Deletion:
+			counts[1]++
+		default:
+			continue
+		}
+	}
+	return counts
 }
 
 var (

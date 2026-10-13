@@ -25,30 +25,35 @@ func (m model) updateComments(name string) (tea.Model, tea.Cmd) {
 	case "k", "up":
 		m.commentView.Move(-1)
 	case "enter", "e":
-		if len(m.comments.items) > 0 {
-			selected, ok := m.commentView.Selected()
-			if !ok {
-				return m, nil
-			}
-			m.edit.index = m.commentIndex(selected)
-			m.edit.body = m.comments.items[m.edit.index].Body
-			m.edit.anchor = m.comments.items[m.edit.index].Anchor
-			cmd, err := m.openCommentEditor()
-			if err != nil {
-				m.err = err
-				m.clearCommentEdit()
-				return m, nil
-			}
-			return m, cmd
-		}
+		return m.editSelectedComment()
 	case "D":
-		if len(m.comments.items) > 0 {
-			if selected, ok := m.commentView.Selected(); ok {
-				m.deleteComment(m.commentIndex(selected))
-			}
+		if selected, ok := m.commentView.Selected(); ok {
+			m.deleteComment(m.commentIndex(selected))
 		}
+	default:
+		return m, nil
 	}
 	return m, nil
+}
+
+func (m model) editSelectedComment() (tea.Model, tea.Cmd) {
+	selected, ok := m.commentView.Selected()
+	if !ok {
+		return m, nil
+	}
+	m.edit.index = m.commentIndex(selected)
+	if m.edit.index < 0 {
+		return m, nil
+	}
+	m.edit.body = m.comments.items[m.edit.index].Body
+	m.edit.anchor = m.comments.items[m.edit.index].Anchor
+	cmd, err := m.openCommentEditor()
+	if err != nil {
+		m.err = err
+		m.clearCommentEdit()
+		return m, nil
+	}
+	return m, cmd
 }
 
 func (m *model) beginComment() (tea.Cmd, error) {
@@ -120,7 +125,10 @@ func (m *model) deleteComment(index int) {
 		m.err = err
 		return
 	}
-	m.comments.items = append(m.comments.items[:index], m.comments.items[index+1:]...)
+	m.comments.items = append(
+		m.comments.items[:index],
+		m.comments.items[index+1:]...,
+	)
 	m.commentView.Update(m.comments.items)
 	m.comments.revision++
 	m.err = nil
@@ -153,7 +161,9 @@ func (m model) sourceLocation() (string, int, error) {
 		number = line.OldNumber
 	}
 	if path == "" || path == "/dev/null" || number < 1 {
-		return "", 0, errors.New("current line has no editable working-tree location")
+		return "", 0, errors.New(
+			"current line has no editable working-tree location",
+		)
 	}
 	if !filepath.IsAbs(path) {
 		path = filepath.Join(m.currentPatch.Root, filepath.FromSlash(path))
@@ -162,14 +172,19 @@ func (m model) sourceLocation() (string, int, error) {
 }
 
 func (m model) openCommentEditor() (tea.Cmd, error) {
-	return editor.EditComment(m.ctx, m.edit.body, m.edit.anchor, func(body string, err error) tea.Msg {
+	return editor.EditComment(m.ctx, m.edit.body, m.edit.anchor, func(
+		body string,
+		err error,
+	) tea.Msg {
 		return commentEditorFinishedMsg{body: body, err: err}
 	})
 }
 
 func (m model) commentIndex(selected comments.Comment) int {
 	for index, item := range m.comments.items {
-		if selected.ID != "" && item.ID == selected.ID || selected.ID == "" && item.Body == selected.Body && item.Anchor.FilePath == selected.Anchor.FilePath {
+		if selected.ID != "" && item.ID == selected.ID ||
+			selected.ID == "" && item.Body == selected.Body &&
+				item.Anchor.FilePath == selected.Anchor.FilePath {
 			return index
 		}
 	}

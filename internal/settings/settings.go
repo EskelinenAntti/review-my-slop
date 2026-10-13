@@ -13,7 +13,8 @@ type Preferences struct {
 	SideBySide bool `json:"side_by_side"`
 }
 
-// Load reads preferences from the user configuration directory. Missing files use defaults.
+// Load reads preferences from the user configuration directory. Missing files
+// use defaults.
 func Load() (Preferences, error) {
 	path, err := settingsPath()
 	if err != nil {
@@ -62,11 +63,11 @@ func writePreferences(path string, preferences Preferences) error {
 	temporaryPath := temporary.Name()
 	defer os.Remove(temporaryPath)
 	if err := temporary.Chmod(0o600); err != nil {
-		temporary.Close()
+		_ = temporary.Close()
 		return fmt.Errorf("secure UI settings file: %w", err)
 	}
 	if _, err := temporary.Write(data); err != nil {
-		temporary.Close()
+		_ = temporary.Close()
 		return fmt.Errorf("write UI settings: %w", err)
 	}
 	if err := temporary.Close(); err != nil {
