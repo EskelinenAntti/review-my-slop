@@ -1,70 +1,62 @@
-# Signature clarity and cohesion review
+# Signature review
 
-Extract production Go function and method signatures with:
+Extract the production Go inventory from the repository root:
 
 ```sh
 go run ./scripts/signatures -output /tmp/review-my-slop-signatures.txt
 ```
 
-Each source file starts with a `file: relative/path.go` header before its
-signatures. Signature lines include the relative package directory, package
-name, receiver where applicable, name, parameters, and results. Explicit
-interface methods, including anonymous and local interfaces, are included.
-Anonymous interfaces include their source location. Bodies and documentation
-are omitted. Declarations are included regardless of build tags. Use `-root`
-for another source tree; omit `-output` for stdout.
+The inventory groups signatures under `file: relative/path.go` headers and
+includes package, receiver, name, inputs, and outputs. Explicit interface
+methods, including anonymous and local interfaces, are included; bodies and
+documentation are omitted. All build tags are included. Use `-root` for another
+tree. Tests, `testutil`, `testdata`, hidden directories, `vendor`, and
+`node_modules` are excluded. Never exclude unclear production code to pass.
 
-Go test files, test-only helpers in `testutil`, and fixtures in `testdata` are
-excluded, as are hidden directories, `vendor`, and `node_modules`. Do not
-exclude unclear production code to improve scores.
+## Independent binary reviews
 
-Each round uses independent Luna agents with fresh contexts. Reviewers may run
-the extractor and read only the complete extracted inventory. They must not
-inspect source files, implementations, documentation, diffs, or prior reviews.
-Each reviewer must see all signatures to assess package and cross-file
-cohesion, even when assigned a non-overlapping subset to score.
+For every function, method, and explicit interface method, request **seven
+separate reviews**, one per criterion. Assign each criterion to a fresh Luna
+agent (`gpt-6-luna`, `fork_turns="none"`). Give each reviewer this rubric and the
+complete frozen inventory, including file headers, even when assigning only a
+subset of signatures. Do not provide source, documentation, diffs, or prior reviews.
 
-Give every function and explicit interface method two independent 1-to-3 scores:
+Each criterion gets **1 = pass, 0 = fail**; never combine scores.
 
-- **Clarity:** Assess responsibility, inputs, and outputs together as one score.
-  **3** means all three can be inferred clearly; **2** means at least one is
-  only somewhat clear; **1** means at least one cannot be inferred.
-- **Cohesion:** Assess how the function fits the other functions of its receiver
-  (struct or interface), source file, and package. **3** means a coherent fit at
-  every applicable level; **2** means a questionable fit at any level; **1**
-  means a clear responsibility conflict at any level. Use the lowest applicable
-  level score, so a strong receiver fit cannot hide a file or package violation.
+| Criterion | Pass condition |
+| --- | --- |
+| Responsibility | An unfamiliar Go developer can infer what concretely happens. |
+| Inputs | Parameters clearly communicate what the function needs and their roles. |
+| Outputs | Results clearly communicate what the function returns and their roles. |
+| Receiver cohesion | The method fits the other functions on its struct or interface. |
+| File cohesion | The function fits the responsibilities of other functions in its file. |
+| Package cohesion | The function fits the responsibilities of other functions in its package. |
+| Meaningful name | The name has a specific, recognizable meaning; familiar words stacked into an invented phrase do not suffice. |
 
-For cohesion below 3, include one or more predefined short codes identifying
-all affected levels: `S` (struct/receiver/interface), `F` (file), `P` (package).
-Include a short specific reason for each code and for clarity below 3. When
-both scores are 3, the two scores alone suffice. Never invent implementation
-behavior; judge only what the signatures and grouping reveal. Uncertainty
-about internals alone is not a violation. Clarity concerns the role of the
-function and its inputs and outputs, not exact algorithms, boundary conditions,
-or callback implementations. A named domain type supplies domain context;
-reviewers must not require its unseen fields. Respect established Go/framework
-contracts, including interface names and conventional lifecycle methods.
-Do not use automated name-pattern scoring or a desired score distribution.
+Assess each cohesion level independently. Receiver cohesion passes for
+functions without a receiver; absent inputs or outputs pass their respective
+criterion. Judge only signatures and grouping: do not invent behavior or demand
+unseen type fields, algorithms, or callback internals. Named domain types supply
+context. Respect established Go/framework contracts and conventional lifecycle
+methods. Do not automate judgments or target a score distribution.
 
-Record one judgment per signature, identified by its 1-based inventory line
-number, as `line | clarity | cohesion | codes and reasons` (omit the final
-field when both scores are 3). File headers are context, not scored entries.
-Compare each reviewer snapshot byte-for-byte with the canonical inventory,
-record its SHA-256 digest, and validate complete, unique coverage and scores in
-range. Missing, duplicate, invalid, or unexplained judgments invalidate a round.
+## Validate and refactor
 
-Refactor every production abstraction with either score below 3, preserving
-behavior. Address every cited receiver, file, and package violation. Prefer
-coherent responsibilities and explicit input/output types to shallow helpers.
-Existing tests validate changes; update production references in tests as
-needed, but do not rename test functions or test-only helpers or refactor them
-for scoring purposes.
+Record each judgment as `line | criterion | score | reason`, using the 1-based
+inventory line number and criterion labels above. Reasons are required for 0
+and optional for 1. File headers are not scored. Verify reviewer snapshots
+byte-for-byte against the canonical inventory and record SHA-256 digests.
+Require exactly one judgment per signature per criterion; missing, duplicate,
+nonbinary, or unexplained failures invalidate the round.
 
-Repeat extraction, fresh Luna review, validation, and refactoring until every
-signature has both scores at 3 in a complete round. Confirm the final extracted
-bytes still match that round, then run `make check`, `make test`, and `make build`.
-Remove intermediate inventories, snapshots, judgments, reports, and build
-artifacts after validation. Do not retain generated score lists or archives in
-the repository. Commit the final changes and push the current remote branch
-when requested.
+Fix every failure while preserving behavior. Check names against implementations
+and resolve responsibility boundaries and every failing cohesion level. Update
+production references in tests as needed; do not refactor tests or test-only
+helpers for scoring.
+
+Repeat extraction, fresh reviews, validation, and refactoring until all seven
+criteria pass for every signature in one complete round. If Luna is unavailable,
+report the blocker without claiming completion. Confirm final extraction matches
+the passing inventory, then run `make check`, `make test`, and `make build`.
+Remove task-generated inventories, reviews, and build artifacts. Summarize changes
+and validation; commit and push the current branch only when requested.
