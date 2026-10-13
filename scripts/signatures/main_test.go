@@ -82,16 +82,23 @@ func Start() {
 		"interface anonymous@sample.go:4:16: func Read(data []byte) error",
 		"func Start()",
 		"interface Local: func Close() error",
-		"interface anonymous@sample.go:8:11: func Write(data []byte) (int, error)",
+		"interface anonymous@sample.go:8:11: " +
+			"func Write(data []byte) (int, error)",
 	} {
 		if !strings.Contains(got, signature) {
 			t.Fatalf("missing %q in signatures:\n%s", signature, got)
 		}
 	}
-	if strings.Contains(got, "Documentation") || strings.Contains(got, "var sink") {
+	if strings.Contains(got,
+		"Documentation") || strings.Contains(got,
+		"var sink") {
 		t.Fatalf("documentation or implementation leaked: %s", got)
 	}
-	testutil.RequireEqual(t, strings.Count(got, "\n"), 5, "one line per signature")
+	testutil.RequireEqual(t,
+		strings.Count(got,
+			"\n"),
+		5,
+		"one line per signature")
 }
 
 func TestSingleLineSignaturePreservesLiteralWhitespace(t *testing.T) {

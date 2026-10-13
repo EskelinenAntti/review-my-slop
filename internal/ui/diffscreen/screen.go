@@ -283,7 +283,8 @@ func (v *View) ClearSelection() {
 	v.search.repeatMiss = false
 }
 
-// Selected returns the focused line when no explicit range is selectionContainsCursor.
+// Selected returns the focused line when no explicit range is
+// selectionContainsCursor.
 // The bool is false when the patch has no selectable code.
 func (v *View) Selected() (patch.File, []patch.Line, bool) {
 	selection := v.selection
@@ -296,7 +297,8 @@ func (v *View) Selected() (patch.File, []patch.Line, bool) {
 	return file, lines, ok && len(lines) > 0
 }
 
-// Current returns the focused source line, independent of any selectionContainsCursor range.
+// Current returns the focused source line, independent of any
+// selectionContainsCursor range.
 func (v *View) Current() (patch.File, patch.Line, bool) {
 	file, fileOK := v.view.file(v.cursor)
 	line, lineOK := v.view.line(v.cursor)
@@ -403,7 +405,10 @@ func (v *View) Render(err error) string {
 	if err != nil {
 		footer = errorStyle.Render(strings.ReplaceAll(err.Error(), "\n", " "))
 	}
-	return frame.Render(header, body, v.renderFooterWithPatchStatus(footer), v.height)
+	return frame.Render(header,
+		body,
+		v.renderFooterWithPatchStatus(footer),
+		v.height)
 }
 func (v *View) renderBody() []string {
 	var body []string
@@ -416,7 +421,9 @@ func (v *View) renderBody() []string {
 		body[min(1, len(body)-1)] = mutedStyle.Render(empty)
 	} else {
 		body = strings.Split(
-			v.view.renderHighlightedSourceLines(v.viewport, v.cursor, v.selection),
+			v.view.renderHighlightedSourceLines(v.viewport,
+				v.cursor,
+				v.selection),
 			"\n",
 		)
 	}
@@ -442,11 +449,15 @@ func (v *View) renderFooterWithPatchStatus(statusText string) string {
 		label = "branch changes from " + v.view.patch.Branch
 	}
 	if v.viewport.top > 0 {
-		label += fmt.Sprintf(" (%d%%)", v.view.viewportProgressPercent(v.viewport))
+		label += fmt.Sprintf(" (%d%%)",
+			v.view.viewportProgressPercent(v.viewport))
 	}
 	right := mutedStyle.Render(label)
 	width := max(20, v.width)
-	statusText = ansi.Truncate(statusText, max(0, width-lipgloss.Width(right)-1), "")
+	statusText = ansi.Truncate(statusText,
+		max(0,
+			width-lipgloss.Width(right)-1),
+		"")
 	return statusText + strings.Repeat(
 		" ",
 		max(1, width-lipgloss.Width(statusText)-lipgloss.Width(right)),

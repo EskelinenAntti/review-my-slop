@@ -176,11 +176,11 @@ func sameFile(candidate, target patch.File) bool {
 		candidate.NewPath != "" && candidate.NewPath == target.NewPath
 }
 
-func absoluteLineDistance(value int) int {
-	if value < 0 {
-		return -value
+func absoluteLineDistance(signedLineOffset int) int {
+	if signedLineOffset < 0 {
+		return -signedLineOffset
 	}
-	return value
+	return signedLineOffset
 }
 
 func highlightedLine(

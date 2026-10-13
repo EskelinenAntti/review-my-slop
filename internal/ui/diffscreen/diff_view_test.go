@@ -103,7 +103,11 @@ func TestSelectionLines(t *testing.T) {
 	testutil.RequireEqual(t, ok, true, "%s", "selection extension failed")
 
 	lines := v.lines(selection)
-	testutil.RequireEqual(t, len(lines), 3, "selectionContainsCursor lines = %d", len(lines))
+	testutil.RequireEqual(t,
+		len(lines),
+		3,
+		"selectionContainsCursor lines = %d",
+		len(lines))
 
 	nextFile, _ := v.jumpFile(first, forward)
 	if _, ok := v.extendSelection(selection, nextFile); ok {

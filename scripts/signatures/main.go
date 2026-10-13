@@ -124,34 +124,74 @@ func (e signatureExtractor) writeDeclarationSignatures(
 			return err
 		}
 	}
-	owners := make(map[*ast.InterfaceType]string)
-	var extractionErr error
-	ast.Inspect(declaration, func(node ast.Node) bool {
-		if extractionErr != nil {
-			return false
-		}
-		switch node := node.(type) {
-		case *ast.TypeSpec:
-			if iface, ok := node.Type.(*ast.InterfaceType); ok {
-				owners[iface] = node.Name.Name
-			}
-		case *ast.InterfaceType:
-			owner := owners[node]
-			if owner == "" {
-				position := e.fset.Position(node.Pos())
-				relative, err := filepath.Rel(e.root, position.Filename)
-				if err != nil {
-					extractionErr = err
-					return false
-				}
-				owner = fmt.Sprintf("anonymous@%s:%d:%d",
-					filepath.ToSlash(relative), position.Line, position.Column)
-			}
-			extractionErr = e.writeInterfaceSignatures(pkg, owner, node)
-		}
-		return extractionErr == nil
-	})
-	return extractionErr
+	return e.writeNestedInterfaceSignatures(pkg, declaration)
+}
+
+func (e signatureExtractor) writeNestedInterfaceSignatures(
+	pkg string,
+	declaration ast.Decl,
+) error {
+	visitor := interfaceSignatureVisitor{
+		extractor: e, pkg: pkg, owners: make(map[*ast.InterfaceType]string),
+	}
+	ast.Inspect(declaration, visitor.visitInterfaceASTNode)
+	return visitor.err
+}
+
+type interfaceSignatureVisitor struct {
+	extractor signatureExtractor
+	pkg       string
+	owners    map[*ast.InterfaceType]string
+	err       error
+}
+
+func (v *interfaceSignatureVisitor) visitInterfaceASTNode(node ast.Node) bool {
+	if v.err != nil {
+		return false
+	}
+	switch node := node.(type) {
+	case *ast.TypeSpec:
+		v.recordDeclaredInterfaceName(node)
+	case *ast.InterfaceType:
+		v.err = v.writeInterfaceNodeSignatures(node)
+	default:
+		// Continue walking to include anonymous and local interfaces.
+	}
+	return v.err == nil
+}
+
+func (v *interfaceSignatureVisitor) recordDeclaredInterfaceName(
+	typeDeclaration *ast.TypeSpec,
+) {
+	if iface, ok := typeDeclaration.Type.(*ast.InterfaceType); ok {
+		v.owners[iface] = typeDeclaration.Name.Name
+	}
+}
+
+func (v *interfaceSignatureVisitor) writeInterfaceNodeSignatures(
+	iface *ast.InterfaceType,
+) error {
+	owner, err := v.extractor.interfaceOwnerLabel(iface, v.owners[iface])
+	if err != nil {
+		return err
+	}
+	return v.extractor.writeInterfaceSignatures(v.pkg, owner, iface)
+}
+
+func (e signatureExtractor) interfaceOwnerLabel(
+	iface *ast.InterfaceType,
+	declaredTypeName string,
+) (string, error) {
+	if declaredTypeName != "" {
+		return declaredTypeName, nil
+	}
+	position := e.fset.Position(iface.Pos())
+	relative, err := filepath.Rel(e.root, position.Filename)
+	if err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("anonymous@%s:%d:%d",
+		filepath.ToSlash(relative), position.Line, position.Column), nil
 }
 
 func (e signatureExtractor) writeInterfaceSignatures(
@@ -230,7 +270,10 @@ func isInsertedGoSemicolon(kind token.Token, literal string) bool {
 	return kind == token.SEMICOLON && literal == "\n"
 }
 
-func singleLineGoToken(kind token.Token, literal string) (text string, sourceLength int) {
+func singleLineGoToken(
+	kind token.Token,
+	literal string,
+) (text string, sourceLength int) {
 	if literal == "" {
 		text := kind.String()
 		return text, len(text)

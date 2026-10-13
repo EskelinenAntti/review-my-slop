@@ -24,24 +24,29 @@ func EditComment(
 	if err != nil {
 		return nil, err
 	}
-	adapter, complete := commentWorkflow(ctx, command, body, anchor, onComplete)
+	adapter,
+		complete := prepareCommentEditorExecution(ctx,
+		command,
+		body,
+		anchor,
+		onComplete)
 	return tea.Exec(adapter, complete), nil
 }
 
-func commentWorkflow(
+func prepareCommentEditorExecution(
 	ctx context.Context,
-	command, body string,
+	editorShellCommand, initialDraftBody string,
 	anchor comments.Anchor,
 	onComplete func(string, error) tea.Msg,
 ) (*commandAdapter, tea.ExecCallback) {
 	adapter := &commandAdapter{}
 	adapter.run = func() error {
-		path, err := createCommentFile(body, anchor)
+		path, err := createCommentFile(initialDraftBody, anchor)
 		if err != nil {
 			return err
 		}
 		defer os.Remove(path)
-		editorCommand := commentCommand(ctx, command, path)
+		editorCommand := commentCommand(ctx, editorShellCommand, path)
 		if err := adapter.runWithAttachedTerminal(editorCommand); err != nil {
 			return fmt.Errorf("editor: %w", err)
 		}
@@ -66,7 +71,10 @@ func OpenSource(
 	}
 	adapter := &commandAdapter{}
 	adapter.run = func() error {
-		return adapter.runWithAttachedTerminal(sourceCommand(ctx, command, path, line))
+		return adapter.runWithAttachedTerminal(sourceCommand(ctx,
+			command,
+			path,
+			line))
 	}
 	return tea.Exec(adapter, onComplete), nil
 }

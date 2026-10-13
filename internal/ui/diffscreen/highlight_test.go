@@ -54,8 +54,14 @@ func answer(value int) string {
 	return ""
 }
 `
-	dark := strings.Join(renderHighlightedSourceLines("example.go", source, darkTheme), "\n")
-	light := strings.Join(renderHighlightedSourceLines("example.go", source, lightTheme), "\n")
+	dark := strings.Join(renderHighlightedSourceLines("example.go",
+		source,
+		darkTheme),
+		"\n")
+	light := strings.Join(renderHighlightedSourceLines("example.go",
+		source,
+		lightTheme),
+		"\n")
 	if dark == light {
 		t.Fatal(
 			"light and dark terminal backgrounds use identical highlighting",

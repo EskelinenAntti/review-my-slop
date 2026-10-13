@@ -45,16 +45,16 @@ func (m model) updateSearch(
 
 // navigate applies a diff navigation binding and reports whether it handled the
 // key.
-func (m *model) navigate(name string) bool {
-	if motion, ok := navigationMotions[name]; ok {
+func (m *model) applyDiffNavigationKey(keyBinding string) bool {
+	if motion, ok := navigationMotions[keyBinding]; ok {
 		m.diffView.Move(motion)
 		return true
 	}
-	if alignment, ok := navigationAlignments[name]; ok {
+	if alignment, ok := navigationAlignments[keyBinding]; ok {
 		m.diffView.Align(alignment)
 		return true
 	}
-	switch name {
+	switch keyBinding {
 	case "n":
 		m.diffView.Find(diffscreen.Forward)
 	case "N":

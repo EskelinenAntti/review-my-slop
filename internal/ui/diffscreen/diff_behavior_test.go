@@ -351,7 +351,9 @@ func TestKeepVisibleAccountsForStickyFileHeader(t *testing.T) {
 	v := newUnifiedView(longPatch(), true)
 	cursor, _ := v.lastLineCursor()
 	viewport := v.keepVisible(v.newViewport(50, 4), cursor)
-	rendered := ansi.Strip(v.renderHighlightedSourceLines(viewport, cursor, nil))
+	rendered := ansi.Strip(v.renderHighlightedSourceLines(viewport,
+		cursor,
+		nil))
 	line, _ := v.line(cursor)
 	testutil.RequireEqual(t,
 		cursor.row < viewport.top+v.contentHeight(viewport), true,
@@ -426,7 +428,9 @@ func TestHorizontalScrollKeepsSplitGuttersAndDividerFixed(t *testing.T) {
 	viewport := v.newViewport(120, 1)
 	viewport = v.keepVisible(viewport, cursor)
 	viewport = v.scrollHorizontal(viewport, 8)
-	rendered := ansi.Strip(v.renderHighlightedSourceLines(viewport, cursor, nil))
+	rendered := ansi.Strip(v.renderHighlightedSourceLines(viewport,
+		cursor,
+		nil))
 	testutil.RequireEqual(t, strings.Index(rendered, "│"), 59,
 		"gutters moved: %q", rendered,
 	)

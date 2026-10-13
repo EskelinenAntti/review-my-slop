@@ -37,7 +37,7 @@ func TestCommentWorkflowLifecycle(t *testing.T) {
 				),
 			)
 
-			adapter, complete := commentWorkflow(
+			adapter, complete := prepareCommentEditorExecution(
 				context.Background(),
 				"sh "+shellQuote(script),
 				tc.body,
@@ -128,7 +128,7 @@ func TestCommentCancellationAndCreationFailure(t *testing.T) {
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
 			tc.setup(t, dir, cancel)
-			adapter, complete := commentWorkflow(
+			adapter, complete := prepareCommentEditorExecution(
 				ctx,
 				"true",
 				"body",
@@ -156,7 +156,7 @@ func TestCommentCancellationAndCreationFailure(t *testing.T) {
 
 func TestTerminalFailureReachesCompletion(t *testing.T) {
 	sentinel := errors.New("terminal restoration failed")
-	adapter, complete := commentWorkflow(
+	adapter, complete := prepareCommentEditorExecution(
 		context.Background(),
 		"true",
 		"body",
@@ -276,7 +276,7 @@ func TestRunningEditorCancellationCleansDraft(t *testing.T) {
 	t.Setenv("TMPDIR", dir)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	adapter, complete := commentWorkflow(
+	adapter, complete := prepareCommentEditorExecution(
 		ctx,
 		"printf started; exec sleep 30 #",
 		"body",

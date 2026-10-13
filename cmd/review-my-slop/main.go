@@ -24,14 +24,14 @@ func main() {
 
 func run(ctx context.Context, args []string, output io.Writer) error {
 	if len(args) == 0 {
-		return runInteractiveDiffReview(ctx)
+		return runWorkingTreeDiffReview(ctx)
 	}
 	if len(args) > 1 {
 		return errors.New("usage: review-my-slop [code|comments]")
 	}
 	switch args[0] {
 	case "code":
-		return runInteractiveDiffReview(ctx)
+		return runWorkingTreeDiffReview(ctx)
 	case "comments":
 		return runComments(ctx, output)
 	default:
@@ -42,7 +42,7 @@ func run(ctx context.Context, args []string, output io.Writer) error {
 	}
 }
 
-func runInteractiveDiffReview(ctx context.Context) error {
+func runWorkingTreeDiffReview(ctx context.Context) error {
 	commentStore, err := comments.OpenDefault()
 	if err != nil {
 		return err

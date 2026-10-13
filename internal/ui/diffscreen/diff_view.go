@@ -115,13 +115,16 @@ func (v *diffView) setHighlightedRowText(
 	}
 }
 
-// projectPaneLineIndices maps source lines to display rows. Split mode pairs each deletion
+// projectPaneLineIndices maps source lines to display rows. Split mode pairs
+// each deletion
 // block with the immediately following additions; unmatched panes use -1.
 type paneLineIndices struct {
 	Left, Right int
 }
 
-func (v *diffView) projectPaneLineIndices(lines []patch.Line) []paneLineIndices {
+func (v *diffView) projectPaneLineIndices(
+	lines []patch.Line,
+) []paneLineIndices {
 	rows := make([]paneLineIndices, 0, len(lines))
 	for index := 0; index < len(lines); {
 		if !v.split || lines[index].Kind == patch.Context {
@@ -172,7 +175,9 @@ func (highlighted highlightedFileSources) lineText(line patch.Line) string {
 	return highlightedLine(highlighted.New, line.NewNumber, line.Text)
 }
 
-func (v *diffView) highlightFileSources(file *patch.File) highlightedFileSources {
+func (v *diffView) highlightFileSources(
+	file *patch.File,
+) highlightedFileSources {
 	theme := lightTheme
 	if v.dark {
 		theme = darkTheme

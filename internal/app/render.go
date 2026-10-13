@@ -9,13 +9,13 @@ func (m model) View() tea.View {
 	if m.quitting {
 		return tea.NewView("")
 	}
-	result := tea.NewView(m.renderActiveScreen())
+	result := tea.NewView(m.renderReviewScreenANSI())
 	result.AltScreen = true
 	result.ReportFocus = true
 	result.MouseMode = tea.MouseModeCellMotion
 	return result
 }
-func (m model) renderActiveScreen() string {
+func (m model) renderReviewScreenANSI() string {
 	switch m.mode {
 	case modeHelp:
 		return m.renderHelp()

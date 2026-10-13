@@ -220,7 +220,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case tea.KeyPressMsg:
 		m.diffView.EndDrag()
-		return m.updateKey(msg)
+		return m.handleActiveScreenKey(msg)
 	case tea.MouseClickMsg, tea.MouseMotionMsg,
 		tea.MouseReleaseMsg, tea.MouseWheelMsg:
 		m.updateMouse(msg)
@@ -255,11 +255,11 @@ func (m model) handleEditorAndRefreshEvents(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m *model) finishCommentEditor(msg commentEditorFinishedMsg) {
 	if msg.err != nil {
 		m.err = msg.err
-		m.clearCommentEdit()
+		m.edit.resetDraft()
 		return
 	}
 	m.edit.body = msg.body
-	m.finishCommentEdit()
+	m.persistCommentEdit(m.edit)
 }
 
 func (m *model) finishCommentsLoad(msg commentsLoadedMsg) {
@@ -322,10 +322,10 @@ func (m *model) fitReviewScreensToWindow() {
 	m.commentView.Resize(m.width, m.height)
 }
 
-func (m model) updateKey(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+func (m model) handleActiveScreenKey(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	name := key.String()
 	if m.mode == modeComments {
-		return m.updateComments(name)
+		return m.handleCommentsScreenKey(name)
 	}
 	if m.mode == modeHelp {
 		if name == "esc" || name == "?" || name == "q" {
@@ -336,16 +336,16 @@ func (m model) updateKey(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	if m.mode == modeSearch {
 		return m.updateSearch(name, key)
 	}
-	return m.updateBrowseKey(name)
+	return m.handleDiffReviewKey(name)
 }
 
-func (m model) updateBrowseKey(name string) (tea.Model, tea.Cmd) {
+func (m model) handleDiffReviewKey(keyName string) (tea.Model, tea.Cmd) {
 	m.err = nil
-	name = m.keys.Feed(name)
-	if m.navigate(name) {
+	keyName = m.keys.Feed(keyName)
+	if m.applyDiffNavigationKey(keyName) {
 		return m, nil
 	}
-	switch name {
+	switch keyName {
 	case "ctrl+c", "q":
 		m.quitting = true
 		return m, tea.Quit
@@ -356,13 +356,13 @@ func (m model) updateBrowseKey(name string) (tea.Model, tea.Cmd) {
 	case "R":
 		return m, m.requestDiffRefresh()
 	case "tab":
-		return m.switchPatchKind()
+		return m.toggleWorkingTreeAndBranchDiff()
 	default:
-		return m.updateBrowseView(name)
+		return m.handleReviewScreenModeKey(keyName)
 	}
 }
-func (m model) updateBrowseView(name string) (tea.Model, tea.Cmd) {
-	switch name {
+func (m model) handleReviewScreenModeKey(keyName string) (tea.Model, tea.Cmd) {
+	switch keyName {
 	case "?":
 		m.mode = modeHelp
 	case "/":
@@ -402,7 +402,7 @@ func (m model) startSourceEditor() (tea.Model, tea.Cmd) {
 	return m, cmd
 }
 
-func (m model) switchPatchKind() (tea.Model, tea.Cmd) {
+func (m model) toggleWorkingTreeAndBranchDiff() (tea.Model, tea.Cmd) {
 	if m.currentPatch.Branch == "" {
 		return m, nil
 	}

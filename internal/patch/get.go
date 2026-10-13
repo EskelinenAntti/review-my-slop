@@ -52,7 +52,7 @@ func (execRunner) Run(
 	return nil, fmt.Errorf("git %s: %w", strings.Join(args, " "), err)
 }
 
-// Get retrieves a complete snapshot from the current working directory.
+// LoadGitDiff retrieves a complete snapshot from the current working directory.
 // Unknown kinds and unavailable branch comparisons return a zero Patch and an
 // error.
 func LoadGitDiff(ctx context.Context, kind Kind) (Patch, error) {
@@ -271,8 +271,8 @@ func parseTrackedFile(
 	fd *diff.FileDiff,
 	readOld sourceReader,
 ) (File, error) {
-	oldPath := cleanDiffPath(fd.OrigName)
-	newPath := cleanDiffPath(fd.NewName)
+	oldPath := stripDiffSidePrefixOrNullPath(fd.OrigName)
+	newPath := stripDiffSidePrefixOrNullPath(fd.NewName)
 	display := newPath
 	if display == "" || display == "/dev/null" {
 		display = oldPath
@@ -512,7 +512,7 @@ func readWorkingTree(root, path string) string {
 	return escapeSourceControls(string(out))
 }
 
-func cleanDiffPath(path string) string {
+func stripDiffSidePrefixOrNullPath(path string) string {
 	path = strings.TrimSpace(path)
 	path = strings.TrimPrefix(path, "a/")
 	path = strings.TrimPrefix(path, "b/")

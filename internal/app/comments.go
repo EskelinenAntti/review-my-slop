@@ -12,9 +12,9 @@ import (
 	"github.com/eskelinenantti/review-my-slop/internal/patch"
 )
 
-func (m model) updateComments(name string) (tea.Model, tea.Cmd) {
+func (m model) handleCommentsScreenKey(keyName string) (tea.Model, tea.Cmd) {
 	m.err = nil
-	switch name {
+	switch keyName {
 	case "esc", "C", "q":
 		m.mode = modeBrowse
 	case "ctrl+c":
@@ -50,7 +50,7 @@ func (m model) editSelectedComment() (tea.Model, tea.Cmd) {
 	cmd, err := m.openCommentEditor()
 	if err != nil {
 		m.err = err
-		m.clearCommentEdit()
+		m.edit.resetDraft()
 		return m, nil
 	}
 	return m, cmd
@@ -65,42 +65,42 @@ func (m *model) beginComment() (tea.Cmd, error) {
 	m.edit.body, m.edit.index, m.edit.anchor = "", -1, anchor
 	cmd, err := m.openCommentEditor()
 	if err != nil {
-		m.clearCommentEdit()
+		m.edit.resetDraft()
 		return nil, err
 	}
 	return cmd, nil
 }
 
-func (m *model) finishCommentEdit() {
-	body := strings.TrimSpace(m.edit.body)
+func (m *model) persistCommentEdit(draft commentEdit) {
+	body := strings.TrimSpace(draft.body)
 	if body == "" {
-		if m.edit.index >= 0 {
-			m.deleteComment(m.edit.index)
+		if draft.index >= 0 {
+			m.deleteComment(draft.index)
 		}
-		m.clearCommentEdit()
+		m.edit.resetDraft()
 		m.diffView.ClearSelection()
 		return
 	}
 	if m.save == nil {
 		m.err = errors.New("comment storage is unavailable")
-		m.clearCommentEdit()
+		m.edit.resetDraft()
 		return
 	}
 	var comment comments.Comment
-	if m.edit.index >= 0 {
-		comment = m.comments.items[m.edit.index]
+	if draft.index >= 0 {
+		comment = m.comments.items[draft.index]
 		comment.Body = body
 	} else {
-		comment = comments.Comment{Anchor: m.edit.anchor, Body: body}
+		comment = comments.Comment{Anchor: draft.anchor, Body: body}
 	}
 	saved, err := m.save(comment, m.currentPatch)
 	if err != nil {
 		m.err = err
-		m.clearCommentEdit()
+		m.edit.resetDraft()
 		return
 	}
-	if m.edit.index >= 0 {
-		m.comments.items[m.edit.index] = saved
+	if draft.index >= 0 {
+		m.comments.items[draft.index] = saved
 	} else {
 		m.comments.items = append(m.comments.items, saved)
 		m.commentView.Update(m.comments.items)
@@ -108,7 +108,7 @@ func (m *model) finishCommentEdit() {
 	}
 	m.comments.revision++
 	m.commentView.Update(m.comments.items)
-	m.clearCommentEdit()
+	m.edit.resetDraft()
 	m.err = nil
 	m.diffView.ClearSelection()
 }
@@ -134,8 +134,8 @@ func (m *model) deleteComment(index int) {
 	m.err = nil
 }
 
-func (m *model) clearCommentEdit() {
-	m.edit = commentEdit{index: -1}
+func (draft *commentEdit) resetDraft() {
+	*draft = commentEdit{index: -1}
 }
 
 func (m model) openCurrentLine() (tea.Cmd, error) {

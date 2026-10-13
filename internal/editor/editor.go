@@ -34,21 +34,23 @@ func readCommentFile(path string, anchor comments.Anchor) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("read comment file: %w", err)
 	}
-	return stripUnchangedSuggestion(string(body), anchor.QuotedLines), nil
+	return removeUnchangedQuotedSuggestion(string(body),
+			anchor.QuotedLines),
+		nil
 }
 
 func commentDraft(body string, anchor comments.Anchor) string {
 	if len(anchor.QuotedLines) == 0 {
 		return body
 	}
-	lines := suggestionLines(anchor.QuotedLines)
+	lines := quotedContextLinesWithoutDeletions(anchor.QuotedLines)
 	var draft strings.Builder
 	_, _ = draft.WriteString(body)
 	if body != "" && !strings.HasSuffix(body, "\n") {
 		_ = draft.WriteByte('\n')
 	}
 	_ = draft.WriteByte('\n')
-	fence := contextFence(lines)
+	fence := markdownFenceForCodeLines(lines)
 	_, _ = draft.WriteString(fence)
 	_, _ = draft.WriteString("suggestion\n")
 	for _, line := range lines {
@@ -60,12 +62,13 @@ func commentDraft(body string, anchor comments.Anchor) string {
 	return draft.String()
 }
 
-func stripUnchangedSuggestion(body string, quoted []string) string {
-	if len(quoted) == 0 {
-		return body
+func removeUnchangedQuotedSuggestion(editedMarkdown string,
+	diffQuotedLines []string) string {
+	if len(diffQuotedLines) == 0 {
+		return editedMarkdown
 	}
-	lines := suggestionLines(quoted)
-	fence := contextFence(lines)
+	lines := quotedContextLinesWithoutDeletions(diffQuotedLines)
+	fence := markdownFenceForCodeLines(lines)
 	var suggestion strings.Builder
 	_, _ = suggestion.WriteString(fence)
 	_, _ = suggestion.WriteString("suggestion\n")
@@ -74,13 +77,13 @@ func stripUnchangedSuggestion(body string, quoted []string) string {
 		_ = suggestion.WriteByte('\n')
 	}
 	_, _ = suggestion.WriteString(fence)
-	start := strings.Index(body, suggestion.String())
+	start := strings.Index(editedMarkdown, suggestion.String())
 	if start < 0 {
-		return body
+		return editedMarkdown
 	}
 	end := start + suggestion.Len()
-	before := strings.TrimRight(body[:start], "\n")
-	after := body[end:]
+	before := strings.TrimRight(editedMarkdown[:start], "\n")
+	after := editedMarkdown[end:]
 	if strings.TrimSpace(after) == "" {
 		return before
 	}
@@ -104,9 +107,9 @@ func sourceCommand(
 	)
 }
 
-func suggestionLines(quoted []string) []string {
-	lines := make([]string, 0, len(quoted))
-	for _, line := range quoted {
+func quotedContextLinesWithoutDeletions(diffQuotedLines []string) []string {
+	lines := make([]string, 0, len(diffQuotedLines))
+	for _, line := range diffQuotedLines {
 		if line != "" && line[0] != '-' {
 			lines = append(lines, line[1:])
 		}
@@ -114,7 +117,7 @@ func suggestionLines(quoted []string) []string {
 	return lines
 }
 
-func contextFence(lines []string) string {
+func markdownFenceForCodeLines(lines []string) string {
 	longest := 0
 	for _, line := range lines {
 		run := 0

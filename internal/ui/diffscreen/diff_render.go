@@ -97,8 +97,8 @@ func (v *diffView) renderUnifiedLine(
 	}
 	gutter := fmt.Sprintf(
 		"%5s %5s %s ",
-		number(line.OldNumber),
-		number(line.NewNumber),
+		formatLineNumberGutter(line.OldNumber),
+		formatLineNumberGutter(line.NewNumber),
 		prefix,
 	)
 	value := gutter + fitANSIWindow(
@@ -181,7 +181,7 @@ func (v *diffView) renderPane(
 	if line.Kind == patch.Deletion {
 		prefix = removedStyle.Render("-") + " "
 	}
-	gutter := fmt.Sprintf("%5s ", number(numberValue))
+	gutter := fmt.Sprintf("%5s ", formatLineNumberGutter(numberValue))
 	value := gutter + fitANSIWindow(
 		prefix+text,
 		offset,
@@ -242,7 +242,7 @@ func selectionRowStyle(dark bool) lipgloss.Style {
 	)
 }
 
-func number(value patch.LineNumber) string {
+func formatLineNumberGutter(value patch.LineNumber) string {
 	if value == 0 {
 		return ""
 	}

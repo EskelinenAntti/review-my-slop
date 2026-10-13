@@ -34,7 +34,8 @@ func (v *diffView) firstLineCursor() (diffCursor, bool) {
 }
 
 func (v *diffView) lastLineCursor() (diffCursor, bool) {
-	if cursor, ok := v.nextLineCursor(len(v.rows), right, backward); ok {
+	cursor, ok := v.nextLineCursor(len(v.rows), right, backward)
+	if ok {
 		return cursor, true
 	}
 	return v.nextLineCursor(len(v.rows), left, backward)
@@ -45,8 +46,8 @@ func (v *diffView) nextLineCursor(
 	pane diffPane,
 	direction direction,
 ) (diffCursor, bool) {
-	moveCursorOneLine := int(direction)
-	for y := start + moveCursorOneLine; y >= 0 && y < len(v.rows); y += moveCursorOneLine {
+	step := int(direction)
+	for y := start + step; y >= 0 && y < len(v.rows); y += step {
 		if cursor, ok := v.cursorAt(y, pane); ok {
 			return cursor, true
 		}
