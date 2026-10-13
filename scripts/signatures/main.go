@@ -105,6 +105,14 @@ func (e signatureExtractor) writeSourceFileSignatures(path string) error {
 		return err
 	}
 	pkg := filepath.ToSlash(relative) + " (package " + file.Name.Name + ")"
+	filePath, err := filepath.Rel(e.root, path)
+	if err != nil {
+		return err
+	}
+	_, err = fmt.Fprintf(e.output, "file: %s\n", filepath.ToSlash(filePath))
+	if err != nil {
+		return err
+	}
 	for _, declaration := range file.Decls {
 		if err := e.writeDeclarationSignatures(pkg, declaration); err != nil {
 			return err

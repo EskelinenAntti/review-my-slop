@@ -34,7 +34,7 @@ func (box *Box[T]) private(values ...T) (result T) { return box.value }
 	if err := writeGoSignatures(&output, root); err != nil {
 		t.Fatal(err)
 	}
-	want := ". (package sample) interface Reader: " +
+	want := "file: sample.go\n. (package sample) interface Reader: " +
 		"func Read(buffer []byte) (count int, err error)\n" +
 		". (package sample): func exported[T ~int](value T) T\n" +
 		". (package sample): " +
@@ -56,6 +56,27 @@ func TestInvalidGoSourceReturnsError(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "invalid.go") {
 		t.Fatalf("expected parse error identifying invalid.go, got %v", err)
 	}
+}
+
+func TestFileHeadersGroupSignaturesByRelativePath(t *testing.T) {
+	root := t.TempDir()
+	testutil.NoError(t, os.Mkdir(filepath.Join(root, "nested"), 0700))
+	for _, path := range []string{"first.go", "nested/second.go"} {
+		testutil.NoError(t, os.WriteFile(
+			filepath.Join(root, filepath.FromSlash(path)),
+			[]byte("package sample\nfunc Run() {}\nfunc Stop() {}"),
+			0600,
+		))
+	}
+	var output bytes.Buffer
+	testutil.NoError(t, writeGoSignatures(&output, root))
+	want := "file: first.go\n" +
+		". (package sample): func Run()\n" +
+		". (package sample): func Stop()\n" +
+		"file: nested/second.go\n" +
+		"nested (package sample): func Run()\n" +
+		"nested (package sample): func Stop()\n"
+	testutil.RequireEqual(t, output.String(), want, "file groups")
 }
 
 func TestExtractsNestedAndLocalInterfaceMethods(t *testing.T) {
@@ -97,8 +118,8 @@ func Start() {
 	testutil.RequireEqual(t,
 		strings.Count(got,
 			"\n"),
-		5,
-		"one line per signature")
+		6,
+		"file header and one line per signature")
 }
 
 func TestSingleLineSignaturePreservesLiteralWhitespace(t *testing.T) {
@@ -145,7 +166,7 @@ func TestSignatureExtractionCLISelectsRootAndOutput(t *testing.T) {
 	testutil.NoError(t, extractProductionSignaturesCLI(
 		[]string{"-root", root}, &stdout,
 	))
-	want := ". (package sample): func Run()\n"
+	want := "file: sample.go\n. (package sample): func Run()\n"
 	testutil.RequireEqual(t, stdout.String(), want, "stdout signatures")
 	output := filepath.Join(root, "signatures.txt")
 	stdout.Reset()
