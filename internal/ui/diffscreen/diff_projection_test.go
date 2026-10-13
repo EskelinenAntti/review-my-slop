@@ -90,7 +90,7 @@ func projectedTexts(v *diffView) [][2]string {
 func projectedRowTexts(v *diffView, row int) [2]string {
 	var texts [2]string
 	for _, pane := range []diffPane{left, right} {
-		if cursor, ok := v.cursorAt(row, pane); ok {
+		if cursor, ok := v.sourceCursorAtRow(row, pane); ok {
 			line, _ := v.line(cursor)
 			texts[pane] = line.Text
 		}

@@ -90,8 +90,8 @@ func (v *diffView) appendHunkRows(
 			kind:      lineRow,
 			file:      fileIndex,
 			hunk:      hunkIndex,
-			leftLine:  indices[0],
-			rightLine: indices[1],
+			leftLine:  indices.left,
+			rightLine: indices.right,
 		}
 		v.highlightRow(&row, hunk.Lines, highlighted)
 		v.rows = append(v.rows, row)
@@ -115,24 +115,31 @@ func (v *diffView) highlightRow(
 	}
 }
 
-// lineRows maps source lines to display rows. Split mode pairs each deletion
-// block with the immediately following additions; unmatched panes use -1.
-func (v *diffView) projectHunkLineIndexes(lines []patch.Line) [][2]int {
-	rows := make([][2]int, 0, len(lines))
+type paneLineIndexes struct {
+	left, right int
+}
+
+// projectHunkLineIndexes maps source lines to display rows. Split mode pairs
+// each deletion block with the immediately following additions; unmatched
+// panes use -1.
+func (v *diffView) projectHunkLineIndexes(
+	lines []patch.Line,
+) []paneLineIndexes {
+	rows := make([]paneLineIndexes, 0, len(lines))
 	for index := 0; index < len(lines); {
 		if !v.split || lines[index].Kind == patch.Context {
-			rows = append(rows, [2]int{index, index})
+			rows = append(rows, paneLineIndexes{left: index, right: index})
 			index++
 			continue
 		}
 		if lines[index].Kind == patch.Addition {
-			rows = append(rows, [2]int{-1, index})
+			rows = append(rows, paneLineIndexes{left: -1, right: index})
 			index++
 			continue
 		}
-		addedStart := contiguousLineKindEndIndex(lines, index, patch.Deletion)
-		end := contiguousLineKindEndIndex(lines, addedStart, patch.Addition)
-		rows = append(rows, pairChangedHunkLineIndexes(
+		addedStart := skipLinesOfKind(lines, index, patch.Deletion)
+		end := skipLinesOfKind(lines, addedStart, patch.Addition)
+		rows = append(rows, pairRemovedAndAddedLines(
 			index, addedStart, end,
 		)...)
 		index = end
@@ -140,7 +147,7 @@ func (v *diffView) projectHunkLineIndexes(lines []patch.Line) [][2]int {
 	return rows
 }
 
-func contiguousLineKindEndIndex(
+func skipLinesOfKind(
 	lines []patch.Line,
 	start int,
 	kind patch.LineKind,
@@ -151,16 +158,18 @@ func contiguousLineKindEndIndex(
 	return start
 }
 
-func pairChangedHunkLineIndexes(removedStart, addedStart, end int) [][2]int {
-	count := max(addedStart-removedStart, end-addedStart)
-	rows := make([][2]int, 0, count)
+func pairRemovedAndAddedLines(
+	removedStart, addedStart, addedEnd int,
+) []paneLineIndexes {
+	count := max(addedStart-removedStart, addedEnd-addedStart)
+	rows := make([]paneLineIndexes, 0, count)
 	for offset := 0; offset < count; offset++ {
-		pair := [2]int{-1, -1}
+		pair := paneLineIndexes{left: -1, right: -1}
 		if removedStart+offset < addedStart {
-			pair[0] = removedStart + offset
+			pair.left = removedStart + offset
 		}
-		if addedStart+offset < end {
-			pair[1] = addedStart + offset
+		if addedStart+offset < addedEnd {
+			pair.right = addedStart + offset
 		}
 		rows = append(rows, pair)
 	}

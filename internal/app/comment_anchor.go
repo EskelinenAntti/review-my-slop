@@ -20,12 +20,12 @@ func commentAnchor(file patch.File, lines []patch.Line) comments.Anchor {
 			prefix = "-"
 		}
 		anchor.QuotedLines = append(anchor.QuotedLines, prefix+line.Text)
-		includeNonzeroLineInRange(
+		expandAnchorLineRange(
 			&anchor.OldStart,
 			&anchor.OldEnd,
 			int(line.OldNumber),
 		)
-		includeNonzeroLineInRange(
+		expandAnchorLineRange(
 			&anchor.NewStart,
 			&anchor.NewEnd,
 			int(line.NewNumber),
@@ -33,14 +33,14 @@ func commentAnchor(file patch.File, lines []patch.Line) comments.Anchor {
 	}
 	return anchor
 }
-func includeNonzeroLineInRange(start, end *int, value int) {
-	if value == 0 {
+func expandAnchorLineRange(start, end *int, lineNumber int) {
+	if lineNumber == 0 {
 		return
 	}
-	if *start == 0 || value < *start {
-		*start = value
+	if *start == 0 || lineNumber < *start {
+		*start = lineNumber
 	}
-	if value > *end {
-		*end = value
+	if lineNumber > *end {
+		*end = lineNumber
 	}
 }

@@ -16,7 +16,7 @@ type Preferences struct {
 // Load reads preferences from the user configuration directory. Missing files
 // use defaults.
 func Load() (Preferences, error) {
-	path, err := settingsPath()
+	path, err := preferencesFilePath()
 	if err != nil {
 		return Preferences{}, err
 	}
@@ -40,7 +40,7 @@ func readPreferences(path string) (Preferences, error) {
 
 // Save atomically replaces the user preferences file.
 func Save(preferences Preferences) error {
-	path, err := settingsPath()
+	path, err := preferencesFilePath()
 	if err != nil {
 		return err
 	}
@@ -79,7 +79,7 @@ func writePreferences(path string, preferences Preferences) error {
 	return nil
 }
 
-func settingsPath() (string, error) {
+func preferencesFilePath() (string, error) {
 	config, err := os.UserConfigDir()
 	if err != nil {
 		return "", fmt.Errorf("resolve UI settings directory: %w", err)

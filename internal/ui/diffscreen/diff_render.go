@@ -97,11 +97,11 @@ func (v *diffView) renderUnifiedLine(
 	}
 	gutter := fmt.Sprintf(
 		"%5s %5s %s ",
-		number(line.OldNumber),
-		number(line.NewNumber),
+		formatLineNumber(line.OldNumber),
+		formatLineNumber(line.NewNumber),
 		prefix,
 	)
-	value := gutter + fitANSIWindow(
+	value := gutter + clipAndPadANSIText(
 		current.text,
 		viewport.LeftColumn,
 		width-lipgloss.Width(gutter),
@@ -109,7 +109,7 @@ func (v *diffView) renderUnifiedLine(
 	style := lineStyle(line.Kind, v.dark)
 	colors := preserveForeground
 	candidate := diffCursor{row: y, pane: cursor.pane}
-	if selected(selection, candidate) {
+	if cursorIsSelected(selection, candidate) {
 		style, colors = selectionRowStyle(v.dark), discardForeground
 	}
 	if cursor.row == y {
@@ -181,8 +181,8 @@ func (v *diffView) renderPane(
 	if line.Kind == patch.Deletion {
 		prefix = removedStyle.Render("-") + " "
 	}
-	gutter := fmt.Sprintf("%5s ", number(numberValue))
-	value := gutter + fitANSIWindow(
+	gutter := fmt.Sprintf("%5s ", formatLineNumber(numberValue))
+	value := gutter + clipAndPadANSIText(
 		prefix+text,
 		offset,
 		width-lipgloss.Width(gutter),
@@ -190,7 +190,7 @@ func (v *diffView) renderPane(
 	style := lineStyle(line.Kind, v.dark)
 	colors := preserveForeground
 	candidate := diffCursor{row: y, pane: pane}
-	if selected(selection, candidate) {
+	if cursorIsSelected(selection, candidate) {
 		style, colors = selectionRowStyle(v.dark), discardForeground
 	}
 	if cursor == candidate {
@@ -199,7 +199,7 @@ func (v *diffView) renderPane(
 	return renderStyledRow(style, value, width, colors)
 }
 
-func selected(selection *diffSelection, cursor diffCursor) bool {
+func cursorIsSelected(selection *diffSelection, cursor diffCursor) bool {
 	if selection == nil {
 		return false
 	}
@@ -242,7 +242,7 @@ func selectionRowStyle(dark bool) lipgloss.Style {
 	)
 }
 
-func number(value patch.LineNumber) string {
+func formatLineNumber(value patch.LineNumber) string {
 	if value == 0 {
 		return ""
 	}
@@ -263,7 +263,7 @@ func renderStyledRow(
 	colors foregroundPolicy,
 ) string {
 	value = filterANSIColors(value, colors)
-	fitted := fitANSIWindow(value, 0, width)
+	fitted := clipAndPadANSIText(value, 0, width)
 	prefix := ansiStyleEscapePrefix(style)
 	if prefix != "" {
 		fitted = strings.ReplaceAll(fitted, "\x1b[0m", "\x1b[0m"+prefix)
@@ -344,7 +344,7 @@ func foregroundColor(code int) bool {
 	return code >= 30 && code <= 39 || code >= 90 && code <= 97
 }
 
-func fitANSIWindow(value string, offset, width int) string {
+func clipAndPadANSIText(value string, offset, width int) string {
 	if width <= 0 {
 		return ""
 	}

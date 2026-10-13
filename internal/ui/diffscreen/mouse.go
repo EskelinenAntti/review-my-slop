@@ -63,5 +63,5 @@ func (v *View) cursorAtPoint(x, y int) (diffCursor, bool) {
 			pane = right
 		}
 	}
-	return v.view.cursorAt(v.viewport.top+row, pane)
+	return v.view.sourceCursorAtRow(v.viewport.top+row, pane)
 }

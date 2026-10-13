@@ -60,10 +60,10 @@ func Get(ctx context.Context, kind Kind) (Patch, error) {
 	if err != nil {
 		return Patch{}, fmt.Errorf("resolve working directory: %w", err)
 	}
-	return load(ctx, directory, kind, execRunner{})
+	return loadRepositoryPatch(ctx, directory, kind, execRunner{})
 }
 
-func load(
+func loadRepositoryPatch(
 	ctx context.Context,
 	directory string,
 	kind Kind,
@@ -91,7 +91,7 @@ func load(
 	if err != nil {
 		return Patch{}, err
 	}
-	return build(ctx, run, root, kind, branch, raw, readOld)
+	return buildPatchFromDiff(ctx, run, root, kind, branch, raw, readOld)
 }
 
 func resolveDiffBase(
@@ -157,7 +157,7 @@ func gitDiff(
 
 type sourceReader func(context.Context, runner, string, string) string
 
-func build(
+func buildPatchFromDiff(
 	ctx context.Context,
 	run runner,
 	root string,
@@ -339,9 +339,9 @@ func readUntrackedPaths(
 	return files, nil
 }
 
-func untrackedPaths(out []byte) []string {
+func untrackedPaths(nulSeparatedPaths []byte) []string {
 	var paths []string
-	for path := range bytes.SplitSeq(out, []byte{0}) {
+	for path := range bytes.SplitSeq(nulSeparatedPaths, []byte{0}) {
 		if len(path) > 0 {
 			paths = append(paths, string(path))
 		}
@@ -390,13 +390,16 @@ func readUntrackedFile(
 }
 
 func readUntrackedSymlink(
-	full, path string,
+	filesystemPath, repositoryPath string,
 ) (file File, includeInPatch bool, err error) {
-	target, err := os.Readlink(full)
+	target, err := os.Readlink(filesystemPath)
 	if err != nil {
-		return File{}, false, fmt.Errorf("read symlink %q: %w", path, err)
+		return File{}, false, fmt.Errorf(
+			"read symlink %q: %w", repositoryPath, err,
+		)
 	}
-	return addedFile(path, escapeInlineControlCharacters(target)), true, nil
+	file = addedFile(repositoryPath, escapeInlineControlCharacters(target))
+	return file, true, nil
 }
 
 func addedFile(path, content string) File {

@@ -21,7 +21,7 @@ func (v *diffView) sourceLineIndexInHunk(current entry, pane diffPane) int {
 	return current.leftLine
 }
 
-func (v *diffView) cursorAt(y int, pane diffPane) (diffCursor, bool) {
+func (v *diffView) sourceCursorAtRow(y int, pane diffPane) (diffCursor, bool) {
 	cursor := diffCursor{row: y, pane: pane}
 	return cursor, v.hasSourceLine(cursor)
 }
@@ -47,7 +47,7 @@ func (v *diffView) scanSourceLineCursor(
 ) (diffCursor, bool) {
 	step := int(direction)
 	for y := start + step; y >= 0 && y < len(v.rows); y += step {
-		if cursor, ok := v.cursorAt(y, pane); ok {
+		if cursor, ok := v.sourceCursorAtRow(y, pane); ok {
 			return cursor, true
 		}
 	}
@@ -97,7 +97,7 @@ func (v *diffView) searchRow(
 		panes = append(panes, pane.oppositePane())
 	}
 	for _, candidatePane := range panes {
-		candidate, ok := v.cursorAt(y, candidatePane)
+		candidate, ok := v.sourceCursorAtRow(y, candidatePane)
 		if !ok {
 			continue
 		}
@@ -116,12 +116,12 @@ func (v *diffView) searchMetadata(
 	direction direction,
 ) (diffCursor, bool) {
 	if strings.Contains(strings.ToLower(ansi.Strip(v.rows[y].text)), query) {
-		return v.cursorNearRow(y, pane, direction)
+		return v.nearestLineCursorInFile(y, pane, direction)
 	}
 	return diffCursor{}, false
 }
 
-func (v *diffView) cursorNearRow(
+func (v *diffView) nearestLineCursorInFile(
 	y int,
 	pane diffPane,
 	direction direction,
@@ -140,17 +140,17 @@ func (v *diffView) cursorNearRow(
 }
 
 func (v *diffView) cursorInFile(
-	y, origin int,
+	y, originRow int,
 	pane diffPane,
 ) (diffCursor, bool) {
-	if y < 0 || y >= len(v.rows) || v.rows[y].file != v.rows[origin].file {
+	if y < 0 || y >= len(v.rows) || v.rows[y].file != v.rows[originRow].file {
 		return diffCursor{}, false
 	}
-	if candidate, ok := v.cursorAt(y, pane); ok {
+	if candidate, ok := v.sourceCursorAtRow(y, pane); ok {
 		return candidate, true
 	}
 	if v.split {
-		return v.cursorAt(y, pane.oppositePane())
+		return v.sourceCursorAtRow(y, pane.oppositePane())
 	}
 	return diffCursor{}, false
 }
@@ -185,16 +185,16 @@ func (v *diffView) switchPane(
 	if !v.split || !v.hasSourceLine(cursor) {
 		return diffCursor{}, false
 	}
-	if candidate, ok := v.cursorAt(cursor.row, pane); ok {
+	if candidate, ok := v.sourceCursorAtRow(cursor.row, pane); ok {
 		return candidate, true
 	}
-	if candidate, ok := v.previousInFile(cursor, pane); ok {
+	if candidate, ok := v.previousLineCursorInFile(cursor, pane); ok {
 		return candidate, true
 	}
 	return v.scanSourceLineCursor(cursor.row, pane, forward)
 }
 
-func (v *diffView) previousInFile(
+func (v *diffView) previousLineCursorInFile(
 	cursor diffCursor,
 	pane diffPane,
 ) (diffCursor, bool) {
@@ -202,7 +202,7 @@ func (v *diffView) previousInFile(
 		if v.rows[y].file != v.rows[cursor.row].file {
 			break
 		}
-		if candidate, ok := v.cursorAt(y, pane); ok {
+		if candidate, ok := v.sourceCursorAtRow(y, pane); ok {
 			return candidate, true
 		}
 	}

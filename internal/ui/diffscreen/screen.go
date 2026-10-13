@@ -133,9 +133,9 @@ func (v *View) Move(motion Motion) {
 	v.search.repeatMiss = false
 	switch motion {
 	case PreviousLine:
-		v.step(backward)
+		v.moveToAdjacentLine(backward)
 	case NextLine:
-		v.step(forward)
+		v.moveToAdjacentLine(forward)
 	case PreviousPage:
 		v.halfPage(backward)
 	case NextPage:
@@ -171,7 +171,7 @@ func (v *View) moveBetweenFilesAndPanes(motion Motion) {
 	}
 }
 
-func (v *View) step(direction direction) {
+func (v *View) moveToAdjacentLine(direction direction) {
 	next, ok := v.view.adjacentLineCursor(v.cursor, direction)
 	if !ok {
 		return
@@ -318,7 +318,7 @@ func (v *View) InsertSearch(text string) {
 	if !v.search.active {
 		v.BeginSearch()
 	}
-	v.focusQueryMatchOrSearchOrigin(v.search.query + text)
+	v.applySearchQuery(v.search.query + text)
 }
 
 // BackspaceSearch removes the last Unicode code point from the active query.
@@ -331,10 +331,10 @@ func (v *View) BackspaceSearch() {
 	if len(query) > 0 {
 		query = query[:len(query)-1]
 	}
-	v.focusQueryMatchOrSearchOrigin(string(query))
+	v.applySearchQuery(string(query))
 }
 
-func (v *View) focusQueryMatchOrSearchOrigin(query string) {
+func (v *View) applySearchQuery(query string) {
 	v.search.query = query
 	if query == "" {
 		v.setCursor(v.search.from)
@@ -436,7 +436,7 @@ func (v *View) renderStatus() string {
 	return status
 }
 
-func (v *View) renderFooter(value string) string {
+func (v *View) renderFooter(footerText string) string {
 	label := "local changes"
 	if v.view.patch.Kind == patch.Branch {
 		label = "branch changes from " + v.view.patch.Branch
@@ -447,36 +447,37 @@ func (v *View) renderFooter(value string) string {
 	}
 	right := mutedStyle.Render(label)
 	width := max(20, v.width)
-	value = ansi.Truncate(value, max(0, width-lipgloss.Width(right)-1), "")
-	return value + strings.Repeat(
+	footerText = ansi.Truncate(
+		footerText, max(0, width-lipgloss.Width(right)-1), "",
+	)
+	return footerText + strings.Repeat(
 		" ",
-		max(1, width-lipgloss.Width(value)-lipgloss.Width(right)),
+		max(1, width-lipgloss.Width(footerText)-lipgloss.Width(right)),
 	) + right
 }
 func patchLineCounts(p patch.Patch) (added, removed int) {
 	for _, file := range p.Files {
 		for _, hunk := range file.Hunks {
-			counts := hunkLineCounts(hunk)
-			added += counts[0]
-			removed += counts[1]
+			hunkAdded, hunkRemoved := hunkLineCounts(hunk)
+			added += hunkAdded
+			removed += hunkRemoved
 		}
 	}
 	return added, removed
 }
 
-func hunkLineCounts(hunk patch.Hunk) [2]int {
-	counts := [2]int{}
+func hunkLineCounts(hunk patch.Hunk) (added, removed int) {
 	for _, line := range hunk.Lines {
 		switch line.Kind {
 		case patch.Addition:
-			counts[0]++
+			added++
 		case patch.Deletion:
-			counts[1]++
+			removed++
 		default:
 			continue
 		}
 	}
-	return counts
+	return added, removed
 }
 
 var (

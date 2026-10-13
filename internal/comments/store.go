@@ -24,9 +24,10 @@ type Store struct {
 	Path string
 }
 
-// DefaultPath returns the database path in the application data directory.
-func DefaultPath() (string, error) {
-	data, err := DataDir()
+// DefaultDatabasePath returns the database path in the application data
+// directory.
+func DefaultDatabasePath() (string, error) {
+	data, err := ApplicationDataDir()
 	if err != nil {
 		return "", err
 	}
@@ -35,7 +36,7 @@ func DefaultPath() (string, error) {
 
 // OpenDefault returns a Store configured with the default database path.
 func OpenDefault() (Store, error) {
-	path, err := DefaultPath()
+	path, err := DefaultDatabasePath()
 	if err != nil {
 		return Store{}, err
 	}
@@ -203,7 +204,7 @@ func findCommentKey(
 func findPendingKeys(
 	bucket *bolt.Bucket,
 	repository string,
-	wanted map[string]struct{},
+	wantedCommentIDs map[string]struct{},
 ) ([][]byte, error) {
 	var keys [][]byte
 	err := bucket.ForEach(func(key, value []byte) error {
@@ -214,7 +215,7 @@ func findPendingKeys(
 		if comment.Repository != repository {
 			return nil
 		}
-		if _, ok := wanted[comment.ID]; ok {
+		if _, ok := wantedCommentIDs[comment.ID]; ok {
 			keys = append(keys, append([]byte(nil), key...))
 		}
 		return nil

@@ -33,7 +33,7 @@ func testModel(
 func TestStoreBackedCommentLifecycle(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	store := comments.Store{Path: filepath.Join(t.TempDir(), "comments.db")}
-	m, err := newWithStore(store, modelPatch(), nil, defaultSize)
+	m, err := newReviewModelWithStore(store, modelPatch(), nil, defaultSize)
 	testutil.NoError(t, err)
 
 	anchor := comments.Anchor{
@@ -172,7 +172,7 @@ func TestRefreshTranslatesCursorAndSelection(t *testing.T) {
 	_, want, _ := m.diffView.Current()
 	refreshed := modelPatch()
 	refreshed.Files[0].Metadata = []string{"new metadata"}
-	m.updatePatch(refreshed)
+	m.replaceCurrentPatch(refreshed)
 	_, got, ok := m.diffView.Current()
 	testutil.RequireEqual(t, ok, true, "focused line=%#v, want %#v", got, want)
 	testutil.RequireEqual(t, got, want, "focused line=%#v, want %#v", got, want)

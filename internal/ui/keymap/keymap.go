@@ -29,7 +29,7 @@ func New(sequences ...Sequence) Matcher {
 
 // Feed returns a completed binding with keys separated by a space, or an
 // unprefixed key. An empty result means pending or consumed input.
-func (m *Matcher) Feed(key string) string {
+func (m *Matcher) Feed(key string) (binding string) {
 	if m.pending != "" {
 		prefix := m.pending
 		m.pending = ""

@@ -18,7 +18,7 @@ func EditComment(
 	ctx context.Context,
 	body string,
 	anchor comments.Anchor,
-	onComplete func(string, error) tea.Msg,
+	onComplete func(editedBody string, err error) tea.Msg,
 ) (tea.Cmd, error) {
 	command, err := editorCommand()
 	if err != nil {
@@ -38,7 +38,7 @@ func prepareCommentEditorExecution(
 	ctx context.Context,
 	command, body string,
 	anchor comments.Anchor,
-	onComplete func(string, error) tea.Msg,
+	onComplete func(editedBody string, err error) tea.Msg,
 ) (execution *commandAdapter, completion tea.ExecCallback) {
 	adapter := &commandAdapter{}
 	adapter.run = func() error {

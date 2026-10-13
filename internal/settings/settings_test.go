@@ -38,7 +38,7 @@ func TestLoadSaveUserPreferences(t *testing.T) {
 	if got, err := Load(); err != nil || !got.SideBySide {
 		t.Fatalf("saved=%+v err=%v", got, err)
 	}
-	path, err := settingsPath()
+	path, err := preferencesFilePath()
 	testutil.NoError(t, err)
 
 	info, err := os.Stat(path)

@@ -37,7 +37,7 @@ func (v *View) replaceView(next *diffView) {
 		if translated, ok := next.findCursor(origin); ok {
 			v.search.from = translated
 		}
-		v.focusQueryMatchOrSearchOrigin(v.search.query)
+		v.applySearchQuery(v.search.query)
 	}
 }
 
@@ -98,11 +98,11 @@ func (v *diffView) findCursor(target cursorIdentity) (diffCursor, bool) {
 	}
 	best := cursorMatch{}
 	for y := range v.rows {
-		candidate := v.matchRow(y, target)
+		candidate := v.findBestRowMatch(y, target)
 		if candidate.rank == 3 {
 			return candidate.cursor, true
 		}
-		if candidate.betterThan(best) {
+		if candidate.outranks(best) {
 			best = candidate
 		}
 	}
@@ -114,19 +114,19 @@ type cursorMatch struct {
 	rank, distance int
 }
 
-func (m cursorMatch) betterThan(other cursorMatch) bool {
+func (m cursorMatch) outranks(other cursorMatch) bool {
 	return m.rank > other.rank ||
 		m.rank == other.rank && m.distance < other.distance
 }
 
-func (m cursorMatch) bestMatchWith(other cursorMatch) cursorMatch {
-	if m.betterThan(other) {
-		return m
+func bestCursorMatch(first, second cursorMatch) cursorMatch {
+	if first.outranks(second) {
+		return first
 	}
-	return other
+	return second
 }
 
-func (v *diffView) matchRow(y int, target cursorIdentity) cursorMatch {
+func (v *diffView) findBestRowMatch(y int, target cursorIdentity) cursorMatch {
 	current := v.rows[y]
 	if !v.rowInFile(current, target.file) {
 		return cursorMatch{}
@@ -136,14 +136,14 @@ func (v *diffView) matchRow(y int, target cursorIdentity) cursorMatch {
 		target.cursor.pane,
 		target.cursor.pane.oppositePane(),
 	} {
-		candidate, ok := v.cursorAt(y, pane)
+		candidate, ok := v.sourceCursorAtRow(y, pane)
 		if !ok {
 			continue
 		}
 		line, _ := v.line(candidate)
 		match := cursorMatch{
 			cursor: candidate,
-			rank:   rankSourceLineIdentityMatch(line, target.line),
+			rank:   scoreLineMatch(line, target.line),
 			distance: sourceLineNumberDistance(
 				line, target.line, y-target.cursor.row,
 			),
@@ -151,7 +151,7 @@ func (v *diffView) matchRow(y int, target cursorIdentity) cursorMatch {
 		if match.rank == 3 {
 			return match
 		}
-		best = match.bestMatchWith(best)
+		best = bestCursorMatch(match, best)
 	}
 	return best
 }
@@ -160,7 +160,7 @@ func (v *diffView) rowInFile(current entry, file patch.File) bool {
 	return current.hunk >= 0 && sameFile(v.patch.Files[current.file], file)
 }
 
-func rankSourceLineIdentityMatch(line, target patch.Line) int {
+func scoreLineMatch(line, target patch.Line) int {
 	if line.Kind != target.Kind {
 		return 1
 	}

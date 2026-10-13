@@ -103,7 +103,7 @@ func TestOpenCurrentLineUsesEditorWithWorkingTreeLocation(t *testing.T) {
 	testutil.RequireEqual(t, err, nil, "command=%v err=%v", cmd, err)
 	testutil.RequireEqual(t, cmd != nil, true, "command=%v err=%v", cmd, err)
 
-	path, line, err := m.sourceLocation()
+	path, line, err := m.selectedSourceLocation()
 	testutil.RequireEqual(t, err, nil, "location=%q:%d err=%v", path, line, err)
 	testutil.RequireEqual(t, path, "/tmp/repo with spaces/main.go",
 		"location=%q:%d err=%v", path, line, err,

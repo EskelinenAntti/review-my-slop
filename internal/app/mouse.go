@@ -2,7 +2,7 @@ package app
 
 import tea "charm.land/bubbletea/v2"
 
-func (m *model) updateMouse(msg tea.Msg) {
+func (m *model) dispatchMouseEvent(msg tea.Msg) {
 	switch msg := msg.(type) {
 	case tea.MouseClickMsg:
 		m.click(msg)

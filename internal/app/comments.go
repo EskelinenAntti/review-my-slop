@@ -138,7 +138,7 @@ func (m *model) clearCommentEdit() {
 }
 
 func (m model) openCurrentLine() (tea.Cmd, error) {
-	path, number, err := m.sourceLocation()
+	path, number, err := m.selectedSourceLocation()
 	if err != nil {
 		return nil, err
 	}
@@ -147,7 +147,11 @@ func (m model) openCurrentLine() (tea.Cmd, error) {
 	})
 }
 
-func (m model) sourceLocation() (string, int, error) {
+func (m model) selectedSourceLocation() (
+	path string,
+	lineNumber int,
+	err error,
+) {
 	file, line, ok := m.diffView.Current()
 	if !ok {
 		return "", 0, errors.New("select a code line to open in $EDITOR")

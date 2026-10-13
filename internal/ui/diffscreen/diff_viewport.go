@@ -214,7 +214,7 @@ func (v *diffView) cursorInViewport(
 	if y < viewport.top || y >= viewport.top+v.contentHeight(viewport) {
 		return diffCursor{}, false
 	}
-	return v.cursorAt(y, pane)
+	return v.sourceCursorAtRow(y, pane)
 }
 
 func (v *diffView) maxHorizontalOffset(width int) int {

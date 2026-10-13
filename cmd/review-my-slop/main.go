@@ -16,13 +16,14 @@ import (
 const errorExitCode = 1
 
 func main() {
-	if err := run(context.Background(), os.Args[1:], os.Stdout); err != nil {
+	err := runReviewCLI(context.Background(), os.Args[1:], os.Stdout)
+	if err != nil {
 		_, _ = fmt.Fprintln(os.Stderr, "review-my-slop:", err)
 		os.Exit(errorExitCode)
 	}
 }
 
-func run(ctx context.Context, args []string, output io.Writer) error {
+func runReviewCLI(ctx context.Context, args []string, output io.Writer) error {
 	if len(args) == 0 {
 		return runInteractiveReview(ctx)
 	}

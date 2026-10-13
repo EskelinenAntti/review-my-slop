@@ -46,7 +46,7 @@ func launchReviewProgram(
 		return err
 	}
 	dimensions := terminalSize()
-	m, err := newWithStore(store, currentPatch, pending, dimensions)
+	m, err := newReviewModelWithStore(store, currentPatch, pending, dimensions)
 	if err != nil {
 		return err
 	}
@@ -69,7 +69,9 @@ func initialTerminalSize() size {
 	return discoverTerminalSize(term.GetSize)
 }
 
-func discoverTerminalSize(getSize func(uintptr) (int, int, error)) size {
+func discoverTerminalSize(
+	getSize func(fd uintptr) (width, height int, err error),
+) size {
 	if width, height, err := getSize(os.Stdin.Fd()); err == nil {
 		return size{Width: width, Height: height}
 	}

@@ -95,7 +95,9 @@ func TestRunCommentsPreservesFeedbackWhenOutputFails(t *testing.T) {
 }
 
 func TestRunRejectsUnknownSubcommand(t *testing.T) {
-	err := run(context.Background(), []string{"unknown"}, &bytes.Buffer{})
+	err := runReviewCLI(
+		context.Background(), []string{"unknown"}, &bytes.Buffer{},
+	)
 	testutil.RequireEqual(t, err != nil, true, "error = %v", err)
 	testutil.RequireEqual(t,
 		strings.Contains(err.Error(), `unknown subcommand "unknown"`), true,
