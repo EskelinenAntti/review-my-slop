@@ -1,72 +1,31 @@
 package app
 
-import (
-	"fmt"
+import "github.com/eskelinenantti/review-my-slop/internal/ui/diffscreen"
 
-	tea "charm.land/bubbletea/v2"
-	"github.com/eskelinenantti/review-my-slop/internal/ui/diffscreen"
-)
-
-func (m *model) toggleSideBySide() {
-	enabled := !m.diffOptions.SideBySide
-	m.setSideBySide(enabled)
-	if m.saveLayout != nil {
-		if err := m.saveLayout(m.diffOptions.SideBySide); err != nil {
-			m.err = fmt.Errorf("save side-by-side preference: %w", err)
-		}
-	}
-}
-
-func (m *model) setSideBySide(enabled bool) {
-	m.diffOptions.SideBySide = enabled
-	m.diffView.Configure(m.diffOptions)
-}
-
-func (m model) updateSearch(
-	name string,
-	key tea.KeyPressMsg,
-) (tea.Model, tea.Cmd) {
-	switch name {
-	case "esc":
-		m.diffView.CancelSearch()
-		m.mode = modeBrowse
-	case "enter":
-		m.diffView.AcceptSearch()
-		m.mode = modeBrowse
-	case "backspace":
-		m.diffView.BackspaceSearch()
-	default:
-		if key.Text != "" {
-			m.diffView.InsertSearch(key.Text)
-		}
-	}
-	return m, nil
-}
-
-// navigate applies a diff navigation binding and reports whether it handled the
-// key.
-func (m *model) navigate(name string) bool {
+// applyNavigationKey applies a Patch navigation binding and reports whether it
+// handled the key.
+func (m *model) applyNavigationKey(name string) bool {
 	if motion, ok := navigationMotions[name]; ok {
-		m.diffView.Move(motion)
+		m.patchView.Move(motion)
 		return true
 	}
 	if alignment, ok := navigationAlignments[name]; ok {
-		m.diffView.Align(alignment)
+		m.patchView.Align(alignment)
 		return true
 	}
 	switch name {
 	case "n":
-		m.diffView.Find(diffscreen.Forward)
+		m.patchView.Find(diffscreen.Forward)
 	case "N":
-		m.diffView.Find(diffscreen.Backward)
+		m.patchView.Find(diffscreen.Backward)
 	case "h", "left":
-		m.diffView.ScrollHorizontal(-horizontalScrollStep)
+		m.patchView.ScrollHorizontal(-horizontalScrollStep)
 	case "l", "right":
-		m.diffView.ScrollHorizontal(horizontalScrollStep)
+		m.patchView.ScrollHorizontal(horizontalScrollStep)
 	case "0":
-		m.diffView.ScrollHorizontal(-int(^uint(0) >> 1))
+		m.patchView.ScrollHorizontal(-int(^uint(0) >> 1))
 	case "$":
-		m.diffView.ScrollHorizontal(int(^uint(0) >> 1))
+		m.patchView.ScrollHorizontal(int(^uint(0) >> 1))
 	default:
 		return false
 	}

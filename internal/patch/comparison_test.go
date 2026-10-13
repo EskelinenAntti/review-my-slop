@@ -31,12 +31,16 @@ func TestDefaultBranchFallbacks(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			root := t.TempDir()
-			runner := &defaultBranchRunner{
+			runner := &defaultBranchDiscoveryRunner{
 				root:       root,
 				originHEAD: tt.originHEAD,
 				available:  tt.available,
 			}
-			got, err := defaultBranch(context.Background(), runner, root)
+			got, err := discoverDefaultBranch(
+				context.Background(),
+				runner,
+				root,
+			)
 			testutil.NoError(t, err)
 			testutil.RequireEqual(t, got, tt.want,
 				fmt.Sprintf("default branch = %q, want %q", got, tt.want),
@@ -67,14 +71,14 @@ func TestDefaultBranchFallbacks(t *testing.T) {
 	}
 }
 
-type defaultBranchRunner struct {
+type defaultBranchDiscoveryRunner struct {
 	root       string
 	originHEAD string
 	available  string
 	calls      []string
 }
 
-func (r *defaultBranchRunner) Run(
+func (r *defaultBranchDiscoveryRunner) Run(
 	_ context.Context,
 	_ string,
 	args ...string,

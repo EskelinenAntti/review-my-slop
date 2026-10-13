@@ -11,9 +11,24 @@ import (
 	"github.com/eskelinenantti/review-my-slop/internal/testutil"
 )
 
+func TestAddedFileKeepsRawAndDisplayPathsSeparate(t *testing.T) {
+	file := buildAddedFile("odd\nname.go", "package main\n")
+	testutil.RequireEqual(t, file.NewPath, "odd\nname.go",
+		fmt.Sprintf("raw path = %q", file.NewPath),
+	)
+	testutil.RequireEqual(t, file.DisplayPath, `odd\nname.go`,
+		fmt.Sprintf("display path = %q", file.DisplayPath),
+	)
+}
+
 func TestGetOmitsLargeUntrackedContents(t *testing.T) {
 	repo := newRepository(t)
-	writeFile(t, repo, "large.txt", strings.Repeat("x", maxFileBytes+1))
+	writeRepositoryFile(
+		t,
+		repo,
+		"large.txt",
+		strings.Repeat("x", maxFileBytes+1),
+	)
 	t.Chdir(repo)
 	got, err := Get(context.Background(), Unstaged)
 	testutil.NoError(t, err)
@@ -43,11 +58,11 @@ func TestGetOmitsLargeUntrackedContents(t *testing.T) {
 
 func TestGetShowsBinaryMetadataWithoutBinaryDiffLines(t *testing.T) {
 	repo := newRepository(t)
-	writeFile(t, repo, "tracked.bin", "\x00old")
-	git(t, repo, "add", "tracked.bin")
-	git(t, repo, "commit", "-m", "base")
-	writeFile(t, repo, "tracked.bin", "\x00new")
-	writeFile(t, repo, "untracked.bin", "\x00content")
+	writeRepositoryFile(t, repo, "tracked.bin", "\x00old")
+	runRepositoryGit(t, repo, "add", "tracked.bin")
+	runRepositoryGit(t, repo, "commit", "-m", "base")
+	writeRepositoryFile(t, repo, "tracked.bin", "\x00new")
+	writeRepositoryFile(t, repo, "untracked.bin", "\x00content")
 
 	t.Chdir(repo)
 	got, err := Get(context.Background(), Unstaged)

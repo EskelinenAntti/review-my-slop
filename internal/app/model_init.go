@@ -12,9 +12,9 @@ import (
 )
 
 func newModel(
-	p patch.Patch,
-	items []comments.Comment,
-	save saveCommentFunc,
+	currentPatch patch.Patch,
+	initialComments []comments.Comment,
+	saveCommentToStore saveCommentToStoreFunc,
 	layout initialLayout,
 ) model {
 	size := layout.size
@@ -22,20 +22,20 @@ func newModel(
 		size = defaultSize
 	}
 	m := model{
-		ctx:          context.Background(),
-		currentPatch: p,
-		comments:     commentState{items: items},
-		commentView:  commentscreen.New(items),
-		edit:         commentEdit{index: -1},
-		width:        size.Width,
-		height:       size.Height,
-		save:         save,
-		saveLayout:   layout.SaveSideBySide,
-		diffOptions: diffscreen.Options{
+		ctx:                context.Background(),
+		currentPatch:       currentPatch,
+		comments:           commentState{items: initialComments},
+		commentView:        commentscreen.New(initialComments),
+		edit:               commentEdit{index: -1},
+		width:              size.Width,
+		height:             size.Height,
+		saveCommentToStore: saveCommentToStore,
+		saveLayout:         layout.SaveSideBySide,
+		patchViewOptions: diffscreen.Options{
 			SideBySide: layout.SideBySide,
 			Dark:       true,
 		},
-		kind: p.Kind,
+		kind: currentPatch.Kind,
 		keys: keymap.New(
 			keymap.Sequence{
 				Prefix:         "g",
@@ -51,22 +51,22 @@ func newModel(
 			},
 		),
 	}
-	m.diffView = diffscreen.New(p, m.diffOptions)
+	m.patchView = diffscreen.New(currentPatch, m.patchViewOptions)
 	m.resizeScreens()
 	return m
 }
 
-func newWithStore(
+func newModelWithStore(
 	store commentStore,
-	p patch.Patch,
-	items []comments.Comment,
-	size size,
+	currentPatch patch.Patch,
+	initialComments []comments.Comment,
+	dimensions size,
 ) (model, error) {
 	preferences, err := settings.Load()
 	if err != nil {
 		return model{}, err
 	}
-	m := newModel(p, items, func(
+	m := newModel(currentPatch, initialComments, func(
 		comment comments.Comment,
 		current patch.Patch,
 	) (comments.Comment, error) {
@@ -83,24 +83,29 @@ func newWithStore(
 		SaveSideBySide: func(enabled bool) error {
 			return settings.Save(settings.Preferences{SideBySide: enabled})
 		},
-		size: size,
+		size: dimensions,
 	})
-	m.setDelete(func(comment comments.Comment, current patch.Patch) error {
-		return store.Delete(current.Root, comment.ID)
-	})
-	m.setLoadComments(func() ([]comments.Comment, error) {
-		return store.List(p.Root)
+	m.setCommentDelete(
+		func(comment comments.Comment, current patch.Patch) error {
+			return store.Delete(current.Root, comment.ID)
+		},
+	)
+	m.setCommentReload(func() ([]comments.Comment, error) {
+		return store.List(currentPatch.Root)
 	})
 	return m, nil
 }
 
-func (m *model) setRefresh(refresh refreshDiffFunc) { m.refresh = refresh }
+func (m *model) setPatchRefresh(refreshPatch refreshPatchFunc) {
+	m.refreshPatch = refreshPatch
+}
 
-func (m *model) setDelete(remove deleteCommentFunc) { m.delete = remove }
+func (m *model) setCommentDelete(
+	deleteCommentFromStore deleteCommentFromStoreFunc,
+) {
+	m.deleteCommentFromStore = deleteCommentFromStore
+}
 
-func (m *model) setLoadComments(load loadCommentsFunc) { m.load = load }
-
-func (m *model) configureSideBySide(enabled bool, save saveSideBySideFunc) {
-	m.saveLayout = save
-	m.setSideBySide(enabled)
+func (m *model) setCommentReload(reloadComments reloadCommentsFunc) {
+	m.reloadComments = reloadComments
 }

@@ -13,13 +13,13 @@ import (
 )
 
 func TestFocusAndManualRefreshLoadCurrentView(t *testing.T) {
-	m := testModel(coveragePatch(), nil, nil)
+	m := newTestModel(multiHunkPatch(), nil, nil)
 	m.currentPatch.Branch = "main"
 	m.kind = patch.Branch
 	var requested []patch.Kind
-	m.setRefresh(func(kind patch.Kind) (patch.Patch, error) {
+	m.setPatchRefresh(func(kind patch.Kind) (patch.Patch, error) {
 		requested = append(requested, kind)
-		p := coveragePatch()
+		p := multiHunkPatch()
 		p.Kind, p.Branch = kind, "main"
 		p.Files[0].Metadata = []string{
 			fmt.Sprintf("refresh-%d", len(requested)),
@@ -27,15 +27,15 @@ func TestFocusAndManualRefreshLoadCurrentView(t *testing.T) {
 		return p, nil
 	})
 	next, cmd := m.Update(tea.FocusMsg{})
-	m = requireModel(t, next)
+	m = requireAppModel(t, next)
 	testutil.RequireEqual(t, cmd != nil, true, "focus did not refresh")
 
-	m = updateModel(t, m, cmd())
-	next, cmd = m.Update(textKey("R"))
-	m = requireModel(t, next)
+	m = applyTestMessage(t, m, cmd())
+	next, cmd = m.Update(textKeyMessage("R"))
+	m = requireAppModel(t, next)
 	testutil.RequireEqual(t, cmd != nil, true, "R did not refresh")
 
-	m = updateModel(t, m, cmd())
+	m = applyTestMessage(t, m, cmd())
 	testutil.RequireEqual(t,
 		slices.Equal(requested, []patch.Kind{patch.Branch, patch.Branch}),
 		true, fmt.Sprintf("requested=%v metadata=%q", requested,
@@ -52,43 +52,43 @@ func TestFocusAndManualRefreshLoadCurrentView(t *testing.T) {
 }
 
 func TestTabTogglesDefaultBranchAndIgnoresStaleRefresh(t *testing.T) {
-	m := testModel(coveragePatch(), nil, nil)
+	m := newTestModel(multiHunkPatch(), nil, nil)
 	m.currentPatch.Branch = "main"
-	m.setRefresh(func(kind patch.Kind) (patch.Patch, error) {
-		p := coveragePatch()
+	m.setPatchRefresh(func(kind patch.Kind) (patch.Patch, error) {
+		p := multiHunkPatch()
 		p.Kind, p.Branch = kind, "main"
 		return p, nil
 	})
-	next, _ := m.Update(textKey("tab"))
-	m = requireModel(t, next)
+	next, _ := m.Update(textKeyMessage("tab"))
+	m = requireAppModel(t, next)
 	testutil.RequireEqual(t, m.kind, patch.Branch,
 		fmt.Sprintf("kind=%v", m.kind),
 	)
 
-	stale := coveragePatch()
+	stale := multiHunkPatch()
 	stale.Files[0].Metadata = []string{"stale"}
-	m = updateModel(t, m, refreshDiffMsg{patch: stale})
+	m = applyTestMessage(t, m, patchRefreshMsg{patch: stale})
 	testutil.RequireEqual(t, !slices.Equal(
 		m.currentPatch.Files[0].Metadata,
 		[]string{"stale"},
 	), true, "stale refresh applied",
 	)
 
-	m = updateModel(t, m, textKey("tab"))
+	m = applyTestMessage(t, m, textKeyMessage("tab"))
 	testutil.RequireEqual(t, m.kind, patch.Unstaged,
 		fmt.Sprintf("kind=%v after toggling back to local", m.kind),
 	)
 }
 
 func TestTabDoesNothingWithoutDefaultBranch(t *testing.T) {
-	m := testModel(coveragePatch(), nil, nil)
+	m := newTestModel(multiHunkPatch(), nil, nil)
 	refreshed := false
-	m.setRefresh(func(patch.Kind) (patch.Patch, error) {
+	m.setPatchRefresh(func(patch.Kind) (patch.Patch, error) {
 		refreshed = true
-		return coveragePatch(), nil
+		return multiHunkPatch(), nil
 	})
-	next, cmd := m.Update(textKey("tab"))
-	m = requireModel(t, next)
+	next, cmd := m.Update(textKeyMessage("tab"))
+	m = requireAppModel(t, next)
 	testutil.RequireEqual(t, cmd == nil, true,
 		fmt.Sprintf("tab without default branch: cmd=%v refreshed=%v kind=%v",
 			cmd != nil, refreshed, m.kind,
@@ -107,17 +107,17 @@ func TestTabDoesNothingWithoutDefaultBranch(t *testing.T) {
 }
 
 func TestDiffRefreshFallbackAndEmptyDiff(t *testing.T) {
-	m := testModel(patch.Patch{}, nil, nil)
-	m = updateModel(t, m, refreshDiffMsg{patch: coveragePatch()})
-	testutil.RequireEqual(t, lineText(m), "package main",
-		fmt.Sprintf("initial focus=%q", lineText(m)),
+	m := newTestModel(patch.Patch{}, nil, nil)
+	m = applyTestMessage(t, m, patchRefreshMsg{patch: multiHunkPatch()})
+	testutil.RequireEqual(t, focusedLineText(m), "package main",
+		fmt.Sprintf("initial focus=%q", focusedLineText(m)),
 	)
 
-	focusLine(t, &m, "new()")
-	changed := coveragePatch()
+	focusPatchLine(t, &m, "new()")
+	changed := multiHunkPatch()
 	changed.Files[0].Hunks[0].Lines[2].Text = "different()"
-	m = updateModel(t, m, refreshDiffMsg{patch: changed})
-	if _, _, ok := m.diffView.Current(); !ok {
+	m = applyTestMessage(t, m, patchRefreshMsg{patch: changed})
+	if _, _, ok := m.patchView.Current(); !ok {
 		t.Fatal("refresh lost focus")
 	}
 }
@@ -125,18 +125,18 @@ func TestDiffRefreshFallbackAndEmptyDiff(t *testing.T) {
 func TestCommentAfterRefreshUsesCurrentPatch(t *testing.T) {
 	t.Setenv("EDITOR", "true")
 	var saved patch.Patch
-	m := testModel(coveragePatch(), nil, func(
+	m := newTestModel(multiHunkPatch(), nil, func(
 		stored comments.Comment,
 		p patch.Patch,
 	) (comments.Comment, error) {
 		saved = p
 		return stored, nil
 	})
-	refreshed := coveragePatch()
+	refreshed := multiHunkPatch()
 	refreshed.Files[0].Metadata = []string{"refreshed"}
-	m = updateModel(t, m, refreshDiffMsg{patch: refreshed})
-	m = updateModel(t, m, textKey("c"))
-	_ = updateModel(t, m, commentEditorFinishedMsg{body: "comment"})
+	m = applyTestMessage(t, m, patchRefreshMsg{patch: refreshed})
+	m = applyTestMessage(t, m, textKeyMessage("c"))
+	_ = applyTestMessage(t, m, commentEditorFinishedMsg{body: "comment"})
 	testutil.RequireEqual(t,
 		slices.Equal(saved.Files[0].Metadata, []string{"refreshed"}), true,
 		fmt.Sprintf("metadata=%q", saved.Files[0].Metadata),

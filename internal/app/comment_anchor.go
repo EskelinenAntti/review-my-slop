@@ -20,13 +20,13 @@ func commentAnchor(file patch.File, lines []patch.Line) comments.Anchor {
 			prefix = "-"
 		}
 		anchor.QuotedLines = append(anchor.QuotedLines, prefix+line.Text)
-		accumulateRange(&anchor.OldStart, &anchor.OldEnd, int(line.OldNumber))
-		accumulateRange(&anchor.NewStart, &anchor.NewEnd, int(line.NewNumber))
+		extendLineRange(&anchor.OldStart, &anchor.OldEnd, int(line.OldNumber))
+		extendLineRange(&anchor.NewStart, &anchor.NewEnd, int(line.NewNumber))
 	}
 	return anchor
 }
 
-func accumulateRange(start, end *int, value int) {
+func extendLineRange(start, end *int, value int) {
 	if value == 0 {
 		return
 	}

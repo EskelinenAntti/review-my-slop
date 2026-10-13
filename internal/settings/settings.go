@@ -16,11 +16,20 @@ type Preferences struct {
 // Load reads preferences from the user configuration directory. Missing files
 // use defaults.
 func Load() (Preferences, error) {
-	path, err := settingsPath()
+	path, err := preferencesPath()
 	if err != nil {
 		return Preferences{}, err
 	}
 	return readPreferences(path)
+}
+
+// Save atomically replaces the user preferences file.
+func Save(preferences Preferences) error {
+	path, err := preferencesPath()
+	if err != nil {
+		return err
+	}
+	return writePreferences(path, preferences)
 }
 
 func readPreferences(path string) (Preferences, error) {
@@ -31,20 +40,11 @@ func readPreferences(path string) (Preferences, error) {
 	if err != nil {
 		return Preferences{}, fmt.Errorf("read UI settings: %w", err)
 	}
-	var settings Preferences
-	if err := json.Unmarshal(data, &settings); err != nil {
+	var preferences Preferences
+	if err := json.Unmarshal(data, &preferences); err != nil {
 		return Preferences{}, fmt.Errorf("decode UI settings: %w", err)
 	}
-	return settings, nil
-}
-
-// Save atomically replaces the user preferences file.
-func Save(preferences Preferences) error {
-	path, err := settingsPath()
-	if err != nil {
-		return err
-	}
-	return writePreferences(path, preferences)
+	return preferences, nil
 }
 
 func writePreferences(path string, preferences Preferences) error {
@@ -79,7 +79,7 @@ func writePreferences(path string, preferences Preferences) error {
 	return nil
 }
 
-func settingsPath() (string, error) {
+func preferencesPath() (string, error) {
 	config, err := os.UserConfigDir()
 	if err != nil {
 		return "", fmt.Errorf("resolve UI settings directory: %w", err)

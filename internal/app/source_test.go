@@ -11,10 +11,10 @@ import (
 
 func TestOpenCurrentLineUsesEditorWithWorkingTreeLocation(t *testing.T) {
 	t.Setenv("EDITOR", "printf")
-	m := testModel(coveragePatch(), nil, nil)
+	m := newTestModel(multiHunkPatch(), nil, nil)
 	m.currentPatch.Root = "/tmp/repo with spaces"
-	focusLine(t, &m, "new()")
-	cmd, err := m.openCurrentLine()
+	focusPatchLine(t, &m, "new()")
+	cmd, err := m.openFocusedSourceLine()
 	testutil.RequireEqual(t, err, nil,
 		fmt.Sprintf("command=%v err=%v", cmd, err),
 	)
@@ -22,7 +22,7 @@ func TestOpenCurrentLineUsesEditorWithWorkingTreeLocation(t *testing.T) {
 		fmt.Sprintf("command=%v err=%v", cmd, err),
 	)
 
-	path, line, err := m.sourceLocation()
+	path, line, err := m.sourceEditorTarget()
 	testutil.RequireEqual(t, err, nil,
 		fmt.Sprintf("location=%q:%d err=%v", path, line, err),
 	)
@@ -36,7 +36,11 @@ func TestOpenCurrentLineUsesEditorWithWorkingTreeLocation(t *testing.T) {
 
 func TestOpenCurrentLineRequiresEditor(t *testing.T) {
 	t.Setenv("EDITOR", "")
-	m := updateModel(t, testModel(coveragePatch(), nil, nil), textKey("e"))
+	m := applyTestMessage(
+		t,
+		newTestModel(multiHunkPatch(), nil, nil),
+		textKeyMessage("e"),
+	)
 	testutil.RequireEqual(t, m.err != nil, true,
 		fmt.Sprintf("error = %v", m.err),
 	)
@@ -46,20 +50,20 @@ func TestOpenCurrentLineRequiresEditor(t *testing.T) {
 }
 
 func TestSourceEditorCompletionRefreshesDiff(t *testing.T) {
-	m := testModel(coveragePatch(), nil, nil)
-	refreshed := coveragePatch()
+	m := newTestModel(multiHunkPatch(), nil, nil)
+	refreshed := multiHunkPatch()
 	refreshed.Files[0].Metadata = []string{"after-editor"}
-	m.setRefresh(
+	m.setPatchRefresh(
 		func(patch.Kind) (patch.Patch, error) { return refreshed, nil },
 	)
 
 	next, cmd := m.Update(sourceEditorFinishedMsg{})
-	m = requireModel(t, next)
+	m = requireAppModel(t, next)
 	testutil.RequireEqual(t, cmd != nil, true,
 		"editor completion did not refresh",
 	)
 
-	m = updateModel(t, m, cmd())
+	m = applyTestMessage(t, m, cmd())
 	testutil.RequireEqual(t, slices.Equal(
 		m.currentPatch.Files[0].Metadata,
 		[]string{"after-editor"},

@@ -11,9 +11,9 @@ func (r gitRepository) comparisonBase(
 	ctx context.Context,
 	kind Kind,
 	branch string,
-) ([]string, sourceReader, error) {
+) ([]string, baseSourceReader, error) {
 	if kind != Branch {
-		return nil, r.readIndex, nil
+		return nil, r.readIndexSource, nil
 	}
 	if branch == "" {
 		return nil, nil, errors.New("default branch is unavailable")
@@ -27,13 +27,13 @@ func (r gitRepository) comparisonBase(
 		)
 	}
 	base := strings.TrimSpace(string(baseBytes))
-	readOld := func(ctx context.Context, path string) string {
-		return r.readRevision(ctx, base, path)
+	readBaseSource := func(ctx context.Context, path string) string {
+		return r.readRevisionSource(ctx, base, path)
 	}
-	return []string{base}, readOld, nil
+	return []string{base}, readBaseSource, nil
 }
 
-func defaultBranch(
+func discoverDefaultBranch(
 	ctx context.Context,
 	run runner,
 	root string,

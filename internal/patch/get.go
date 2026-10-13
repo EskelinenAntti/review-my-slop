@@ -16,10 +16,10 @@ func Get(ctx context.Context, kind Kind) (Patch, error) {
 	if err != nil {
 		return Patch{}, fmt.Errorf("resolve working directory: %w", err)
 	}
-	return load(ctx, directory, kind, execRunner{})
+	return loadPatchFromDirectory(ctx, directory, kind, execRunner{})
 }
 
-func load(
+func loadPatchFromDirectory(
 	ctx context.Context,
 	directory string,
 	kind Kind,
@@ -35,7 +35,7 @@ func load(
 	if err != nil {
 		return Patch{}, err
 	}
-	branch, err := defaultBranch(ctx, run, root)
+	branch, err := discoverDefaultBranch(ctx, run, root)
 	if err != nil {
 		return Patch{}, fmt.Errorf("discover default branch: %w", err)
 	}
@@ -48,33 +48,33 @@ func (r gitRepository) loadPatch(
 	kind Kind,
 	branch string,
 ) (Patch, error) {
-	revisions, readOld, err := r.comparisonBase(ctx, kind, branch)
+	revisions, readBaseSource, err := r.comparisonBase(ctx, kind, branch)
 	if err != nil {
 		return Patch{}, err
 	}
-	raw, err := gitDiff(ctx, r.run, r.root, revisions...)
+	raw, err := runGitDiff(ctx, r.run, r.root, revisions...)
 	if err != nil {
 		return Patch{}, err
 	}
-	files, err := r.loadFiles(ctx, raw, readOld)
+	files, err := r.loadPatchFiles(ctx, raw, readBaseSource)
 	if err != nil {
 		return Patch{}, err
 	}
 	return Patch{Root: r.root, Kind: kind, Branch: branch, Files: files}, nil
 }
 
-type sourceReader func(context.Context, string) string
+type baseSourceReader func(context.Context, string) string
 
-func (r gitRepository) loadFiles(
+func (r gitRepository) loadPatchFiles(
 	ctx context.Context,
 	raw []byte,
-	readOld sourceReader,
+	readBaseSource baseSourceReader,
 ) ([]File, error) {
-	files, err := r.parseTracked(ctx, raw, readOld)
+	files, err := r.parseTrackedFiles(ctx, raw, readBaseSource)
 	if err != nil {
 		return nil, err
 	}
-	untracked, err := loadUntracked(ctx, r.run, r.root)
+	untracked, err := readUntrackedFiles(ctx, r.run, r.root)
 	if err != nil {
 		return nil, err
 	}

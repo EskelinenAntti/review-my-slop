@@ -47,13 +47,13 @@ func (r programRuntime) start(
 		return err
 	}
 	dimensions := r.terminalSize()
-	m, err := newWithStore(store, currentPatch, pending, dimensions)
+	m, err := newModelWithStore(store, currentPatch, pending, dimensions)
 	if err != nil {
 		return err
 	}
 	m.ctx = ctx
 	if refresh != nil {
-		m.setRefresh(
+		m.setPatchRefresh(
 			func(kind patch.Kind) (patch.Patch, error) {
 				return refresh(ctx, kind)
 			},

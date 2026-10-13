@@ -14,7 +14,7 @@ import (
 func TestVisualSelectionCreatesMappedAnchorAndSubmits(t *testing.T) {
 	t.Setenv("EDITOR", "true")
 	var saved []comments.Comment
-	m := testModel(coveragePatch(), nil, func(
+	m := newTestModel(multiHunkPatch(), nil, func(
 		stored comments.Comment,
 		_ patch.Patch,
 	) (comments.Comment, error) {
@@ -22,11 +22,11 @@ func TestVisualSelectionCreatesMappedAnchorAndSubmits(t *testing.T) {
 		stored.ID = "new"
 		return stored, nil
 	})
-	m = updateModel(t, m, textKey("j"))
-	m = updateModel(t, m, textKey("v"))
-	m = updateModel(t, m, textKey("j"))
-	m = updateModel(t, m, textKey("c"))
-	_ = updateModel(t, m, commentEditorFinishedMsg{body: "fix both lines"})
+	m = applyTestMessage(t, m, textKeyMessage("j"))
+	m = applyTestMessage(t, m, textKeyMessage("v"))
+	m = applyTestMessage(t, m, textKeyMessage("j"))
+	m = applyTestMessage(t, m, textKeyMessage("c"))
+	_ = applyTestMessage(t, m, commentEditorFinishedMsg{body: "fix both lines"})
 	testutil.RequireEqual(t, len(saved), 1,
 		fmt.Sprintf("saved comments = %d", len(saved)),
 	)
@@ -49,14 +49,14 @@ func TestVisualSelectionCreatesMappedAnchorAndSubmits(t *testing.T) {
 
 func TestCommentSaveFailureClearsPendingEdit(t *testing.T) {
 	t.Setenv("EDITOR", "true")
-	m := testModel(coveragePatch(), nil, func(
+	m := newTestModel(multiHunkPatch(), nil, func(
 		comments.Comment,
 		patch.Patch,
 	) (comments.Comment, error) {
 		return comments.Comment{}, errors.New("storage unavailable")
 	})
-	m = updateModel(t, m, textKey("c"))
-	m = updateModel(t, m, commentEditorFinishedMsg{body: "keep this"})
+	m = applyTestMessage(t, m, textKeyMessage("c"))
+	m = applyTestMessage(t, m, commentEditorFinishedMsg{body: "keep this"})
 	testutil.RequireEqual(t, m.edit.body, "",
 		fmt.Sprintf("body=%q err=%v", m.edit.body, m.err),
 	)
@@ -70,7 +70,11 @@ func TestCommentSaveFailureClearsPendingEdit(t *testing.T) {
 
 func TestCommentRequiresEditor(t *testing.T) {
 	t.Setenv("EDITOR", "")
-	m := updateModel(t, testModel(coveragePatch(), nil, nil), textKey("c"))
+	m := applyTestMessage(
+		t,
+		newTestModel(multiHunkPatch(), nil, nil),
+		textKeyMessage("c"),
+	)
 	testutil.RequireEqual(t, m.err != nil, true,
 		fmt.Sprintf("error = %v", m.err),
 	)
@@ -82,15 +86,15 @@ func TestCommentRequiresEditor(t *testing.T) {
 func TestEmptyNewCommentIsDiscarded(t *testing.T) {
 	t.Setenv("EDITOR", "true")
 	called := false
-	m := testModel(coveragePatch(), nil, func(
+	m := newTestModel(multiHunkPatch(), nil, func(
 		stored comments.Comment,
 		_ patch.Patch,
 	) (comments.Comment, error) {
 		called = true
 		return stored, nil
 	})
-	m = updateModel(t, m, textKey("c"))
-	m = updateModel(t, m, commentEditorFinishedMsg{body: " \n"})
+	m = applyTestMessage(t, m, textKeyMessage("c"))
+	m = applyTestMessage(t, m, commentEditorFinishedMsg{body: " \n"})
 	testutil.RequireEqual(t, !called, true,
 		fmt.Sprintf("called=%v comments=%d", called, len(m.comments.items)),
 	)
@@ -100,12 +104,12 @@ func TestEmptyNewCommentIsDiscarded(t *testing.T) {
 }
 
 func TestSelectionCannotCrossHunk(t *testing.T) {
-	m := testModel(coveragePatch(), nil, nil)
-	m = updateModel(t, m, textKey("v"))
+	m := newTestModel(multiHunkPatch(), nil, nil)
+	m = applyTestMessage(t, m, textKeyMessage("v"))
 	for range 10 {
-		m = updateModel(t, m, textKey("j"))
+		m = applyTestMessage(t, m, textKeyMessage("j"))
 	}
-	_, line, _ := m.diffView.Current()
+	_, line, _ := m.patchView.Current()
 	testutil.RequireEqual(t, line.Text != "more()", true,
 		"diffSelection crossed hunk",
 	)

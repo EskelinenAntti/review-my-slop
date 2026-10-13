@@ -10,16 +10,16 @@ import (
 	"github.com/eskelinenantti/review-my-slop/internal/ui/keymap"
 )
 
-type saveCommentFunc func(
+type saveCommentToStoreFunc func(
 	comments.Comment,
 	patch.Patch,
 ) (comments.Comment, error)
 
-type deleteCommentFunc func(comments.Comment, patch.Patch) error
+type deleteCommentFromStoreFunc func(comments.Comment, patch.Patch) error
 
-type loadCommentsFunc func() ([]comments.Comment, error)
+type reloadCommentsFunc func() ([]comments.Comment, error)
 
-type refreshDiffFunc func(patch.Kind) (patch.Patch, error)
+type refreshPatchFunc func(patch.Kind) (patch.Patch, error)
 
 type saveSideBySideFunc func(bool) error
 
@@ -41,25 +41,6 @@ type initialLayout struct {
 	SaveSideBySide saveSideBySideFunc
 	size           size
 }
-
-type refreshDiffMsg struct {
-	patch patch.Patch
-	kind  patch.Kind
-	err   error
-}
-
-type commentEditorFinishedMsg struct {
-	body string
-	err  error
-}
-
-type commentsLoadedMsg struct {
-	comments []comments.Comment
-	revision uint64
-	err      error
-}
-
-type sourceEditorFinishedMsg struct{ err error }
 
 type mode uint8
 
@@ -92,24 +73,24 @@ type commentEdit struct {
 type model struct {
 	ctx context.Context
 
-	diffView    *diffscreen.View
+	patchView   *diffscreen.View
 	commentView *commentscreen.View
 	width       int
 	height      int
 	mode        mode
 	keys        keymap.Matcher
 
-	currentPatch patch.Patch
-	kind         patch.Kind
-	diffOptions  diffscreen.Options
-	comments     commentState
-	edit         commentEdit
+	currentPatch     patch.Patch
+	kind             patch.Kind
+	patchViewOptions diffscreen.Options
+	comments         commentState
+	edit             commentEdit
 
-	save       saveCommentFunc
-	delete     deleteCommentFunc
-	load       loadCommentsFunc
-	refresh    refreshDiffFunc
-	saveLayout saveSideBySideFunc
-	err        error
-	quitting   bool
+	saveCommentToStore     saveCommentToStoreFunc
+	deleteCommentFromStore deleteCommentFromStoreFunc
+	reloadComments         reloadCommentsFunc
+	refreshPatch           refreshPatchFunc
+	saveLayout             saveSideBySideFunc
+	err                    error
+	quitting               bool
 }

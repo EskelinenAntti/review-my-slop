@@ -13,7 +13,7 @@ import (
 )
 
 func TestRenderingAndKeyBindingsRemainAvailable(t *testing.T) {
-	m := testModel(modelPatch(), nil, nil)
+	m := newTestModel(singleHunkPatch(), nil, nil)
 	m.width, m.height = 80, 10
 	m.resizeScreens()
 	m.resizeScreens()
@@ -36,7 +36,7 @@ func TestRenderingAndKeyBindingsRemainAvailable(t *testing.T) {
 }
 
 func TestEmptyViewKeepsKeyboardHintAtBottom(t *testing.T) {
-	m := testModel(patch.Patch{}, nil, nil)
+	m := newTestModel(patch.Patch{}, nil, nil)
 	m.width, m.height = 80, 10
 	m.resizeScreens()
 
@@ -56,8 +56,8 @@ func TestEmptyViewKeepsKeyboardHintAtBottom(t *testing.T) {
 }
 
 func TestMenuKeyboardHintsStayAtBottom(t *testing.T) {
-	m := testModel(
-		modelPatch(),
+	m := newTestModel(
+		singleHunkPatch(),
 		[]comments.Comment{
 			{
 				Body:   "first",
@@ -101,7 +101,7 @@ func TestCommentsMenuScrollsWithinScreenBody(t *testing.T) {
 			Anchor: comments.Anchor{FilePath: "main.go"},
 		}
 	}
-	m := testModel(modelPatch(), items, nil)
+	m := newTestModel(singleHunkPatch(), items, nil)
 	m.width, m.height = 80, 7
 	m.mode = modeComments
 	m.resizeScreens()

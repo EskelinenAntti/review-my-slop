@@ -7,7 +7,10 @@ import (
 	"path/filepath"
 )
 
-func (r gitRepository) readIndex(ctx context.Context, path string) string {
+func (r gitRepository) readIndexSource(
+	ctx context.Context,
+	path string,
+) string {
 	if path == "" || path == "/dev/null" {
 		return ""
 	}
@@ -15,10 +18,10 @@ func (r gitRepository) readIndex(ctx context.Context, path string) string {
 	if err != nil || len(out) > maxFileBytes || bytes.IndexByte(out, 0) >= 0 {
 		return ""
 	}
-	return visibleSource(string(out))
+	return escapeSourceText(string(out))
 }
 
-func (r gitRepository) readRevision(
+func (r gitRepository) readRevisionSource(
 	ctx context.Context,
 	revision, path string,
 ) string {
@@ -29,10 +32,10 @@ func (r gitRepository) readRevision(
 	if err != nil || len(out) > maxFileBytes || bytes.IndexByte(out, 0) >= 0 {
 		return ""
 	}
-	return visibleSource(string(out))
+	return escapeSourceText(string(out))
 }
 
-func readWorkingTree(root, path string) string {
+func readWorkingTreeSource(root, path string) string {
 	if path == "" || path == "/dev/null" {
 		return ""
 	}
@@ -45,5 +48,5 @@ func readWorkingTree(root, path string) string {
 	if err != nil || bytes.IndexByte(out, 0) >= 0 {
 		return ""
 	}
-	return visibleSource(string(out))
+	return escapeSourceText(string(out))
 }

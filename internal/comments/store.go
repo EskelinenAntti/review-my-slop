@@ -15,7 +15,7 @@ const (
 	maxPendingBytes = 16 << 20
 )
 
-var messagesBucket = []byte("messages")
+var commentsBucket = []byte("messages")
 
 // Store persists pending review comments in a database at Path.
 type Store struct {
@@ -59,28 +59,18 @@ func (s Store) Add(comment Comment) (Comment, error) {
 	if err != nil {
 		return Comment{}, fmt.Errorf("encode comment: %w", err)
 	}
-	err = s.transact(func(bucket *bolt.Bucket) error {
+	err = s.withWriteBucket(func(bucket *bolt.Bucket) error {
 		return addComment(bucket, comment.ID, data)
 	})
 	return comment, err
 }
 
-func addComment(bucket *bolt.Bucket, id string, data []byte) error {
-	if pendingBytes(bucket)+len(data) > maxPendingBytes {
-		return fmt.Errorf("pending feedback exceeds %d bytes", maxPendingBytes)
-	}
-	if bucket.Get([]byte(id)) != nil {
-		return errors.New("comment ID already exists")
-	}
-	return bucket.Put([]byte(id), data)
-}
-
 // List returns pending comments for the repository.
 func (s Store) List(repository string) ([]Comment, error) {
 	var comments []Comment
-	err := s.view(func(bucket *bolt.Bucket) error {
+	err := s.withReadBucket(func(bucket *bolt.Bucket) error {
 		return bucket.ForEach(func(_, value []byte) error {
-			comment, err := decodeComment(value)
+			comment, err := decodeCommentRecord(value)
 			if err != nil {
 				return err
 			}
@@ -105,7 +95,7 @@ func (s Store) Update(comment Comment) error {
 	if err != nil {
 		return fmt.Errorf("encode comment: %w", err)
 	}
-	return s.transact(
+	return s.withWriteBucket(
 		func(bucket *bolt.Bucket) error {
 			return replaceComment(bucket, comment, data)
 		},
@@ -117,7 +107,7 @@ func (s Store) Delete(repository, id string) error {
 	if repository == "" || id == "" {
 		return errors.New("repository and comment ID are required")
 	}
-	return s.transact(func(bucket *bolt.Bucket) error {
+	return s.withWriteBucket(func(bucket *bolt.Bucket) error {
 		key, err := findCommentKey(bucket, repository, id)
 		if err != nil {
 			return err
@@ -138,11 +128,11 @@ func (s Store) Acknowledge(repository string, ids []string) error {
 	for _, id := range ids {
 		wanted[id] = struct{}{}
 	}
-	return s.transact(func(bucket *bolt.Bucket) error {
-		keys, err := findPendingKeys(bucket, repository, wanted)
+	return s.withWriteBucket(func(bucket *bolt.Bucket) error {
+		keys, err := findPendingCommentKeys(bucket, repository, wanted)
 		if err != nil {
 			return err
 		}
-		return deleteKeys(bucket, keys)
+		return deleteCommentKeys(bucket, keys)
 	})
 }

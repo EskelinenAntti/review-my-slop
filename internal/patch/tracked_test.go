@@ -8,7 +8,7 @@ import (
 )
 
 func TestParseHunkBodyLineNumbers(t *testing.T) {
-	lines, err := parseHunkBody(
+	lines, err := parseUnifiedHunkBody(
 		10,
 		20,
 		[]byte(" context\n-old\n+new\n same\n\\ No newline at end of file\n"),
@@ -33,7 +33,7 @@ func TestParseHunkBodyLineNumbers(t *testing.T) {
 }
 
 func TestParseHunkBodyEscapesTerminalControls(t *testing.T) {
-	lines, err := parseHunkBody(1, 1, []byte("+hello\x1b[2J\n"))
+	lines, err := parseUnifiedHunkBody(1, 1, []byte("+hello\x1b[2J\n"))
 	testutil.NoError(t, err)
 	testutil.RequireEqual(t, lines[0].Text, `hello\x1b[2J`,
 		fmt.Sprintf("text = %q", lines[0].Text),
@@ -44,6 +44,6 @@ func FuzzParseHunkBody(f *testing.F) {
 	f.Add([]byte("+hello\n-world\n"))
 	f.Add([]byte(" context\n"))
 	f.Fuzz(func(_ *testing.T, body []byte) {
-		_, _ = parseHunkBody(1, 1, body)
+		_, _ = parseUnifiedHunkBody(1, 1, body)
 	})
 }

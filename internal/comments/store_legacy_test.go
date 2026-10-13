@@ -33,7 +33,7 @@ func TestLegacyMessageCanBeReadAndUpdated(t *testing.T) {
   }
 }`,
 	)
-	err := store.transact(func(bucket *bolt.Bucket) error {
+	err := store.withWriteBucket(func(bucket *bolt.Bucket) error {
 		return bucket.Put([]byte{0, 0, 0, 1}, legacy)
 	})
 	testutil.NoError(t, err)

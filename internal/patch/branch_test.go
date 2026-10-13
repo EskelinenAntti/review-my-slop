@@ -12,21 +12,21 @@ func TestGetBranchIncludesCommittedStagedUnstagedAndUntrackedChanges(
 	t *testing.T,
 ) {
 	repo := newRepository(t)
-	git(t, repo, "branch", "-M", "main")
-	writeFile(t, repo, "committed.txt", "base\n")
-	writeFile(t, repo, "mixed.txt", "base\n")
-	writeFile(t, repo, "staged.txt", "base\n")
-	git(t, repo, "add", ".")
-	git(t, repo, "commit", "-m", "base")
+	runRepositoryGit(t, repo, "branch", "-M", "main")
+	writeRepositoryFile(t, repo, "committed.txt", "base\n")
+	writeRepositoryFile(t, repo, "mixed.txt", "base\n")
+	writeRepositoryFile(t, repo, "staged.txt", "base\n")
+	runRepositoryGit(t, repo, "add", ".")
+	runRepositoryGit(t, repo, "commit", "-m", "base")
 
-	git(t, repo, "switch", "-c", "feature")
-	writeFile(t, repo, "committed.txt", "committed on feature\n")
-	git(t, repo, "add", "committed.txt")
-	git(t, repo, "commit", "-m", "feature commit")
-	writeFile(t, repo, "staged.txt", "staged on feature\n")
-	git(t, repo, "add", "staged.txt")
-	writeFile(t, repo, "mixed.txt", "unstaged on feature\n")
-	writeFile(t, repo, "untracked.txt", "untracked on feature\n")
+	runRepositoryGit(t, repo, "switch", "-c", "feature")
+	writeRepositoryFile(t, repo, "committed.txt", "committed on feature\n")
+	runRepositoryGit(t, repo, "add", "committed.txt")
+	runRepositoryGit(t, repo, "commit", "-m", "feature commit")
+	writeRepositoryFile(t, repo, "staged.txt", "staged on feature\n")
+	runRepositoryGit(t, repo, "add", "staged.txt")
+	writeRepositoryFile(t, repo, "mixed.txt", "unstaged on feature\n")
+	writeRepositoryFile(t, repo, "untracked.txt", "untracked on feature\n")
 
 	t.Chdir(repo)
 	got, err := Get(context.Background(), Branch)
@@ -56,7 +56,7 @@ func TestGetBranchIncludesCommittedStagedUnstagedAndUntrackedChanges(
 			fmt.Sprintf("file %d = %#v, want %#v", i, file, expected),
 		)
 		testutil.RequireEqual(t,
-			containsKind(file, Addition, expected.addition),
+			patchContainsLine(file, Addition, expected.addition),
 			true, fmt.Sprintf("missing addition in %#v", file),
 		)
 	}
@@ -74,18 +74,23 @@ func TestGetBranchIncludesCommittedStagedUnstagedAndUntrackedChanges(
 
 func TestGetBranchKeepsPathsForAdditionsDeletionsAndRenames(t *testing.T) {
 	repo := newRepository(t)
-	git(t, repo, "branch", "-M", "main")
-	writeFile(t, repo, "deleted.txt", "delete this\n")
-	writeFile(t, repo, "old.go", "package main\n\nfunc example() {}\n")
-	git(t, repo, "add", ".")
-	git(t, repo, "commit", "-m", "base")
-	git(t, repo, "switch", "-c", "feature")
-	git(t, repo, "mv", "old.go", "new.go")
-	git(t, repo, "rm", "deleted.txt")
-	writeFile(t, repo, "added.txt", "new content\n")
-	git(t, repo, "add", ".")
-	git(t, repo, "commit", "-m", "changes")
-	writeFile(t, repo, "untracked.txt", "untracked content\n")
+	runRepositoryGit(t, repo, "branch", "-M", "main")
+	writeRepositoryFile(t, repo, "deleted.txt", "delete this\n")
+	writeRepositoryFile(
+		t,
+		repo,
+		"old.go",
+		"package main\n\nfunc example() {}\n",
+	)
+	runRepositoryGit(t, repo, "add", ".")
+	runRepositoryGit(t, repo, "commit", "-m", "base")
+	runRepositoryGit(t, repo, "switch", "-c", "feature")
+	runRepositoryGit(t, repo, "mv", "old.go", "new.go")
+	runRepositoryGit(t, repo, "rm", "deleted.txt")
+	writeRepositoryFile(t, repo, "added.txt", "new content\n")
+	runRepositoryGit(t, repo, "add", ".")
+	runRepositoryGit(t, repo, "commit", "-m", "changes")
+	writeRepositoryFile(t, repo, "untracked.txt", "untracked content\n")
 	t.Chdir(repo)
 	got, err := Get(context.Background(), Branch)
 	testutil.NoError(t, err)

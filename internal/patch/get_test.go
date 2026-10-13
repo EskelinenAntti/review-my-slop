@@ -14,25 +14,25 @@ import (
 
 func TestGetIncludesUnstagedAndUntrackedButNotStagedOnly(t *testing.T) {
 	repo := newRepository(t)
-	writeFile(
+	writeRepositoryFile(
 		t,
 		repo,
 		"modified.go",
 		"package main\n\nfunc value() int { return 1 }\n",
 	)
-	writeFile(t, repo, "staged.txt", "before\n")
-	git(t, repo, "add", ".")
-	git(t, repo, "commit", "-m", "base")
+	writeRepositoryFile(t, repo, "staged.txt", "before\n")
+	runRepositoryGit(t, repo, "add", ".")
+	runRepositoryGit(t, repo, "commit", "-m", "base")
 
-	writeFile(
+	writeRepositoryFile(
 		t,
 		repo,
 		"modified.go",
 		"package main\n\nfunc value() int { return 2 }\n",
 	)
-	writeFile(t, repo, "staged.txt", "after\n")
-	git(t, repo, "add", "staged.txt")
-	writeFile(t, repo, "new.py", "def hello():\n    return 'world'\n")
+	writeRepositoryFile(t, repo, "staged.txt", "after\n")
+	runRepositoryGit(t, repo, "add", "staged.txt")
+	writeRepositoryFile(t, repo, "new.py", "def hello():\n    return 'world'\n")
 
 	t.Chdir(repo)
 	got, err := Get(context.Background(), Unstaged)
@@ -58,11 +58,11 @@ func TestGetIncludesUnstagedAndUntrackedButNotStagedOnly(t *testing.T) {
 	)
 
 	modified := got.Files[0]
-	testutil.RequireEqual(t, containsKind(modified, Deletion, "return 1"),
+	testutil.RequireEqual(t, patchContainsLine(modified, Deletion, "return 1"),
 		true,
 		fmt.Sprintf("modified file lacks expected lines: %#v", modified.Hunks),
 	)
-	testutil.RequireEqual(t, containsKind(
+	testutil.RequireEqual(t, patchContainsLine(
 		modified,
 		Addition,
 		"return 2",
@@ -73,19 +73,9 @@ func TestGetIncludesUnstagedAndUntrackedButNotStagedOnly(t *testing.T) {
 	assertUntrackedSource(t, got.Files[1])
 }
 
-func TestAddedFileKeepsRawAndDisplayPathsSeparate(t *testing.T) {
-	file := addedFile("odd\nname.go", "package main\n")
-	testutil.RequireEqual(t, file.NewPath, "odd\nname.go",
-		fmt.Sprintf("raw path = %q", file.NewPath),
-	)
-	testutil.RequireEqual(t, file.DisplayPath, `odd\nname.go`,
-		fmt.Sprintf("display path = %q", file.DisplayPath),
-	)
-}
-
 func TestGetFromSubdirectoryKeepsRawUntrackedPaths(t *testing.T) {
 	repo := newRepository(t)
-	writeFile(t, repo, "nested/odd\nname.go", "package main\n")
+	writeRepositoryFile(t, repo, "nested/odd\nname.go", "package main\n")
 	t.Chdir(filepath.Join(repo, "nested"))
 
 	got, err := Get(context.Background(), Unstaged)

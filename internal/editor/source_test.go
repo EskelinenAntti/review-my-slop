@@ -11,7 +11,7 @@ import (
 
 func TestSourceArgumentsAndContext(t *testing.T) {
 	var output bytes.Buffer
-	cmd := sourceCommand(
+	cmd := newSourceEditorCommand(
 		context.Background(),
 		"printf '%s\\n'",
 		"/repo with spaces/it's.go",
@@ -25,7 +25,7 @@ func TestSourceArgumentsAndContext(t *testing.T) {
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	err := sourceCommand(ctx, "true", "source", 2).Run()
+	err := newSourceEditorCommand(ctx, "true", "source", 2).Run()
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("error = %v", err)
 	}

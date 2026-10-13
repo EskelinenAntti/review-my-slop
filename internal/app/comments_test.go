@@ -21,14 +21,14 @@ func TestCommentsCanBeViewedEditedAndDeleted(t *testing.T) {
 		{ID: "two", Body: "second"},
 	}
 	var persisted, deleted comments.Comment
-	m := testModel(coveragePatch(), items, func(
+	m := newTestModel(multiHunkPatch(), items, func(
 		stored comments.Comment,
 		_ patch.Patch,
 	) (comments.Comment, error) {
 		persisted = stored
 		return stored, nil
 	})
-	m.setDelete(
+	m.setCommentDelete(
 		func(
 			stored comments.Comment,
 			_ patch.Patch,
@@ -37,14 +37,14 @@ func TestCommentsCanBeViewedEditedAndDeleted(t *testing.T) {
 			return nil
 		},
 	)
-	m = updateModel(t, m, textKey("C"))
+	m = applyTestMessage(t, m, textKeyMessage("C"))
 	testutil.RequireEqual(t, m.mode, modeComments, "comments did not open")
 	testutil.RequireEqual(t, strings.Contains(m.render(), "old body"), true,
 		"comments did not open",
 	)
 
-	m = updateModel(t, m, specialKey(tea.KeyEnter))
-	m = updateModel(t, m, commentEditorFinishedMsg{body: "edited body"})
+	m = applyTestMessage(t, m, specialKeyMessage(tea.KeyEnter))
+	m = applyTestMessage(t, m, commentEditorFinishedMsg{body: "edited body"})
 	testutil.RequireEqual(t, persisted.ID, "one",
 		fmt.Sprintf("persisted = %#v", persisted),
 	)
@@ -52,7 +52,7 @@ func TestCommentsCanBeViewedEditedAndDeleted(t *testing.T) {
 		fmt.Sprintf("persisted = %#v", persisted),
 	)
 
-	m = updateModel(t, m, textKey("D"))
+	m = applyTestMessage(t, m, textKeyMessage("D"))
 	testutil.RequireEqual(t, deleted.ID, "one",
 		fmt.Sprintf("deleted=%#v comments=%#v", deleted, m.comments.items),
 	)
@@ -60,7 +60,7 @@ func TestCommentsCanBeViewedEditedAndDeleted(t *testing.T) {
 		fmt.Sprintf("deleted=%#v comments=%#v", deleted, m.comments.items),
 	)
 
-	m = updateModel(t, m, textKey("q"))
+	m = applyTestMessage(t, m, textKeyMessage("q"))
 	testutil.RequireEqual(t, m.mode, modeBrowse,
 		fmt.Sprintf("mode=%v quitting=%v", m.mode, m.quitting),
 	)
@@ -70,20 +70,20 @@ func TestCommentsCanBeViewedEditedAndDeleted(t *testing.T) {
 }
 
 func TestOpeningCommentsReloadsPendingComments(t *testing.T) {
-	m := testModel(
-		coveragePatch(),
+	m := newTestModel(
+		multiHunkPatch(),
 		[]comments.Comment{{ID: "read", Body: "already read"}},
 		nil,
 	)
-	m.setLoadComments(func() ([]comments.Comment, error) { return nil, nil })
+	m.setCommentReload(func() ([]comments.Comment, error) { return nil, nil })
 
-	next, cmd := m.Update(textKey("C"))
-	m = requireModel(t, next)
+	next, cmd := m.Update(textKeyMessage("C"))
+	m = requireAppModel(t, next)
 	testutil.RequireEqual(t, cmd != nil, true,
 		"opening comments did not request a refresh",
 	)
 
-	m = updateModel(t, m, cmd())
+	m = applyTestMessage(t, m, cmd())
 	testutil.RequireEqual(t, m.mode, modeComments,
 		fmt.Sprintf("mode=%v comments=%#v", m.mode, m.comments.items),
 	)
@@ -93,12 +93,12 @@ func TestOpeningCommentsReloadsPendingComments(t *testing.T) {
 }
 
 func TestCommentReloadFailurePreservesCurrentComments(t *testing.T) {
-	m := testModel(
-		coveragePatch(),
+	m := newTestModel(
+		multiHunkPatch(),
 		[]comments.Comment{{ID: "keep", Body: "keep"}},
 		nil,
 	)
-	m.setLoadComments(
+	m.setCommentReload(
 		func() (
 			[]comments.Comment,
 			error,
@@ -107,9 +107,9 @@ func TestCommentReloadFailurePreservesCurrentComments(t *testing.T) {
 		},
 	)
 
-	next, cmd := m.Update(textKey("C"))
-	m = requireModel(t, next)
-	m = updateModel(t, m, cmd())
+	next, cmd := m.Update(textKeyMessage("C"))
+	m = requireAppModel(t, next)
+	m = applyTestMessage(t, m, cmd())
 	testutil.RequireEqual(t, len(m.comments.items), 1,
 		fmt.Sprintf("comments=%#v error=%v", m.comments.items, m.err),
 	)
@@ -124,13 +124,13 @@ func TestCommentReloadFailurePreservesCurrentComments(t *testing.T) {
 
 func TestEmptyEditedCommentIsDeleted(t *testing.T) {
 	t.Setenv("EDITOR", "true")
-	m := testModel(
-		coveragePatch(),
+	m := newTestModel(
+		multiHunkPatch(),
 		[]comments.Comment{{ID: "one", Body: "old"}},
 		nil,
 	)
 	deleted := false
-	m.setDelete(
+	m.setCommentDelete(
 		func(
 			comments.Comment,
 			patch.Patch,
@@ -139,9 +139,9 @@ func TestEmptyEditedCommentIsDeleted(t *testing.T) {
 			return nil
 		},
 	)
-	m = updateModel(t, m, textKey("C"))
-	m = updateModel(t, m, specialKey(tea.KeyEnter))
-	m = updateModel(t, m, commentEditorFinishedMsg{body: "\n"})
+	m = applyTestMessage(t, m, textKeyMessage("C"))
+	m = applyTestMessage(t, m, specialKeyMessage(tea.KeyEnter))
+	m = applyTestMessage(t, m, commentEditorFinishedMsg{body: "\n"})
 	testutil.RequireEqual(t, deleted, true,
 		fmt.Sprintf("deleted=%v comments=%d", deleted, len(m.comments.items)),
 	)
@@ -151,12 +151,12 @@ func TestEmptyEditedCommentIsDeleted(t *testing.T) {
 }
 
 func TestCommentDeleteFailureKeepsCommentAndShowsError(t *testing.T) {
-	m := testModel(
-		coveragePatch(),
+	m := newTestModel(
+		multiHunkPatch(),
 		[]comments.Comment{{ID: "one", Body: "keep"}},
 		nil,
 	)
-	m.setDelete(
+	m.setCommentDelete(
 		func(
 			comments.Comment,
 			patch.Patch,
@@ -164,8 +164,8 @@ func TestCommentDeleteFailureKeepsCommentAndShowsError(t *testing.T) {
 			return errors.New("delete failed")
 		},
 	)
-	m = updateModel(t, m, textKey("C"))
-	m = updateModel(t, m, textKey("D"))
+	m = applyTestMessage(t, m, textKeyMessage("C"))
+	m = applyTestMessage(t, m, textKeyMessage("D"))
 	testutil.RequireEqual(t, len(m.comments.items), 1,
 		fmt.Sprintf("comments=%#v render=%q", m.comments.items, m.render()),
 	)

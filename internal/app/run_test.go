@@ -19,7 +19,7 @@ import (
 func TestRunLoadsCommentsAndWiresContext(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	store := comments.Store{Path: filepath.Join(t.TempDir(), "comments.db")}
-	p := modelPatch()
+	p := singleHunkPatch()
 	pending := comments.Comment{Repository: p.Root, Body: "pending"}
 	if _, err := store.Add(pending); err != nil {
 		t.Fatal(err)
@@ -42,8 +42,8 @@ func TestRunLoadsCommentsAndWiresContext(t *testing.T) {
 				fmt.Sprintf("model=%#v", m),
 			)
 
-			result := m.loadRefresh()()
-			msg, ok := result.(refreshDiffMsg)
+			result := m.requestPatchRefresh()()
+			msg, ok := result.(patchRefreshMsg)
 			testutil.RequireEqual(t, ok, true,
 				fmt.Sprintf("refresh message=%T", result),
 			)
@@ -94,7 +94,9 @@ func TestRunStartupFailures(t *testing.T) {
 					return nil
 				},
 			}
-			err = runtime.start(context.Background(), modelPatch(), store, nil)
+			err = runtime.start(
+				context.Background(), singleHunkPatch(), store, nil,
+			)
 			testutil.RequireEqual(t, err != nil, true,
 				"expected startup error",
 			)
@@ -122,7 +124,7 @@ func TestRunContextCancellation(t *testing.T) {
 			return err
 		},
 	}
-	err := runtime.start(ctx, modelPatch(), comments.Store{
+	err := runtime.start(ctx, singleHunkPatch(), comments.Store{
 		Path: filepath.Join(t.TempDir(), "comments.db"),
 	}, nil)
 	testutil.RequireEqual(t, errors.Is(err, tea.ErrProgramKilled), true,

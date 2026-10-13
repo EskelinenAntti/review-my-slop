@@ -31,16 +31,16 @@ func TestCommentWorkflowLifecycle(t *testing.T) {
 				os.WriteFile(
 					script,
 					[]byte(
-						"printf '%s' \"$1\" > "+shellQuote(record)+
+						"printf '%s' \"$1\" > "+quoteShellArgument(record)+
 							"\n"+tc.script+"\n",
 					),
 					0600,
 				),
 			)
 
-			adapter, complete := commentWorkflow(
+			adapter, complete := newCommentEditorWorkflow(
 				context.Background(),
-				"sh "+shellQuote(script),
+				"sh "+quoteShellArgument(script),
 				commentDraftInput{
 					body: tc.body,
 					anchor: comments.Anchor{
@@ -118,7 +118,7 @@ func TestUnusedCommandCreatesNoDraft(t *testing.T) {
 
 func TestTerminalFailureReachesCompletion(t *testing.T) {
 	sentinel := errors.New("terminal restoration failed")
-	adapter, complete := commentWorkflow(
+	adapter, complete := newCommentEditorWorkflow(
 		context.Background(),
 		"true",
 		commentDraftInput{body: "body", anchor: comments.Anchor{}},

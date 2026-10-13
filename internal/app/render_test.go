@@ -16,7 +16,7 @@ import (
 func TestWorkflowErrorKeepsDiffLabelWithinFooter(t *testing.T) {
 	for _, width := range []int{20, 80} {
 		for _, kind := range []patch.Kind{patch.Unstaged, patch.Branch} {
-			p := modelPatch()
+			p := singleHunkPatch()
 			p.Kind, p.Branch = kind, "main"
 			m := newModel(
 				p,

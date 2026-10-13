@@ -6,9 +6,10 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
-func loadUntracked(
+func readUntrackedFiles(
 	ctx context.Context,
 	run runner,
 	root string,
@@ -24,10 +25,10 @@ func loadUntracked(
 	if err != nil {
 		return nil, err
 	}
-	return readUntrackedPaths(ctx, root, untrackedPaths(out))
+	return readUntrackedFilesAtPaths(ctx, root, splitNULSeparatedPaths(out))
 }
 
-func readUntrackedPaths(
+func readUntrackedFilesAtPaths(
 	ctx context.Context,
 	root string,
 	paths []string,
@@ -48,7 +49,7 @@ func readUntrackedPaths(
 	return files, nil
 }
 
-func untrackedPaths(out []byte) []string {
+func splitNULSeparatedPaths(out []byte) []string {
 	var paths []string
 	for path := range bytes.SplitSeq(out, []byte{0}) {
 		if len(path) > 0 {
@@ -73,7 +74,7 @@ func readUntrackedFile(root, path string) (File, bool, error) {
 	if info.Size() > maxFileBytes {
 		return File{
 			NewPath:     path,
-			DisplayPath: visibleText(path),
+			DisplayPath: escapeDisplayText(path),
 			Metadata: []string{
 				"untracked file",
 				"content omitted: file exceeds 2 MiB",
@@ -87,11 +88,11 @@ func readUntrackedFile(root, path string) (File, bool, error) {
 	if bytes.IndexByte(content, 0) >= 0 {
 		return File{
 			NewPath:     path,
-			DisplayPath: visibleText(path),
+			DisplayPath: escapeDisplayText(path),
 			Metadata:    []string{"untracked binary file"},
 		}, true, nil
 	}
-	return addedFile(path, visibleSource(string(content))), true, nil
+	return buildAddedFile(path, escapeSourceText(string(content))), true, nil
 }
 
 func readUntrackedSymlink(full, path string) (File, bool, error) {
@@ -99,10 +100,18 @@ func readUntrackedSymlink(full, path string) (File, bool, error) {
 	if err != nil {
 		return File{}, false, fmt.Errorf("read symlink %q: %w", path, err)
 	}
-	return addedFile(path, visibleText(target)), true, nil
+	return buildAddedFile(path, escapeDisplayText(target)), true, nil
 }
 
-func addedFile(path, content string) File {
+func splitSourceLines(content string) []string {
+	content = strings.TrimSuffix(content, "\n")
+	if content == "" {
+		return nil
+	}
+	return strings.Split(content, "\n")
+}
+
+func buildAddedFile(path, content string) File {
 	sourceLines := splitSourceLines(content)
 	lines := make([]Line, 0, len(sourceLines))
 	for i, line := range sourceLines {
@@ -113,7 +122,7 @@ func addedFile(path, content string) File {
 	}
 	return File{
 		NewPath:     path,
-		DisplayPath: visibleText(path),
+		DisplayPath: escapeDisplayText(path),
 		NewSource:   content,
 		Metadata:    []string{"untracked file"},
 		Hunks: []Hunk{{

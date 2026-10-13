@@ -9,8 +9,8 @@ import (
 	"github.com/eskelinenantti/review-my-slop/internal/editor"
 )
 
-func (m model) openCurrentLine() (tea.Cmd, error) {
-	path, number, err := m.sourceLocation()
+func (m model) openFocusedSourceLine() (tea.Cmd, error) {
+	path, number, err := m.sourceEditorTarget()
 	if err != nil {
 		return nil, err
 	}
@@ -19,8 +19,8 @@ func (m model) openCurrentLine() (tea.Cmd, error) {
 	})
 }
 
-func (m model) sourceLocation() (string, int, error) {
-	file, line, ok := m.diffView.Current()
+func (m model) sourceEditorTarget() (string, int, error) {
+	file, line, ok := m.patchView.Current()
 	if !ok {
 		return "", 0, errors.New("select a code line to open in $EDITOR")
 	}

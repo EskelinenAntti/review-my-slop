@@ -2,28 +2,28 @@ package app
 
 import tea "charm.land/bubbletea/v2"
 
-func (m *model) updateMouse(msg tea.Msg) {
+func (m *model) handleMouseMessage(msg tea.Msg) {
 	switch msg := msg.(type) {
 	case tea.MouseClickMsg:
-		m.click(msg)
+		m.handleMouseClick(msg)
 	case tea.MouseMotionMsg:
-		m.drag(msg)
+		m.updateMouseDrag(msg)
 	case tea.MouseReleaseMsg:
-		m.release(msg)
+		m.finishMouseDrag(msg)
 	case tea.MouseWheelMsg:
-		m.wheel(msg)
+		m.scrollWithMouseWheel(msg)
 	default:
 		return
 	}
 }
 
-func (m *model) click(msg tea.MouseClickMsg) {
+func (m *model) handleMouseClick(msg tea.MouseClickMsg) {
 	if msg.Button != tea.MouseLeft {
 		return
 	}
 	switch m.mode {
 	case modeBrowse:
-		m.diffView.BeginDrag(msg.X, msg.Y)
+		m.patchView.BeginDrag(msg.X, msg.Y)
 	case modeComments:
 		m.commentView.Click(msg.X, msg.Y)
 	default:
@@ -31,36 +31,36 @@ func (m *model) click(msg tea.MouseClickMsg) {
 	}
 }
 
-func (m *model) drag(msg tea.MouseMotionMsg) {
+func (m *model) updateMouseDrag(msg tea.MouseMotionMsg) {
 	if msg.Button == tea.MouseLeft && m.mode == modeBrowse {
-		m.diffView.DragTo(msg.X, msg.Y)
+		m.patchView.DragTo(msg.X, msg.Y)
 	}
 }
 
-func (m *model) release(msg tea.MouseReleaseMsg) {
+func (m *model) finishMouseDrag(msg tea.MouseReleaseMsg) {
 	if msg.Button != tea.MouseLeft && msg.Button != tea.MouseNone {
 		return
 	}
 	if m.mode == modeBrowse {
-		m.diffView.DragTo(msg.X, msg.Y)
+		m.patchView.DragTo(msg.X, msg.Y)
 	}
-	m.diffView.EndDrag()
+	m.patchView.EndDrag()
 }
 
-func (m *model) wheel(msg tea.MouseWheelMsg) {
-	m.diffView.EndDrag()
+func (m *model) scrollWithMouseWheel(msg tea.MouseWheelMsg) {
+	m.patchView.EndDrag()
 	if m.mode != modeBrowse && m.mode != modeSearch {
 		return
 	}
 	switch msg.Button {
 	case tea.MouseWheelUp:
-		m.diffView.ScrollVertical(-verticalScrollStep)
+		m.patchView.ScrollVertical(-verticalScrollStep)
 	case tea.MouseWheelDown:
-		m.diffView.ScrollVertical(verticalScrollStep)
+		m.patchView.ScrollVertical(verticalScrollStep)
 	case tea.MouseWheelLeft:
-		m.diffView.ScrollHorizontal(-horizontalScrollStep)
+		m.patchView.ScrollHorizontal(-horizontalScrollStep)
 	case tea.MouseWheelRight:
-		m.diffView.ScrollHorizontal(horizontalScrollStep)
+		m.patchView.ScrollHorizontal(horizontalScrollStep)
 	default:
 		return
 	}

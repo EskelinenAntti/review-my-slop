@@ -10,14 +10,14 @@ import (
 	bolt "go.etcd.io/bbolt"
 )
 
-func (s Store) transact(fn func(*bolt.Bucket) error) error {
-	db, err := s.open()
+func (s Store) withWriteBucket(fn func(*bolt.Bucket) error) error {
+	db, err := s.openDatabase()
 	if err != nil {
 		return err
 	}
 	defer db.Close()
 	return db.Update(func(tx *bolt.Tx) error {
-		bucket, err := tx.CreateBucketIfNotExists(messagesBucket)
+		bucket, err := tx.CreateBucketIfNotExists(commentsBucket)
 		if err != nil {
 			return err
 		}
@@ -25,8 +25,8 @@ func (s Store) transact(fn func(*bolt.Bucket) error) error {
 	})
 }
 
-func (s Store) view(fn func(*bolt.Bucket) error) error {
-	db, err := s.open()
+func (s Store) withReadBucket(fn func(*bolt.Bucket) error) error {
+	db, err := s.openDatabase()
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			return nil
@@ -35,7 +35,7 @@ func (s Store) view(fn func(*bolt.Bucket) error) error {
 	}
 	defer db.Close()
 	return db.View(func(tx *bolt.Tx) error {
-		bucket := tx.Bucket(messagesBucket)
+		bucket := tx.Bucket(commentsBucket)
 		if bucket == nil {
 			return nil
 		}
@@ -43,7 +43,7 @@ func (s Store) view(fn func(*bolt.Bucket) error) error {
 	})
 }
 
-func (s Store) open() (*bolt.DB, error) {
+func (s Store) openDatabase() (*bolt.DB, error) {
 	if s.Path == "" {
 		return nil, errors.New("comments path is empty")
 	}

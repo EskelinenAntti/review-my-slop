@@ -68,7 +68,7 @@ func repositoryRoot(
 	return root, nil
 }
 
-func gitDiff(
+func runGitDiff(
 	ctx context.Context,
 	run runner,
 	root string,

@@ -58,7 +58,8 @@ Required naming direction (update callers and tests together):
 | Current name | Intended name / meaning |
 | --- | --- |
 | `diffView`, `diffOptions` fields | `patchView`, `patchViewOptions` |
-| `refreshDiffFunc`, `refreshDiffMsg` | `patchRefreshFunc`, `patchRefreshMsg` |
+| model `save`, `delete`, `load`, `refresh` callbacks | `saveCommentToStore`, `deleteCommentFromStore`, `reloadComments`, `refreshPatch` |
+| `refreshDiffFunc`, `refreshDiffMsg` | `refreshPatchFunc`, `patchRefreshMsg` |
 | `loadRefresh`, `finishDiffRefresh` | `requestPatchRefresh`, `applyPatchRefresh` |
 | `loadComments`, `finishCommentsLoad` | `requestCommentReload`, `applyCommentReload` |
 | `newWithStore` | `newModelWithStore` |
@@ -194,9 +195,41 @@ before implementation; commit the spec separately so the audit is reviewable.
 - Keep all enabled Revive rules, maximum four parameters, and 200 total lines
   per Go file. No lint exclusions, suppression comments, cache/environment
   workarounds, new dependencies, or unnecessary abstractions.
+- Retain the existing 80-character line limit; Revive counts each tab as four
+  spaces. Formatting must be checked with that same width.
 - Preserve all 164 test/fuzz entry points and their behavior coverage.
 - Review the final file-purpose map, helper locations, and names against A–D.
 - Run formatting, `make check`, and `make test` (race detection) after integration.
 - Update PR #46 with the completed readability work and this audit/spec.
 
-Implementation status: specification complete; implementation pending.
+## Implemented file map and verification
+
+All findings A1–A5, B1–B5, C1–C6, and D1–D4 are addressed. The specification
+was committed before the three Luna implementation tasks started. Independent
+cross-reviews and coordinator review refined callback names, declaration order,
+test ownership, and helper locality after the first implementation pass.
+
+| Chapter | Files and reading order |
+| --- | --- |
+| App model and startup | `model.go`, `messages.go`, `model_init.go`, `run.go` |
+| App input and asynchronous work | `update.go`, `keyboard.go`, `navigation.go`, `search.go`, `layout.go`, `patch_refresh.go`, `comment_reload.go` |
+| Comment and source editing | app `comments.go`, `comment_anchor.go`, `source.go`; editor `workflows.go`, `draft.go`, `commands.go` |
+| Interactive patch view | `view.go` and `view_navigation`, `view_selection`, `view_search`, `view_mouse`, `view_render`, `view_update` chapters |
+| Patch projection | `projection.go`, `projection_types.go`, `projection_pairing.go`, cursor lookup/restoration, selection, viewport/scrolling, search, and layout render chapters |
+| Syntax and terminal text | `highlight.go`, `terminal_text.go` |
+| Patch acquisition | `get.go`, `git.go`, `comparison.go`, `source.go`, `tracked.go`, `hunks.go`, `untracked.go`, `paths.go`, `display_text.go` |
+| Stored comments and exporting | `store.go`, `store_database.go`, `records.go`, `encoding.go`, `pending.go`, `prompt.go`, `paths.go` |
+| Supporting screens and settings | comment-list `screen.go` / `render.go`; preferences entry points before file helpers; keymap/help/frame retain their focused design |
+| Test support | explicit app / projection / repository / comment fixture homes; behavior tests grouped with their corresponding chapters |
+
+Verification completed:
+
+- `make check`: all configured Revive rules and `go vet` pass.
+- `make test`: all packages pass with race detection.
+- All 164 existing test/fuzz entry points remain; none added or removed.
+- No Go file exceeds 200 lines; the largest is 199 lines.
+- No line exceeds 80 characters when each tab counts as four spaces.
+- Public APIs, output strings, database bucket bytes, and stored schemas are
+  preserved. No dependencies or lint exceptions were introduced.
+
+Implementation status: complete and verified.

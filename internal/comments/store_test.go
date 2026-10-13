@@ -6,7 +6,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/eskelinenantti/review-my-slop/internal/testutil"
 )
@@ -139,14 +138,4 @@ func TestDeleteCommentRemovesMessage(t *testing.T) {
 	testutil.RequireEqual(t, len(remaining), 0,
 		fmt.Sprintf("remaining = %#v, want empty", remaining),
 	)
-}
-
-func testComment(repository, body string) Comment {
-	return Comment{
-		ID:         body,
-		Repository: repository,
-		CreatedAt:  time.Unix(1, 0).UTC(),
-		Anchor:     Anchor{FilePath: "file.go", NewStart: 1, NewEnd: 1},
-		Body:       body,
-	}
 }

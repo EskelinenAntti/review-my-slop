@@ -36,17 +36,14 @@ func TestCommandStartsAndQuitsInPTY(t *testing.T) {
 		{name: "code subcommand", args: []string{"code"}},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			checkCommandLifecycle(t, binary, test.args)
+			assertCommandStartsAndQuits(t, binary, test.args)
 		})
 	}
 }
 
-func checkCommandLifecycle(t *testing.T, binary string, args []string) {
+func assertCommandStartsAndQuits(t *testing.T, binary string, args []string) {
 	t.Helper()
-	repo, err := filepath.EvalSymlinks(t.TempDir())
-	testutil.NoError(t, err)
-
-	runGit(t, repo, "init", "-q")
+	repo := newTestRepository(t)
 	testutil.NoError(
 		t,
 		os.WriteFile(
@@ -120,13 +117,4 @@ func (b *lockedBuffer) String() string {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	return b.buffer.String()
-}
-
-func runGit(t *testing.T, dir string, args ...string) {
-	t.Helper()
-	command := exec.Command("git", args...)
-	command.Dir = dir
-	if output, err := command.CombinedOutput(); err != nil {
-		t.Fatalf("git %s: %v\n%s", strings.Join(args, " "), err, output)
-	}
 }

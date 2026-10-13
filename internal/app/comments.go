@@ -10,7 +10,7 @@ import (
 	"github.com/eskelinenantti/review-my-slop/internal/editor"
 )
 
-func (m model) updateComments(name string) (tea.Model, tea.Cmd) {
+func (m model) handleCommentModeKey(name string) (tea.Model, tea.Cmd) {
 	m.err = nil
 	switch name {
 	case "esc", "C", "q":
@@ -26,7 +26,7 @@ func (m model) updateComments(name string) (tea.Model, tea.Cmd) {
 		return m.editSelectedComment()
 	case "D":
 		if selected, ok := m.commentView.Selected(); ok {
-			m.deleteComment(m.commentIndex(selected))
+			m.deleteComment(m.findCommentIndex(selected))
 		}
 	default:
 		return m, nil
@@ -34,54 +34,73 @@ func (m model) updateComments(name string) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m model) editSelectedComment() (tea.Model, tea.Cmd) {
-	selected, ok := m.commentView.Selected()
-	if !ok {
-		return m, nil
-	}
-	m.edit.index = m.commentIndex(selected)
-	if m.edit.index < 0 {
-		return m, nil
-	}
-	m.edit.body = m.comments.items[m.edit.index].Body
-	m.edit.anchor = m.comments.items[m.edit.index].Anchor
-	cmd, err := m.openCommentEditor()
-	if err != nil {
-		m.err = err
-		m.clearCommentEdit()
-		return m, nil
-	}
-	return m, cmd
-}
-
-func (m *model) beginComment() (tea.Cmd, error) {
-	file, lines, ok := m.diffView.Selected()
+func (m *model) startNewComment() (tea.Cmd, error) {
+	file, lines, ok := m.patchView.Selected()
 	if !ok {
 		return nil, errors.New("select code lines before commenting")
 	}
 	anchor := commentAnchor(file, lines)
 	m.edit.body, m.edit.index, m.edit.anchor = "", -1, anchor
-	cmd, err := m.openCommentEditor()
+	cmd, err := m.launchCommentEditor()
 	if err != nil {
-		m.clearCommentEdit()
+		m.clearCommentDraft()
 		return nil, err
 	}
 	return cmd, nil
 }
 
-func (m *model) finishCommentEdit() {
+func (m model) editSelectedComment() (tea.Model, tea.Cmd) {
+	selected, ok := m.commentView.Selected()
+	if !ok {
+		return m, nil
+	}
+	m.edit.index = m.findCommentIndex(selected)
+	if m.edit.index < 0 {
+		return m, nil
+	}
+	m.edit.body = m.comments.items[m.edit.index].Body
+	m.edit.anchor = m.comments.items[m.edit.index].Anchor
+	cmd, err := m.launchCommentEditor()
+	if err != nil {
+		m.err = err
+		m.clearCommentDraft()
+		return m, nil
+	}
+	return m, cmd
+}
+
+func (m model) launchCommentEditor() (tea.Cmd, error) {
+	return editor.EditComment(m.ctx, m.edit.body, m.edit.anchor, func(
+		body string,
+		err error,
+	) tea.Msg {
+		return commentEditorFinishedMsg{body: body, err: err}
+	})
+}
+
+func (m *model) completeCommentEditor(msg commentEditorFinishedMsg) {
+	if msg.err != nil {
+		m.err = msg.err
+		m.clearCommentDraft()
+		return
+	}
+	m.edit.body = msg.body
+	m.saveCommentDraft()
+}
+
+func (m *model) saveCommentDraft() {
 	body := strings.TrimSpace(m.edit.body)
 	if body == "" {
 		if m.edit.index >= 0 {
 			m.deleteComment(m.edit.index)
 		}
-		m.clearCommentEdit()
-		m.diffView.ClearSelection()
+		m.clearCommentDraft()
+		m.patchView.ClearSelection()
 		return
 	}
-	if m.save == nil {
+	if m.saveCommentToStore == nil {
 		m.err = errors.New("comment storage is unavailable")
-		m.clearCommentEdit()
+		m.clearCommentDraft()
 		return
 	}
 	var comment comments.Comment
@@ -91,10 +110,10 @@ func (m *model) finishCommentEdit() {
 	} else {
 		comment = comments.Comment{Anchor: m.edit.anchor, Body: body}
 	}
-	saved, err := m.save(comment, m.currentPatch)
+	saved, err := m.saveCommentToStore(comment, m.currentPatch)
 	if err != nil {
 		m.err = err
-		m.clearCommentEdit()
+		m.clearCommentDraft()
 		return
 	}
 	if m.edit.index >= 0 {
@@ -106,20 +125,23 @@ func (m *model) finishCommentEdit() {
 	}
 	m.comments.revision++
 	m.commentView.Update(m.comments.items)
-	m.clearCommentEdit()
+	m.clearCommentDraft()
 	m.err = nil
-	m.diffView.ClearSelection()
+	m.patchView.ClearSelection()
 }
 
 func (m *model) deleteComment(index int) {
 	if index < 0 || index >= len(m.comments.items) {
 		return
 	}
-	if m.delete == nil {
+	if m.deleteCommentFromStore == nil {
 		m.err = errors.New("comment storage is unavailable")
 		return
 	}
-	if err := m.delete(m.comments.items[index], m.currentPatch); err != nil {
+	err := m.deleteCommentFromStore(
+		m.comments.items[index], m.currentPatch,
+	)
+	if err != nil {
 		m.err = err
 		return
 	}
@@ -132,20 +154,7 @@ func (m *model) deleteComment(index int) {
 	m.err = nil
 }
 
-func (m *model) clearCommentEdit() {
-	m.edit = commentEdit{index: -1}
-}
-
-func (m model) openCommentEditor() (tea.Cmd, error) {
-	return editor.EditComment(m.ctx, m.edit.body, m.edit.anchor, func(
-		body string,
-		err error,
-	) tea.Msg {
-		return commentEditorFinishedMsg{body: body, err: err}
-	})
-}
-
-func (m model) commentIndex(selected comments.Comment) int {
+func (m model) findCommentIndex(selected comments.Comment) int {
 	for index, item := range m.comments.items {
 		if selected.ID != "" && item.ID == selected.ID ||
 			selected.ID == "" && item.Body == selected.Body &&
@@ -154,4 +163,8 @@ func (m model) commentIndex(selected comments.Comment) int {
 		}
 	}
 	return -1
+}
+
+func (m *model) clearCommentDraft() {
+	m.edit = commentEdit{index: -1}
 }

@@ -12,7 +12,7 @@ import (
 )
 
 func TestStatusShowsBasicBindingsAndHelpShowsCompleteKeyMap(t *testing.T) {
-	m := testModel(coveragePatch(), nil, nil)
+	m := newTestModel(multiHunkPatch(), nil, nil)
 	status := ansi.Strip(strings.Split(m.render(), "\n")[m.height-2])
 	testutil.RequireEqual(t, strings.HasPrefix(status, "j/k/h/l move"), true,
 		fmt.Sprintf("status=%q", status),
@@ -37,25 +37,25 @@ func TestStatusShowsBasicBindingsAndHelpShowsCompleteKeyMap(t *testing.T) {
 }
 
 func TestStatusShowsProgressOnlyAfterViewportMoves(t *testing.T) {
-	m := testModel(longModelPatch(), nil, nil)
-	m = updateModel(t, m, tea.WindowSizeMsg{Width: 80, Height: 9})
+	m := newTestModel(longContextPatch(), nil, nil)
+	m = applyTestMessage(t, m, tea.WindowSizeMsg{Width: 80, Height: 9})
 	testutil.RequireEqual(t, !strings.Contains(m.render(), "%"), true,
 		"initial view shows progress",
 	)
 
-	m = updateModel(t, m, textKey("l"))
+	m = applyTestMessage(t, m, textKeyMessage("l"))
 	testutil.RequireEqual(t, !strings.Contains(m.render(), "%"), true,
 		"horizontal scroll shows progress",
 	)
 
 	for range 10 {
-		m = updateModel(t, m, textKey("j"))
+		m = applyTestMessage(t, m, textKeyMessage("j"))
 	}
 	testutil.RequireEqual(t, strings.Contains(m.render(), "%)"), true,
 		"scrolled view hides progress",
 	)
 
-	m = updateModel(t, m, textKey("G"))
+	m = applyTestMessage(t, m, textKeyMessage("G"))
 	testutil.RequireEqual(t,
 		strings.Contains(m.render(), "local changes (100%)"), true,
 		"final view hides progress",
@@ -63,8 +63,8 @@ func TestStatusShowsProgressOnlyAfterViewportMoves(t *testing.T) {
 }
 
 func TestStatusHidesProgressWhenDiffFitsViewport(t *testing.T) {
-	m := testModel(coveragePatch(), nil, nil)
-	m = updateModel(t, m, tea.WindowSizeMsg{Width: 100, Height: 100})
+	m := newTestModel(multiHunkPatch(), nil, nil)
+	m = applyTestMessage(t, m, tea.WindowSizeMsg{Width: 100, Height: 100})
 	testutil.RequireEqual(t, !strings.Contains(m.render(), "%)"), true,
 		"fitting diff shows progress",
 	)
@@ -72,7 +72,7 @@ func TestStatusHidesProgressWhenDiffFitsViewport(t *testing.T) {
 
 func TestHeaderShowsAddedAndRemovedLineCounts(t *testing.T) {
 	header := strings.SplitN(
-		ansi.Strip(testModel(coveragePatch(), nil, nil).render()),
+		ansi.Strip(newTestModel(multiHunkPatch(), nil, nil).render()),
 		"\n",
 		2,
 	)[0]
@@ -82,7 +82,7 @@ func TestHeaderShowsAddedAndRemovedLineCounts(t *testing.T) {
 }
 
 func TestViewPreservesTerminalColors(t *testing.T) {
-	result := testModel(coveragePatch(), nil, nil).View()
+	result := newTestModel(multiHunkPatch(), nil, nil).View()
 	testutil.RequireEqual(t, result.BackgroundColor, nil,
 		fmt.Sprintf("view=%#v", result),
 	)

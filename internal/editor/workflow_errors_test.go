@@ -41,7 +41,7 @@ func TestCommentCancellationAndCreationFailure(t *testing.T) {
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
 			tc.setup(t, dir, cancel)
-			adapter, complete := commentWorkflow(
+			adapter, complete := newCommentEditorWorkflow(
 				ctx,
 				"true",
 				commentDraftInput{body: "body", anchor: comments.Anchor{}},
@@ -98,7 +98,7 @@ func TestRunningEditorCancellationCleansDraft(t *testing.T) {
 	t.Setenv("TMPDIR", dir)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	adapter, complete := commentWorkflow(
+	adapter, complete := newCommentEditorWorkflow(
 		ctx,
 		"printf started; exec sleep 30 #",
 		commentDraftInput{body: "body", anchor: comments.Anchor{}},
