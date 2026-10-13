@@ -41,7 +41,7 @@ func (v *View) DragTo(x, y int) {
 func (v *View) EndDrag() { v.drag = nil }
 
 func (v *View) cursorAtPoint(x, y int) (diffCursor, bool) {
-	row, ok := frame.BodyRow(x, y, v.width, v.height)
+	row, ok := frame.BodyRowAtTerminalCell(x, y, v.width, v.height)
 	if !ok {
 		return diffCursor{}, false
 	}

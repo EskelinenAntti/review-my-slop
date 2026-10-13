@@ -67,7 +67,7 @@ func (v *View) Selected() (comments.Comment, bool) {
 // Click focuses a visible comment at zero-based terminal coordinates.
 func (v *View) Click(x, y int) bool {
 	height := frame.BodyHeight(v.height)
-	row, ok := frame.BodyRow(x, y, v.width, v.height)
+	row, ok := frame.BodyRowAtTerminalCell(x, y, v.width, v.height)
 	if !ok {
 		return false
 	}

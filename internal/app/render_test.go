@@ -26,7 +26,7 @@ func TestWorkflowErrorKeepsDiffLabelWithinFooter(t *testing.T) {
 				"a very long storage failure\n" +
 					"that exceeds the available footer width",
 			)
-			lines := strings.Split(m.render(), "\n")
+			lines := strings.Split(m.renderActiveScreen(), "\n")
 			testutil.RequireEqual(t, len(lines), 8,
 				"error changed screen height: %d", len(lines),
 			)

@@ -81,7 +81,7 @@ func New(p patch.Patch, options Options) *View {
 	v := &View{options: options, width: 80, height: 30}
 	v.view = v.newReviewView(p)
 	v.viewport = v.view.newViewport(v.width, frame.BodyHeight(v.height))
-	v.cursor, _ = v.view.first()
+	v.cursor, _ = v.view.firstLineCursor()
 	return v
 }
 
@@ -133,19 +133,19 @@ func (v *View) Move(motion Motion) {
 	v.search.repeatMiss = false
 	switch motion {
 	case PreviousLine:
-		v.step(backward)
+		v.moveCursorOneLine(backward)
 	case NextLine:
-		v.step(forward)
+		v.moveCursorOneLine(forward)
 	case PreviousPage:
-		v.halfPage(backward)
+		v.scrollCursorHalfPage(backward)
 	case NextPage:
-		v.halfPage(forward)
+		v.scrollCursorHalfPage(forward)
 	case FirstLine:
-		if cursor, ok := v.view.first(); ok {
+		if cursor, ok := v.view.firstLineCursor(); ok {
 			v.setCursor(cursor)
 		}
 	case LastLine:
-		if cursor, ok := v.view.last(); ok {
+		if cursor, ok := v.view.lastLineCursor(); ok {
 			v.setCursor(cursor)
 		}
 
@@ -165,13 +165,13 @@ func (v *View) moveBetweenSections(motion Motion) {
 	case NewPane:
 		v.switchPane(right)
 	case OtherPane:
-		v.switchPane(v.cursor.pane.other())
+		v.switchPane(v.cursor.pane.oppositePane())
 	default:
 		return
 	}
 }
 
-func (v *View) step(direction direction) {
+func (v *View) moveCursorOneLine(direction direction) {
 	next, ok := v.view.move(v.cursor, direction)
 	if !ok {
 		return
@@ -185,7 +185,7 @@ func (v *View) setCursor(cursor diffCursor) {
 	v.cursor = cursor
 	v.viewport = v.view.keepVisible(v.viewport, cursor)
 }
-func (v *View) halfPage(direction direction) {
+func (v *View) scrollCursorHalfPage(direction direction) {
 	viewport, cursor := v.view.scrollHalfPage(v.viewport, v.cursor, direction)
 	if !v.extendSelectionTo(cursor) {
 		return
@@ -276,14 +276,14 @@ func (v *View) ToggleSelection() {
 	}
 }
 
-// ClearSelection clears the selected range and ends any drag.
+// ClearSelection clears the selectionContainsCursor range and ends any drag.
 func (v *View) ClearSelection() {
 	v.EndDrag()
 	v.selection = nil
 	v.search.repeatMiss = false
 }
 
-// Selected returns the focused line when no explicit range is selected.
+// Selected returns the focused line when no explicit range is selectionContainsCursor.
 // The bool is false when the patch has no selectable code.
 func (v *View) Selected() (patch.File, []patch.Line, bool) {
 	selection := v.selection
@@ -296,7 +296,7 @@ func (v *View) Selected() (patch.File, []patch.Line, bool) {
 	return file, lines, ok && len(lines) > 0
 }
 
-// Current returns the focused source line, independent of any selected range.
+// Current returns the focused source line, independent of any selectionContainsCursor range.
 func (v *View) Current() (patch.File, patch.Line, bool) {
 	file, fileOK := v.view.file(v.cursor)
 	line, lineOK := v.view.line(v.cursor)
@@ -318,7 +318,7 @@ func (v *View) InsertSearch(text string) {
 	if !v.search.active {
 		v.BeginSearch()
 	}
-	v.previewSearch(v.search.query + text)
+	v.moveCursorToSearchPreview(v.search.query + text)
 }
 
 // BackspaceSearch removes the last Unicode code point from the active query.
@@ -331,10 +331,10 @@ func (v *View) BackspaceSearch() {
 	if len(query) > 0 {
 		query = query[:len(query)-1]
 	}
-	v.previewSearch(string(query))
+	v.moveCursorToSearchPreview(string(query))
 }
 
-func (v *View) previewSearch(query string) {
+func (v *View) moveCursorToSearchPreview(query string) {
 	v.search.query = query
 	if query == "" {
 		v.setCursor(v.search.from)
@@ -403,7 +403,7 @@ func (v *View) Render(err error) string {
 	if err != nil {
 		footer = errorStyle.Render(strings.ReplaceAll(err.Error(), "\n", " "))
 	}
-	return frame.Render(header, body, v.renderFooter(footer), v.height)
+	return frame.Render(header, body, v.renderFooterWithPatchStatus(footer), v.height)
 }
 func (v *View) renderBody() []string {
 	var body []string
@@ -416,7 +416,7 @@ func (v *View) renderBody() []string {
 		body[min(1, len(body)-1)] = mutedStyle.Render(empty)
 	} else {
 		body = strings.Split(
-			v.view.render(v.viewport, v.cursor, v.selection),
+			v.view.renderHighlightedSourceLines(v.viewport, v.cursor, v.selection),
 			"\n",
 		)
 	}
@@ -436,20 +436,20 @@ func (v *View) renderStatus() string {
 	return status
 }
 
-func (v *View) renderFooter(value string) string {
+func (v *View) renderFooterWithPatchStatus(statusText string) string {
 	label := "local changes"
 	if v.view.patch.Kind == patch.Branch {
 		label = "branch changes from " + v.view.patch.Branch
 	}
 	if v.viewport.top > 0 {
-		label += fmt.Sprintf(" (%d%%)", v.view.viewportProgress(v.viewport))
+		label += fmt.Sprintf(" (%d%%)", v.view.viewportProgressPercent(v.viewport))
 	}
 	right := mutedStyle.Render(label)
 	width := max(20, v.width)
-	value = ansi.Truncate(value, max(0, width-lipgloss.Width(right)-1), "")
-	return value + strings.Repeat(
+	statusText = ansi.Truncate(statusText, max(0, width-lipgloss.Width(right)-1), "")
+	return statusText + strings.Repeat(
 		" ",
-		max(1, width-lipgloss.Width(value)-lipgloss.Width(right)),
+		max(1, width-lipgloss.Width(statusText)-lipgloss.Width(right)),
 	) + right
 }
 func patchLineCounts(p patch.Patch) (added, removed int) {

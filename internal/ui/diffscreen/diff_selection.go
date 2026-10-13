@@ -117,13 +117,13 @@ func (m cursorMatch) bestRankedMatch(other cursorMatch) cursorMatch {
 
 func (v *diffView) matchRow(y int, target cursorIdentity) cursorMatch {
 	current := v.rows[y]
-	if !v.rowInFile(current, target.file) {
+	if !v.rowBelongsToFileHunk(current, target.file) {
 		return cursorMatch{}
 	}
 	best := cursorMatch{}
 	for _, pane := range [2]diffPane{
 		target.cursor.pane,
-		target.cursor.pane.other(),
+		target.cursor.pane.oppositePane(),
 	} {
 		candidate, ok := v.cursorAt(y, pane)
 		if !ok {
@@ -143,7 +143,7 @@ func (v *diffView) matchRow(y int, target cursorIdentity) cursorMatch {
 	return best
 }
 
-func (v *diffView) rowInFile(current entry, file patch.File) bool {
+func (v *diffView) rowBelongsToFileHunk(current entry, file patch.File) bool {
 	return current.hunk >= 0 && sameFile(v.patch.Files[current.file], file)
 }
 
@@ -163,12 +163,12 @@ func lineMatchRank(line, target patch.Line) int {
 
 func lineDistance(line, target patch.Line, rowDistance int) int {
 	if line.NewNumber > 0 && target.NewNumber > 0 {
-		return abs(int(line.NewNumber - target.NewNumber))
+		return absoluteLineDistance(int(line.NewNumber - target.NewNumber))
 	}
 	if line.OldNumber > 0 && target.OldNumber > 0 {
-		return abs(int(line.OldNumber - target.OldNumber))
+		return absoluteLineDistance(int(line.OldNumber - target.OldNumber))
 	}
-	return abs(rowDistance)
+	return absoluteLineDistance(rowDistance)
 }
 
 func sameFile(candidate, target patch.File) bool {
@@ -176,7 +176,7 @@ func sameFile(candidate, target patch.File) bool {
 		candidate.NewPath != "" && candidate.NewPath == target.NewPath
 }
 
-func abs(value int) int {
+func absoluteLineDistance(value int) int {
 	if value < 0 {
 		return -value
 	}

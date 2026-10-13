@@ -55,7 +55,7 @@ func (execRunner) Run(
 // Get retrieves a complete snapshot from the current working directory.
 // Unknown kinds and unavailable branch comparisons return a zero Patch and an
 // error.
-func Get(ctx context.Context, kind Kind) (Patch, error) {
+func LoadGitDiff(ctx context.Context, kind Kind) (Patch, error) {
 	directory, err := os.Getwd()
 	if err != nil {
 		return Patch{}, fmt.Errorf("resolve working directory: %w", err)

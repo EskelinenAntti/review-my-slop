@@ -7,9 +7,9 @@ import "strings"
 // footer.
 func BodyHeight(height int) int { return max(1, height-3) }
 
-// BodyRow maps a terminal cell to a body row, excluding header and footer cells
+// BodyRowAtTerminalCell maps a terminal cell to a body row, excluding header and footer cells
 // and any part of the frame that falls outside the terminal dimensions.
-func BodyRow(x, y, width, height int) (int, bool) {
+func BodyRowAtTerminalCell(x, y, width, height int) (bodyRow int, insideBody bool) {
 	row := y - 1
 	return row, x >= 0 && x < width && row >= 0 &&
 		row < BodyHeight(height) && y < height-2

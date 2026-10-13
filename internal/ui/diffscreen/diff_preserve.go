@@ -23,7 +23,7 @@ func (v *View) replaceView(next *diffView) {
 	v.viewport = next.scrollHorizontal(v.viewport, leftColumn)
 	translated, ok := next.findCursor(cursor)
 	if !ok {
-		translated, _ = next.first()
+		translated, _ = next.firstLineCursor()
 	}
 	v.cursor = translated
 	v.selection = preserveSelection(old, v.selection, next)
@@ -37,7 +37,7 @@ func (v *View) replaceView(next *diffView) {
 		if translated, ok := next.findCursor(origin); ok {
 			v.search.from = translated
 		}
-		v.previewSearch(v.search.query)
+		v.moveCursorToSearchPreview(v.search.query)
 	}
 }
 

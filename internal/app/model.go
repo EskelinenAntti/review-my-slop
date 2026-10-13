@@ -153,7 +153,7 @@ func newModel(
 		),
 	}
 	m.diffView = diffscreen.New(p, m.diffOptions)
-	m.resizeScreens()
+	m.fitReviewScreensToWindow()
 	return m
 }
 
@@ -216,7 +216,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
-		m.resizeScreens()
+		m.fitReviewScreensToWindow()
 
 	case tea.KeyPressMsg:
 		m.diffView.EndDrag()
@@ -225,12 +225,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		tea.MouseReleaseMsg, tea.MouseWheelMsg:
 		m.updateMouse(msg)
 	default:
-		return m.updateWorkflow(msg)
+		return m.handleEditorAndRefreshEvents(msg)
 	}
 	return m, nil
 }
 
-func (m model) updateWorkflow(msg tea.Msg) (tea.Model, tea.Cmd) {
+func (m model) handleEditorAndRefreshEvents(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case commentEditorFinishedMsg:
 		m.finishCommentEditor(msg)
@@ -241,9 +241,9 @@ func (m model) updateWorkflow(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.err = fmt.Errorf("editor: %w", msg.err)
 			break
 		}
-		return m, m.loadRefresh()
+		return m, m.requestDiffRefresh()
 	case tea.FocusMsg:
-		return m, m.loadRefresh()
+		return m, m.requestDiffRefresh()
 	case refreshDiffMsg:
 		m.finishDiffRefresh(msg)
 	default:
@@ -287,7 +287,7 @@ func (m *model) finishDiffRefresh(msg refreshDiffMsg) {
 	m.err = nil
 }
 
-func (m model) loadRefresh() tea.Cmd {
+func (m model) requestDiffRefresh() tea.Cmd {
 	if m.refresh == nil {
 		return nil
 	}
@@ -317,7 +317,7 @@ func (m *model) updatePatch(p patch.Patch) {
 	m.currentPatch = p
 	m.diffView.Update(p)
 }
-func (m *model) resizeScreens() {
+func (m *model) fitReviewScreensToWindow() {
 	m.diffView.Resize(m.width, m.height)
 	m.commentView.Resize(m.width, m.height)
 }
@@ -354,7 +354,7 @@ func (m model) updateBrowseKey(name string) (tea.Model, tea.Cmd) {
 	case "e":
 		return m.startSourceEditor()
 	case "R":
-		return m, m.loadRefresh()
+		return m, m.requestDiffRefresh()
 	case "tab":
 		return m.switchPatchKind()
 	default:
@@ -412,5 +412,5 @@ func (m model) switchPatchKind() (tea.Model, tea.Cmd) {
 		m.kind = patch.Unstaged
 	}
 	m.diffView.ClearSelection()
-	return m, m.loadRefresh()
+	return m, m.requestDiffRefresh()
 }

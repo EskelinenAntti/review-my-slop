@@ -12,5 +12,5 @@
 - Each scoring round must use independent Luna agents with fresh context.
   Reviewers may run the extractor and read its output, but must not inspect
   implementations, source files, documentation, diffs, or prior reviews.
-- Refactor score-1 production abstractions and repeat until every signature
-  scores at least 2. See `docs/signature-review.md` for the rubric and workflow.
+- Refactor score-1 and score-2 production abstractions and repeat until every
+  signature scores 3. Do not rename test functions or test-only helpers. See `docs/signature-review.md` for the rubric and workflow.

@@ -58,6 +58,42 @@ func TestInvalidGoSourceReturnsError(t *testing.T) {
 	}
 }
 
+func TestExtractsNestedAndLocalInterfaceMethods(t *testing.T) {
+	root := t.TempDir()
+	source := `package sample
+// Documentation must not appear in the inventory.
+type Service interface {
+ Execute(input interface { Read(data []byte) error }) error
+}
+func Start() {
+ type Local interface { Close() error }
+ var sink interface { Write(data []byte) (int, error) }
+ _ = sink
+}
+`
+	testutil.NoError(t, os.WriteFile(
+		filepath.Join(root, "sample.go"), []byte(source), 0600,
+	))
+	var output bytes.Buffer
+	testutil.NoError(t, writeGoSignatures(&output, root))
+	got := output.String()
+	for _, signature := range []string{
+		"interface Service: func Execute(input interface",
+		"interface anonymous@sample.go:4:16: func Read(data []byte) error",
+		"func Start()",
+		"interface Local: func Close() error",
+		"interface anonymous@sample.go:8:11: func Write(data []byte) (int, error)",
+	} {
+		if !strings.Contains(got, signature) {
+			t.Fatalf("missing %q in signatures:\n%s", signature, got)
+		}
+	}
+	if strings.Contains(got, "Documentation") || strings.Contains(got, "var sink") {
+		t.Fatalf("documentation or implementation leaked: %s", got)
+	}
+	testutil.RequireEqual(t, strings.Count(got, "\n"), 5, "one line per signature")
+}
+
 func TestSingleLineSignaturePreservesLiteralWhitespace(t *testing.T) {
 	source := "func describe(\n value struct { " +
 		"Label string `label:\"two  words\"` },\n)"

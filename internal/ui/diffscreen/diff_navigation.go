@@ -26,14 +26,14 @@ func (v *diffView) cursorAt(y int, pane diffPane) (diffCursor, bool) {
 	return cursor, v.valid(cursor)
 }
 
-func (v *diffView) first() (diffCursor, bool) {
+func (v *diffView) firstLineCursor() (diffCursor, bool) {
 	if cursor, ok := v.nextLineCursor(-1, right, forward); ok {
 		return cursor, true
 	}
 	return v.nextLineCursor(-1, left, forward)
 }
 
-func (v *diffView) last() (diffCursor, bool) {
+func (v *diffView) lastLineCursor() (diffCursor, bool) {
 	if cursor, ok := v.nextLineCursor(len(v.rows), right, backward); ok {
 		return cursor, true
 	}
@@ -45,8 +45,8 @@ func (v *diffView) nextLineCursor(
 	pane diffPane,
 	direction direction,
 ) (diffCursor, bool) {
-	step := int(direction)
-	for y := start + step; y >= 0 && y < len(v.rows); y += step {
+	moveCursorOneLine := int(direction)
+	for y := start + moveCursorOneLine; y >= 0 && y < len(v.rows); y += moveCursorOneLine {
 		if cursor, ok := v.cursorAt(y, pane); ok {
 			return cursor, true
 		}
@@ -94,7 +94,7 @@ func (v *diffView) searchRow(
 	}
 	panes := []diffPane{pane}
 	if v.split {
-		panes = append(panes, pane.other())
+		panes = append(panes, pane.oppositePane())
 	}
 	for _, candidatePane := range panes {
 		candidate, ok := v.cursorAt(y, candidatePane)
@@ -150,7 +150,7 @@ func (v *diffView) cursorInFile(
 		return candidate, true
 	}
 	if v.split {
-		return v.cursorAt(y, pane.other())
+		return v.cursorAt(y, pane.oppositePane())
 	}
 	return diffCursor{}, false
 }

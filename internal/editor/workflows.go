@@ -42,7 +42,7 @@ func commentWorkflow(
 		}
 		defer os.Remove(path)
 		editorCommand := commentCommand(ctx, command, path)
-		if err := adapter.execute(editorCommand); err != nil {
+		if err := adapter.runWithAttachedTerminal(editorCommand); err != nil {
 			return fmt.Errorf("editor: %w", err)
 		}
 		adapter.body, err = readCommentFile(path, anchor)
@@ -66,7 +66,7 @@ func OpenSource(
 	}
 	adapter := &commandAdapter{}
 	adapter.run = func() error {
-		return adapter.execute(sourceCommand(ctx, command, path, line))
+		return adapter.runWithAttachedTerminal(sourceCommand(ctx, command, path, line))
 	}
 	return tea.Exec(adapter, onComplete), nil
 }
@@ -90,7 +90,7 @@ func (c *commandAdapter) Run() error            { return c.run() }
 func (c *commandAdapter) SetStdin(r io.Reader)  { c.stdin = r }
 func (c *commandAdapter) SetStdout(w io.Writer) { c.stdout = w }
 func (c *commandAdapter) SetStderr(w io.Writer) { c.stderr = w }
-func (c *commandAdapter) execute(cmd *exec.Cmd) error {
+func (c *commandAdapter) runWithAttachedTerminal(cmd *exec.Cmd) error {
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = c.stdin, c.stdout, c.stderr
 	return cmd.Run()
 }

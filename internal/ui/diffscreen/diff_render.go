@@ -12,7 +12,7 @@ import (
 	"github.com/eskelinenantti/review-my-slop/internal/patch"
 )
 
-func (v *diffView) render(
+func (v *diffView) renderHighlightedSourceLines(
 	viewport diffViewport,
 	cursor diffCursor,
 	selection *diffSelection,
@@ -109,7 +109,7 @@ func (v *diffView) renderUnifiedLine(
 	style := lineStyle(line.Kind, v.dark)
 	colors := preserveForeground
 	candidate := diffCursor{row: y, pane: cursor.pane}
-	if selected(selection, candidate) {
+	if selectionContainsCursor(selection, candidate) {
 		style, colors = selectionRowStyle(v.dark), discardForeground
 	}
 	if cursor.row == y {
@@ -190,7 +190,7 @@ func (v *diffView) renderPane(
 	style := lineStyle(line.Kind, v.dark)
 	colors := preserveForeground
 	candidate := diffCursor{row: y, pane: pane}
-	if selected(selection, candidate) {
+	if selectionContainsCursor(selection, candidate) {
 		style, colors = selectionRowStyle(v.dark), discardForeground
 	}
 	if cursor == candidate {
@@ -199,7 +199,7 @@ func (v *diffView) renderPane(
 	return renderStyledRow(style, value, width, colors)
 }
 
-func selected(selection *diffSelection, cursor diffCursor) bool {
+func selectionContainsCursor(selection *diffSelection, cursor diffCursor) bool {
 	if selection == nil {
 		return false
 	}

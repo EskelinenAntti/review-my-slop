@@ -117,41 +117,50 @@ func (e signatureExtractor) writeDeclarationSignatures(
 	pkg string,
 	declaration ast.Decl,
 ) error {
-	switch declaration := declaration.(type) {
-	case *ast.FuncDecl:
-		declaration.Body, declaration.Doc = nil, nil
-		return e.writeSignatureLine(pkg, declaration)
-	case *ast.GenDecl:
-		return e.writeTypeMethodSignatures(pkg, declaration.Specs)
-	default:
-		return nil
-	}
-}
-
-func (e signatureExtractor) writeTypeMethodSignatures(
-	pkg string,
-	specs []ast.Spec,
-) error {
-	for _, spec := range specs {
-		if typeSpec, ok := spec.(*ast.TypeSpec); ok {
-			if err := e.writeInterfaceSignatures(pkg, typeSpec); err != nil {
-				return err
-			}
+	if function, ok := declaration.(*ast.FuncDecl); ok {
+		signature := *function
+		signature.Body, signature.Doc = nil, nil
+		if err := e.writeSignatureLine(pkg, &signature); err != nil {
+			return err
 		}
 	}
-	return nil
+	owners := make(map[*ast.InterfaceType]string)
+	var extractionErr error
+	ast.Inspect(declaration, func(node ast.Node) bool {
+		if extractionErr != nil {
+			return false
+		}
+		switch node := node.(type) {
+		case *ast.TypeSpec:
+			if iface, ok := node.Type.(*ast.InterfaceType); ok {
+				owners[iface] = node.Name.Name
+			}
+		case *ast.InterfaceType:
+			owner := owners[node]
+			if owner == "" {
+				position := e.fset.Position(node.Pos())
+				relative, err := filepath.Rel(e.root, position.Filename)
+				if err != nil {
+					extractionErr = err
+					return false
+				}
+				owner = fmt.Sprintf("anonymous@%s:%d:%d",
+					filepath.ToSlash(relative), position.Line, position.Column)
+			}
+			extractionErr = e.writeInterfaceSignatures(pkg, owner, node)
+		}
+		return extractionErr == nil
+	})
+	return extractionErr
 }
 
 func (e signatureExtractor) writeInterfaceSignatures(
 	pkg string,
-	typeSpec *ast.TypeSpec,
+	interfaceName string,
+	iface *ast.InterfaceType,
 ) error {
-	iface, ok := typeSpec.Type.(*ast.InterfaceType)
-	if !ok {
-		return nil
-	}
 	for _, method := range iface.Methods.List {
-		owner := pkg + " interface " + typeSpec.Name.Name
+		owner := pkg + " interface " + interfaceName
 		if err := e.writeInterfaceMethodSignature(owner, method); err != nil {
 			return err
 		}
@@ -221,7 +230,7 @@ func isInsertedGoSemicolon(kind token.Token, literal string) bool {
 	return kind == token.SEMICOLON && literal == "\n"
 }
 
-func singleLineGoToken(kind token.Token, literal string) (string, int) {
+func singleLineGoToken(kind token.Token, literal string) (text string, sourceLength int) {
 	if literal == "" {
 		text := kind.String()
 		return text, len(text)

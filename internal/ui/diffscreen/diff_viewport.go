@@ -17,7 +17,7 @@ func (v *diffView) resize(
 	return v.clampViewport(viewport)
 }
 
-func (v *diffView) maxTop(height int) int {
+func (v *diffView) maxViewportTopRow(height int) int {
 	end := max(0, len(v.rows)-height)
 	if v.hasStickyHeader(end, height) {
 		end++
@@ -26,7 +26,7 @@ func (v *diffView) maxTop(height int) int {
 }
 
 func (v *diffView) clampViewport(viewport diffViewport) diffViewport {
-	viewport.top = max(0, min(viewport.top, v.maxTop(viewport.Height)))
+	viewport.top = max(0, min(viewport.top, v.maxViewportTopRow(viewport.Height)))
 	viewport.LeftColumn = max(
 		0,
 		min(viewport.LeftColumn, v.maxHorizontalOffset(viewport.Width)),
@@ -112,7 +112,7 @@ func (v *diffView) scrollVertical(
 	cursor diffCursor,
 	rows int,
 ) (diffViewport, diffCursor) {
-	rows = max(-viewport.top, min(rows, v.maxTop(viewport.Height)-viewport.top))
+	rows = max(-viewport.top, min(rows, v.maxViewportTopRow(viewport.Height)-viewport.top))
 	viewport.top += rows
 	viewport = v.clampViewport(viewport)
 	if !v.valid(cursor) || v.cursorVisible(viewport, cursor) {
@@ -128,7 +128,7 @@ func (v *diffView) scrollVertical(
 	}
 	candidate, ok := v.nearest(target, cursor.pane, d, viewport)
 	if !ok && v.split {
-		candidate, ok = v.nearest(target, cursor.pane.other(), d, viewport)
+		candidate, ok = v.nearest(target, cursor.pane.oppositePane(), d, viewport)
 	}
 	if ok {
 		cursor = candidate
@@ -163,7 +163,7 @@ func (v *diffView) scrollHalfPage(
 	return viewport, cursor
 }
 
-func (v *diffView) viewportProgress(viewport diffViewport) int {
+func (v *diffView) viewportProgressPercent(viewport diffViewport) int {
 	if len(v.rows) == 0 {
 		return 0
 	}
