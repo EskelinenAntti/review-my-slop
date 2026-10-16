@@ -14,7 +14,72 @@ import (
 )
 
 func TestSplitPairsUnequalChangeBlocksAndKeepsHunksSeparate(t *testing.T) {
-	p := patch.Patch{
+	v := newSideBySideView(makeUnequalChangeBlockPatch(), true)
+	var code []entry
+	for _, current := range v.rows {
+		if current.kind == lineRow {
+			code = append(code, current)
+		}
+	}
+	testutil.RequireValuesEqual(t, len(code), 5, "visual code entries = %d",
+		len(code),
+	)
+	testutil.RequireValuesEqual(
+		t,
+		code[0].leftLine,
+		0,
+		"pairing = %#v",
+		code[:3],
+	)
+	testutil.RequireValuesEqual(
+		t,
+		code[0].rightLine,
+		2,
+		"pairing = %#v",
+		code[:3],
+	)
+	testutil.RequireValuesEqual(
+		t,
+		code[1].leftLine,
+		1,
+		"pairing = %#v",
+		code[:3],
+	)
+	testutil.RequireValuesEqual(
+		t,
+		code[1].rightLine,
+		3,
+		"pairing = %#v",
+		code[:3],
+	)
+	testutil.RequireValuesEqual(
+		t,
+		code[2].leftLine,
+		-1,
+		"pairing = %#v",
+		code[:3],
+	)
+	testutil.RequireValuesEqual(
+		t,
+		code[2].rightLine,
+		4,
+		"pairing = %#v",
+		code[:3],
+	)
+	testutil.RequireValuesEqual(t, code[4].hunk != code[3].hunk, true,
+		"hunks were paired: %#v", code[4],
+	)
+	testutil.RequireValuesEqual(
+		t,
+		code[4].leftLine,
+		-1,
+		"hunks were paired: %#v",
+		code[4],
+	)
+}
+
+func makeUnequalChangeBlockPatch() patch.Patch {
+	return patch.Patch{
 		Files: []patch.File{{DisplayPath: "file", Hunks: []patch.Hunk{
 			{
 				Header: "one",
@@ -40,51 +105,51 @@ func TestSplitPairsUnequalChangeBlocksAndKeepsHunksSeparate(t *testing.T) {
 			},
 		}}},
 	}
-	v := newSideBySideView(p, true)
-	var code []entry
-	for _, current := range v.rows {
-		if current.kind == lineRow {
-			code = append(code, current)
-		}
-	}
-	testutil.RequireEqual(t, len(code), 5, "visual code entries = %d",
-		len(code),
-	)
-	testutil.RequireEqual(t, code[0].leftLine, 0, "pairing = %#v", code[:3])
-	testutil.RequireEqual(t, code[0].rightLine, 2, "pairing = %#v", code[:3])
-	testutil.RequireEqual(t, code[1].leftLine, 1, "pairing = %#v", code[:3])
-	testutil.RequireEqual(t, code[1].rightLine, 3, "pairing = %#v", code[:3])
-	testutil.RequireEqual(t, code[2].leftLine, -1, "pairing = %#v", code[:3])
-	testutil.RequireEqual(t, code[2].rightLine, 4, "pairing = %#v", code[:3])
-	testutil.RequireEqual(t, code[4].hunk != code[3].hunk, true,
-		"hunks were paired: %#v", code[4],
-	)
-	testutil.RequireEqual(t, code[4].leftLine, -1, "hunks were paired: %#v",
-		code[4],
-	)
 }
 
 func TestSplitSelectionOnlyIncludesActivePane(t *testing.T) {
 	v := newSideBySideView(testPatch(), true)
 	first := mustFirst(t, v)
-	removed, _ := v.search("removed one", first, forward)
-	added, _ := v.search("added one", first, forward)
+	removed, _ := v.findTextInChanges("removed one", first, forward)
+	added, _ := v.findTextInChanges("added one", first, forward)
 	left := beginSelection(removed)
 	left, ok := v.extendSelection(left, removed)
-	testutil.RequireEqual(t, ok, true, "left lines = %#v", v.lines(left))
-	testutil.RequireEqual(t, len(v.lines(left)), 1, "left lines = %#v",
-		v.lines(left),
+	testutil.RequireValuesEqual(
+		t,
+		ok,
+		true,
+		"left lines = %#v",
+		v.selectedLines(left),
 	)
-	testutil.RequireEqual(t, v.lines(left)[0].Kind, patch.Deletion,
-		"left lines = %#v", v.lines(left),
+	testutil.RequireValuesEqual(
+		t,
+		len(v.selectedLines(left)),
+		1,
+		"left lines = %#v",
+		v.selectedLines(left),
+	)
+	testutil.RequireValuesEqual(
+		t,
+		v.selectedLines(left)[0].Kind,
+		patch.Deletion,
+		"left lines = %#v",
+		v.selectedLines(left),
 	)
 
 	right := beginSelection(added)
-	testutil.RequireEqual(t, len(v.lines(right)), 1, "right lines = %#v",
-		v.lines(right),
+	testutil.RequireValuesEqual(
+		t,
+		len(v.selectedLines(right)),
+		1,
+		"right lines = %#v",
+		v.selectedLines(right),
 	)
-	testutil.RequireEqual(t, v.lines(right)[0].Kind, patch.Addition,
-		"right lines = %#v", v.lines(right),
+	testutil.RequireValuesEqual(
+		t,
+		v.selectedLines(right)[0].Kind,
+		patch.Addition,
+		"right lines = %#v",
+		v.selectedLines(right),
 	)
 }
 
@@ -108,20 +173,32 @@ func TestSplitPaneSwitchingFindsRowsAboveAndBelowEmptyTargets(t *testing.T) {
 	}
 	v := newSideBySideView(p, true)
 	first := mustFirst(t, v)
-	left, ok := v.switchPane(first, left)
-	testutil.RequireEqual(t, ok, true, "%s", "did not find later left pane")
+	left, ok := v.switchToPane(first, left)
+	testutil.RequireValuesEqual(
+		t,
+		ok,
+		true,
+		"%s",
+		"did not find later left pane",
+	)
 
-	line, _ := v.line(left)
-	testutil.RequireEqual(t, line.Text, "both", "later left line = %q",
+	line, _ := v.patchLineForPosition(left)
+	testutil.RequireValuesEqual(t, line.Text, "both", "later left line = %q",
 		line.Text,
 	)
 
-	last, _ := v.last()
-	right, ok := v.switchPane(last, right)
-	testutil.RequireEqual(t, ok, true, "%s", "did not find earlier right pane")
+	last, _ := v.lastSelectableLine()
+	right, ok := v.switchToPane(last, right)
+	testutil.RequireValuesEqual(
+		t,
+		ok,
+		true,
+		"%s",
+		"did not find earlier right pane",
+	)
 
-	line, _ = v.line(right)
-	testutil.RequireEqual(t, line.Text, "both", "earlier right line = %q",
+	line, _ = v.patchLineForPosition(right)
+	testutil.RequireValuesEqual(t, line.Text, "both", "earlier right line = %q",
 		line.Text,
 	)
 }
@@ -145,7 +222,7 @@ func TestSplitPaneSwitchDoesNothingWhenTargetPaneIsEmpty(t *testing.T) {
 	}
 	v := newSideBySideView(p, true)
 	cursor := mustFirst(t, v)
-	if _, ok := v.switchPane(cursor, left); ok {
+	if _, ok := v.switchToPane(cursor, left); ok {
 		t.Fatal("switched to empty pane")
 	}
 }
@@ -187,15 +264,21 @@ func TestSplitVerticalMovementSkipsEmptyActivePane(t *testing.T) {
 	}
 	v := newSideBySideView(p, true)
 	first := mustFirst(t, v)
-	left, _ := v.switchPane(first, left)
-	nextLeft, _ := v.move(left, forward)
-	line, _ := v.line(nextLeft)
-	testutil.RequireEqual(t, line.Text, "two", "left movement = %q", line.Text)
+	left, _ := v.switchToPane(first, left)
+	nextLeft, _ := v.moveInDirection(left, forward)
+	line, _ := v.patchLineForPosition(nextLeft)
+	testutil.RequireValuesEqual(
+		t,
+		line.Text,
+		"two",
+		"left movement = %q",
+		line.Text,
+	)
 
-	rightAtContext, _ := v.switchPane(nextLeft, right)
-	nextRight, _ := v.move(rightAtContext, forward)
-	line, _ = v.line(nextRight)
-	testutil.RequireEqual(t, line.Text, "three", "right movement = %q",
+	rightAtContext, _ := v.switchToPane(nextLeft, right)
+	nextRight, _ := v.moveInDirection(rightAtContext, forward)
+	line, _ = v.patchLineForPosition(nextRight)
+	testutil.RequireValuesEqual(t, line.Text, "three", "right movement = %q",
 		line.Text,
 	)
 }
@@ -242,22 +325,22 @@ func TestSplitVerticalMovementAndHalfPageUseVisualRows(t *testing.T) {
 		true,
 	)
 	cursor := mustFirst(t, v)
-	viewport := v.newViewport(120, 4)
-	viewport = v.keepVisible(viewport, cursor)
+	viewport := v.newVisibleArea(120, 4)
+	viewport = v.keepFocusedLineVisible(viewport, cursor)
 	originalTop := viewport.top
-	viewport, moved := v.scrollHalfPage(viewport, cursor, forward)
-	testutil.RequireEqual(t, viewport.top > originalTop, true,
+	viewport, moved := v.moveFocusedLineHalfPage(viewport, cursor, forward)
+	testutil.RequireValuesEqual(t, viewport.top > originalTop, true,
 		"viewport=%#v cursor=%#v", viewport, moved,
 	)
-	testutil.RequireEqual(t, moved.row > cursor.row, true,
+	testutil.RequireValuesEqual(t, moved.row > cursor.row, true,
 		"viewport=%#v cursor=%#v", viewport, moved,
 	)
 
-	viewport, moved = v.scrollHalfPage(viewport, moved, backward)
-	testutil.RequireEqual(t, viewport.top, originalTop,
+	viewport, moved = v.moveFocusedLineHalfPage(viewport, moved, backward)
+	testutil.RequireValuesEqual(t, viewport.top, originalTop,
 		"round trip viewport=%#v cursor=%#v", viewport, moved,
 	)
-	testutil.RequireEqual(t, moved.row, cursor.row,
+	testutil.RequireValuesEqual(t, moved.row, cursor.row,
 		"round trip viewport=%#v cursor=%#v", viewport, moved,
 	)
 }
@@ -265,33 +348,45 @@ func TestSplitVerticalMovementAndHalfPageUseVisualRows(t *testing.T) {
 func TestFileHeaderSticksWithoutCoveringDiffRows(t *testing.T) {
 	p := stickyHeaderPatch()
 	v := newUnifiedView(p, true)
-	viewport := v.newViewport(60, 3)
+	viewport := v.newVisibleArea(60, 3)
 	viewport.top = 3
 
 	rendered := strings.Split(
-		ansi.Strip(v.render(viewport, diffCursor{}, nil)),
+		ansi.Strip(v.formatVisibleChanges(viewport, diffCursor{}, nil)),
 		"\n",
 	)
-	testutil.RequireEqual(t, len(rendered), viewport.Height,
+	testutil.RequireValuesEqual(t, len(rendered), viewport.Height,
 		"sticky render = %#v", rendered,
 	)
-	testutil.RequireEqual(t, strings.Contains(rendered[0], "first.go"), true,
-		"sticky render = %#v", rendered,
+	testutil.RequireValuesEqual(
+		t,
+		strings.Contains(rendered[0], "first.go"),
+		true,
+		"sticky render = %#v",
+		rendered,
 	)
-	testutil.RequireEqual(t, strings.Contains(rendered[1], "first two"), true,
-		"sticky header covered content rows: %#v", rendered,
+	testutil.RequireValuesEqual(
+		t,
+		strings.Contains(rendered[1], "first two"),
+		true,
+		"sticky header covered content rows: %#v",
+		rendered,
 	)
-	testutil.RequireEqual(t, strings.Contains(rendered[2], "first three"), true,
-		"sticky header covered content rows: %#v", rendered,
+	testutil.RequireValuesEqual(
+		t,
+		strings.Contains(rendered[2], "first three"),
+		true,
+		"sticky header covered content rows: %#v",
+		rendered,
 	)
 
 	secondFileRow := 5
 	viewport.top = secondFileRow
 	rendered = strings.Split(
-		ansi.Strip(v.render(viewport, diffCursor{}, nil)),
+		ansi.Strip(v.formatVisibleChanges(viewport, diffCursor{}, nil)),
 		"\n",
 	)
-	testutil.RequireEqual(t, strings.Count(
+	testutil.RequireValuesEqual(t, strings.Count(
 		strings.Join(rendered, "\n"),
 		"second.go",
 	), 1,
@@ -299,11 +394,15 @@ func TestFileHeaderSticksWithoutCoveringDiffRows(t *testing.T) {
 
 	viewport.top = secondFileRow + 1
 	rendered = strings.Split(
-		ansi.Strip(v.render(viewport, diffCursor{}, nil)),
+		ansi.Strip(v.formatVisibleChanges(viewport, diffCursor{}, nil)),
 		"\n",
 	)
-	testutil.RequireEqual(t, strings.Contains(rendered[0], "second.go"), true,
-		"sticky header did not change with the file: %#v", rendered,
+	testutil.RequireValuesEqual(
+		t,
+		strings.Contains(rendered[0], "second.go"),
+		true,
+		"sticky header did not change with the file: %#v",
+		rendered,
 	)
 }
 
@@ -349,16 +448,16 @@ func stickyHeaderPatch() patch.Patch {
 
 func TestKeepVisibleAccountsForStickyFileHeader(t *testing.T) {
 	v := newUnifiedView(longPatch(), true)
-	cursor, _ := v.last()
-	viewport := v.keepVisible(v.newViewport(50, 4), cursor)
-	rendered := ansi.Strip(v.render(viewport, cursor, nil))
-	line, _ := v.line(cursor)
-	testutil.RequireEqual(t,
-		cursor.row < viewport.top+v.contentHeight(viewport), true,
+	cursor, _ := v.lastSelectableLine()
+	viewport := v.keepFocusedLineVisible(v.newVisibleArea(50, 4), cursor)
+	rendered := ansi.Strip(v.formatVisibleChanges(viewport, cursor, nil))
+	line, _ := v.patchLineForPosition(cursor)
+	testutil.RequireValuesEqual(t,
+		cursor.row < viewport.top+v.visibleRowsBelowHeader(viewport), true,
 		"last cursor row is hidden by sticky header: viewport=%#v render=%q",
 		viewport, rendered,
 	)
-	testutil.RequireEqual(t,
+	testutil.RequireValuesEqual(t,
 		strings.Contains(rendered, strconv.Itoa(int(line.NewNumber))), true,
 		"last cursor row is hidden by sticky header: viewport=%#v render=%q",
 		viewport, rendered,
@@ -389,13 +488,13 @@ func TestSplitTabsDoNotShiftLineNumbersOrDivider(t *testing.T) {
 	v := newSideBySideView(p, true)
 	cursor := mustFirst(t, v)
 	rendered := ansi.Strip(renderOne(v, cursor, 120, nil))
-	testutil.RequireEqual(t, !strings.ContainsRune(rendered, '\t'), true,
+	testutil.RequireValuesEqual(t, !strings.ContainsRune(rendered, '\t'), true,
 		"rendered = %q width=%d", rendered, lipgloss.Width(rendered),
 	)
-	testutil.RequireEqual(t, strings.Index(rendered, "│"), 59,
+	testutil.RequireValuesEqual(t, strings.Index(rendered, "│"), 59,
 		"rendered = %q width=%d", rendered, lipgloss.Width(rendered),
 	)
-	testutil.RequireEqual(t, lipgloss.Width(rendered), 120,
+	testutil.RequireValuesEqual(t, lipgloss.Width(rendered), 120,
 		"rendered = %q width=%d", rendered, lipgloss.Width(rendered),
 	)
 }
@@ -404,18 +503,18 @@ func TestHorizontalScrollKeepsUnifiedGutterFixed(t *testing.T) {
 	p := longLinePatch()
 	v := newUnifiedView(p, true)
 	cursor := mustFirst(t, v)
-	viewport := v.newViewport(37, 1)
-	viewport = v.keepVisible(viewport, cursor)
-	before := ansi.Strip(v.render(viewport, cursor, nil))
-	viewport = v.scrollHorizontal(viewport, 4)
-	after := ansi.Strip(v.render(viewport, cursor, nil))
-	testutil.RequireEqual(t, before[:14], after[:14],
+	viewport := v.newVisibleArea(37, 1)
+	viewport = v.keepFocusedLineVisible(viewport, cursor)
+	before := ansi.Strip(v.formatVisibleChanges(viewport, cursor, nil))
+	viewport = v.scrollVisibleAreaSideways(viewport, 4)
+	after := ansi.Strip(v.formatVisibleChanges(viewport, cursor, nil))
+	testutil.RequireValuesEqual(t, before[:14], after[:14],
 		"before=%q after=%q viewport=%#v", before, after, viewport,
 	)
-	testutil.RequireEqual(t, strings.Contains(after[14:], "efghij"), true,
+	testutil.RequireValuesEqual(t, strings.Contains(after[14:], "efghij"), true,
 		"before=%q after=%q viewport=%#v", before, after, viewport,
 	)
-	testutil.RequireEqual(t, viewport.LeftColumn, 4,
+	testutil.RequireValuesEqual(t, viewport.LeftColumn, 4,
 		"before=%q after=%q viewport=%#v", before, after, viewport,
 	)
 }
@@ -423,37 +522,49 @@ func TestHorizontalScrollKeepsUnifiedGutterFixed(t *testing.T) {
 func TestHorizontalScrollKeepsSplitGuttersAndDividerFixed(t *testing.T) {
 	v := newSideBySideView(longLinePatch(), true)
 	cursor := mustFirst(t, v)
-	viewport := v.newViewport(120, 1)
-	viewport = v.keepVisible(viewport, cursor)
-	viewport = v.scrollHorizontal(viewport, 8)
-	rendered := ansi.Strip(v.render(viewport, cursor, nil))
-	testutil.RequireEqual(t, strings.Index(rendered, "│"), 59,
+	viewport := v.newVisibleArea(120, 1)
+	viewport = v.keepFocusedLineVisible(viewport, cursor)
+	viewport = v.scrollVisibleAreaSideways(viewport, 8)
+	rendered := ansi.Strip(v.formatVisibleChanges(viewport, cursor, nil))
+	testutil.RequireValuesEqual(t, strings.Index(rendered, "│"), 59,
 		"gutters moved: %q", rendered,
 	)
-	testutil.RequireEqual(t, rendered[:6], "    1 ", "gutters moved: %q",
+	testutil.RequireValuesEqual(t, rendered[:6], "    1 ", "gutters moved: %q",
 		rendered,
 	)
-	testutil.RequireEqual(t, rendered[63:69], "    1 ", "gutters moved: %q",
+	testutil.RequireValuesEqual(
+		t,
+		rendered[63:69],
+		"    1 ",
+		"gutters moved: %q",
 		rendered,
 	)
-	testutil.RequireEqual(t, strings.Contains(rendered[6:59], "ghijkl"), true,
-		"offset differs: %q", rendered,
+	testutil.RequireValuesEqual(
+		t,
+		strings.Contains(rendered[6:59], "ghijkl"),
+		true,
+		"offset differs: %q",
+		rendered,
 	)
-	testutil.RequireEqual(t, strings.Contains(rendered[69:], "ghijkl"), true,
-		"offset differs: %q", rendered,
+	testutil.RequireValuesEqual(
+		t,
+		strings.Contains(rendered[69:], "ghijkl"),
+		true,
+		"offset differs: %q",
+		rendered,
 	)
 }
 
 func TestHorizontalScrollStartAndEndClamp(t *testing.T) {
 	v := newUnifiedView(longLinePatch(), true)
-	viewport := v.newViewport(37, 1)
-	viewport = v.scrollHorizontal(viewport, int(^uint(0)>>1))
-	testutil.RequireEqual(t, viewport.LeftColumn != 0, true, "%s",
+	viewport := v.newVisibleArea(37, 1)
+	viewport = v.scrollVisibleAreaSideways(viewport, int(^uint(0)>>1))
+	testutil.RequireValuesEqual(t, viewport.LeftColumn != 0, true, "%s",
 		"end did not scroll",
 	)
 
-	viewport = v.scrollHorizontal(viewport, -int(^uint(0)>>1))
-	testutil.RequireEqual(t, viewport.LeftColumn, 0, "start = %d",
+	viewport = v.scrollVisibleAreaSideways(viewport, -int(^uint(0)>>1))
+	testutil.RequireValuesEqual(t, viewport.LeftColumn, 0, "start = %d",
 		viewport.LeftColumn,
 	)
 }
@@ -461,15 +572,25 @@ func TestHorizontalScrollStartAndEndClamp(t *testing.T) {
 func TestDiffMarkersUseTerminalColorsAndCursorFillsWidth(t *testing.T) {
 	v := newUnifiedView(testPatch(), true)
 	first := mustFirst(t, v)
-	added, _ := v.search("added one", first, forward)
-	removed, _ := v.search("removed one", first, forward)
+	added, _ := v.findTextInChanges("added one", first, forward)
+	removed, _ := v.findTextInChanges("removed one", first, forward)
 	addedRender := renderTarget(v, added, first, 80, nil)
 	removedRender := renderTarget(v, removed, first, 80, nil)
-	testutil.RequireEqual(t, strings.Contains(addedRender, "\x1b[32m+\x1b[m"),
-		true, "added=%q removed=%q", addedRender, removedRender,
+	testutil.RequireValuesEqual(
+		t,
+		strings.Contains(addedRender, "\x1b[32m+\x1b[m"),
+		true,
+		"added=%q removed=%q",
+		addedRender,
+		removedRender,
 	)
-	testutil.RequireEqual(t, strings.Contains(removedRender, "\x1b[31m-\x1b[m"),
-		true, "added=%q removed=%q", addedRender, removedRender,
+	testutil.RequireValuesEqual(
+		t,
+		strings.Contains(removedRender, "\x1b[31m-\x1b[m"),
+		true,
+		"added=%q removed=%q",
+		addedRender,
+		removedRender,
 	)
 
 	assertStyledThroughColumn(
@@ -483,10 +604,10 @@ func TestDiffMarkersUseTerminalColorsAndCursorFillsWidth(t *testing.T) {
 func TestSelectionBackgroundKeepsDefaultWeight(t *testing.T) {
 	v := newUnifiedView(testPatch(), false)
 	first := mustFirst(t, v)
-	removed, _ := v.search("removed one", first, forward)
+	removed, _ := v.findTextInChanges("removed one", first, forward)
 	selection := beginSelection(removed)
 	rendered := renderTarget(v, removed, first, 72, &selection)
-	testutil.RequireEqual(t, !strings.Contains(rendered, "\x1b[1m"), true,
+	testutil.RequireValuesEqual(t, !strings.Contains(rendered, "\x1b[1m"), true,
 		"selection is bold: %q", rendered,
 	)
 
@@ -521,11 +642,15 @@ func TestSyntaxHighlightingSurvivesDiffStyling(t *testing.T) {
 	}
 	v := newUnifiedView(p, true)
 	first := mustFirst(t, v)
-	added, _ := v.search("new()", first, forward)
+	added, _ := v.findTextInChanges("new()", first, forward)
 	for _, cursor := range []diffCursor{first, added} {
 		rendered := renderTarget(v, cursor, diffCursor{}, 80, nil)
-		testutil.RequireEqual(t, strings.Contains(rendered, "[38;2;"), true,
-			"syntax highlighting missing: %q", rendered,
+		testutil.RequireValuesEqual(
+			t,
+			strings.Contains(rendered, "[38;2;"),
+			true,
+			"syntax highlighting missing: %q",
+			rendered,
 		)
 	}
 }
@@ -539,10 +664,15 @@ func TestRenderedCodeRowsHaveExactTerminalWidth(t *testing.T) {
 		cursor := mustFirst(t, v)
 		for {
 			width := lipgloss.Width(renderOne(v, cursor, test.width, nil))
-			testutil.RequireEqual(t, width, test.width, "width=%d want=%d",
-				width, test.width,
+			testutil.RequireValuesEqual(
+				t,
+				width,
+				test.width,
+				"width=%d want=%d",
+				width,
+				test.width,
 			)
-			next, ok := v.move(cursor, forward)
+			next, ok := v.moveInDirection(cursor, forward)
 			if !ok {
 				break
 			}
@@ -561,8 +691,8 @@ func TestRenderStyledRowStripsSyntaxBackgroundColors(t *testing.T) {
 		},
 		" ",
 	)
-	rendered := renderStyledRow(
-		lineStyle(patch.Addition, true),
+	rendered := formatStyledLine(
+		styleForChange(patch.Addition, true),
 		value,
 		80,
 		preserveForeground,
@@ -573,8 +703,13 @@ func TestRenderStyledRowStripsSyntaxBackgroundColors(t *testing.T) {
 		"[45m",
 		"[105m",
 	} {
-		testutil.RequireEqual(t, !strings.Contains(rendered, forbidden), true,
-			"retains %q: %q", forbidden, rendered,
+		testutil.RequireValuesEqual(
+			t,
+			!strings.Contains(rendered, forbidden),
+			true,
+			"retains %q: %q",
+			forbidden,
+			rendered,
 		)
 	}
 }
@@ -594,9 +729,9 @@ func renderTarget(
 	width int,
 	selection *diffSelection,
 ) string {
-	viewport := v.newViewport(width, 1)
+	viewport := v.newVisibleArea(width, 1)
 	viewport.top = target.row
-	return v.render(viewport, active, selection)
+	return v.formatVisibleChanges(viewport, active, selection)
 }
 
 func longLinePatch() patch.Patch {
@@ -659,8 +794,13 @@ func assertStyledThroughColumn(
 		state.apply(rendered[location[2]:location[3]])
 		rendered = rendered[location[1]:]
 	}
-	testutil.RequireEqual(t, column, width, "styled columns = %d, want %d",
-		column, width,
+	testutil.RequireValuesEqual(
+		t,
+		column,
+		width,
+		"styled columns = %d, want %d",
+		column,
+		width,
 	)
 }
 func assertStyledSpan(
@@ -716,10 +856,10 @@ func assertSGRState(
 	expected sgrExpectation,
 ) {
 	t.Helper()
-	testutil.RequireEqual(t, state.background, expected.background,
+	testutil.RequireValuesEqual(t, state.background, expected.background,
 		"column %d state=%#v want=%#v", column, state, expected,
 	)
-	testutil.RequireEqual(t, state.reverse, expected.reverse,
+	testutil.RequireValuesEqual(t, state.reverse, expected.reverse,
 		"column %d state=%#v want=%#v", column, state, expected,
 	)
 }

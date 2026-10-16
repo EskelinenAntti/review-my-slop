@@ -20,32 +20,38 @@ func EditComment(
 	anchor comments.Anchor,
 	onComplete func(string, error) tea.Msg,
 ) (tea.Cmd, error) {
-	command, err := editorCommand()
+	command, err := findConfiguredEditor()
 	if err != nil {
 		return nil, err
 	}
-	adapter, complete := commentWorkflow(ctx, command, body, anchor, onComplete)
+	adapter, complete := runCommentEditor(
+		ctx,
+		command,
+		body,
+		anchor,
+		onComplete,
+	)
 	return tea.Exec(adapter, complete), nil
 }
 
-func commentWorkflow(
+func runCommentEditor(
 	ctx context.Context,
 	command, body string,
 	anchor comments.Anchor,
 	onComplete func(string, error) tea.Msg,
 ) (*commandAdapter, tea.ExecCallback) {
 	adapter := &commandAdapter{}
-	adapter.run = func() error {
-		path, err := createCommentFile(body, anchor)
+	adapter.runCommand = func() error {
+		path, err := createCommentDraftFile(body, anchor)
 		if err != nil {
 			return err
 		}
 		defer os.Remove(path)
-		editorCommand := commentCommand(ctx, command, path)
-		if err := adapter.execute(editorCommand); err != nil {
+		configuredEditor := openDraftInEditor(ctx, command, path)
+		if err := adapter.runExternalCommand(configuredEditor); err != nil {
 			return fmt.Errorf("editor: %w", err)
 		}
-		adapter.body, err = readCommentFile(path, anchor)
+		adapter.body, err = readCommentDraftFile(path, anchor)
 		return err
 	}
 	return adapter, func(err error) tea.Msg {
@@ -60,18 +66,20 @@ func OpenSource(
 	line int,
 	onComplete func(error) tea.Msg,
 ) (tea.Cmd, error) {
-	command, err := editorCommand()
+	command, err := findConfiguredEditor()
 	if err != nil {
 		return nil, err
 	}
 	adapter := &commandAdapter{}
-	adapter.run = func() error {
-		return adapter.execute(sourceCommand(ctx, command, path, line))
+	adapter.runCommand = func() error {
+		return adapter.runExternalCommand(
+			openSourceInEditor(ctx, command, path, line),
+		)
 	}
 	return tea.Exec(adapter, onComplete), nil
 }
 
-func editorCommand() (string, error) {
+func findConfiguredEditor() (string, error) {
 	command := strings.TrimSpace(os.Getenv("EDITOR"))
 	if command == "" {
 		return "", errors.New("$EDITOR is not set")
@@ -80,17 +88,17 @@ func editorCommand() (string, error) {
 }
 
 type commandAdapter struct {
-	run            func() error
+	runCommand     func() error
 	body           string
 	stdin          io.Reader
 	stdout, stderr io.Writer
 }
 
-func (c *commandAdapter) Run() error            { return c.run() }
+func (c *commandAdapter) Run() error            { return c.runCommand() }
 func (c *commandAdapter) SetStdin(r io.Reader)  { c.stdin = r }
 func (c *commandAdapter) SetStdout(w io.Writer) { c.stdout = w }
 func (c *commandAdapter) SetStderr(w io.Writer) { c.stderr = w }
-func (c *commandAdapter) execute(cmd *exec.Cmd) error {
+func (c *commandAdapter) runExternalCommand(cmd *exec.Cmd) error {
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = c.stdin, c.stdout, c.stderr
 	return cmd.Run()
 }

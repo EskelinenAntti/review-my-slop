@@ -16,7 +16,7 @@ func TestWorkflowErrorKeepsDiffLabelWithinFooter(t *testing.T) {
 		for _, kind := range []patch.Kind{patch.Unstaged, patch.Branch} {
 			p := modelPatch()
 			p.Kind, p.Branch = kind, "main"
-			m := newModel(
+			m := newReviewModel(
 				p,
 				nil,
 				nil,
@@ -26,8 +26,8 @@ func TestWorkflowErrorKeepsDiffLabelWithinFooter(t *testing.T) {
 				"a very long storage failure\n" +
 					"that exceeds the available footer width",
 			)
-			lines := strings.Split(m.render(), "\n")
-			testutil.RequireEqual(t, len(lines), 8,
+			lines := strings.Split(m.formatCurrentScreen(), "\n")
+			testutil.RequireValuesEqual(t, len(lines), 8,
 				"error changed screen height: %d", len(lines),
 			)
 
@@ -36,11 +36,11 @@ func TestWorkflowErrorKeepsDiffLabelWithinFooter(t *testing.T) {
 			if kind == patch.Branch {
 				label = "branch changes from main"
 			}
-			testutil.RequireEqual(t,
+			testutil.RequireValuesEqual(t,
 				strings.HasSuffix(ansi.Strip(footer), label), true,
 				"footer lost label: %q", footer,
 			)
-			testutil.RequireEqual(
+			testutil.RequireValuesEqual(
 
 				// Labels longer than the terminal retain
 				// the existing rendering behavior.

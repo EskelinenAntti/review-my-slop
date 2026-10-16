@@ -76,30 +76,31 @@ type searchState struct {
 	miss, repeatMiss bool
 }
 
-// New creates a view with default dimensions of 80 columns and 30 rows.
-func New(p patch.Patch, options Options) *View {
+// NewChangesView creates a view with default dimensions of 80 columns and
+// 30 rows.
+func NewChangesView(p patch.Patch, options Options) *View {
 	v := &View{options: options, width: 80, height: 30}
-	v.view = v.newReviewView(p)
-	v.viewport = v.view.newViewport(v.width, frame.BodyHeight(v.height))
-	v.cursor, _ = v.view.first()
+	v.view = v.createChangesView(p)
+	v.viewport = v.view.newVisibleArea(v.width, frame.ContentHeight(v.height))
+	v.cursor, _ = v.view.firstSelectableLine()
 	return v
 }
 
-// Update replaces the patch while preserving meaningful focus, selection, and
+// ReplaceChanges replaces the patch while preserving focus, selection, and
 // relative screen position. Missing targets fall back to nearby available code.
-func (v *View) Update(p patch.Patch) {
+func (v *View) ReplaceChanges(p patch.Patch) {
 	v.EndDrag()
 	v.search.repeatMiss = false
-	v.replaceView(v.newReviewView(p))
+	v.replaceViewPreservingPosition(v.createChangesView(p))
 }
 
-// Configure changes presentation options while preserving meaningful position.
-func (v *View) Configure(options Options) {
+// SetOptions changes presentation options while preserving the current focus.
+func (v *View) SetOptions(options Options) {
 	active := v.sideBySideActive()
 	dark := v.options.Dark
 	v.options = options
 	if active != v.sideBySideActive() || dark != options.Dark {
-		v.Update(v.view.patch)
+		v.ReplaceChanges(v.view.patch)
 	}
 }
 
@@ -108,94 +109,99 @@ func (v *View) Resize(width, height int) {
 	v.EndDrag()
 	active := v.sideBySideActive()
 	v.width, v.height = width, height
-	v.viewport = v.view.resize(v.viewport, width, frame.BodyHeight(height))
+	v.viewport = v.view.resize(v.viewport, width, frame.ContentHeight(height))
 	if active != v.sideBySideActive() {
-		v.Update(v.view.patch)
+		v.ReplaceChanges(v.view.patch)
 	} else {
-		v.viewport = v.view.keepVisible(v.viewport, v.cursor)
+		v.viewport = v.view.keepFocusedLineVisible(v.viewport, v.cursor)
 	}
 }
 
 func (v *View) sideBySideActive() bool {
 	return v.options.SideBySide && v.width >= 100
 }
-func (v *View) newReviewView(p patch.Patch) *diffView {
-	return newDiffView(
+func (v *View) createChangesView(p patch.Patch) *diffView {
+	return createChangesView(
 		p,
 		Options{SideBySide: v.sideBySideActive(), Dark: v.options.Dark},
 	)
 }
 
-// Move performs navigation and keeps the resulting focus visible. Line and
-// page movement extend active selection only within its original hunk.
-func (v *View) Move(motion Motion) {
+// MoveFocusWithinChanges moves among lines, files, and panes while keeping the
+// focused line visible. Line and page movement extend selection only within
+// its original hunk.
+func (v *View) MoveFocusWithinChanges(motion Motion) {
 	v.EndDrag()
 	v.search.repeatMiss = false
 	switch motion {
 	case PreviousLine:
-		v.step(backward)
+		v.moveFocusOneLine(backward)
 	case NextLine:
-		v.step(forward)
+		v.moveFocusOneLine(forward)
 	case PreviousPage:
-		v.halfPage(backward)
+		v.moveFocusHalfPage(backward)
 	case NextPage:
-		v.halfPage(forward)
+		v.moveFocusHalfPage(forward)
 	case FirstLine:
-		if cursor, ok := v.view.first(); ok {
-			v.setCursor(cursor)
+		if cursor, ok := v.view.firstSelectableLine(); ok {
+			v.setFocusedLine(cursor)
 		}
 	case LastLine:
-		if cursor, ok := v.view.last(); ok {
-			v.setCursor(cursor)
+		if cursor, ok := v.view.lastSelectableLine(); ok {
+			v.setFocusedLine(cursor)
 		}
 
 	default:
-		v.moveBetweenSections(motion)
+		v.moveBetweenFilesAndPanes(motion)
 	}
 }
 
-func (v *View) moveBetweenSections(motion Motion) {
+func (v *View) moveBetweenFilesAndPanes(motion Motion) {
 	switch motion {
 	case PreviousFile:
-		v.jumpFile(backward)
+		v.moveFocusToAdjacentFile(backward)
 	case NextFile:
-		v.jumpFile(forward)
+		v.moveFocusToAdjacentFile(forward)
 	case OldPane:
-		v.switchPane(left)
+		v.switchToPane(left)
 	case NewPane:
-		v.switchPane(right)
+		v.switchToPane(right)
 	case OtherPane:
-		v.switchPane(v.cursor.pane.other())
+		v.switchToPane(v.cursor.pane.oppositePane())
 	default:
 		return
 	}
 }
 
-func (v *View) step(direction direction) {
-	next, ok := v.view.move(v.cursor, direction)
+func (v *View) moveFocusOneLine(direction direction) {
+	next, ok := v.view.moveInDirection(v.cursor, direction)
 	if !ok {
 		return
 	}
-	if !v.extendSelectionTo(next) {
+	if !v.extendSelectionThroughLine(next) {
 		return
 	}
-	v.setCursor(next)
+	v.setFocusedLine(next)
 }
-func (v *View) setCursor(cursor diffCursor) {
+func (v *View) setFocusedLine(cursor diffCursor) {
 	v.cursor = cursor
-	v.viewport = v.view.keepVisible(v.viewport, cursor)
+	v.viewport = v.view.keepFocusedLineVisible(v.viewport, cursor)
 }
-func (v *View) halfPage(direction direction) {
-	viewport, cursor := v.view.scrollHalfPage(v.viewport, v.cursor, direction)
-	if !v.extendSelectionTo(cursor) {
+func (v *View) moveFocusHalfPage(direction direction) {
+	viewport, cursor := v.view.moveFocusedLineHalfPage(
+		v.viewport,
+		v.cursor,
+		direction,
+	)
+	if !v.extendSelectionThroughLine(cursor) {
 		return
 	}
 	v.viewport, v.cursor = viewport, cursor
 }
 
-// extendSelectionTo accepts unrestricted movement when no range is active.
+// extendSelectionThroughLine accepts movement when no range is active.
 // An active range changes only when its endpoint remains in the original hunk.
-func (v *View) extendSelectionTo(cursor diffCursor) bool {
+func (v *View) extendSelectionThroughLine(cursor diffCursor) bool {
 	if v.selection == nil {
 		return true
 	}
@@ -205,20 +211,20 @@ func (v *View) extendSelectionTo(cursor diffCursor) bool {
 	}
 	return ok
 }
-func (v *View) jumpFile(direction direction) {
+func (v *View) moveFocusToAdjacentFile(direction direction) {
 	v.ClearSelection()
-	if cursor, ok := v.view.jumpFile(v.cursor, direction); ok {
-		v.setCursor(cursor)
+	if cursor, ok := v.view.moveFocusToAdjacentFile(v.cursor, direction); ok {
+		v.setFocusedLine(cursor)
 	}
 }
-func (v *View) switchPane(pane diffPane) {
-	cursor, ok := v.view.switchPane(v.cursor, pane)
+func (v *View) switchToPane(pane diffPane) {
+	cursor, ok := v.view.switchToPane(v.cursor, pane)
 	if !ok {
 		return
 	}
 	if v.selection != nil {
-		first, firstOK := v.view.switchPane(v.selection.First, pane)
-		last, lastOK := v.view.switchPane(v.selection.Last, pane)
+		first, firstOK := v.view.switchToPane(v.selection.First, pane)
+		last, lastOK := v.view.switchToPane(v.selection.Last, pane)
 		if !firstOK || !lastOK {
 			return
 		}
@@ -229,16 +235,16 @@ func (v *View) switchPane(pane diffPane) {
 		}
 		v.selection = &selection
 	}
-	v.setCursor(cursor)
+	v.setFocusedLine(cursor)
 }
 
-// Align positions the focused line at the requested viewport alignment.
-func (v *View) Align(alignment Alignment) {
+// PositionFocusedLine places the focused line at the requested screen position.
+func (v *View) PositionFocusedLine(alignment Alignment) {
 	v.search.repeatMiss = false
-	if _, ok := v.view.line(v.cursor); !ok {
+	if _, ok := v.view.patchLineForPosition(v.cursor); !ok {
 		return
 	}
-	v.viewport = v.view.align(
+	v.viewport = v.view.positionFocusedLine(
 		v.viewport,
 		v.cursor,
 		verticalAlignment(alignment),
@@ -248,15 +254,19 @@ func (v *View) Align(alignment Alignment) {
 // ScrollHorizontal shifts the visible content by the requested columns.
 func (v *View) ScrollHorizontal(columns int) {
 	v.search.repeatMiss = false
-	v.viewport = v.view.scrollHorizontal(v.viewport, columns)
+	v.viewport = v.view.scrollVisibleAreaSideways(v.viewport, columns)
 }
 
 // ScrollVertical moves content first, moving focus only when it leaves the
 // visible code. Like keyboard movement, it extends selection within its hunk.
 func (v *View) ScrollVertical(rows int) {
 	v.search.repeatMiss = false
-	viewport, cursor := v.view.scrollVertical(v.viewport, v.cursor, rows)
-	if cursor != v.cursor && !v.extendSelectionTo(cursor) {
+	viewport, cursor := v.view.scrollVisibleAreaUpDown(
+		v.viewport,
+		v.cursor,
+		rows,
+	)
+	if cursor != v.cursor && !v.extendSelectionThroughLine(cursor) {
 		return
 	}
 	v.viewport, v.cursor = viewport, cursor
@@ -270,7 +280,7 @@ func (v *View) ToggleSelection() {
 		v.ClearSelection()
 		return
 	}
-	if _, ok := v.view.line(v.cursor); ok {
+	if _, ok := v.view.patchLineForPosition(v.cursor); ok {
 		selection := beginSelection(v.cursor)
 		v.selection = &selection
 	}
@@ -283,23 +293,23 @@ func (v *View) ClearSelection() {
 	v.search.repeatMiss = false
 }
 
-// Selected returns the focused line when no explicit range is selected.
+// SelectedFileAndLines returns the focused line when no range is selected.
 // The bool is false when the patch has no selectable code.
-func (v *View) Selected() (patch.File, []patch.Line, bool) {
+func (v *View) SelectedFileAndLines() (patch.File, []patch.Line, bool) {
 	selection := v.selection
 	if selection == nil {
 		current := beginSelection(v.cursor)
 		selection = &current
 	}
-	file, ok := v.view.file(selection.First)
-	lines := v.view.lines(*selection)
+	file, ok := v.view.fileForLine(selection.First)
+	lines := v.view.selectedLines(*selection)
 	return file, lines, ok && len(lines) > 0
 }
 
-// Current returns the focused source line, independent of any selected range.
-func (v *View) Current() (patch.File, patch.Line, bool) {
-	file, fileOK := v.view.file(v.cursor)
-	line, lineOK := v.view.line(v.cursor)
+// FocusedFileAndLine returns the focused source line, regardless of selection.
+func (v *View) FocusedFileAndLine() (patch.File, patch.Line, bool) {
+	file, fileOK := v.view.fileForLine(v.cursor)
+	line, lineOK := v.view.patchLineForPosition(v.cursor)
 	return file, line, fileOK && lineOK
 }
 
@@ -337,14 +347,14 @@ func (v *View) BackspaceSearch() {
 func (v *View) previewSearch(query string) {
 	v.search.query = query
 	if query == "" {
-		v.setCursor(v.search.from)
+		v.setFocusedLine(v.search.from)
 		v.search.miss = false
 		return
 	}
-	cursor, ok := v.view.search(query, v.search.from, forward)
+	cursor, ok := v.view.findTextInChanges(query, v.search.from, forward)
 	v.search.miss = !ok
 	if ok {
-		v.setCursor(cursor)
+		v.setFocusedLine(cursor)
 	}
 }
 
@@ -365,36 +375,40 @@ func (v *View) CancelSearch() {
 	if !v.search.active {
 		return
 	}
-	v.setCursor(v.search.from)
+	v.setFocusedLine(v.search.from)
 	v.search.active, v.search.miss = false, false
 	v.search.query = ""
 }
 
-// Find moves to the next remembered search match in the requested direction.
-func (v *View) Find(d Direction) bool {
+// FindNextMatch moves to the next remembered match in the requested direction.
+func (v *View) FindNextMatch(d Direction) bool {
 	if v.search.term == "" {
 		return false
 	}
 	if d != Forward && d != Backward {
 		return false
 	}
-	cursor, ok := v.view.search(v.search.term, v.cursor, direction(d))
+	cursor, ok := v.view.findTextInChanges(
+		v.search.term,
+		v.cursor,
+		direction(d),
+	)
 	v.search.repeatMiss = !ok
 	if ok {
-		v.setCursor(cursor)
+		v.setFocusedLine(cursor)
 	}
 	return ok
 }
 
-// Render returns the full screen, including its header, status footer, and
-// final blank line. A non-nil error replaces the status while retaining the
+// FormatReviewScreen returns the complete screen, including its header and
+// footer. A non-nil error replaces the status while retaining the
 // position label. Dimensions are configured through Resize.
-func (v *View) Render(err error) string {
-	added, removed := patchLineCounts(v.view.patch)
+func (v *View) FormatReviewScreen(err error) string {
+	added, removed := countAddedAndRemovedLines(v.view.patch)
 	counts := mutedStyle.Render(fmt.Sprintf("+%d-%d", added, removed))
 	header := titleStyle.Render("review-my-slop") + "  " + counts
-	body := v.renderBody()
-	status := v.renderStatus()
+	body := v.formatBodyRows()
+	status := v.formatStatusLine()
 	footer := mutedStyle.Render(status)
 	if v.search.repeatMiss {
 		message := fmt.Sprintf("no matches for %q", v.search.term)
@@ -403,27 +417,32 @@ func (v *View) Render(err error) string {
 	if err != nil {
 		footer = errorStyle.Render(strings.ReplaceAll(err.Error(), "\n", " "))
 	}
-	return frame.Render(header, body, v.renderFooter(footer), v.height)
+	return frame.ComposeScreen(
+		header,
+		body,
+		v.formatFooterText(footer),
+		v.height,
+	)
 }
-func (v *View) renderBody() []string {
+func (v *View) formatBodyRows() []string {
 	var body []string
 	if len(v.view.patch.Files) == 0 {
 		empty := "No unstaged or untracked changes."
 		if v.view.patch.Kind == patch.Branch {
 			empty = "No branch or worktree changes."
 		}
-		body = make([]string, frame.BodyHeight(v.height))
+		body = make([]string, frame.ContentHeight(v.height))
 		body[min(1, len(body)-1)] = mutedStyle.Render(empty)
 	} else {
 		body = strings.Split(
-			v.view.render(v.viewport, v.cursor, v.selection),
+			v.view.formatVisibleChanges(v.viewport, v.cursor, v.selection),
 			"\n",
 		)
 	}
 	return body
 }
 
-func (v *View) renderStatus() string {
+func (v *View) formatStatusLine() string {
 	status := "j/k/h/l move  c comment  ? help  q quit"
 	if v.search.active {
 		status = "/" + v.search.query + cursorStyle.Render(" ")
@@ -436,13 +455,16 @@ func (v *View) renderStatus() string {
 	return status
 }
 
-func (v *View) renderFooter(value string) string {
+func (v *View) formatFooterText(value string) string {
 	label := "local changes"
 	if v.view.patch.Kind == patch.Branch {
 		label = "branch changes from " + v.view.patch.Branch
 	}
 	if v.viewport.top > 0 {
-		label += fmt.Sprintf(" (%d%%)", v.view.viewportProgress(v.viewport))
+		label += fmt.Sprintf(
+			" (%d%%)",
+			v.view.visibleContentProgressPercent(v.viewport),
+		)
 	}
 	right := mutedStyle.Render(label)
 	width := max(20, v.width)
@@ -452,10 +474,10 @@ func (v *View) renderFooter(value string) string {
 		max(1, width-lipgloss.Width(value)-lipgloss.Width(right)),
 	) + right
 }
-func patchLineCounts(p patch.Patch) (added, removed int) {
+func countAddedAndRemovedLines(p patch.Patch) (added, removed int) {
 	for _, file := range p.Files {
 		for _, hunk := range file.Hunks {
-			counts := hunkLineCounts(hunk)
+			counts := countLinesInChangeBlock(hunk)
 			added += counts[0]
 			removed += counts[1]
 		}
@@ -463,7 +485,7 @@ func patchLineCounts(p patch.Patch) (added, removed int) {
 	return added, removed
 }
 
-func hunkLineCounts(hunk patch.Hunk) [2]int {
+func countLinesInChangeBlock(hunk patch.Hunk) [2]int {
 	counts := [2]int{}
 	for _, line := range hunk.Lines {
 		switch line.Kind {

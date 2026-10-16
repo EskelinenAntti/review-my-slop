@@ -13,17 +13,17 @@ type Preferences struct {
 	SideBySide bool `json:"side_by_side"`
 }
 
-// Load reads preferences from the user configuration directory. Missing files
-// use defaults.
-func Load() (Preferences, error) {
-	path, err := settingsPath()
+// LoadPreferences reads preferences from the user configuration directory.
+// Missing files use defaults.
+func LoadPreferences() (Preferences, error) {
+	path, err := preferencesFilePath()
 	if err != nil {
 		return Preferences{}, err
 	}
-	return readPreferences(path)
+	return readPreferencesFromFile(path)
 }
 
-func readPreferences(path string) (Preferences, error) {
+func readPreferencesFromFile(path string) (Preferences, error) {
 	data, err := os.ReadFile(path)
 	if errors.Is(err, os.ErrNotExist) {
 		return Preferences{}, nil
@@ -38,16 +38,16 @@ func readPreferences(path string) (Preferences, error) {
 	return settings, nil
 }
 
-// Save atomically replaces the user preferences file.
-func Save(preferences Preferences) error {
-	path, err := settingsPath()
+// SavePreferences atomically replaces the user preferences file.
+func SavePreferences(preferences Preferences) error {
+	path, err := preferencesFilePath()
 	if err != nil {
 		return err
 	}
-	return writePreferences(path, preferences)
+	return writePreferencesToFile(path, preferences)
 }
 
-func writePreferences(path string, preferences Preferences) error {
+func writePreferencesToFile(path string, preferences Preferences) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return fmt.Errorf("create UI settings directory: %w", err)
 	}
@@ -79,7 +79,7 @@ func writePreferences(path string, preferences Preferences) error {
 	return nil
 }
 
-func settingsPath() (string, error) {
+func preferencesFilePath() (string, error) {
 	config, err := os.UserConfigDir()
 	if err != nil {
 		return "", fmt.Errorf("resolve UI settings directory: %w", err)

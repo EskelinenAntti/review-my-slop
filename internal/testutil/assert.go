@@ -3,8 +3,8 @@ package testutil
 
 import "testing"
 
-// RequireEqual stops the test when the actual and expected values differ.
-func RequireEqual[
+// RequireValuesEqual stops the test when the actual and expected values differ.
+func RequireValuesEqual[
 	T comparable,
 ](t *testing.T, got, want T, format string, args ...any) {
 	t.Helper()
@@ -13,8 +13,8 @@ func RequireEqual[
 	}
 }
 
-// CheckEqual reports unequal values and lets the test continue.
-func CheckEqual[
+// CheckValuesEqual reports unequal values and lets the test continue.
+func CheckValuesEqual[
 	T comparable,
 ](t *testing.T, got, want T, format string, args ...any) {
 	t.Helper()
@@ -23,8 +23,8 @@ func CheckEqual[
 	}
 }
 
-// NoError stops the test if an operation failed.
-func NoError(t *testing.T, err error) {
+// RequireNoError stops the test if an operation failed.
+func RequireNoError(t *testing.T, err error) {
 	t.Helper()
 	if err != nil {
 		t.Fatal(err)

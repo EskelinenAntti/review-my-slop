@@ -6,25 +6,25 @@ import (
 	"strings"
 )
 
-// WritePending writes the repository's pending feedback and acknowledges only
-// those comments after successful output. Failed output leaves them pending.
-func (s Store) WritePending(w io.Writer, repository string) error {
-	pending, err := s.List(repository)
+// WritePendingComments writes pending repository feedback and acknowledges
+// comments only after successful output. Failed output leaves them pending.
+func (s Store) WritePendingComments(w io.Writer, repository string) error {
+	pending, err := s.ListComments(repository)
 	if err != nil {
 		return err
 	}
-	if err := WritePrompt(w, pending); err != nil {
+	if err := WriteCommentPrompt(w, pending); err != nil {
 		return err
 	}
 	ids := make([]string, len(pending))
 	for i, comment := range pending {
 		ids[i] = comment.ID
 	}
-	return s.Acknowledge(repository, ids)
+	return s.DeleteDeliveredComments(repository, ids)
 }
 
-// WritePrompt writes comments as Markdown feedback for a coding agent.
-func WritePrompt(w io.Writer, comments []Comment) error {
+// WriteCommentPrompt writes comments as Markdown feedback for a coding agent.
+func WriteCommentPrompt(w io.Writer, comments []Comment) error {
 	if len(comments) == 0 {
 		_, err := fmt.Fprintln(w, "No pending review comments.")
 		return err
@@ -33,21 +33,21 @@ func WritePrompt(w io.Writer, comments []Comment) error {
 		return err
 	}
 	for index, comment := range comments {
-		if err := writePromptComment(w, index+1, comment); err != nil {
+		if err := writeCommentInPrompt(w, index+1, comment); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func writePromptComment(w io.Writer, number int, comment Comment) error {
+func writeCommentInPrompt(w io.Writer, number int, comment Comment) error {
 	anchor := comment.Anchor
 	_, headingErr := fmt.Fprintf(
 		w,
 		"\n### %d. `%s` (%s)\n\n",
 		number,
 		anchor.FilePath,
-		describeRange(anchor),
+		describeCommentedLineRange(anchor),
 	)
 	if headingErr != nil {
 		return headingErr
@@ -75,13 +75,19 @@ func writeQuotedLines(w io.Writer, lines []string) error {
 	return err
 }
 
-func describeRange(anchor Anchor) string {
+func describeCommentedLineRange(anchor Anchor) string {
 	var sides []string
 	if anchor.OldStart > 0 {
-		sides = append(sides, lineRange("old", anchor.OldStart, anchor.OldEnd))
+		sides = append(
+			sides,
+			describeSourceLineRange("old", anchor.OldStart, anchor.OldEnd),
+		)
 	}
 	if anchor.NewStart > 0 {
-		sides = append(sides, lineRange("new", anchor.NewStart, anchor.NewEnd))
+		sides = append(
+			sides,
+			describeSourceLineRange("new", anchor.NewStart, anchor.NewEnd),
+		)
 	}
 	if len(sides) == 0 {
 		return "diff lines"
@@ -89,7 +95,7 @@ func describeRange(anchor Anchor) string {
 	return strings.Join(sides, ", ")
 }
 
-func lineRange(side string, start, end int) string {
+func describeSourceLineRange(side string, start, end int) string {
 	if end == 0 || end == start {
 		return fmt.Sprintf("%s line %d", side, start)
 	}

@@ -30,15 +30,15 @@ type diffView struct {
 	dark  bool
 }
 
-func newDiffView(p patch.Patch, options Options) *diffView {
+func createChangesView(p patch.Patch, options Options) *diffView {
 	v := &diffView{patch: p, split: options.SideBySide, dark: options.Dark}
 	for fileIndex, file := range p.Files {
-		v.appendFileRows(fileIndex, file)
+		v.addFileRows(fileIndex, file)
 	}
 	return v
 }
 
-func (v *diffView) appendFileRows(fileIndex int, file patch.File) {
+func (v *diffView) addFileRows(fileIndex int, file patch.File) {
 	v.rows = append(
 		v.rows,
 		entry{
@@ -63,13 +63,13 @@ func (v *diffView) appendFileRows(fileIndex int, file patch.File) {
 			},
 		)
 	}
-	highlighted := v.highlight(&file)
+	highlighted := v.highlightFileSource(&file)
 	for hunkIndex, hunk := range file.Hunks {
-		v.appendHunkRows(fileIndex, hunkIndex, hunk, highlighted)
+		v.addChangeRows(fileIndex, hunkIndex, hunk, highlighted)
 	}
 }
 
-func (v *diffView) appendHunkRows(
+func (v *diffView) addChangeRows(
 	fileIndex, hunkIndex int,
 	hunk patch.Hunk,
 	highlighted pair,
@@ -82,10 +82,10 @@ func (v *diffView) appendHunkRows(
 			hunk:      hunkIndex,
 			leftLine:  -1,
 			rightLine: -1,
-			text:      hunkHeader(hunk.Header),
+			text:      formatChangeHeader(hunk.Header),
 		},
 	)
-	for _, indices := range v.lineRows(hunk.Lines) {
+	for _, indices := range v.rowsForChangedLines(hunk.Lines) {
 		row := entry{
 			kind:      lineRow,
 			file:      fileIndex,
@@ -93,31 +93,31 @@ func (v *diffView) appendHunkRows(
 			leftLine:  indices[0],
 			rightLine: indices[1],
 		}
-		v.highlightRow(&row, hunk.Lines, highlighted)
+		v.colorChangedLine(&row, hunk.Lines, highlighted)
 		v.rows = append(v.rows, row)
 	}
 }
 
-func (v *diffView) highlightRow(
+func (v *diffView) colorChangedLine(
 	row *entry,
 	lines []patch.Line,
 	highlighted pair,
 ) {
 	if !v.split {
-		row.text = sourceText(highlighted, lines[row.rightLine])
+		row.text = highlightedSourceText(highlighted, lines[row.rightLine])
 		return
 	}
 	if row.leftLine >= 0 {
-		row.left = sourceText(highlighted, lines[row.leftLine])
+		row.left = highlightedSourceText(highlighted, lines[row.leftLine])
 	}
 	if row.rightLine >= 0 {
-		row.right = sourceText(highlighted, lines[row.rightLine])
+		row.right = highlightedSourceText(highlighted, lines[row.rightLine])
 	}
 }
 
 // lineRows maps source lines to display rows. Split mode pairs each deletion
 // block with the immediately following additions; unmatched panes use -1.
-func (v *diffView) lineRows(lines []patch.Line) [][2]int {
+func (v *diffView) rowsForChangedLines(lines []patch.Line) [][2]int {
 	rows := make([][2]int, 0, len(lines))
 	for index := 0; index < len(lines); {
 		if !v.split || lines[index].Kind == patch.Context {
@@ -130,22 +130,22 @@ func (v *diffView) lineRows(lines []patch.Line) [][2]int {
 			index++
 			continue
 		}
-		addedStart := changeBlockEnd(lines, index, patch.Deletion)
-		end := changeBlockEnd(lines, addedStart, patch.Addition)
-		rows = append(rows, pairedChangeRows(index, addedStart, end)...)
+		addedStart := endOfChangeGroup(lines, index, patch.Deletion)
+		end := endOfChangeGroup(lines, addedStart, patch.Addition)
+		rows = append(rows, pairAddedAndRemovedLines(index, addedStart, end)...)
 		index = end
 	}
 	return rows
 }
 
-func changeBlockEnd(lines []patch.Line, start int, kind patch.LineKind) int {
+func endOfChangeGroup(lines []patch.Line, start int, kind patch.LineKind) int {
 	for start < len(lines) && lines[start].Kind == kind {
 		start++
 	}
 	return start
 }
 
-func pairedChangeRows(removedStart, addedStart, end int) [][2]int {
+func pairAddedAndRemovedLines(removedStart, addedStart, end int) [][2]int {
 	count := max(addedStart-removedStart, end-addedStart)
 	rows := make([][2]int, 0, count)
 	for offset := 0; offset < count; offset++ {
@@ -161,25 +161,25 @@ func pairedChangeRows(removedStart, addedStart, end int) [][2]int {
 	return rows
 }
 
-func sourceText(highlighted pair, line patch.Line) string {
+func highlightedSourceText(highlighted pair, line patch.Line) string {
 	if line.Kind == patch.Deletion {
-		return highlightedLine(highlighted.Old, line.OldNumber, line.Text)
+		return lineWithHighlight(highlighted.Old, line.OldNumber, line.Text)
 	}
-	return highlightedLine(highlighted.New, line.NewNumber, line.Text)
+	return lineWithHighlight(highlighted.New, line.NewNumber, line.Text)
 }
 
-func (v *diffView) highlight(file *patch.File) pair {
+func (v *diffView) highlightFileSource(file *patch.File) pair {
 	theme := lightTheme
 	if v.dark {
 		theme = darkTheme
 	}
 	return pair{
-		Old: render(file.OldPath, file.OldSource, theme),
-		New: render(file.NewPath, file.NewSource, theme),
+		Old: formatHighlightedSource(file.OldPath, file.OldSource, theme),
+		New: formatHighlightedSource(file.NewPath, file.NewSource, theme),
 	}
 }
 
-func hunkHeader(header string) string {
+func formatChangeHeader(header string) string {
 	if strings.HasPrefix(header, "@@") {
 		return header
 	}

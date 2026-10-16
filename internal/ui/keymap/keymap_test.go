@@ -2,7 +2,7 @@ package keymap
 
 import "testing"
 
-func TestFeed(t *testing.T) {
+func TestMatchKeySequence(t *testing.T) {
 	for _, test := range []struct {
 		name       string
 		keys, want []string
@@ -35,39 +35,41 @@ func TestFeed(t *testing.T) {
 
 func assertKeySequence(t *testing.T, keys, want []string) {
 	t.Helper()
-	m := New(
+	m := NewKeyMatcher(
 		Sequence{Prefix: "g", Keys: []string{"g"}, RetryUnmatched: true},
 		Sequence{Prefix: "z", Keys: []string{"z", "t", "b"}},
 		Sequence{Prefix: "ctrl+w", Keys: []string{"h", "l", "ctrl+w"}},
 	)
 	for i, key := range keys {
-		if got := m.Feed(key); got != want[i] {
+		if got := m.MatchKeySequence(key); got != want[i] {
 			t.Fatalf("key %d (%q): got %q, want %q", i, key, got, want[i])
 		}
 	}
 }
 
 func TestIndependentCopies(t *testing.T) {
-	m := New(Sequence{Prefix: "g", Keys: []string{"g"}, RetryUnmatched: true})
-	m.Feed("g")
+	m := NewKeyMatcher(
+		Sequence{Prefix: "g", Keys: []string{"g"}, RetryUnmatched: true},
+	)
+	m.MatchKeySequence("g")
 	cloned := m
-	if got := m.Feed("j"); got != "j" {
+	if got := m.MatchKeySequence("j"); got != "j" {
 		t.Fatalf("unmatched key: %q", got)
 	}
-	if got := cloned.Feed("g"); got != "g g" {
+	if got := cloned.MatchKeySequence("g"); got != "g g" {
 		t.Fatalf("copy: %q", got)
 	}
-	if got := m.Feed("g"); got != "" {
+	if got := m.MatchKeySequence("g"); got != "" {
 		t.Fatalf("original retained consumed prefix: %q", got)
 	}
-	if got := m.Feed("g"); got != "g g" {
+	if got := m.MatchKeySequence("g"); got != "g g" {
 		t.Fatalf("original: %q", got)
 	}
 }
 
 func TestZeroValuePassesKeysThrough(t *testing.T) {
 	var m Matcher
-	if got := m.Feed("j"); got != "j" {
+	if got := m.MatchKeySequence("j"); got != "j" {
 		t.Fatalf("got %q", got)
 	}
 }

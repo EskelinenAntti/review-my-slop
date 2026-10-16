@@ -15,9 +15,9 @@ type Binding struct {
 	Description string
 }
 
-// Render formats bindings with aligned descriptions and keeps the closing hint
-// below the available body. The supplied bindings determine the help content.
-func Render(bindings []Binding, width, height int) string {
+// FormatHelpScreen formats bindings with aligned descriptions and places the
+// closing hint below the available body.
+func FormatHelpScreen(bindings []Binding, width, height int) string {
 	column := 0
 	for _, binding := range bindings {
 		column = max(column, lipgloss.Width(binding.Keys))
@@ -30,7 +30,7 @@ func Render(bindings []Binding, width, height int) string {
 		) + "  " + binding.Description
 		body = append(body, ansi.Truncate(line, max(20, width), ""))
 	}
-	return frame.Render(
+	return frame.ComposeScreen(
 		lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Cyan).Render(
 			"review-my-slop help",
 		),

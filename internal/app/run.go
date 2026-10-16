@@ -10,19 +10,19 @@ import (
 	"github.com/eskelinenantti/review-my-slop/internal/patch"
 )
 
-// Run starts an interactive review of the supplied patch.
-func Run(
+// RunReviewApp starts an interactive review of the supplied patch.
+func RunReviewApp(
 	ctx context.Context,
 	currentPatch patch.Patch,
 	commentStore comments.Store,
 	refresh func(context.Context, patch.Kind) (patch.Patch, error),
 ) error {
-	return start(
+	return startApplication(
 		ctx,
 		currentPatch,
 		commentStore,
 		refresh,
-		initialTerminalSize,
+		readInitialTerminalSize,
 		func(
 			m model,
 			options ...tea.ProgramOption,
@@ -33,7 +33,7 @@ func Run(
 	)
 }
 
-func start(
+func startApplication(
 	ctx context.Context,
 	currentPatch patch.Patch,
 	store commentStore,
@@ -41,12 +41,12 @@ func start(
 	terminalSize func() size,
 	launch func(model, ...tea.ProgramOption) error,
 ) error {
-	pending, err := store.List(currentPatch.Root)
+	pending, err := store.ListComments(currentPatch.Root)
 	if err != nil {
 		return err
 	}
 	dimensions := terminalSize()
-	m, err := newWithStore(store, currentPatch, pending, dimensions)
+	m, err := newModelWithStore(store, currentPatch, pending, dimensions)
 	if err != nil {
 		return err
 	}
@@ -65,11 +65,11 @@ func start(
 	)
 }
 
-func initialTerminalSize() size {
-	return discoverTerminalSize(term.GetSize)
+func readInitialTerminalSize() size {
+	return readTerminalSize(term.GetSize)
 }
 
-func discoverTerminalSize(getSize func(uintptr) (int, int, error)) size {
+func readTerminalSize(getSize func(uintptr) (int, int, error)) size {
 	if width, height, err := getSize(os.Stdin.Fd()); err == nil {
 		return size{Width: width, Height: height}
 	}

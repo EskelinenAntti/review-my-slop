@@ -16,24 +16,29 @@ import (
 const errorExitCode = 1
 
 func main() {
-	if err := run(context.Background(), os.Args[1:], os.Stdout); err != nil {
+	err := dispatchCommand(context.Background(), os.Args[1:], os.Stdout)
+	if err != nil {
 		_, _ = fmt.Fprintln(os.Stderr, "review-my-slop:", err)
 		os.Exit(errorExitCode)
 	}
 }
 
-func run(ctx context.Context, args []string, output io.Writer) error {
+func dispatchCommand(
+	ctx context.Context,
+	args []string,
+	output io.Writer,
+) error {
 	if len(args) == 0 {
-		return runCode(ctx)
+		return runCodeReview(ctx)
 	}
 	if len(args) > 1 {
 		return errors.New("usage: review-my-slop [code|comments]")
 	}
 	switch args[0] {
 	case "code":
-		return runCode(ctx)
+		return runCodeReview(ctx)
 	case "comments":
-		return runComments(ctx, output)
+		return writePendingComments(ctx, output)
 	default:
 		return fmt.Errorf(
 			"unknown subcommand %q; usage: review-my-slop [code|comments]",
@@ -42,26 +47,26 @@ func run(ctx context.Context, args []string, output io.Writer) error {
 	}
 }
 
-func runCode(ctx context.Context) error {
-	commentStore, err := comments.OpenDefault()
+func runCodeReview(ctx context.Context) error {
+	commentStore, err := comments.OpenDefaultCommentsStore()
 	if err != nil {
 		return err
 	}
-	currentPatch, err := patch.Get(ctx, patch.Unstaged)
+	currentPatch, err := patch.GetPatch(ctx, patch.Unstaged)
 	if err != nil {
 		return err
 	}
-	return app.Run(ctx, currentPatch, commentStore, patch.Get)
+	return app.RunReviewApp(ctx, currentPatch, commentStore, patch.GetPatch)
 }
 
-func runComments(ctx context.Context, output io.Writer) error {
-	commentStore, err := comments.OpenDefault()
+func writePendingComments(ctx context.Context, output io.Writer) error {
+	commentStore, err := comments.OpenDefaultCommentsStore()
 	if err != nil {
 		return err
 	}
-	currentPatch, err := patch.Get(ctx, patch.Unstaged)
+	currentPatch, err := patch.GetPatch(ctx, patch.Unstaged)
 	if err != nil {
 		return err
 	}
-	return commentStore.WritePending(output, currentPatch.Root)
+	return commentStore.WritePendingComments(output, currentPatch.Root)
 }

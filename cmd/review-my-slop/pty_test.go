@@ -42,10 +42,10 @@ func TestCommandStartsAndQuitsInPTY(t *testing.T) {
 func checkCommandLifecycle(t *testing.T, binary string, args []string) {
 	t.Helper()
 	repo, err := filepath.EvalSymlinks(t.TempDir())
-	testutil.NoError(t, err)
+	testutil.RequireNoError(t, err)
 
 	runGit(t, repo, "init", "-q")
-	testutil.NoError(
+	testutil.RequireNoError(
 		t,
 		os.WriteFile(
 			filepath.Join(repo, "main.go"),
@@ -67,7 +67,7 @@ func checkCommandLifecycle(t *testing.T, binary string, args []string) {
 		command,
 		&pty.Winsize{Rows: 24, Cols: 100},
 	)
-	testutil.NoError(t, err)
+	testutil.RequireNoError(t, err)
 
 	defer terminal.Close()
 
@@ -85,8 +85,12 @@ func checkCommandLifecycle(t *testing.T, binary string, args []string) {
 	) && time.Now().Before(deadline) {
 		time.Sleep(20 * time.Millisecond)
 	}
-	testutil.RequireEqual(t, strings.Contains(output.String(), "main.go"), true,
-		"TUI did not render untracked file:\n%s", output.String(),
+	testutil.RequireValuesEqual(
+		t,
+		strings.Contains(output.String(), "main.go"),
+		true,
+		"TUI did not render untracked file:\n%s",
+		output.String(),
 	)
 
 	if _, err := terminal.Write([]byte("q")); err != nil {

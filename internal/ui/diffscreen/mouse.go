@@ -7,7 +7,7 @@ import "github.com/eskelinenantti/review-my-slop/internal/ui/internal/frame"
 // Headers, metadata, empty panes, and cells outside the body are ignored.
 func (v *View) BeginDrag(x, y int) bool {
 	v.EndDrag()
-	cursor, ok := v.cursorAtPoint(x, y)
+	cursor, ok := v.changedLineAtTerminalPoint(x, y)
 	if !ok {
 		return false
 	}
@@ -23,7 +23,7 @@ func (v *View) DragTo(x, y int) {
 	if v.drag == nil {
 		return
 	}
-	cursor, ok := v.cursorAtPoint(x, y)
+	cursor, ok := v.changedLineAtTerminalPoint(x, y)
 	if !ok || cursor.pane != v.drag.pane {
 		return
 	}
@@ -40,20 +40,20 @@ func (v *View) DragTo(x, y int) {
 // EndDrag leaves a completed selection available for keyboard actions.
 func (v *View) EndDrag() { v.drag = nil }
 
-func (v *View) cursorAtPoint(x, y int) (diffCursor, bool) {
-	row, ok := frame.BodyRow(x, y, v.width, v.height)
+func (v *View) changedLineAtTerminalPoint(x, y int) (diffCursor, bool) {
+	row, ok := frame.ContentRowAtPoint(x, y, v.width, v.height)
 	if !ok {
 		return diffCursor{}, false
 	}
-	if v.view.hasStickyHeader(v.viewport.top, v.viewport.Height) {
+	if v.view.fileHeaderStaysAtTop(v.viewport.top, v.viewport.Height) {
 		row--
 	}
-	if row < 0 || row >= v.view.contentHeight(v.viewport) {
+	if row < 0 || row >= v.view.visibleRowsBelowHeader(v.viewport) {
 		return diffCursor{}, false
 	}
 	pane := right
 	if v.view.split {
-		leftWidth, _ := splitPaneWidths(v.viewport.Width)
+		leftWidth, _ := twoColumnWidths(v.viewport.Width)
 		switch {
 		case x < leftWidth:
 			pane = left
@@ -63,5 +63,5 @@ func (v *View) cursorAtPoint(x, y int) (diffCursor, bool) {
 			pane = right
 		}
 	}
-	return v.view.cursorAt(v.viewport.top+row, pane)
+	return v.view.changedLineAtRow(v.viewport.top+row, pane)
 }

@@ -6,9 +6,15 @@ import (
 	"testing"
 )
 
-func TestRenderAlignsBindingsAndKeepsHintAtBottom(t *testing.T) {
+func TestFormatHelpScreenAlignsBindingsAndKeepsHintAtBottom(t *testing.T) {
 	lines := strings.Split(
-		ansi.Strip(Render([]Binding{{"x", "short"}, {"long", "wide"}}, 80, 8)),
+		ansi.Strip(
+			FormatHelpScreen(
+				[]Binding{{"x", "short"}, {"long", "wide"}},
+				80,
+				8,
+			),
+		),
 		"\n",
 	)
 	if strings.Index(lines[2], "short") != strings.Index(lines[3], "wide") {
@@ -19,14 +25,18 @@ func TestRenderAlignsBindingsAndKeepsHintAtBottom(t *testing.T) {
 	}
 }
 
-func TestRenderEmptyAndTruncatedBindings(t *testing.T) {
+func TestFormatHelpScreenHandlesEmptyAndTruncatedBindings(t *testing.T) {
 	for _, height := range []int{1, 4, 8} {
-		result := Render(nil, 80, height)
+		result := FormatHelpScreen(nil, 80, height)
 		if !strings.Contains(result, "? or Esc closes help") {
 			t.Fatalf("missing hint: %q", result)
 		}
 	}
-	result := Render([]Binding{{"one", "shown"}, {"two", "hidden"}}, 80, 5)
+	result := FormatHelpScreen(
+		[]Binding{{"one", "shown"}, {"two", "hidden"}},
+		80,
+		5,
+	)
 	if !strings.Contains(
 		result,
 		"shown",
@@ -35,8 +45,8 @@ func TestRenderEmptyAndTruncatedBindings(t *testing.T) {
 	}
 }
 
-func TestRenderClipsWideBindingText(t *testing.T) {
-	rendered := Render(
+func TestFormatHelpScreenClipsWideBindingText(t *testing.T) {
+	rendered := FormatHelpScreen(
 		[]Binding{{"界", strings.Repeat("description", 10)}},
 		24,
 		8,

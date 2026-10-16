@@ -9,23 +9,23 @@ func (m model) View() tea.View {
 	if m.quitting {
 		return tea.NewView("")
 	}
-	result := tea.NewView(m.render())
+	result := tea.NewView(m.formatCurrentScreen())
 	result.AltScreen = true
 	result.ReportFocus = true
 	result.MouseMode = tea.MouseModeCellMotion
 	return result
 }
-func (m model) render() string {
+func (m model) formatCurrentScreen() string {
 	switch m.mode {
 	case modeHelp:
-		return m.renderHelp()
+		return m.formatHelpScreen()
 	case modeComments:
-		return m.commentView.Render(m.err)
+		return m.commentView.FormatCommentsScreen(m.err)
 	default:
-		return m.diffView.Render(m.err)
+		return m.diffView.FormatReviewScreen(m.err)
 	}
 }
-func (m model) renderHelp() string {
+func (m model) formatHelpScreen() string {
 	bindings := []helpscreen.Binding{
 		{Keys: "j/k, arrows", Description: "move"},
 		{Keys: "h/l, left/right", Description: "scroll horizontally"},
@@ -36,8 +36,8 @@ func (m model) renderHelp() string {
 		{Keys: "gg/G", Description: "first/last changed line"},
 		{Keys: "zz/zt/zb", Description: "center/top/bottom current line"},
 		{Keys: "Ctrl-d/Ctrl-u", Description: "half-page down/up"},
-		{Keys: "/", Description: "search diff text"},
-		{Keys: "n/N", Description: "next/previous search match"},
+		{Keys: "/", Description: "findTextInChanges diff text"},
+		{Keys: "n/N", Description: "next/previous findTextInChanges match"},
 		{Keys: "]f/[f", Description: "next/previous file"},
 		{Keys: "v", Description: "select a line range"},
 		{Keys: "c", Description: "comment on selection/current line"},
@@ -49,5 +49,5 @@ func (m model) renderHelp() string {
 		{Keys: "q", Description: "quit"},
 	}
 
-	return helpscreen.Render(bindings, m.width, m.height)
+	return helpscreen.FormatHelpScreen(bindings, m.width, m.height)
 }

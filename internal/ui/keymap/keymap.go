@@ -17,8 +17,8 @@ type Matcher struct {
 	pending   string
 }
 
-// New builds a matcher from the supplied prefix rules.
-func New(sequences ...Sequence) Matcher {
+// NewKeyMatcher builds a matcher from the supplied prefix rules.
+func NewKeyMatcher(sequences ...Sequence) Matcher {
 	m := Matcher{sequences: make(map[string]Sequence, len(sequences))}
 	for _, sequence := range sequences {
 		sequence.Keys = append([]string(nil), sequence.Keys...)
@@ -27,9 +27,9 @@ func New(sequences ...Sequence) Matcher {
 	return m
 }
 
-// Feed returns a completed binding with keys separated by a space, or an
-// unprefixed key. An empty result means pending or consumed input.
-func (m *Matcher) Feed(key string) string {
+// MatchKeySequence completes a binding with space-separated keys or returns an
+// unprefixed key. An empty result means the key is pending or consumed.
+func (m *Matcher) MatchKeySequence(key string) string {
 	if m.pending != "" {
 		prefix := m.pending
 		m.pending = ""

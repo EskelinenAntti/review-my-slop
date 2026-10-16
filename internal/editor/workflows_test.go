@@ -25,21 +25,21 @@ func TestCommentWorkflowLifecycle(t *testing.T) {
 			dir := t.TempDir()
 			record := filepath.Join(dir, "draft-path")
 			script := filepath.Join(dir, "editor's script.sh")
-			testutil.NoError(
+			testutil.RequireNoError(
 				t,
 				os.WriteFile(
 					script,
 					[]byte(
-						"printf '%s' \"$1\" > "+shellQuote(record)+
+						"printf '%s' \"$1\" > "+quoteForShell(record)+
 							"\n"+tc.script+"\n",
 					),
 					0600,
 				),
 			)
 
-			adapter, complete := commentWorkflow(
+			adapter, complete := runCommentEditor(
 				context.Background(),
-				"sh "+shellQuote(script),
+				"sh "+quoteForShell(script),
 				tc.body,
 				comments.Anchor{
 					QuotedLines: []string{" context", "+added"},
@@ -51,7 +51,7 @@ func TestCommentWorkflowLifecycle(t *testing.T) {
 			)
 			complete(adapter.Run())
 			path, err := os.ReadFile(record)
-			testutil.NoError(t, err)
+			testutil.RequireNoError(t, err)
 
 			_, statErr := os.Stat(string(path))
 			if !errors.Is(statErr, os.ErrNotExist) {
@@ -68,15 +68,19 @@ func assertWorkflowResult(
 	want, errorText string,
 ) {
 	t.Helper()
-	testutil.CheckEqual(t, body, want, "body=%q want=%q", body, want)
+	testutil.CheckValuesEqual(t, body, want, "body=%q want=%q", body, want)
 	if errorText == "" {
-		testutil.NoError(t, err)
+		testutil.RequireNoError(t, err)
 		return
 	}
-	testutil.RequireEqual(t, err != nil, true, "expected error containing %q",
+	testutil.RequireValuesEqual(
+		t,
+		err != nil,
+		true,
+		"expected error containing %q",
 		errorText,
 	)
-	testutil.CheckEqual(t, strings.Contains(err.Error(), errorText), true,
+	testutil.CheckValuesEqual(t, strings.Contains(err.Error(), errorText), true,
 		"error=%v", err,
 	)
 }
@@ -91,13 +95,13 @@ func TestUnusedCommandCreatesNoDraft(t *testing.T) {
 		comments.Anchor{},
 		func(string, error) tea.Msg { return nil },
 	)
-	testutil.RequireEqual(t, err, nil, "cmd=%v err=%v", cmd, err)
-	testutil.RequireEqual(t, cmd != nil, true, "cmd=%v err=%v", cmd, err)
+	testutil.RequireValuesEqual(t, err, nil, "cmd=%v err=%v", cmd, err)
+	testutil.RequireValuesEqual(t, cmd != nil, true, "cmd=%v err=%v", cmd, err)
 
 	_ = cmd() // Producing Bubble Tea's execution message must also be lazy.
 	files, err := os.ReadDir(dir)
-	testutil.RequireEqual(t, err, nil, "files=%v err=%v", files, err)
-	testutil.RequireEqual(t, len(files), 0, "files=%v err=%v", files, err)
+	testutil.RequireValuesEqual(t, err, nil, "files=%v err=%v", files, err)
+	testutil.RequireValuesEqual(t, len(files), 0, "files=%v err=%v", files, err)
 }
 
 func TestCommentCancellationAndCreationFailure(t *testing.T) {
@@ -128,7 +132,7 @@ func TestCommentCancellationAndCreationFailure(t *testing.T) {
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
 			tc.setup(t, dir, cancel)
-			adapter, complete := commentWorkflow(
+			adapter, complete := runCommentEditor(
 				ctx,
 				"true",
 				"body",
@@ -137,10 +141,20 @@ func TestCommentCancellationAndCreationFailure(t *testing.T) {
 					body string,
 					err error,
 				) tea.Msg {
-					testutil.RequireEqual(t, err != nil, true, "body=%q err=%v",
-						body, err,
+					testutil.RequireValuesEqual(
+						t,
+						err != nil,
+						true,
+						"body=%q err=%v",
+						body,
+						err,
 					)
-					testutil.RequireEqual(t, body, "", "body=%q err=%v", body,
+					testutil.RequireValuesEqual(
+						t,
+						body,
+						"",
+						"body=%q err=%v",
+						body,
 						err,
 					)
 					return nil
@@ -148,15 +162,15 @@ func TestCommentCancellationAndCreationFailure(t *testing.T) {
 			)
 			complete(adapter.Run())
 			files, err := os.ReadDir(dir)
-			testutil.NoError(t, err)
-			testutil.RequireEqual(t, len(files), 0, "files=%v", files)
+			testutil.RequireNoError(t, err)
+			testutil.RequireValuesEqual(t, len(files), 0, "files=%v", files)
 		})
 	}
 }
 
 func TestTerminalFailureReachesCompletion(t *testing.T) {
 	sentinel := errors.New("terminal restoration failed")
-	adapter, complete := commentWorkflow(
+	adapter, complete := runCommentEditor(
 		context.Background(),
 		"true",
 		"body",
@@ -165,15 +179,22 @@ func TestTerminalFailureReachesCompletion(t *testing.T) {
 			body string,
 			err error,
 		) tea.Msg {
-			testutil.RequireEqual(t, body, "body", "body=%q err=%v", body, err)
-			testutil.RequireEqual(t, errors.Is(err, sentinel), true,
+			testutil.RequireValuesEqual(
+				t,
+				body,
+				"body",
+				"body=%q err=%v",
+				body,
+				err,
+			)
+			testutil.RequireValuesEqual(t, errors.Is(err, sentinel), true,
 				"body=%q err=%v", body, err,
 			)
 
 			return nil
 		},
 	)
-	testutil.NoError(t, adapter.Run())
+	testutil.RequireNoError(t, adapter.Run())
 
 	complete(sentinel)
 }
@@ -181,30 +202,30 @@ func TestTerminalFailureReachesCompletion(t *testing.T) {
 func TestMissingEditor(t *testing.T) {
 	t.Setenv("EDITOR", " \t")
 	cmd, err := EditComment(context.Background(), "", comments.Anchor{}, nil)
-	testutil.RequireEqual(t, cmd == nil, true, "cmd=%v err=%v", cmd, err)
-	testutil.RequireEqual(t, err != nil, true, "cmd=%v err=%v", cmd, err)
+	testutil.RequireValuesEqual(t, cmd == nil, true, "cmd=%v err=%v", cmd, err)
+	testutil.RequireValuesEqual(t, err != nil, true, "cmd=%v err=%v", cmd, err)
 	cmd, err = OpenSource(context.Background(), "source", 2, nil)
-	testutil.RequireEqual(t, cmd == nil, true, "cmd=%v err=%v", cmd, err)
-	testutil.RequireEqual(t, err != nil, true, "cmd=%v err=%v", cmd, err)
+	testutil.RequireValuesEqual(t, cmd == nil, true, "cmd=%v err=%v", cmd, err)
+	testutil.RequireValuesEqual(t, err != nil, true, "cmd=%v err=%v", cmd, err)
 }
 
 func TestSourceArgumentsAndContext(t *testing.T) {
 	var output bytes.Buffer
-	cmd := sourceCommand(
+	cmd := openSourceInEditor(
 		context.Background(),
 		"printf '%s\\n'",
 		"/repo with spaces/it's.go",
 		42,
 	)
 	cmd.Stdout = &output
-	testutil.NoError(t, cmd.Run())
+	testutil.RequireNoError(t, cmd.Run())
 
 	if got := output.String(); got != "+42\n/repo with spaces/it's.go\n" {
 		t.Fatalf("arguments = %q", got)
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	err := sourceCommand(ctx, "true", "source", 2).Run()
+	err := openSourceInEditor(ctx, "true", "source", 2).Run()
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("error = %v", err)
 	}
@@ -242,7 +263,7 @@ func TestEditCommentThroughBubbleTea(t *testing.T) {
 			return result
 		},
 	)
-	testutil.NoError(t, err)
+	testutil.RequireNoError(t, err)
 
 	program := tea.NewProgram(
 		workflowModel{cmd},
@@ -253,13 +274,23 @@ func TestEditCommentThroughBubbleTea(t *testing.T) {
 	if _, err := program.Run(); err != nil {
 		t.Fatal(err)
 	}
-	testutil.RequireEqual(t, called, true, "called=%v result=%#v", called,
+	testutil.RequireValuesEqual(t, called, true, "called=%v result=%#v", called,
 		result,
 	)
-	testutil.RequireEqual(t, result.body, "edited", "called=%v result=%#v",
-		called, result,
+	testutil.RequireValuesEqual(
+		t,
+		result.body,
+		"edited",
+		"called=%v result=%#v",
+		called,
+		result,
 	)
-	testutil.RequireEqual(t, result.err, nil, "called=%v result=%#v", called,
+	testutil.RequireValuesEqual(
+		t,
+		result.err,
+		nil,
+		"called=%v result=%#v",
+		called,
 		result,
 	)
 }
@@ -276,7 +307,7 @@ func TestRunningEditorCancellationCleansDraft(t *testing.T) {
 	t.Setenv("TMPDIR", dir)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	adapter, complete := commentWorkflow(
+	adapter, complete := runCommentEditor(
 		ctx,
 		"printf started; exec sleep 30 #",
 		"body",
@@ -285,10 +316,22 @@ func TestRunningEditorCancellationCleansDraft(t *testing.T) {
 			body string,
 			err error,
 		) tea.Msg {
-			testutil.RequireEqual(t, err != nil, true, "body=%q error=%v", body,
+			testutil.RequireValuesEqual(
+				t,
+				err != nil,
+				true,
+				"body=%q error=%v",
+				body,
 				err,
 			)
-			testutil.RequireEqual(t, body, "", "body=%q error=%v", body, err)
+			testutil.RequireValuesEqual(
+				t,
+				body,
+				"",
+				"body=%q error=%v",
+				body,
+				err,
+			)
 
 			return nil
 		},
@@ -296,6 +339,13 @@ func TestRunningEditorCancellationCleansDraft(t *testing.T) {
 	adapter.SetStdout(cancelOnWrite{cancel})
 	complete(adapter.Run())
 	files, err := os.ReadDir(dir)
-	testutil.RequireEqual(t, err, nil, "files=%v error=%v", files, err)
-	testutil.RequireEqual(t, len(files), 0, "files=%v error=%v", files, err)
+	testutil.RequireValuesEqual(t, err, nil, "files=%v error=%v", files, err)
+	testutil.RequireValuesEqual(
+		t,
+		len(files),
+		0,
+		"files=%v error=%v",
+		files,
+		err,
+	)
 }

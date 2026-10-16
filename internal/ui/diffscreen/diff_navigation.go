@@ -6,12 +6,15 @@ import (
 	"github.com/charmbracelet/x/ansi"
 )
 
-func (v *diffView) valid(cursor diffCursor) bool {
+func (v *diffView) isChangedLine(cursor diffCursor) bool {
 	return cursor.row >= 0 && cursor.row < len(v.rows) &&
-		v.lineIndex(v.rows[cursor.row], cursor.pane) >= 0
+		v.findLinePositionInChangeBlock(v.rows[cursor.row], cursor.pane) >= 0
 }
 
-func (v *diffView) lineIndex(current entry, pane diffPane) int {
+func (v *diffView) findLinePositionInChangeBlock(
+	current entry,
+	pane diffPane,
+) int {
 	if current.kind != lineRow {
 		return -1
 	}
@@ -21,87 +24,93 @@ func (v *diffView) lineIndex(current entry, pane diffPane) int {
 	return current.leftLine
 }
 
-func (v *diffView) cursorAt(y int, pane diffPane) (diffCursor, bool) {
+func (v *diffView) changedLineAtRow(y int, pane diffPane) (diffCursor, bool) {
 	cursor := diffCursor{row: y, pane: pane}
-	return cursor, v.valid(cursor)
+	return cursor, v.isChangedLine(cursor)
 }
 
-func (v *diffView) first() (diffCursor, bool) {
-	if cursor, ok := v.scan(-1, right, forward); ok {
+func (v *diffView) firstSelectableLine() (diffCursor, bool) {
+	if cursor, ok := v.findFirstChangedLineInDirection(-1, right, forward); ok {
 		return cursor, true
 	}
-	return v.scan(-1, left, forward)
+	return v.findFirstChangedLineInDirection(-1, left, forward)
 }
 
-func (v *diffView) last() (diffCursor, bool) {
-	if cursor, ok := v.scan(len(v.rows), right, backward); ok {
+func (v *diffView) lastSelectableLine() (diffCursor, bool) {
+	cursor, ok := v.findFirstChangedLineInDirection(
+		len(v.rows), right, backward,
+	)
+	if ok {
 		return cursor, true
 	}
-	return v.scan(len(v.rows), left, backward)
+	return v.findFirstChangedLineInDirection(len(v.rows), left, backward)
 }
 
-func (v *diffView) scan(
+func (v *diffView) findFirstChangedLineInDirection(
 	start int,
 	pane diffPane,
 	direction direction,
 ) (diffCursor, bool) {
-	step := int(direction)
-	for y := start + step; y >= 0 && y < len(v.rows); y += step {
-		if cursor, ok := v.cursorAt(y, pane); ok {
+	lineStep := int(direction)
+	for y := start + lineStep; y >= 0 && y < len(v.rows); y += lineStep {
+		if cursor, ok := v.changedLineAtRow(y, pane); ok {
 			return cursor, true
 		}
 	}
 	return diffCursor{}, false
 }
 
-func (v *diffView) move(
+func (v *diffView) moveInDirection(
 	cursor diffCursor,
 	direction direction,
 ) (diffCursor, bool) {
-	if !v.valid(cursor) {
+	if !v.isChangedLine(cursor) {
 		return diffCursor{}, false
 	}
-	return v.scan(cursor.row, cursor.pane, direction)
+	return v.findFirstChangedLineInDirection(cursor.row, cursor.pane, direction)
 }
 
-func (v *diffView) search(
+func (v *diffView) findTextInChanges(
 	query string,
 	cursor diffCursor,
 	direction direction,
 ) (diffCursor, bool) {
-	if query == "" || !v.valid(cursor) {
+	if query == "" || !v.isChangedLine(cursor) {
 		return diffCursor{}, false
 	}
 	query = strings.ToLower(query)
 	y := cursor.row
 	for count := 0; count < len(v.rows)-1; count++ {
 		y = (y + int(direction) + len(v.rows)) % len(v.rows)
-		if candidate, ok := v.searchRow(query, y, cursor.pane, direction); ok {
+		candidate, ok := v.findTextOnLine(
+			query, y, cursor.pane, direction,
+		)
+		if ok {
 			return candidate, true
 		}
 	}
 	return diffCursor{}, false
 }
 
-func (v *diffView) searchRow(
+func (v *diffView) findTextOnLine(
 	query string,
 	y int,
 	pane diffPane,
 	direction direction,
 ) (diffCursor, bool) {
 	if v.rows[y].kind != lineRow {
-		return v.searchMetadata(query, y, pane, direction)
+		return v.findTextInFileDetails(query, y, pane, direction)
 	}
 	panes := []diffPane{pane}
 	if v.split {
-		panes = append(panes, pane.other())
+		panes = append(panes, pane.oppositePane())
 	}
 	for _, candidatePane := range panes {
-		candidate, ok := v.cursorAt(y, candidatePane)
+		candidate, ok := v.changedLineAtRow(y, candidatePane)
 		if !ok {
 			continue
 		}
-		line, _ := v.line(candidate)
+		line, _ := v.patchLineForPosition(candidate)
 		if strings.Contains(strings.ToLower(line.Text), query) {
 			return candidate, true
 		}
@@ -109,19 +118,19 @@ func (v *diffView) searchRow(
 	return diffCursor{}, false
 }
 
-func (v *diffView) searchMetadata(
+func (v *diffView) findTextInFileDetails(
 	query string,
 	y int,
 	pane diffPane,
 	direction direction,
 ) (diffCursor, bool) {
 	if strings.Contains(strings.ToLower(ansi.Strip(v.rows[y].text)), query) {
-		return v.cursorNearRow(y, pane, direction)
+		return v.findChangedLineNearRow(y, pane, direction)
 	}
 	return diffCursor{}, false
 }
 
-func (v *diffView) cursorNearRow(
+func (v *diffView) findChangedLineNearRow(
 	y int,
 	pane diffPane,
 	direction direction,
@@ -131,7 +140,10 @@ func (v *diffView) cursorNearRow(
 			y + int(direction)*distance,
 			y - int(direction)*distance,
 		} {
-			if candidate, ok := v.cursorInFile(candidateY, y, pane); ok {
+			candidate, ok := v.findChangedLineInFile(
+				candidateY, y, pane,
+			)
+			if ok {
 				return candidate, true
 			}
 		}
@@ -139,37 +151,37 @@ func (v *diffView) cursorNearRow(
 	return diffCursor{}, false
 }
 
-func (v *diffView) cursorInFile(
+func (v *diffView) findChangedLineInFile(
 	y, origin int,
 	pane diffPane,
 ) (diffCursor, bool) {
 	if y < 0 || y >= len(v.rows) || v.rows[y].file != v.rows[origin].file {
 		return diffCursor{}, false
 	}
-	if candidate, ok := v.cursorAt(y, pane); ok {
+	if candidate, ok := v.changedLineAtRow(y, pane); ok {
 		return candidate, true
 	}
 	if v.split {
-		return v.cursorAt(y, pane.other())
+		return v.changedLineAtRow(y, pane.oppositePane())
 	}
 	return diffCursor{}, false
 }
 
-func (v *diffView) jumpFile(
+func (v *diffView) moveFocusToAdjacentFile(
 	cursor diffCursor,
 	direction direction,
 ) (diffCursor, bool) {
-	if !v.valid(cursor) {
+	if !v.isChangedLine(cursor) {
 		return diffCursor{}, false
 	}
-	file, _ := v.file(cursor)
+	file, _ := v.fileForLine(cursor)
 	y := cursor.row
 	for {
-		next, ok := v.scan(y, cursor.pane, direction)
+		next, ok := v.findFirstChangedLineInDirection(y, cursor.pane, direction)
 		if !ok {
 			return diffCursor{}, false
 		}
-		nextFile, _ := v.file(next)
+		nextFile, _ := v.fileForLine(next)
 		if nextFile.OldPath != file.OldPath ||
 			nextFile.NewPath != file.NewPath {
 			return next, true
@@ -178,23 +190,23 @@ func (v *diffView) jumpFile(
 	}
 }
 
-func (v *diffView) switchPane(
+func (v *diffView) switchToPane(
 	cursor diffCursor,
 	pane diffPane,
 ) (diffCursor, bool) {
-	if !v.split || !v.valid(cursor) {
+	if !v.split || !v.isChangedLine(cursor) {
 		return diffCursor{}, false
 	}
-	if candidate, ok := v.cursorAt(cursor.row, pane); ok {
+	if candidate, ok := v.changedLineAtRow(cursor.row, pane); ok {
 		return candidate, true
 	}
-	if candidate, ok := v.previousInFile(cursor, pane); ok {
+	if candidate, ok := v.previousLineInFile(cursor, pane); ok {
 		return candidate, true
 	}
-	return v.scan(cursor.row, pane, forward)
+	return v.findFirstChangedLineInDirection(cursor.row, pane, forward)
 }
 
-func (v *diffView) previousInFile(
+func (v *diffView) previousLineInFile(
 	cursor diffCursor,
 	pane diffPane,
 ) (diffCursor, bool) {
@@ -202,7 +214,7 @@ func (v *diffView) previousInFile(
 		if v.rows[y].file != v.rows[cursor.row].file {
 			break
 		}
-		if candidate, ok := v.cursorAt(y, pane); ok {
+		if candidate, ok := v.changedLineAtRow(y, pane); ok {
 			return candidate, true
 		}
 	}

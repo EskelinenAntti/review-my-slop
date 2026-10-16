@@ -11,7 +11,7 @@ import (
 
 func TestCommentOpensMarkdownFileInEditor(t *testing.T) {
 	anchor := comments.Anchor{QuotedLines: []string{"-old()```x", "+new()"}}
-	path, err := createCommentFile("existing comment", anchor)
+	path, err := createCommentDraftFile("existing comment", anchor)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -36,11 +36,11 @@ func TestCommentEditorSuggestionBehaviors(t *testing.T) {
 		anchor := comments.Anchor{
 			QuotedLines: []string{"+````go", `+fmt.Println("hello")`, "+````"},
 		}
-		draft := commentDraft("explain this", anchor)
+		draft := formatCommentDraft("explain this", anchor)
 		if !strings.Contains(
 			draft,
 			"`````suggestion",
-		) || stripUnchangedSuggestion(
+		) || removeUneditedSuggestion(
 			draft,
 			anchor.QuotedLines,
 		) != "explain this" {
@@ -52,14 +52,14 @@ func TestCommentEditorSuggestionBehaviors(t *testing.T) {
 			QuotedLines: []string{" unchanged()", "-old()", "+new()"},
 		}
 		want := "comment\n\n```suggestion\nunchanged()\nnew()\n```\n"
-		if got := commentDraft("comment", anchor); got != want {
+		if got := formatCommentDraft("comment", anchor); got != want {
 			t.Fatalf("draft = %q", got)
 		}
 	})
 	t.Run("edited suggestion remains", func(t *testing.T) {
 		body := "comment\n\n```suggestion\nbetter()\n```\n"
 		quoted := []string{"-old()", "+new()"}
-		if got := stripUnchangedSuggestion(body, quoted); got != body {
+		if got := removeUneditedSuggestion(body, quoted); got != body {
 			t.Fatalf("body = %q", got)
 		}
 	})
@@ -75,13 +75,13 @@ func TestExternalEditorCommandReadsEditedDraft(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = os.Remove(path) })
-	command := commentCommand(
+	command := openDraftInEditor(
 		context.Background(), "printf 'edited externally' >", path,
 	)
 	if err := command.Run(); err != nil {
 		t.Fatal(err)
 	}
-	body, err := readCommentFile(path, comments.Anchor{})
+	body, err := readCommentDraftFile(path, comments.Anchor{})
 	if err != nil || body != "edited externally" {
 		t.Fatalf("body = %q, err = %v", body, err)
 	}
@@ -89,8 +89,8 @@ func TestExternalEditorCommandReadsEditedDraft(t *testing.T) {
 
 func TestCommentDraftRoundTrip(t *testing.T) {
 	anchor := comments.Anchor{QuotedLines: []string{" old", "-gone", "+new"}}
-	draft := commentDraft("body", anchor)
-	got := stripUnchangedSuggestion(draft, anchor.QuotedLines)
+	draft := formatCommentDraft("body", anchor)
+	got := removeUneditedSuggestion(draft, anchor.QuotedLines)
 	if got != "body" {
 		t.Fatalf("unchanged suggestion result = %q", got)
 	}

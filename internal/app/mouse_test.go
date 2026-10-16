@@ -17,7 +17,7 @@ func TestMouseDragCreatesCommentSelection(t *testing.T) {
 			m,
 			tea.MouseClickMsg{X: 20, Y: 4, Button: tea.MouseLeft},
 		)
-		testutil.RequireEqual(t, lineText(m), "old()", "%s",
+		testutil.RequireValuesEqual(t, lineText(m), "old()", "%s",
 			"click did not focus deletion",
 		)
 
@@ -27,12 +27,22 @@ func TestMouseDragCreatesCommentSelection(t *testing.T) {
 			tea.MouseMotionMsg{X: 20, Y: 5, Button: tea.MouseLeft},
 		)
 		m = updateModel(t, m, tea.MouseReleaseMsg{X: 20, Y: 6, Button: release})
-		_, lines, ok := m.diffView.Selected()
-		testutil.RequireEqual(t, ok, true, "released selection = %#v", lines)
-		testutil.RequireEqual(t, len(lines), 3, "released selection = %#v",
+		_, lines, ok := m.diffView.SelectedFileAndLines()
+		testutil.RequireValuesEqual(
+			t,
+			ok,
+			true,
+			"released selection = %#v",
 			lines,
 		)
-		testutil.RequireEqual(t, lineText(m), "keep()",
+		testutil.RequireValuesEqual(
+			t,
+			len(lines),
+			3,
+			"released selection = %#v",
+			lines,
+		)
+		testutil.RequireValuesEqual(t, lineText(m), "keep()",
 			"released selection = %#v", lines,
 		)
 
@@ -41,15 +51,15 @@ func TestMouseDragCreatesCommentSelection(t *testing.T) {
 			m,
 			tea.MouseMotionMsg{X: 20, Y: 3, Button: tea.MouseLeft},
 		)
-		testutil.RequireEqual(t, lineText(m), "keep()", "%s",
+		testutil.RequireValuesEqual(t, lineText(m), "keep()", "%s",
 			"motion after release changed focus",
 		)
 
 		m = updateModel(t, m, textKey("c"))
-		testutil.RequireEqual(t, len(m.edit.anchor.QuotedLines), 3,
+		testutil.RequireValuesEqual(t, len(m.edit.anchor.QuotedLines), 3,
 			"comment anchor = %#v", m.edit.anchor,
 		)
-		testutil.RequireEqual(t, m.edit.anchor.QuotedLines[0], "-old()",
+		testutil.RequireValuesEqual(t, m.edit.anchor.QuotedLines[0], "-old()",
 			"comment anchor = %#v", m.edit.anchor,
 		)
 	}
@@ -63,8 +73,8 @@ func TestMouseClickCommentsAndIgnoreInformationalUI(t *testing.T) {
 	)
 	m = updateModel(t, m, textKey("C"))
 	m = updateModel(t, m, tea.MouseClickMsg{X: 10, Y: 2, Button: tea.MouseLeft})
-	selected, _ := m.commentView.Selected()
-	testutil.RequireEqual(t, selected.ID, "two", "%s",
+	selected, _ := m.commentView.SelectedComment()
+	testutil.RequireValuesEqual(t, selected.ID, "two", "%s",
 		"click did not focus comment",
 	)
 
@@ -75,7 +85,7 @@ func TestMouseClickCommentsAndIgnoreInformationalUI(t *testing.T) {
 		modeSearch,
 	} {
 		m.mode = mode
-		before := m.render()
+		before := m.formatCurrentScreen()
 		m = updateModel(
 			t,
 			m,
@@ -86,13 +96,13 @@ func TestMouseClickCommentsAndIgnoreInformationalUI(t *testing.T) {
 			m,
 			tea.MouseClickMsg{X: 0, Y: m.height - 2, Button: tea.MouseLeft},
 		)
-		testutil.RequireEqual(t, m.mode, mode, "%s",
+		testutil.RequireValuesEqual(t, m.mode, mode, "%s",
 			"header/footer click triggered an action",
 		)
-		testutil.RequireEqual(t, !m.quitting, true, "%s",
+		testutil.RequireValuesEqual(t, !m.quitting, true, "%s",
 			"header/footer click triggered an action",
 		)
-		testutil.RequireEqual(t, m.render(), before, "%s",
+		testutil.RequireValuesEqual(t, m.formatCurrentScreen(), before, "%s",
 			"header/footer click triggered an action",
 		)
 	}
@@ -105,7 +115,7 @@ func TestMouseIgnoresOtherButtonsAndKeyboardCancelsDrag(t *testing.T) {
 		m,
 		tea.MouseClickMsg{X: 10, Y: 5, Button: tea.MouseRight},
 	)
-	testutil.RequireEqual(t, lineText(m), "package main", "%s",
+	testutil.RequireValuesEqual(t, lineText(m), "package main", "%s",
 		"right click moved focus",
 	)
 
@@ -114,7 +124,7 @@ func TestMouseIgnoresOtherButtonsAndKeyboardCancelsDrag(t *testing.T) {
 		m,
 		tea.MouseMotionMsg{X: 10, Y: 5, Button: tea.MouseLeft},
 	)
-	testutil.RequireEqual(t, lineText(m), "package main", "%s",
+	testutil.RequireValuesEqual(t, lineText(m), "package main", "%s",
 		"motion without a press moved focus",
 	)
 
@@ -125,7 +135,7 @@ func TestMouseIgnoresOtherButtonsAndKeyboardCancelsDrag(t *testing.T) {
 		m,
 		tea.MouseMotionMsg{X: 10, Y: 5, Button: tea.MouseLeft},
 	)
-	testutil.RequireEqual(t, lineText(m), "old()", "%s",
+	testutil.RequireValuesEqual(t, lineText(m), "old()", "%s",
 		"keyboard action did not cancel drag",
 	)
 }

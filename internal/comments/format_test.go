@@ -15,29 +15,33 @@ func TestWritePendingAcknowledgesOnlyExportedComments(t *testing.T) {
 		testComment("/repo", "exported"),
 		testComment("/other", "other repository"),
 	} {
-		if _, err := store.Add(comment); err != nil {
+		if _, err := store.AddComment(comment); err != nil {
 			t.Fatal(err)
 		}
 	}
 	var output bytes.Buffer
 	writer := &addingWriter{Buffer: &output, add: func() {
 		added := testComment("/repo", "added during output")
-		if _, err := store.Add(added); err != nil {
+		if _, err := store.AddComment(added); err != nil {
 			t.Fatal(err)
 		}
 	}}
-	testutil.NoError(t, store.WritePending(writer, "/repo"))
-	testutil.RequireEqual(t, strings.Contains(output.String(), "exported"),
-		true, "output = %q", output.String(),
+	testutil.RequireNoError(t, store.WritePendingComments(writer, "/repo"))
+	testutil.RequireValuesEqual(
+		t,
+		strings.Contains(output.String(), "exported"),
+		true,
+		"output = %q",
+		output.String(),
 	)
-	testutil.RequireEqual(t,
+	testutil.RequireValuesEqual(t,
 		!strings.Contains(
 			output.String(),
 			"other repository",
 		), true, "output = %q",
 		output.String(),
 	)
-	testutil.RequireEqual(t,
+	testutil.RequireValuesEqual(t,
 		!strings.Contains(output.String(), "added during output"), true,
 		"output = %q", output.String(),
 	)
@@ -46,13 +50,18 @@ func TestWritePendingAcknowledgesOnlyExportedComments(t *testing.T) {
 		"/repo":  "added during output",
 		"/other": "other repository",
 	} {
-		pending, err := store.List(repository)
-		testutil.NoError(t, err)
-		testutil.RequireEqual(t, len(pending), 1, "%s pending = %#v",
+		pending, err := store.ListComments(repository)
+		testutil.RequireNoError(t, err)
+		testutil.RequireValuesEqual(t, len(pending), 1, "%s pending = %#v",
 			repository, pending,
 		)
-		testutil.RequireEqual(t, pending[0].Body, want, "%s pending = %#v",
-			repository, pending,
+		testutil.RequireValuesEqual(
+			t,
+			pending[0].Body,
+			want,
+			"%s pending = %#v",
+			repository,
+			pending,
 		)
 	}
 }

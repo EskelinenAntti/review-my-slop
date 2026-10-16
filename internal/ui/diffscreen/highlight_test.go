@@ -16,7 +16,7 @@ func TestRenamedFileHighlightsEachSideUsingItsOwnPath(t *testing.T) {
 		NewSource: source,
 	}
 	view := &diffView{dark: true}
-	pair := view.highlight(&file)
+	pair := view.highlightFileSource(&file)
 	old, updated := strings.Join(pair.Old, "\n"), strings.Join(pair.New, "\n")
 	if old == updated || stripANSI(old) != strings.TrimSuffix(
 		source,
@@ -27,7 +27,7 @@ func TestRenamedFileHighlightsEachSideUsingItsOwnPath(t *testing.T) {
 }
 
 func TestLicenseHighlightFixture(t *testing.T) {
-	lines := render("LICENSE", `MIT License
+	lines := formatHighlightedSource("LICENSE", `MIT License
 
 Copyright (c) 2026 Antti Eskelinen
 
@@ -54,8 +54,14 @@ func answer(value int) string {
 	return ""
 }
 `
-	dark := strings.Join(render("example.go", source, darkTheme), "\n")
-	light := strings.Join(render("example.go", source, lightTheme), "\n")
+	dark := strings.Join(
+		formatHighlightedSource("example.go", source, darkTheme),
+		"\n",
+	)
+	light := strings.Join(
+		formatHighlightedSource("example.go", source, lightTheme),
+		"\n",
+	)
 	if dark == light {
 		t.Fatal(
 			"light and dark terminal backgrounds use identical highlighting",

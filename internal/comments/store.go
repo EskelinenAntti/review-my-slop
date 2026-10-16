@@ -24,27 +24,27 @@ type Store struct {
 	Path string
 }
 
-// DefaultPath returns the database path in the application data directory.
-func DefaultPath() (string, error) {
-	data, err := DataDir()
+// DefaultCommentsStorePath returns the database path in the app data directory.
+func DefaultCommentsStorePath() (string, error) {
+	data, err := ApplicationDataDirectory()
 	if err != nil {
 		return "", err
 	}
 	return filepath.Join(data, "comments.db"), nil
 }
 
-// OpenDefault returns a Store configured with the default database path.
-func OpenDefault() (Store, error) {
-	path, err := DefaultPath()
+// OpenDefaultCommentsStore returns a Store configured with the default path.
+func OpenDefaultCommentsStore() (Store, error) {
+	path, err := DefaultCommentsStorePath()
 	if err != nil {
 		return Store{}, err
 	}
 	return Store{Path: path}, nil
 }
 
-// Add validates and stores a comment, assigning an ID and timestamp when
+// AddComment validates and stores a comment, assigning an ID and timestamp when
 // absent.
-func (s Store) Add(comment Comment) (Comment, error) {
+func (s Store) AddComment(comment Comment) (Comment, error) {
 	if comment.Repository == "" {
 		return Comment{}, errors.New("comment requires a repository")
 	}
@@ -61,14 +61,14 @@ func (s Store) Add(comment Comment) (Comment, error) {
 	if err != nil {
 		return Comment{}, fmt.Errorf("encode comment: %w", err)
 	}
-	err = s.transact(func(bucket *bolt.Bucket) error {
-		return addComment(bucket, comment.ID, data)
+	err = s.saveComments(func(bucket *bolt.Bucket) error {
+		return storeComment(bucket, comment.ID, data)
 	})
 	return comment, err
 }
 
-func addComment(bucket *bolt.Bucket, id string, data []byte) error {
-	if pendingBytes(bucket)+len(data) > maxPendingBytes {
+func storeComment(bucket *bolt.Bucket, id string, data []byte) error {
+	if totalCommentBytes(bucket)+len(data) > maxPendingBytes {
 		return fmt.Errorf("pending feedback exceeds %d bytes", maxPendingBytes)
 	}
 	if bucket.Get([]byte(id)) != nil {
@@ -77,12 +77,12 @@ func addComment(bucket *bolt.Bucket, id string, data []byte) error {
 	return bucket.Put([]byte(id), data)
 }
 
-// List returns pending comments for the repository.
-func (s Store) List(repository string) ([]Comment, error) {
+// ListComments returns pending comments for the repository.
+func (s Store) ListComments(repository string) ([]Comment, error) {
 	var comments []Comment
-	err := s.view(func(bucket *bolt.Bucket) error {
+	err := s.readComments(func(bucket *bolt.Bucket) error {
 		return bucket.ForEach(func(_, value []byte) error {
-			comment, err := decodeComment(value)
+			comment, err := readCommentData(value)
 			if err != nil {
 				return err
 			}
@@ -95,8 +95,8 @@ func (s Store) List(repository string) ([]Comment, error) {
 	return comments, err
 }
 
-// Update replaces an existing comment in the repository.
-func (s Store) Update(comment Comment) error {
+// UpdateComment replaces an existing comment in the repository.
+func (s Store) UpdateComment(comment Comment) error {
 	if comment.Repository == "" || comment.ID == "" {
 		return errors.New("repository and comment ID are required")
 	}
@@ -107,20 +107,20 @@ func (s Store) Update(comment Comment) error {
 	if err != nil {
 		return fmt.Errorf("encode comment: %w", err)
 	}
-	return s.transact(
+	return s.saveComments(
 		func(bucket *bolt.Bucket) error {
 			return replaceComment(bucket, comment, data)
 		},
 	)
 }
 
-// Delete removes the identified comment from the repository.
-func (s Store) Delete(repository, id string) error {
+// DeleteComment removes the identified comment from the repository.
+func (s Store) DeleteComment(repository, id string) error {
 	if repository == "" || id == "" {
 		return errors.New("repository and comment ID are required")
 	}
-	return s.transact(func(bucket *bolt.Bucket) error {
-		key, err := findCommentKey(bucket, repository, id)
+	return s.saveComments(func(bucket *bolt.Bucket) error {
+		key, err := findStoredCommentRecordKey(bucket, repository, id)
 		if err != nil {
 			return err
 		}
@@ -131,8 +131,8 @@ func (s Store) Delete(repository, id string) error {
 	})
 }
 
-// Acknowledge removes the identified comments after their feedback is consumed.
-func (s Store) Acknowledge(repository string, ids []string) error {
+// DeleteDeliveredComments removes comments after their feedback is consumed.
+func (s Store) DeleteDeliveredComments(repository string, ids []string) error {
 	if len(ids) == 0 {
 		return nil
 	}
@@ -140,16 +140,16 @@ func (s Store) Acknowledge(repository string, ids []string) error {
 	for _, id := range ids {
 		wanted[id] = struct{}{}
 	}
-	return s.transact(func(bucket *bolt.Bucket) error {
-		keys, err := findPendingKeys(bucket, repository, wanted)
+	return s.saveComments(func(bucket *bolt.Bucket) error {
+		keys, err := findKeysForDeliveredComments(bucket, repository, wanted)
 		if err != nil {
 			return err
 		}
-		return deleteKeys(bucket, keys)
+		return deleteCommentRecords(bucket, keys)
 	})
 }
 
-func deleteKeys(bucket *bolt.Bucket, keys [][]byte) error {
+func deleteCommentRecords(bucket *bolt.Bucket, keys [][]byte) error {
 	for _, key := range keys {
 		if err := bucket.Delete(key); err != nil {
 			return err
@@ -158,7 +158,7 @@ func deleteKeys(bucket *bolt.Bucket, keys [][]byte) error {
 	return nil
 }
 
-func pendingBytes(bucket *bolt.Bucket) int {
+func totalCommentBytes(bucket *bolt.Bucket) int {
 	var total int
 	cursor := bucket.Cursor()
 	for _, value := cursor.First(); value != nil; _, value = cursor.Next() {
@@ -168,12 +168,22 @@ func pendingBytes(bucket *bolt.Bucket) int {
 }
 
 func replaceComment(bucket *bolt.Bucket, comment Comment, data []byte) error {
-	key, err := findCommentKey(bucket, comment.Repository, comment.ID)
+	key, err := findStoredCommentRecordKey(
+		bucket,
+		comment.Repository,
+		comment.ID,
+	)
 	if err != nil {
 		return err
 	}
 	if key == nil {
 		return errors.New("comment is no longer in the comments")
+	}
+	currentBytes := totalCommentBytes(bucket)
+	oldCommentBytes := len(bucket.Get(key))
+	updatedBytes := currentBytes - oldCommentBytes + len(data)
+	if updatedBytes > maxPendingBytes {
+		return fmt.Errorf("pending feedback exceeds %d bytes", maxPendingBytes)
 	}
 	if !bytes.Equal(key, []byte(comment.ID)) {
 		if err := bucket.Delete(key); err != nil {
@@ -183,13 +193,13 @@ func replaceComment(bucket *bolt.Bucket, comment Comment, data []byte) error {
 	return bucket.Put([]byte(comment.ID), data)
 }
 
-func findCommentKey(
+func findStoredCommentRecordKey(
 	bucket *bolt.Bucket,
 	repository, id string,
 ) ([]byte, error) {
 	cursor := bucket.Cursor()
 	for key, value := cursor.First(); key != nil; key, value = cursor.Next() {
-		comment, err := decodeComment(value)
+		comment, err := readCommentData(value)
 		if err != nil {
 			return nil, err
 		}
@@ -200,14 +210,14 @@ func findCommentKey(
 	return nil, nil
 }
 
-func findPendingKeys(
+func findKeysForDeliveredComments(
 	bucket *bolt.Bucket,
 	repository string,
 	wanted map[string]struct{},
 ) ([][]byte, error) {
 	var keys [][]byte
 	err := bucket.ForEach(func(key, value []byte) error {
-		comment, err := decodeComment(value)
+		comment, err := readCommentData(value)
 		if err != nil {
 			return err
 		}
@@ -244,7 +254,7 @@ type legacyRecord struct {
 	Comment    *legacyComment `json:"comment"`
 }
 
-func decodeComment(data []byte) (Comment, error) {
+func readCommentData(data []byte) (Comment, error) {
 	var legacy legacyRecord
 	if err := json.Unmarshal(data, &legacy); err != nil {
 		return Comment{}, fmt.Errorf("decode comment: %w", err)
@@ -265,8 +275,8 @@ func decodeComment(data []byte) (Comment, error) {
 	return comment, nil
 }
 
-func (s Store) transact(fn func(*bolt.Bucket) error) error {
-	db, err := s.open()
+func (s Store) saveComments(fn func(*bolt.Bucket) error) error {
+	db, err := s.openCommentsFile()
 	if err != nil {
 		return err
 	}
@@ -280,8 +290,8 @@ func (s Store) transact(fn func(*bolt.Bucket) error) error {
 	})
 }
 
-func (s Store) view(fn func(*bolt.Bucket) error) error {
-	db, err := s.open()
+func (s Store) readComments(fn func(*bolt.Bucket) error) error {
+	db, err := s.openCommentsFile()
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			return nil
@@ -298,7 +308,7 @@ func (s Store) view(fn func(*bolt.Bucket) error) error {
 	})
 }
 
-func (s Store) open() (*bolt.DB, error) {
+func (s Store) openCommentsFile() (*bolt.DB, error) {
 	if s.Path == "" {
 		return nil, errors.New("comments path is empty")
 	}

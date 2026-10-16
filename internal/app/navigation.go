@@ -7,9 +7,9 @@ import (
 	"github.com/eskelinenantti/review-my-slop/internal/ui/diffscreen"
 )
 
-func (m *model) toggleSideBySide() {
+func (m *model) toggleSplitView() {
 	enabled := !m.diffOptions.SideBySide
-	m.setSideBySide(enabled)
+	m.setSplitView(enabled)
 	if m.saveLayout != nil {
 		if err := m.saveLayout(m.diffOptions.SideBySide); err != nil {
 			m.err = fmt.Errorf("save side-by-side preference: %w", err)
@@ -17,12 +17,12 @@ func (m *model) toggleSideBySide() {
 	}
 }
 
-func (m *model) setSideBySide(enabled bool) {
+func (m *model) setSplitView(enabled bool) {
 	m.diffOptions.SideBySide = enabled
-	m.diffView.Configure(m.diffOptions)
+	m.diffView.SetOptions(m.diffOptions)
 }
 
-func (m model) updateSearch(
+func (m model) updateSearchQuery(
 	name string,
 	key tea.KeyPressMsg,
 ) (tea.Model, tea.Cmd) {
@@ -43,22 +43,22 @@ func (m model) updateSearch(
 	return m, nil
 }
 
-// navigate applies a diff navigation binding and reports whether it handled the
-// key.
-func (m *model) navigate(name string) bool {
+// navigateToView applies a diff navigation binding and reports whether it
+// handled the key.
+func (m *model) navigateToView(name string) bool {
 	if motion, ok := navigationMotions[name]; ok {
-		m.diffView.Move(motion)
+		m.diffView.MoveFocusWithinChanges(motion)
 		return true
 	}
 	if alignment, ok := navigationAlignments[name]; ok {
-		m.diffView.Align(alignment)
+		m.diffView.PositionFocusedLine(alignment)
 		return true
 	}
 	switch name {
 	case "n":
-		m.diffView.Find(diffscreen.Forward)
+		m.diffView.FindNextMatch(diffscreen.Forward)
 	case "N":
-		m.diffView.Find(diffscreen.Backward)
+		m.diffView.FindNextMatch(diffscreen.Backward)
 	case "h", "left":
 		m.diffView.ScrollHorizontal(-horizontalScrollStep)
 	case "l", "right":

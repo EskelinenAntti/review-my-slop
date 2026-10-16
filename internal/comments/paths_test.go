@@ -5,11 +5,11 @@ import (
 	"testing"
 )
 
-func TestDataDirectoryUsesXDGEnvironment(t *testing.T) {
+func TestApplicationDataDirectoryUsesXDGEnvironment(t *testing.T) {
 	root := t.TempDir()
 	t.Setenv("XDG_DATA_HOME", root)
 
-	data, err := DataDir()
+	data, err := ApplicationDataDirectory()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -18,12 +18,12 @@ func TestDataDirectoryUsesXDGEnvironment(t *testing.T) {
 	}
 }
 
-func TestDataDirectoryFallsBackToHome(t *testing.T) {
+func TestApplicationDataDirectoryFallsBackToHome(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	t.Setenv("XDG_DATA_HOME", "")
 
-	data, err := DataDir()
+	data, err := ApplicationDataDirectory()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -32,12 +32,12 @@ func TestDataDirectoryFallsBackToHome(t *testing.T) {
 	}
 }
 
-func TestRelativeXDGDataDirectoryIsIgnored(t *testing.T) {
+func TestApplicationDataDirectoryIgnoresRelativeXDGPath(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	t.Setenv("XDG_DATA_HOME", "relative-data")
 
-	data, err := DataDir()
+	data, err := ApplicationDataDirectory()
 	if err != nil {
 		t.Fatal(err)
 	}

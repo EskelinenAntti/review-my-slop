@@ -12,7 +12,7 @@ func TestCommentAnchorUsesSemanticSelection(t *testing.T) {
 		{Kind: patch.Deletion, Text: "removed", OldNumber: 2},
 		{Kind: patch.Addition, Text: "added", NewNumber: 2},
 	}
-	anchor := commentAnchor(
+	anchor := anchorForComment(
 		patch.File{OldPath: "old.go", NewPath: "new.go"},
 		lines,
 	)
@@ -26,7 +26,7 @@ func TestCommentAnchorUsesSemanticSelection(t *testing.T) {
 	) {
 		t.Fatalf("anchor=%#v", anchor)
 	}
-	anchor = commentAnchor(patch.File{OldPath: "deleted.go"}, lines[1:2])
+	anchor = anchorForComment(patch.File{OldPath: "deleted.go"}, lines[1:2])
 	if anchor.FilePath != "deleted.go" || anchor.NewStart != 0 {
 		t.Fatalf("deleted anchor=%#v", anchor)
 	}
