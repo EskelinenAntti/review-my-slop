@@ -340,7 +340,7 @@ func TestDefaultBranchFallbacks(t *testing.T) {
 				originHEAD: tt.originHEAD,
 				available:  tt.available,
 			}
-			got, err := defaultBranch(context.Background(), runner, root)
+			got, err := findDefaultBranch(context.Background(), runner, root)
 			testutil.NoError(t, err)
 			testutil.RequireEqual(t, got, tt.want,
 				"default branch = %q, want %q", got, tt.want,
