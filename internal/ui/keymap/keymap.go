@@ -27,23 +27,23 @@ func New(sequences ...Sequence) Matcher {
 	return m
 }
 
-// Feed returns a completed binding with keys separated by a space, or an
-// unprefixed key. An empty result means pending or consumed input.
-func (m *Matcher) Feed(key string) string {
+// FeedKey resolves a key to a completed binding or unprefixed key. An empty
+// result means the input is pending or consumed.
+func (m *Matcher) FeedKey(keyPress string) (resolvedKey string) {
 	if m.pending != "" {
 		prefix := m.pending
 		m.pending = ""
 		sequence := m.sequences[prefix]
-		if slices.Contains(sequence.Keys, key) {
-			return prefix + " " + key
+		if slices.Contains(sequence.Keys, keyPress) {
+			return prefix + " " + keyPress
 		}
 		if !sequence.RetryUnmatched {
 			return ""
 		}
 	}
-	if _, ok := m.sequences[key]; ok {
-		m.pending = key
+	if _, ok := m.sequences[keyPress]; ok {
+		m.pending = keyPress
 		return ""
 	}
-	return key
+	return keyPress
 }

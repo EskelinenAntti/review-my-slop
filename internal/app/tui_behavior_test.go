@@ -99,11 +99,11 @@ func TestOpenCurrentLineUsesEditorWithWorkingTreeLocation(t *testing.T) {
 	m := testModel(coveragePatch(), nil, nil)
 	m.currentPatch.Root = "/tmp/repo with spaces"
 	focusLine(t, &m, "new()")
-	cmd, err := m.openCurrentLine()
+	cmd, err := m.openCurrentSourceLine()
 	testutil.RequireEqual(t, err, nil, "command=%v err=%v", cmd, err)
 	testutil.RequireEqual(t, cmd != nil, true, "command=%v err=%v", cmd, err)
 
-	path, line, err := m.sourceLocation()
+	path, line, err := m.currentSourceLocation()
 	testutil.RequireEqual(t, err, nil, "location=%q:%d err=%v", path, line, err)
 	testutil.RequireEqual(t, path, "/tmp/repo with spaces/main.go",
 		"location=%q:%d err=%v", path, line, err,

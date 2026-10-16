@@ -7,7 +7,7 @@ const (
 	right
 )
 
-func (pane diffPane) other() diffPane {
+func (pane diffPane) otherPane() diffPane {
 	if pane == left {
 		return right
 	}

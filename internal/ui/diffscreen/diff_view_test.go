@@ -99,14 +99,14 @@ func TestSelectionLines(t *testing.T) {
 	last, _ := v.move(first, forward)
 	last, _ = v.move(last, forward)
 	selection := beginSelection(first)
-	selection, ok := v.extendSelection(selection, last)
+	selection, ok := v.extendSelectionToCursor(selection, last)
 	testutil.RequireEqual(t, ok, true, "%s", "selection extension failed")
 
-	lines := v.lines(selection)
+	lines := v.linesCoveredBySelection(selection)
 	testutil.RequireEqual(t, len(lines), 3, "selected lines = %d", len(lines))
 
 	nextFile, _ := v.jumpFile(first, forward)
-	if _, ok := v.extendSelection(selection, nextFile); ok {
+	if _, ok := v.extendSelectionToCursor(selection, nextFile); ok {
 		t.Fatal("selection crossed a hunk")
 	}
 }
@@ -119,7 +119,7 @@ func TestViewportAlignmentResizeAndScrolling(t *testing.T) {
 		cursor, _ = v.move(cursor, forward)
 	}
 	viewport := v.newViewport(30, 5)
-	viewport = v.keepVisible(viewport, cursor)
+	viewport = v.keepCursorVisible(viewport, cursor)
 	testutil.RequireEqual(t, cursor.row >= viewport.top, true,
 		"cursor not visible: %#v %#v", cursor, viewport,
 	)
@@ -129,7 +129,7 @@ func TestViewportAlignmentResizeAndScrolling(t *testing.T) {
 
 	viewport = v.align(viewport, cursor, middle)
 	headerHeight := 0
-	if v.hasStickyHeader(viewport.top, viewport.Height) {
+	if v.shouldShowStickyHeader(viewport.top, viewport.Height) {
 		headerHeight = 1
 	}
 	testutil.RequireEqual(t, headerHeight+cursor.row-viewport.top,
@@ -141,7 +141,7 @@ func TestViewportAlignmentResizeAndScrolling(t *testing.T) {
 		"horizontal scroll did not move",
 	)
 
-	viewport = v.resize(viewport, 20, 3)
+	viewport = v.resizeViewport(viewport, 20, 3)
 	testutil.RequireEqual(t, viewport.Width, 20, "resize = %#v", viewport)
 	testutil.RequireEqual(t, viewport.Height, 3, "resize = %#v", viewport)
 
@@ -155,13 +155,13 @@ func TestViewportAlignmentResizeAndScrolling(t *testing.T) {
 func TestViewportProgressUsesVisibleBottom(t *testing.T) {
 	v := newUnifiedView(longPatch(), true)
 	viewport := v.newViewport(30, 5)
-	progress := v.viewportProgress(viewport)
+	progress := v.scrollProgressPercent(viewport)
 	if progress <= 0 || progress >= 100 {
 		t.Fatalf("initial progress=%d", progress)
 	}
 	last, _ := v.last()
-	viewport = v.keepVisible(viewport, last)
-	if progress := v.viewportProgress(viewport); progress != 100 {
+	viewport = v.keepCursorVisible(viewport, last)
+	if progress := v.scrollProgressPercent(viewport); progress != 100 {
 		t.Fatalf("final progress=%d", progress)
 	}
 }

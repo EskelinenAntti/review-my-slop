@@ -79,7 +79,7 @@ type searchState struct {
 // New creates a view with default dimensions of 80 columns and 30 rows.
 func New(p patch.Patch, options Options) *View {
 	v := &View{options: options, width: 80, height: 30}
-	v.view = v.newReviewView(p)
+	v.view = v.newDiffViewForCurrentDisplay(p)
 	v.viewport = v.view.newViewport(v.width, frame.BodyHeight(v.height))
 	v.cursor, _ = v.view.first()
 	return v
@@ -90,15 +90,15 @@ func New(p patch.Patch, options Options) *View {
 func (v *View) Update(p patch.Patch) {
 	v.EndDrag()
 	v.search.repeatMiss = false
-	v.replaceView(v.newReviewView(p))
+	v.replaceDiffView(v.newDiffViewForCurrentDisplay(p))
 }
 
 // Configure changes presentation options while preserving meaningful position.
 func (v *View) Configure(options Options) {
-	active := v.sideBySideActive()
+	active := v.isSideBySideActive()
 	dark := v.options.Dark
 	v.options = options
-	if active != v.sideBySideActive() || dark != options.Dark {
+	if active != v.isSideBySideActive() || dark != options.Dark {
 		v.Update(v.view.patch)
 	}
 }
@@ -106,23 +106,23 @@ func (v *View) Configure(options Options) {
 // Resize accepts full screen dimensions, reserving space for the header/footer.
 func (v *View) Resize(width, height int) {
 	v.EndDrag()
-	active := v.sideBySideActive()
+	active := v.isSideBySideActive()
 	v.width, v.height = width, height
-	v.viewport = v.view.resize(v.viewport, width, frame.BodyHeight(height))
-	if active != v.sideBySideActive() {
+	v.viewport = v.view.resizeViewport(v.viewport, width, frame.BodyHeight(height))
+	if active != v.isSideBySideActive() {
 		v.Update(v.view.patch)
 	} else {
-		v.viewport = v.view.keepVisible(v.viewport, v.cursor)
+		v.viewport = v.view.keepCursorVisible(v.viewport, v.cursor)
 	}
 }
 
-func (v *View) sideBySideActive() bool {
+func (v *View) isSideBySideActive() bool {
 	return v.options.SideBySide && v.width >= 100
 }
-func (v *View) newReviewView(p patch.Patch) *diffView {
+func (v *View) newDiffViewForCurrentDisplay(p patch.Patch) *diffView {
 	return newDiffView(
 		p,
-		Options{SideBySide: v.sideBySideActive(), Dark: v.options.Dark},
+		Options{SideBySide: v.isSideBySideActive(), Dark: v.options.Dark},
 	)
 }
 
@@ -133,9 +133,9 @@ func (v *View) Move(motion Motion) {
 	v.search.repeatMiss = false
 	switch motion {
 	case PreviousLine:
-		v.step(backward)
+		v.moveOneLine(backward)
 	case NextLine:
-		v.step(forward)
+		v.moveOneLine(forward)
 	case PreviousPage:
 		v.halfPage(backward)
 	case NextPage:
@@ -150,11 +150,11 @@ func (v *View) Move(motion Motion) {
 		}
 
 	default:
-		v.moveBetweenSections(motion)
+		v.moveToFileOrPane(motion)
 	}
 }
 
-func (v *View) moveBetweenSections(motion Motion) {
+func (v *View) moveToFileOrPane(motion Motion) {
 	switch motion {
 	case PreviousFile:
 		v.jumpFile(backward)
@@ -165,41 +165,41 @@ func (v *View) moveBetweenSections(motion Motion) {
 	case NewPane:
 		v.switchPane(right)
 	case OtherPane:
-		v.switchPane(v.cursor.pane.other())
+		v.switchPane(v.cursor.pane.otherPane())
 	default:
 		return
 	}
 }
 
-func (v *View) step(direction direction) {
+func (v *View) moveOneLine(direction direction) {
 	next, ok := v.view.move(v.cursor, direction)
 	if !ok {
 		return
 	}
-	if !v.extendSelectionTo(next) {
+	if !v.extendActiveSelectionToCursor(next) {
 		return
 	}
 	v.setCursor(next)
 }
 func (v *View) setCursor(cursor diffCursor) {
 	v.cursor = cursor
-	v.viewport = v.view.keepVisible(v.viewport, cursor)
+	v.viewport = v.view.keepCursorVisible(v.viewport, cursor)
 }
 func (v *View) halfPage(direction direction) {
 	viewport, cursor := v.view.scrollHalfPage(v.viewport, v.cursor, direction)
-	if !v.extendSelectionTo(cursor) {
+	if !v.extendActiveSelectionToCursor(cursor) {
 		return
 	}
 	v.viewport, v.cursor = viewport, cursor
 }
 
-// extendSelectionTo accepts unrestricted movement when no range is active.
+// extendActiveSelectionToCursor accepts unrestricted movement when no range is active.
 // An active range changes only when its endpoint remains in the original hunk.
-func (v *View) extendSelectionTo(cursor diffCursor) bool {
+func (v *View) extendActiveSelectionToCursor(cursor diffCursor) (allowed bool) {
 	if v.selection == nil {
 		return true
 	}
-	selection, ok := v.view.extendSelection(*v.selection, cursor)
+	selection, ok := v.view.extendSelectionToCursor(*v.selection, cursor)
 	if ok {
 		v.selection = &selection
 	}
@@ -223,7 +223,7 @@ func (v *View) switchPane(pane diffPane) {
 			return
 		}
 		selection := beginSelection(first)
-		selection, ok = v.view.extendSelection(selection, last)
+		selection, ok = v.view.extendSelectionToCursor(selection, last)
 		if !ok {
 			return
 		}
@@ -256,7 +256,7 @@ func (v *View) ScrollHorizontal(columns int) {
 func (v *View) ScrollVertical(rows int) {
 	v.search.repeatMiss = false
 	viewport, cursor := v.view.scrollVertical(v.viewport, v.cursor, rows)
-	if cursor != v.cursor && !v.extendSelectionTo(cursor) {
+	if cursor != v.cursor && !v.extendActiveSelectionToCursor(cursor) {
 		return
 	}
 	v.viewport, v.cursor = viewport, cursor
@@ -292,7 +292,7 @@ func (v *View) Selected() (patch.File, []patch.Line, bool) {
 		selection = &current
 	}
 	file, ok := v.view.file(selection.First)
-	lines := v.view.lines(*selection)
+	lines := v.view.linesCoveredBySelection(*selection)
 	return file, lines, ok && len(lines) > 0
 }
 
@@ -442,7 +442,7 @@ func (v *View) renderFooter(value string) string {
 		label = "branch changes from " + v.view.patch.Branch
 	}
 	if v.viewport.top > 0 {
-		label += fmt.Sprintf(" (%d%%)", v.view.viewportProgress(v.viewport))
+		label += fmt.Sprintf(" (%d%%)", v.view.scrollProgressPercent(v.viewport))
 	}
 	right := mutedStyle.Render(label)
 	width := max(20, v.width)
@@ -455,27 +455,26 @@ func (v *View) renderFooter(value string) string {
 func patchLineCounts(p patch.Patch) (added, removed int) {
 	for _, file := range p.Files {
 		for _, hunk := range file.Hunks {
-			counts := hunkLineCounts(hunk)
-			added += counts[0]
-			removed += counts[1]
+			hunkAdded, hunkRemoved := hunkLineCounts(hunk)
+			added += hunkAdded
+			removed += hunkRemoved
 		}
 	}
 	return added, removed
 }
 
-func hunkLineCounts(hunk patch.Hunk) [2]int {
-	counts := [2]int{}
+func hunkLineCounts(hunk patch.Hunk) (added, removed int) {
 	for _, line := range hunk.Lines {
 		switch line.Kind {
 		case patch.Addition:
-			counts[0]++
+			added++
 		case patch.Deletion:
-			counts[1]++
+			removed++
 		default:
 			continue
 		}
 	}
-	return counts
+	return added, removed
 }
 
 var (

@@ -8,10 +8,10 @@ func beginSelection(cursor diffCursor) diffSelection {
 	return diffSelection{First: cursor, Last: cursor}
 }
 
-func (v *diffView) extendSelection(
+func (v *diffView) extendSelectionToCursor(
 	selection diffSelection,
 	cursor diffCursor,
-) (diffSelection, bool) {
+) (updated diffSelection, allowed bool) {
 	if !v.valid(selection.First) || !v.valid(cursor) {
 		return selection, false
 	}
@@ -24,8 +24,8 @@ func (v *diffView) extendSelection(
 	return selection, true
 }
 
-func (v *diffView) lines(selection diffSelection) []patch.Line {
-	if _, ok := v.extendSelection(selection, selection.Last); !ok {
+func (v *diffView) linesCoveredBySelection(selection diffSelection) []patch.Line {
+	if _, ok := v.extendSelectionToCursor(selection, selection.Last); !ok {
 		return nil
 	}
 	first, last := min(
@@ -33,11 +33,11 @@ func (v *diffView) lines(selection diffSelection) []patch.Line {
 		selection.Last.row,
 	), max(selection.First.row, selection.Last.row)
 	if first == last && selection.First.pane != selection.Last.pane {
-		return v.paneLines(selection)
+		return v.linesSelectedAcrossPanes(selection)
 	}
 	lines := make([]patch.Line, 0, last-first+1)
 	for y := first; y <= last; y++ {
-		pane := selection.paneAt(y)
+		pane := selection.paneForSelectedRow(y)
 		if line, ok := v.line(diffCursor{row: y, pane: pane}); ok {
 			lines = append(lines, line)
 		}
@@ -45,14 +45,14 @@ func (v *diffView) lines(selection diffSelection) []patch.Line {
 	return lines
 }
 
-func (s diffSelection) paneAt(row int) diffPane {
+func (s diffSelection) paneForSelectedRow(row int) diffPane {
 	if row == s.Last.row {
 		return s.Last.pane
 	}
 	return s.First.pane
 }
 
-func (v *diffView) paneLines(selection diffSelection) []patch.Line {
+func (v *diffView) linesSelectedAcrossPanes(selection diffSelection) []patch.Line {
 	first, _ := v.line(selection.First)
 	last, _ := v.line(selection.Last)
 	if first == last {
@@ -61,19 +61,19 @@ func (v *diffView) paneLines(selection diffSelection) []patch.Line {
 	return []patch.Line{first, last}
 }
 
-func (v *diffView) file(cursor diffCursor) (patch.File, bool) {
+func (v *diffView) file(cursor diffCursor) (file patch.File, found bool) {
 	if !v.valid(cursor) {
 		return patch.File{}, false
 	}
 	return v.patch.Files[v.rows[cursor.row].file], true
 }
 
-func (v *diffView) line(cursor diffCursor) (patch.Line, bool) {
+func (v *diffView) line(cursor diffCursor) (line patch.Line, found bool) {
 	if !v.valid(cursor) {
 		return patch.Line{}, false
 	}
 	current := v.rows[cursor.row]
-	return v.patch.Files[current.file].Hunks[current.hunk].Lines[v.lineIndex(
+	return v.patch.Files[current.file].Hunks[current.hunk].Lines[v.sourceLineIndex(
 		current,
 		cursor.pane,
 	)], true
@@ -108,22 +108,15 @@ func (m cursorMatch) betterThan(other cursorMatch) bool {
 		m.rank == other.rank && m.distance < other.distance
 }
 
-func (m cursorMatch) preferredTo(other cursorMatch) cursorMatch {
-	if m.betterThan(other) {
-		return m
-	}
-	return other
-}
-
 func (v *diffView) matchRow(y int, target cursorIdentity) cursorMatch {
 	current := v.rows[y]
-	if !v.rowInFile(current, target.file) {
+	if !v.belongsToFile(current, target.file) {
 		return cursorMatch{}
 	}
 	best := cursorMatch{}
 	for _, pane := range [2]diffPane{
 		target.cursor.pane,
-		target.cursor.pane.other(),
+		target.cursor.pane.otherPane(),
 	} {
 		candidate, ok := v.cursorAt(y, pane)
 		if !ok {
@@ -133,40 +126,42 @@ func (v *diffView) matchRow(y int, target cursorIdentity) cursorMatch {
 		match := cursorMatch{
 			cursor:   candidate,
 			rank:     lineMatchRank(line, target.line),
-			distance: lineDistance(line, target.line, y-target.cursor.row),
+			distance: distanceFromTargetLine(line, target.line, y-target.cursor.row),
 		}
 		if match.rank == 3 {
 			return match
 		}
-		best = match.preferredTo(best)
+		if match.betterThan(best) {
+			best = match
+		}
 	}
 	return best
 }
 
-func (v *diffView) rowInFile(current entry, file patch.File) bool {
+func (v *diffView) belongsToFile(current entry, file patch.File) bool {
 	return current.hunk >= 0 && sameFile(v.patch.Files[current.file], file)
 }
 
-func lineMatchRank(line, target patch.Line) int {
-	if line.Kind != target.Kind {
+func lineMatchRank(candidateLine, targetLine patch.Line) (rank int) {
+	if candidateLine.Kind != targetLine.Kind {
 		return 1
 	}
-	if line.OldNumber == target.OldNumber &&
-		line.NewNumber == target.NewNumber {
+	if candidateLine.OldNumber == targetLine.OldNumber &&
+		candidateLine.NewNumber == targetLine.NewNumber {
 		return 3
 	}
-	if line.Text == target.Text {
+	if candidateLine.Text == targetLine.Text {
 		return 2
 	}
 	return 1
 }
 
-func lineDistance(line, target patch.Line, rowDistance int) int {
-	if line.NewNumber > 0 && target.NewNumber > 0 {
-		return abs(int(line.NewNumber - target.NewNumber))
+func distanceFromTargetLine(candidateLine, targetLine patch.Line, rowDistance int) (distance int) {
+	if candidateLine.NewNumber > 0 && targetLine.NewNumber > 0 {
+		return abs(int(candidateLine.NewNumber - targetLine.NewNumber))
 	}
-	if line.OldNumber > 0 && target.OldNumber > 0 {
-		return abs(int(line.OldNumber - target.OldNumber))
+	if candidateLine.OldNumber > 0 && targetLine.OldNumber > 0 {
+		return abs(int(candidateLine.OldNumber - targetLine.OldNumber))
 	}
 	return abs(rowDistance)
 }
@@ -183,13 +178,13 @@ func abs(value int) int {
 	return value
 }
 
-func highlightedLine(
+func sourceLineOrFallback(
 	lines []string,
-	number patch.LineNumber,
+	sourceLineNumber patch.LineNumber,
 	fallback string,
 ) string {
-	if number <= 0 || int(number) > len(lines) {
+	if sourceLineNumber <= 0 || int(sourceLineNumber) > len(lines) {
 		return fallback
 	}
-	return lines[int(number)-1]
+	return lines[int(sourceLineNumber)-1]
 }

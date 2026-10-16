@@ -11,13 +11,13 @@ import (
 	"github.com/eskelinenantti/review-my-slop/internal/comments"
 )
 
-func createCommentFile(body string, anchor comments.Anchor) (string, error) {
+func createTemporaryCommentFile(body string, anchor comments.Anchor) (string, error) {
 	file, err := os.CreateTemp("", "review-my-slop-comment-*.md")
 	if err != nil {
 		return "", fmt.Errorf("create comment file: %w", err)
 	}
 	path := file.Name()
-	if _, err := file.WriteString(commentDraft(body, anchor)); err != nil {
+	if _, err := file.WriteString(formatCommentDraft(body, anchor)); err != nil {
 		_ = file.Close()
 		_ = os.Remove(path)
 		return "", fmt.Errorf("write comment file: %w", err)
@@ -29,26 +29,26 @@ func createCommentFile(body string, anchor comments.Anchor) (string, error) {
 	return path, nil
 }
 
-func readCommentFile(path string, anchor comments.Anchor) (string, error) {
+func readEditedComment(path string, commentAnchor comments.Anchor) (string, error) {
 	body, err := os.ReadFile(path)
 	if err != nil {
 		return "", fmt.Errorf("read comment file: %w", err)
 	}
-	return stripUnchangedSuggestion(string(body), anchor.QuotedLines), nil
+	return stripUnchangedSuggestionBlock(string(body), commentAnchor.QuotedLines), nil
 }
 
-func commentDraft(body string, anchor comments.Anchor) string {
+func formatCommentDraft(body string, anchor comments.Anchor) string {
 	if len(anchor.QuotedLines) == 0 {
 		return body
 	}
-	lines := suggestionLines(anchor.QuotedLines)
+	lines := editableSuggestionLines(anchor.QuotedLines)
 	var draft strings.Builder
 	_, _ = draft.WriteString(body)
 	if body != "" && !strings.HasSuffix(body, "\n") {
 		_ = draft.WriteByte('\n')
 	}
 	_ = draft.WriteByte('\n')
-	fence := contextFence(lines)
+	fence := suggestionMarkdownFence(lines)
 	_, _ = draft.WriteString(fence)
 	_, _ = draft.WriteString("suggestion\n")
 	for _, line := range lines {
@@ -60,12 +60,15 @@ func commentDraft(body string, anchor comments.Anchor) string {
 	return draft.String()
 }
 
-func stripUnchangedSuggestion(body string, quoted []string) string {
-	if len(quoted) == 0 {
-		return body
+func stripUnchangedSuggestionBlock(
+	editedBody string,
+	quotedDiffLines []string,
+) string {
+	if len(quotedDiffLines) == 0 {
+		return editedBody
 	}
-	lines := suggestionLines(quoted)
-	fence := contextFence(lines)
+	lines := editableSuggestionLines(quotedDiffLines)
+	fence := suggestionMarkdownFence(lines)
 	var suggestion strings.Builder
 	_, _ = suggestion.WriteString(fence)
 	_, _ = suggestion.WriteString("suggestion\n")
@@ -74,39 +77,39 @@ func stripUnchangedSuggestion(body string, quoted []string) string {
 		_ = suggestion.WriteByte('\n')
 	}
 	_, _ = suggestion.WriteString(fence)
-	start := strings.Index(body, suggestion.String())
+	start := strings.Index(editedBody, suggestion.String())
 	if start < 0 {
-		return body
+		return editedBody
 	}
 	end := start + suggestion.Len()
-	before := strings.TrimRight(body[:start], "\n")
-	after := body[end:]
+	before := strings.TrimRight(editedBody[:start], "\n")
+	after := editedBody[end:]
 	if strings.TrimSpace(after) == "" {
 		return before
 	}
 	return before + "\n" + strings.TrimLeft(after, "\n")
 }
 
-func commentCommand(ctx context.Context, editor, path string) *exec.Cmd {
-	return exec.CommandContext(ctx, "sh", "-c", editor+" "+shellQuote(path))
+func newCommentEditorCommand(ctx context.Context, editor, path string) *exec.Cmd {
+	return exec.CommandContext(ctx, "sh", "-c", editor+" "+quoteShellArgument(path))
 }
 
-func sourceCommand(
+func newSourceEditorCommand(
 	ctx context.Context,
 	editor, path string,
-	line int,
+	lineNumber int,
 ) *exec.Cmd {
 	return exec.CommandContext(
 		ctx,
 		"sh",
 		"-c",
-		editor+" +"+strconv.Itoa(line)+" "+shellQuote(path),
+		editor+" +"+strconv.Itoa(lineNumber)+" "+quoteShellArgument(path),
 	)
 }
 
-func suggestionLines(quoted []string) []string {
-	lines := make([]string, 0, len(quoted))
-	for _, line := range quoted {
+func editableSuggestionLines(quotedDiffLines []string) []string {
+	lines := make([]string, 0, len(quotedDiffLines))
+	for _, line := range quotedDiffLines {
 		if line != "" && line[0] != '-' {
 			lines = append(lines, line[1:])
 		}
@@ -114,9 +117,9 @@ func suggestionLines(quoted []string) []string {
 	return lines
 }
 
-func contextFence(lines []string) string {
+func suggestionMarkdownFence(suggestionLines []string) string {
 	longest := 0
-	for _, line := range lines {
+	for _, line := range suggestionLines {
 		run := 0
 		for _, char := range line {
 			if char == '`' {
@@ -130,6 +133,6 @@ func contextFence(lines []string) string {
 	return strings.Repeat("`", max(3, longest+1))
 }
 
-func shellQuote(value string) string {
-	return "'" + strings.ReplaceAll(value, "'", "'\"'\"'") + "'"
+func quoteShellArgument(argument string) string {
+	return "'" + strings.ReplaceAll(argument, "'", "'\"'\"'") + "'"
 }

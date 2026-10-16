@@ -12,9 +12,9 @@ import (
 	"github.com/eskelinenantti/review-my-slop/internal/patch"
 )
 
-func (m model) updateComments(name string) (tea.Model, tea.Cmd) {
+func (m model) handleCommentsKey(matchedKey string) (tea.Model, tea.Cmd) {
 	m.err = nil
-	switch name {
+	switch matchedKey {
 	case "esc", "C", "q":
 		m.mode = modeBrowse
 	case "ctrl+c":
@@ -71,7 +71,7 @@ func (m *model) beginComment() (tea.Cmd, error) {
 	return cmd, nil
 }
 
-func (m *model) finishCommentEdit() {
+func (m *model) commitCommentEdit() {
 	body := strings.TrimSpace(m.edit.body)
 	if body == "" {
 		if m.edit.index >= 0 {
@@ -138,8 +138,8 @@ func (m *model) clearCommentEdit() {
 	m.edit = commentEdit{index: -1}
 }
 
-func (m model) openCurrentLine() (tea.Cmd, error) {
-	path, number, err := m.sourceLocation()
+func (m model) openCurrentSourceLine() (tea.Cmd, error) {
+	path, number, err := m.currentSourceLocation()
 	if err != nil {
 		return nil, err
 	}
@@ -148,7 +148,7 @@ func (m model) openCurrentLine() (tea.Cmd, error) {
 	})
 }
 
-func (m model) sourceLocation() (string, int, error) {
+func (m model) currentSourceLocation() (sourcePath string, sourceLine int, err error) {
 	file, line, ok := m.diffView.Current()
 	if !ok {
 		return "", 0, errors.New("select a code line to open in $EDITOR")
@@ -206,19 +206,27 @@ func commentAnchor(file patch.File, lines []patch.Line) comments.Anchor {
 			prefix = "-"
 		}
 		anchor.QuotedLines = append(anchor.QuotedLines, prefix+line.Text)
-		accumulateRange(&anchor.OldStart, &anchor.OldEnd, int(line.OldNumber))
-		accumulateRange(&anchor.NewStart, &anchor.NewEnd, int(line.NewNumber))
+		expandLineRangeToInclude(
+			&anchor.OldStart,
+			&anchor.OldEnd,
+			int(line.OldNumber),
+		)
+		expandLineRangeToInclude(
+			&anchor.NewStart,
+			&anchor.NewEnd,
+			int(line.NewNumber),
+		)
 	}
 	return anchor
 }
-func accumulateRange(start, end *int, value int) {
-	if value == 0 {
+func expandLineRangeToInclude(startLine, endLine *int, lineNumber int) {
+	if lineNumber == 0 {
 		return
 	}
-	if *start == 0 || value < *start {
-		*start = value
+	if *startLine == 0 || lineNumber < *startLine {
+		*startLine = lineNumber
 	}
-	if value > *end {
-		*end = value
+	if lineNumber > *endLine {
+		*endLine = lineNumber
 	}
 }

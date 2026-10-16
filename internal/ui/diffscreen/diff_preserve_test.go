@@ -15,7 +15,7 @@ func TestPreserveTranslatesCursorSelectionAndViewport(t *testing.T) {
 	testutil.RequireEqual(t, ok, true, "%s", "cursor not found")
 
 	selection := beginSelection(first)
-	selection, ok = old.extendSelection(selection, cursor)
+	selection, ok = old.extendSelectionToCursor(selection, cursor)
 	testutil.RequireEqual(t, ok, true, "%s", "selection not created")
 
 	viewport := old.newViewport(100, 4)
@@ -28,7 +28,7 @@ func TestPreserveTranslatesCursorSelectionAndViewport(t *testing.T) {
 	}
 
 	next := newSideBySideView(testPatch(), true)
-	screen.replaceView(next)
+	screen.replaceDiffView(next)
 	preserved := screen
 	testutil.RequireEqual(t, next.valid(preserved.cursor), true, "%s",
 		"cursor was not preserved",
@@ -75,7 +75,7 @@ func TestPreserveReturnsEmptyStateForEmptyView(t *testing.T) {
 		viewport:  old.newViewport(80, 10),
 	}
 
-	screen.replaceView(newUnifiedView(patch.Patch{}, true))
+	screen.replaceDiffView(newUnifiedView(patch.Patch{}, true))
 	preserved := screen
 	testutil.RequireEqual(t, !preserved.view.valid(preserved.cursor), true,
 		"state = %#v", preserved,
@@ -95,7 +95,7 @@ func TestPreserveClampsHorizontalOffsetForShorterLines(t *testing.T) {
 
 	short := testPatch()
 	preserved := &View{view: old, cursor: cursor, viewport: viewport}
-	preserved.replaceView(newUnifiedView(short, true))
+	preserved.replaceDiffView(newUnifiedView(short, true))
 	testutil.RequireEqual(t, preserved.viewport.LeftColumn, 0,
 		"horizontal offset = %d", preserved.viewport.LeftColumn,
 	)
@@ -209,7 +209,7 @@ func cursorDeletionFixtures() (
 func assertCursorVisible(t *testing.T, v *View) {
 	t.Helper()
 	top := v.viewport.top
-	bottom := top + v.view.contentHeight(v.viewport)
+	bottom := top + v.view.viewportBodyHeight(v.viewport)
 	testutil.RequireEqual(t, v.cursor.row >= top, true,
 		"cursor row %d is above viewport %d:%d", v.cursor.row, top, bottom,
 	)

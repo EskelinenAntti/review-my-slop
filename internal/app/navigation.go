@@ -22,11 +22,11 @@ func (m *model) setSideBySide(enabled bool) {
 	m.diffView.Configure(m.diffOptions)
 }
 
-func (m model) updateSearch(
-	name string,
-	key tea.KeyPressMsg,
+func (m model) handleSearchKey(
+	matchedKey string,
+	keyPress tea.KeyPressMsg,
 ) (tea.Model, tea.Cmd) {
-	switch name {
+	switch matchedKey {
 	case "esc":
 		m.diffView.CancelSearch()
 		m.mode = modeBrowse
@@ -36,25 +36,25 @@ func (m model) updateSearch(
 	case "backspace":
 		m.diffView.BackspaceSearch()
 	default:
-		if key.Text != "" {
-			m.diffView.InsertSearch(key.Text)
+		if keyPress.Text != "" {
+			m.diffView.InsertSearch(keyPress.Text)
 		}
 	}
 	return m, nil
 }
 
-// navigate applies a diff navigation binding and reports whether it handled the
-// key.
-func (m *model) navigate(name string) bool {
-	if motion, ok := navigationMotions[name]; ok {
+// applyNavigationKey applies a diff navigation binding and reports whether it
+// handled the key.
+func (m *model) applyNavigationKey(matchedKey string) (handled bool) {
+	if motion, ok := navigationMotions[matchedKey]; ok {
 		m.diffView.Move(motion)
 		return true
 	}
-	if alignment, ok := navigationAlignments[name]; ok {
+	if alignment, ok := navigationAlignments[matchedKey]; ok {
 		m.diffView.Align(alignment)
 		return true
 	}
-	switch name {
+	switch matchedKey {
 	case "n":
 		m.diffView.Find(diffscreen.Forward)
 	case "N":

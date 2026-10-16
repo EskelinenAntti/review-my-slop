@@ -8,12 +8,17 @@ import (
 
 const appName = "review-my-slop"
 
-// DataDir returns the application data directory, respecting XDG_DATA_HOME.
-func DataDir() (string, error) {
-	return appDir("XDG_DATA_HOME", filepath.Join(".local", "share"))
+// AppDataDir returns the application data directory, respecting XDG_DATA_HOME.
+func AppDataDir() (string, error) {
+	return resolveAppDirectoryFromEnvOrFallback(
+		"XDG_DATA_HOME",
+		filepath.Join(".local", "share"),
+	)
 }
 
-func appDir(environment, fallback string) (string, error) {
+func resolveAppDirectoryFromEnvOrFallback(
+	environment, fallback string,
+) (string, error) {
 	if root := os.Getenv(environment); filepath.IsAbs(root) {
 		return filepath.Join(root, appName), nil
 	}

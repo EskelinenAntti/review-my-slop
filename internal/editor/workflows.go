@@ -24,28 +24,28 @@ func EditComment(
 	if err != nil {
 		return nil, err
 	}
-	adapter, complete := commentWorkflow(ctx, command, body, anchor, onComplete)
+	adapter, complete := newCommentEditorWorkflow(ctx, command, body, anchor, onComplete)
 	return tea.Exec(adapter, complete), nil
 }
 
-func commentWorkflow(
+func newCommentEditorWorkflow(
 	ctx context.Context,
 	command, body string,
 	anchor comments.Anchor,
 	onComplete func(string, error) tea.Msg,
-) (*commandAdapter, tea.ExecCallback) {
+) (editorCommand *commandAdapter, execCallback tea.ExecCallback) {
 	adapter := &commandAdapter{}
 	adapter.run = func() error {
-		path, err := createCommentFile(body, anchor)
+		path, err := createTemporaryCommentFile(body, anchor)
 		if err != nil {
 			return err
 		}
 		defer os.Remove(path)
-		editorCommand := commentCommand(ctx, command, path)
+		editorCommand := newCommentEditorCommand(ctx, command, path)
 		if err := adapter.execute(editorCommand); err != nil {
 			return fmt.Errorf("editor: %w", err)
 		}
-		adapter.body, err = readCommentFile(path, anchor)
+		adapter.body, err = readEditedComment(path, anchor)
 		return err
 	}
 	return adapter, func(err error) tea.Msg {
@@ -66,7 +66,7 @@ func OpenSource(
 	}
 	adapter := &commandAdapter{}
 	adapter.run = func() error {
-		return adapter.execute(sourceCommand(ctx, command, path, line))
+		return adapter.execute(newSourceEditorCommand(ctx, command, path, line))
 	}
 	return tea.Exec(adapter, onComplete), nil
 }

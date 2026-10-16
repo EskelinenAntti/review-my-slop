@@ -112,7 +112,7 @@ type model struct {
 	quitting   bool
 }
 
-func newModel(
+func newModelWithSave(
 	p patch.Patch,
 	items []comments.Comment,
 	save saveCommentFunc,
@@ -157,17 +157,17 @@ func newModel(
 	return m
 }
 
-func newWithStore(
+func newModelWithStore(
 	store commentStore,
 	p patch.Patch,
 	items []comments.Comment,
-	size size,
+	initialTerminalSize size,
 ) (model, error) {
 	preferences, err := settings.Load()
 	if err != nil {
 		return model{}, err
 	}
-	m := newModel(p, items, func(
+	m := newModelWithSave(p, items, func(
 		comment comments.Comment,
 		current patch.Patch,
 	) (comments.Comment, error) {
@@ -184,7 +184,7 @@ func newWithStore(
 		SaveSideBySide: func(enabled bool) error {
 			return settings.Save(settings.Preferences{SideBySide: enabled})
 		},
-		size: size,
+		size: initialTerminalSize,
 	})
 	m.setDelete(func(comment comments.Comment, current patch.Patch) error {
 		return store.Delete(current.Root, comment.ID)
@@ -224,13 +224,15 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.MouseClickMsg, tea.MouseMotionMsg,
 		tea.MouseReleaseMsg, tea.MouseWheelMsg:
 		m.updateMouse(msg)
+	case tea.FocusMsg:
+		return m, m.refreshDiffCommand()
 	default:
-		return m.updateWorkflow(msg)
+		return m.handleAsyncResult(msg)
 	}
 	return m, nil
 }
 
-func (m model) updateWorkflow(msg tea.Msg) (tea.Model, tea.Cmd) {
+func (m model) handleAsyncResult(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case commentEditorFinishedMsg:
 		m.finishCommentEditor(msg)
@@ -241,9 +243,7 @@ func (m model) updateWorkflow(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.err = fmt.Errorf("editor: %w", msg.err)
 			break
 		}
-		return m, m.loadRefresh()
-	case tea.FocusMsg:
-		return m, m.loadRefresh()
+		return m, m.refreshDiffCommand()
 	case refreshDiffMsg:
 		m.finishDiffRefresh(msg)
 	default:
@@ -259,7 +259,7 @@ func (m *model) finishCommentEditor(msg commentEditorFinishedMsg) {
 		return
 	}
 	m.edit.body = msg.body
-	m.finishCommentEdit()
+	m.commitCommentEdit()
 }
 
 func (m *model) finishCommentsLoad(msg commentsLoadedMsg) {
@@ -287,7 +287,7 @@ func (m *model) finishDiffRefresh(msg refreshDiffMsg) {
 	m.err = nil
 }
 
-func (m model) loadRefresh() tea.Cmd {
+func (m model) refreshDiffCommand() tea.Cmd {
 	if m.refresh == nil {
 		return nil
 	}
@@ -298,7 +298,7 @@ func (m model) loadRefresh() tea.Cmd {
 	}
 }
 
-func (m model) loadComments() tea.Cmd {
+func (m model) loadCommentsCommand() tea.Cmd {
 	if m.load == nil {
 		return nil
 	}
@@ -323,29 +323,29 @@ func (m *model) resizeScreens() {
 }
 
 func (m model) updateKey(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
-	name := key.String()
+	matchedKey := key.String()
 	if m.mode == modeComments {
-		return m.updateComments(name)
+		return m.handleCommentsKey(matchedKey)
 	}
 	if m.mode == modeHelp {
-		if name == "esc" || name == "?" || name == "q" {
+		if matchedKey == "esc" || matchedKey == "?" || matchedKey == "q" {
 			m.mode = modeBrowse
 		}
 		return m, nil
 	}
 	if m.mode == modeSearch {
-		return m.updateSearch(name, key)
+		return m.handleSearchKey(matchedKey, key)
 	}
-	return m.updateBrowseKey(name)
+	return m.handleBrowseKey(matchedKey)
 }
 
-func (m model) updateBrowseKey(name string) (tea.Model, tea.Cmd) {
+func (m model) handleBrowseKey(matchedKey string) (tea.Model, tea.Cmd) {
 	m.err = nil
-	name = m.keys.Feed(name)
-	if m.navigate(name) {
+	matchedKey = m.keys.FeedKey(matchedKey)
+	if m.applyNavigationKey(matchedKey) {
 		return m, nil
 	}
-	switch name {
+	switch matchedKey {
 	case "ctrl+c", "q":
 		m.quitting = true
 		return m, tea.Quit
@@ -354,15 +354,15 @@ func (m model) updateBrowseKey(name string) (tea.Model, tea.Cmd) {
 	case "e":
 		return m.startSourceEditor()
 	case "R":
-		return m, m.loadRefresh()
+		return m, m.refreshDiffCommand()
 	case "tab":
 		return m.switchPatchKind()
 	default:
-		return m.updateBrowseView(name)
+		return m.handleBrowseAction(matchedKey)
 	}
 }
-func (m model) updateBrowseView(name string) (tea.Model, tea.Cmd) {
-	switch name {
+func (m model) handleBrowseAction(matchedKey string) (tea.Model, tea.Cmd) {
+	switch matchedKey {
 	case "?":
 		m.mode = modeHelp
 	case "/":
@@ -375,7 +375,7 @@ func (m model) updateBrowseView(name string) (tea.Model, tea.Cmd) {
 	case "C":
 		m.mode = modeComments
 		m.commentView.Update(m.comments.items)
-		return m, m.loadComments()
+		return m, m.loadCommentsCommand()
 	case "t":
 		m.toggleSideBySide()
 	default:
@@ -394,7 +394,7 @@ func (m model) startCommentEditor() (tea.Model, tea.Cmd) {
 }
 
 func (m model) startSourceEditor() (tea.Model, tea.Cmd) {
-	cmd, err := m.openCurrentLine()
+	cmd, err := m.openCurrentSourceLine()
 	if err != nil {
 		m.err = err
 		return m, nil
@@ -412,5 +412,5 @@ func (m model) switchPatchKind() (tea.Model, tea.Cmd) {
 		m.kind = patch.Unstaged
 	}
 	m.diffView.ClearSelection()
-	return m, m.loadRefresh()
+	return m, m.refreshDiffCommand()
 }

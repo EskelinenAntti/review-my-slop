@@ -310,13 +310,13 @@ func TestVerticalScrollKeepsFocusInViewport(t *testing.T) {
 		)
 
 		v.Move(NextLine)
-		testutil.RequireEqual(t, v.view.cursorVisible(v.viewport, v.cursor),
+		testutil.RequireEqual(t, v.view.isCursorVisible(v.viewport, v.cursor),
 			true, "%s", "keyboard navigation did not reveal focus",
 		)
 
 		v.ScrollVertical(-8)
 		testutil.RequireEqual(t, v.cursor.row,
-			v.viewport.top+v.view.contentHeight(v.viewport)-1, "%s",
+			v.viewport.top+v.view.viewportBodyHeight(v.viewport)-1, "%s",
 			"scroll up did not clamp focus to bottom of viewport",
 		)
 	}
@@ -354,7 +354,7 @@ func TestVerticalScrollClampsAtContentEdges(t *testing.T) {
 			testutil.RequireEqual(
 				t,
 				len(v.view.rows) <= 0 ||
-					end+v.view.contentHeight(v.viewport) >= len(v.view.rows),
+					end+v.view.viewportBodyHeight(v.viewport) >= len(v.view.rows),
 				true,
 				"%s",
 				"scroll did not reach final row",

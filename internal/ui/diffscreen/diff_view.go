@@ -23,6 +23,13 @@ type entry struct {
 	text, left, right string
 }
 
+// linePair stores source line indices shown in one display row. A negative
+// index means that pane has no line for the row.
+type linePair struct {
+	leftLineIndex  int
+	rightLineIndex int
+}
+
 type diffView struct {
 	patch patch.Patch
 	rows  []entry
@@ -63,7 +70,7 @@ func (v *diffView) appendFileRows(fileIndex int, file patch.File) {
 			},
 		)
 	}
-	highlighted := v.highlight(&file)
+	highlighted := v.sourceHighlightsForFile(&file)
 	for hunkIndex, hunk := range file.Hunks {
 		v.appendHunkRows(fileIndex, hunkIndex, hunk, highlighted)
 	}
@@ -72,7 +79,7 @@ func (v *diffView) appendFileRows(fileIndex int, file patch.File) {
 func (v *diffView) appendHunkRows(
 	fileIndex, hunkIndex int,
 	hunk patch.Hunk,
-	highlighted pair,
+	highlighted sourceHighlights,
 ) {
 	v.rows = append(
 		v.rows,
@@ -82,16 +89,16 @@ func (v *diffView) appendHunkRows(
 			hunk:      hunkIndex,
 			leftLine:  -1,
 			rightLine: -1,
-			text:      hunkHeader(hunk.Header),
+			text:      formatHunkHeader(hunk.Header),
 		},
 	)
-	for _, indices := range v.lineRows(hunk.Lines) {
+	for _, pair := range v.pairCorrespondingLineIndices(hunk.Lines) {
 		row := entry{
 			kind:      lineRow,
 			file:      fileIndex,
 			hunk:      hunkIndex,
-			leftLine:  indices[0],
-			rightLine: indices[1],
+			leftLine:  pair.leftLineIndex,
+			rightLine: pair.rightLineIndex,
 		}
 		v.highlightRow(&row, hunk.Lines, highlighted)
 		v.rows = append(v.rows, row)
@@ -101,85 +108,101 @@ func (v *diffView) appendHunkRows(
 func (v *diffView) highlightRow(
 	row *entry,
 	lines []patch.Line,
-	highlighted pair,
+	highlighted sourceHighlights,
 ) {
 	if !v.split {
-		row.text = sourceText(highlighted, lines[row.rightLine])
+		row.text = highlightedTextForSourceLine(highlighted, lines[row.rightLine])
 		return
 	}
 	if row.leftLine >= 0 {
-		row.left = sourceText(highlighted, lines[row.leftLine])
+		row.left = highlightedTextForSourceLine(highlighted, lines[row.leftLine])
 	}
 	if row.rightLine >= 0 {
-		row.right = sourceText(highlighted, lines[row.rightLine])
+		row.right = highlightedTextForSourceLine(highlighted, lines[row.rightLine])
 	}
 }
 
-// lineRows maps source lines to display rows. Split mode pairs each deletion
+// pairCorrespondingLineIndices maps source lines to display rows. Split mode pairs each deletion
 // block with the immediately following additions; unmatched panes use -1.
-func (v *diffView) lineRows(lines []patch.Line) [][2]int {
-	rows := make([][2]int, 0, len(lines))
+func (v *diffView) pairCorrespondingLineIndices(lines []patch.Line) []linePair {
+	rows := make([]linePair, 0, len(lines))
 	for index := 0; index < len(lines); {
 		if !v.split || lines[index].Kind == patch.Context {
-			rows = append(rows, [2]int{index, index})
+			rows = append(rows, linePair{
+				leftLineIndex:  index,
+				rightLineIndex: index,
+			})
 			index++
 			continue
 		}
 		if lines[index].Kind == patch.Addition {
-			rows = append(rows, [2]int{-1, index})
+			rows = append(rows, linePair{
+				leftLineIndex:  -1,
+				rightLineIndex: index,
+			})
 			index++
 			continue
 		}
-		addedStart := changeBlockEnd(lines, index, patch.Deletion)
-		end := changeBlockEnd(lines, addedStart, patch.Addition)
-		rows = append(rows, pairedChangeRows(index, addedStart, end)...)
-		index = end
+		addedStart := nextIndexAfterLineKindRun(lines, index, patch.Deletion)
+		addedEnd := nextIndexAfterLineKindRun(lines, addedStart, patch.Addition)
+		rows = append(
+			rows,
+			pairSideBySideChangeRows(index, addedStart, addedStart, addedEnd)...,
+		)
+		index = addedEnd
 	}
 	return rows
 }
 
-func changeBlockEnd(lines []patch.Line, start int, kind patch.LineKind) int {
-	for start < len(lines) && lines[start].Kind == kind {
-		start++
+func nextIndexAfterLineKindRun(
+	lines []patch.Line,
+	startIndex int,
+	kind patch.LineKind,
+) (nextIndex int) {
+	for startIndex < len(lines) && lines[startIndex].Kind == kind {
+		startIndex++
 	}
-	return start
+	return startIndex
 }
 
-func pairedChangeRows(removedStart, addedStart, end int) [][2]int {
-	count := max(addedStart-removedStart, end-addedStart)
-	rows := make([][2]int, 0, count)
+// pairSideBySideChangeRows pairs source line indices from half-open ranges.
+func pairSideBySideChangeRows(
+	removedStart, removedEnd, addedStart, addedEnd int,
+) []linePair {
+	count := max(removedEnd-removedStart, addedEnd-addedStart)
+	rows := make([]linePair, 0, count)
 	for offset := 0; offset < count; offset++ {
-		pair := [2]int{-1, -1}
-		if removedStart+offset < addedStart {
-			pair[0] = removedStart + offset
+		pair := linePair{leftLineIndex: -1, rightLineIndex: -1}
+		if removedStart+offset < removedEnd {
+			pair.leftLineIndex = removedStart + offset
 		}
-		if addedStart+offset < end {
-			pair[1] = addedStart + offset
+		if addedStart+offset < addedEnd {
+			pair.rightLineIndex = addedStart + offset
 		}
 		rows = append(rows, pair)
 	}
 	return rows
 }
 
-func sourceText(highlighted pair, line patch.Line) string {
+func highlightedTextForSourceLine(highlighted sourceHighlights, line patch.Line) string {
 	if line.Kind == patch.Deletion {
-		return highlightedLine(highlighted.Old, line.OldNumber, line.Text)
+		return sourceLineOrFallback(highlighted.oldLines, line.OldNumber, line.Text)
 	}
-	return highlightedLine(highlighted.New, line.NewNumber, line.Text)
+	return sourceLineOrFallback(highlighted.newLines, line.NewNumber, line.Text)
 }
 
-func (v *diffView) highlight(file *patch.File) pair {
+func (v *diffView) sourceHighlightsForFile(file *patch.File) sourceHighlights {
 	theme := lightTheme
 	if v.dark {
 		theme = darkTheme
 	}
-	return pair{
-		Old: render(file.OldPath, file.OldSource, theme),
-		New: render(file.NewPath, file.NewSource, theme),
+	return sourceHighlights{
+		oldLines: highlightSourceLines(file.OldPath, file.OldSource, theme),
+		newLines: highlightSourceLines(file.NewPath, file.NewSource, theme),
 	}
 }
 
-func hunkHeader(header string) string {
+func formatHunkHeader(header string) string {
 	if strings.HasPrefix(header, "@@") {
 		return header
 	}

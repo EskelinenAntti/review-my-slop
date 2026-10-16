@@ -25,7 +25,7 @@ func TestRunLoadsCommentsAndWiresContext(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	sentinel := errors.New("program startup failed")
-	err := start(ctx, p, store, func(
+	err := launchUI(ctx, p, store, func(
 		received context.Context,
 		kind patch.Kind,
 	) (patch.Patch, error) {
@@ -48,7 +48,7 @@ func TestRunLoadsCommentsAndWiresContext(t *testing.T) {
 		testutil.RequireEqual(t, m.height, 40, "model=%#v", m)
 		testutil.RequireEqual(t, len(m.comments.items), 1, "model=%#v", m)
 
-		result := m.loadRefresh()()
+		result := m.refreshDiffCommand()()
 		msg, ok := result.(refreshDiffMsg)
 		testutil.RequireEqual(t, ok, true, "refresh message=%T", result)
 		testutil.RequireEqual(t, msg.err, nil, "%s", msg.err)
@@ -72,7 +72,7 @@ func TestRunStartupFailures(t *testing.T) {
 				Path: filepath.Join(t.TempDir(), "comments.db"),
 			}
 			prepareStartupFailure(t, failure, config, store.Path)
-			err = start(
+			err = launchUI(
 				context.Background(),
 				modelPatch(),
 				store,
@@ -97,7 +97,7 @@ func TestRunContextCancellation(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	err := start(ctx, modelPatch(), comments.Store{
+	err := launchUI(ctx, modelPatch(), comments.Store{
 		Path: filepath.Join(t.TempDir(), "comments.db"),
 	}, nil, func() size { return defaultSize }, func(
 		m model,

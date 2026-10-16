@@ -71,14 +71,14 @@ func TestStoreQueuesByRepositoryAndDeletesExactPeek(t *testing.T) {
 	)
 }
 
-func TestWritePrompt(t *testing.T) {
+func TestWriteReviewPrompt(t *testing.T) {
 	var out bytes.Buffer
 	comment := testComment("/repo", "Handle the nil case.")
 	comment.Anchor = Anchor{
 		FilePath: "main.go", OldStart: 10, OldEnd: 11, NewStart: 12, NewEnd: 13,
 		QuotedLines: []string{"-old()", "+new()"},
 	}
-	testutil.NoError(t, WritePrompt(&out, []Comment{comment}))
+	testutil.NoError(t, WriteReviewPrompt(&out, []Comment{comment}))
 
 	for _, expected := range []string{
 		"New comments since last run:",
@@ -97,13 +97,13 @@ func TestWritePrompt(t *testing.T) {
 	)
 }
 
-func TestWritePromptNumbersMessages(t *testing.T) {
+func TestWriteReviewPromptNumbersMessages(t *testing.T) {
 	var out bytes.Buffer
 	comments := []Comment{
 		testComment("/repo", "First."),
 		testComment("/repo", "Second."),
 	}
-	testutil.NoError(t, WritePrompt(&out, comments))
+	testutil.NoError(t, WriteReviewPrompt(&out, comments))
 
 	for _, expected := range []string{"### 1.", "### 2."} {
 		testutil.RequireEqual(t, strings.Contains(out.String(), expected), true,

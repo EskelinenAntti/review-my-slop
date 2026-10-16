@@ -24,9 +24,9 @@ type Store struct {
 	Path string
 }
 
-// DefaultPath returns the database path in the application data directory.
-func DefaultPath() (string, error) {
-	data, err := DataDir()
+// DefaultStorePath returns the database path in the application data directory.
+func DefaultStorePath() (string, error) {
+	data, err := AppDataDir()
 	if err != nil {
 		return "", err
 	}
@@ -35,7 +35,7 @@ func DefaultPath() (string, error) {
 
 // OpenDefault returns a Store configured with the default database path.
 func OpenDefault() (Store, error) {
-	path, err := DefaultPath()
+	path, err := DefaultStorePath()
 	if err != nil {
 		return Store{}, err
 	}
@@ -68,7 +68,7 @@ func (s Store) Add(comment Comment) (Comment, error) {
 }
 
 func addComment(bucket *bolt.Bucket, id string, data []byte) error {
-	if pendingBytes(bucket)+len(data) > maxPendingBytes {
+	if countPendingCommentValueBytes(bucket)+len(data) > maxPendingBytes {
 		return fmt.Errorf("pending feedback exceeds %d bytes", maxPendingBytes)
 	}
 	if bucket.Get([]byte(id)) != nil {
@@ -80,7 +80,7 @@ func addComment(bucket *bolt.Bucket, id string, data []byte) error {
 // List returns pending comments for the repository.
 func (s Store) List(repository string) ([]Comment, error) {
 	var comments []Comment
-	err := s.view(func(bucket *bolt.Bucket) error {
+	err := s.readTransaction(func(bucket *bolt.Bucket) error {
 		return bucket.ForEach(func(_, value []byte) error {
 			comment, err := decodeComment(value)
 			if err != nil {
@@ -132,16 +132,16 @@ func (s Store) Delete(repository, id string) error {
 }
 
 // Acknowledge removes the identified comments after their feedback is consumed.
-func (s Store) Acknowledge(repository string, ids []string) error {
-	if len(ids) == 0 {
+func (s Store) Acknowledge(repository string, commentIDs []string) error {
+	if len(commentIDs) == 0 {
 		return nil
 	}
-	wanted := make(map[string]struct{}, len(ids))
-	for _, id := range ids {
-		wanted[id] = struct{}{}
+	commentIDSet := make(map[string]struct{}, len(commentIDs))
+	for _, id := range commentIDs {
+		commentIDSet[id] = struct{}{}
 	}
 	return s.transact(func(bucket *bolt.Bucket) error {
-		keys, err := findPendingKeys(bucket, repository, wanted)
+		keys, err := findPendingCommentKeys(bucket, repository, commentIDSet)
 		if err != nil {
 			return err
 		}
@@ -158,13 +158,12 @@ func deleteKeys(bucket *bolt.Bucket, keys [][]byte) error {
 	return nil
 }
 
-func pendingBytes(bucket *bolt.Bucket) int {
-	var total int
+func countPendingCommentValueBytes(bucket *bolt.Bucket) (byteCount int) {
 	cursor := bucket.Cursor()
 	for _, value := cursor.First(); value != nil; _, value = cursor.Next() {
-		total += len(value)
+		byteCount += len(value)
 	}
-	return total
+	return byteCount
 }
 
 func replaceComment(bucket *bolt.Bucket, comment Comment, data []byte) error {
@@ -200,10 +199,10 @@ func findCommentKey(
 	return nil, nil
 }
 
-func findPendingKeys(
+func findPendingCommentKeys(
 	bucket *bolt.Bucket,
 	repository string,
-	wanted map[string]struct{},
+	commentIDs map[string]struct{},
 ) ([][]byte, error) {
 	var keys [][]byte
 	err := bucket.ForEach(func(key, value []byte) error {
@@ -214,7 +213,7 @@ func findPendingKeys(
 		if comment.Repository != repository {
 			return nil
 		}
-		if _, ok := wanted[comment.ID]; ok {
+		if _, ok := commentIDs[comment.ID]; ok {
 			keys = append(keys, append([]byte(nil), key...))
 		}
 		return nil
@@ -280,7 +279,7 @@ func (s Store) transact(fn func(*bolt.Bucket) error) error {
 	})
 }
 
-func (s Store) view(fn func(*bolt.Bucket) error) error {
+func (s Store) readTransaction(fn func(*bolt.Bucket) error) error {
 	db, err := s.open()
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {

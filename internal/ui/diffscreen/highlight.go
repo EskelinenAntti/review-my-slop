@@ -8,9 +8,9 @@ import (
 	"github.com/alecthomas/chroma/v2/quick"
 )
 
-type pair struct {
-	Old []string
-	New []string
+type sourceHighlights struct {
+	oldLines []string
+	newLines []string
 }
 
 const (
@@ -18,7 +18,7 @@ const (
 	darkTheme  = "catppuccin-mocha"
 )
 
-func render(filename, source, theme string) []string {
+func highlightSourceLines(filename, source, themeName string) []string {
 	if source == "" {
 		return nil
 	}
@@ -28,7 +28,7 @@ func render(filename, source, theme string) []string {
 		source,
 		filename,
 		"terminal16m",
-		theme,
+		themeName,
 	)
 	if highlightErr != nil {
 		return strings.Split(strings.TrimSuffix(source, "\n"), "\n")

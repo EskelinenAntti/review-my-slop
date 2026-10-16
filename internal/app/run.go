@@ -17,7 +17,7 @@ func Run(
 	commentStore comments.Store,
 	refresh func(context.Context, patch.Kind) (patch.Patch, error),
 ) error {
-	return start(
+	return launchUI(
 		ctx,
 		currentPatch,
 		commentStore,
@@ -33,20 +33,20 @@ func Run(
 	)
 }
 
-func start(
+func launchUI(
 	ctx context.Context,
 	currentPatch patch.Patch,
 	store commentStore,
 	refresh func(context.Context, patch.Kind) (patch.Patch, error),
-	terminalSize func() size,
-	launch func(model, ...tea.ProgramOption) error,
+	readTerminalSize func() size,
+	runProgram func(model, ...tea.ProgramOption) error,
 ) error {
 	pending, err := store.List(currentPatch.Root)
 	if err != nil {
 		return err
 	}
-	dimensions := terminalSize()
-	m, err := newWithStore(store, currentPatch, pending, dimensions)
+	dimensions := readTerminalSize()
+	m, err := newModelWithStore(store, currentPatch, pending, dimensions)
 	if err != nil {
 		return err
 	}
@@ -58,7 +58,7 @@ func start(
 			},
 		)
 	}
-	return launch(
+	return runProgram(
 		m,
 		tea.WithContext(ctx),
 		tea.WithWindowSize(dimensions.Width, dimensions.Height),

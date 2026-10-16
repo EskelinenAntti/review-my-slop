@@ -41,7 +41,7 @@ func assertKeySequence(t *testing.T, keys, want []string) {
 		Sequence{Prefix: "ctrl+w", Keys: []string{"h", "l", "ctrl+w"}},
 	)
 	for i, key := range keys {
-		if got := m.Feed(key); got != want[i] {
+		if got := m.FeedKey(key); got != want[i] {
 			t.Fatalf("key %d (%q): got %q, want %q", i, key, got, want[i])
 		}
 	}
@@ -49,25 +49,25 @@ func assertKeySequence(t *testing.T, keys, want []string) {
 
 func TestIndependentCopies(t *testing.T) {
 	m := New(Sequence{Prefix: "g", Keys: []string{"g"}, RetryUnmatched: true})
-	m.Feed("g")
+	m.FeedKey("g")
 	cloned := m
-	if got := m.Feed("j"); got != "j" {
+	if got := m.FeedKey("j"); got != "j" {
 		t.Fatalf("unmatched key: %q", got)
 	}
-	if got := cloned.Feed("g"); got != "g g" {
+	if got := cloned.FeedKey("g"); got != "g g" {
 		t.Fatalf("copy: %q", got)
 	}
-	if got := m.Feed("g"); got != "" {
+	if got := m.FeedKey("g"); got != "" {
 		t.Fatalf("original retained consumed prefix: %q", got)
 	}
-	if got := m.Feed("g"); got != "g g" {
+	if got := m.FeedKey("g"); got != "g g" {
 		t.Fatalf("original: %q", got)
 	}
 }
 
 func TestZeroValuePassesKeysThrough(t *testing.T) {
 	var m Matcher
-	if got := m.Feed("j"); got != "j" {
+	if got := m.FeedKey("j"); got != "j" {
 		t.Fatalf("got %q", got)
 	}
 }

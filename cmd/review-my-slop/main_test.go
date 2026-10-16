@@ -13,7 +13,7 @@ import (
 	"github.com/eskelinenantti/review-my-slop/internal/testutil"
 )
 
-func TestRunCommentsPrintsAndConsumesCurrentRepositoryFeedback(t *testing.T) {
+func TestWritePendingCommentsPrintsAndConsumesCurrentRepositoryFeedback(t *testing.T) {
 	repo := initRepository(t)
 	nested := filepath.Join(repo, "nested")
 	testutil.NoError(t, os.Mkdir(nested, 0o755))
@@ -38,7 +38,7 @@ func TestRunCommentsPrintsAndConsumesCurrentRepositoryFeedback(t *testing.T) {
 	}
 
 	var output bytes.Buffer
-	testutil.NoError(t, runComments(context.Background(), &output))
+	testutil.NoError(t, writePendingComments(context.Background(), &output))
 	testutil.RequireEqual(t,
 		strings.Contains(output.String(), "Check this error."), true,
 		"unexpected output:\n%s", output.String(),
@@ -55,7 +55,7 @@ func TestRunCommentsPrintsAndConsumesCurrentRepositoryFeedback(t *testing.T) {
 	)
 
 	var empty bytes.Buffer
-	testutil.NoError(t, runComments(context.Background(), &empty))
+	testutil.NoError(t, writePendingComments(context.Background(), &empty))
 	testutil.RequireEqual(
 		t, strings.TrimSpace(empty.String()), "No pending review comments.",
 		"second output = %q", empty.String())
@@ -67,7 +67,7 @@ func TestRunCommentsPrintsAndConsumesCurrentRepositoryFeedback(t *testing.T) {
 	)
 }
 
-func TestRunCommentsPreservesFeedbackWhenOutputFails(t *testing.T) {
+func TestWritePendingCommentsPreservesFeedbackWhenOutputFails(t *testing.T) {
 	repo := initRepository(t)
 	t.Chdir(repo)
 	t.Setenv("XDG_DATA_HOME", t.TempDir())
@@ -83,7 +83,7 @@ func TestRunCommentsPreservesFeedbackWhenOutputFails(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := runComments(context.Background(), failingWriter{}); err == nil {
+	if err := writePendingComments(context.Background(), failingWriter{}); err == nil {
 		t.Fatal("output failure was ignored")
 	}
 	pending, err := store.List(repo)

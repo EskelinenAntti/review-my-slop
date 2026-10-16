@@ -16,7 +16,7 @@ func TestWorkflowErrorKeepsDiffLabelWithinFooter(t *testing.T) {
 		for _, kind := range []patch.Kind{patch.Unstaged, patch.Branch} {
 			p := modelPatch()
 			p.Kind, p.Branch = kind, "main"
-			m := newModel(
+			m := newModelWithSave(
 				p,
 				nil,
 				nil,

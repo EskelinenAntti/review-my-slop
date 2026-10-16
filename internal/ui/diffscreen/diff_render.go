@@ -19,7 +19,7 @@ func (v *diffView) render(
 ) string {
 	viewport = v.clampViewport(viewport)
 	lines := make([]string, 0, viewport.Height)
-	if v.hasStickyHeader(viewport.top, viewport.Height) {
+	if v.shouldShowStickyHeader(viewport.top, viewport.Height) {
 		current := v.rows[viewport.top]
 		lines = append(
 			lines,
@@ -29,7 +29,7 @@ func (v *diffView) render(
 			),
 		)
 	}
-	end := min(len(v.rows), viewport.top+v.contentHeight(viewport))
+	end := min(len(v.rows), viewport.top+v.viewportBodyHeight(viewport))
 	for y := viewport.top; y < end; y++ {
 		current := v.rows[y]
 		if v.split && current.kind == lineRow {
@@ -97,8 +97,8 @@ func (v *diffView) renderUnifiedLine(
 	}
 	gutter := fmt.Sprintf(
 		"%5s %5s %s ",
-		number(line.OldNumber),
-		number(line.NewNumber),
+		formatLineNumber(line.OldNumber),
+		formatLineNumber(line.NewNumber),
 		prefix,
 	)
 	value := gutter + fitANSIWindow(
@@ -109,7 +109,7 @@ func (v *diffView) renderUnifiedLine(
 	style := lineStyle(line.Kind, v.dark)
 	colors := preserveForeground
 	candidate := diffCursor{row: y, pane: cursor.pane}
-	if selected(selection, candidate) {
+	if cursorIsSelected(selection, candidate) {
 		style, colors = selectionRowStyle(v.dark), discardForeground
 	}
 	if cursor.row == y {
@@ -164,7 +164,7 @@ func (v *diffView) renderPane(
 	cursor diffCursor,
 	selection *diffSelection,
 ) string {
-	index := v.lineIndex(current, pane)
+	index := v.sourceLineIndex(current, pane)
 	if index < 0 {
 		return strings.Repeat(" ", width)
 	}
@@ -181,7 +181,7 @@ func (v *diffView) renderPane(
 	if line.Kind == patch.Deletion {
 		prefix = removedStyle.Render("-") + " "
 	}
-	gutter := fmt.Sprintf("%5s ", number(numberValue))
+	gutter := fmt.Sprintf("%5s ", formatLineNumber(numberValue))
 	value := gutter + fitANSIWindow(
 		prefix+text,
 		offset,
@@ -190,7 +190,7 @@ func (v *diffView) renderPane(
 	style := lineStyle(line.Kind, v.dark)
 	colors := preserveForeground
 	candidate := diffCursor{row: y, pane: pane}
-	if selected(selection, candidate) {
+	if cursorIsSelected(selection, candidate) {
 		style, colors = selectionRowStyle(v.dark), discardForeground
 	}
 	if cursor == candidate {
@@ -199,7 +199,7 @@ func (v *diffView) renderPane(
 	return renderStyledRow(style, value, width, colors)
 }
 
-func selected(selection *diffSelection, cursor diffCursor) bool {
+func cursorIsSelected(selection *diffSelection, cursor diffCursor) bool {
 	if selection == nil {
 		return false
 	}
@@ -242,7 +242,7 @@ func selectionRowStyle(dark bool) lipgloss.Style {
 	)
 }
 
-func number(value patch.LineNumber) string {
+func formatLineNumber(value patch.LineNumber) string {
 	if value == 0 {
 		return ""
 	}
@@ -264,7 +264,7 @@ func renderStyledRow(
 ) string {
 	value = filterANSIColors(value, colors)
 	fitted := fitANSIWindow(value, 0, width)
-	prefix := stylePrefix(style)
+	prefix := ansiStartSequenceForStyle(style)
 	if prefix != "" {
 		fitted = strings.ReplaceAll(fitted, "\x1b[0m", "\x1b[0m"+prefix)
 		fitted = strings.ReplaceAll(fitted, "\x1b[m", "\x1b[m"+prefix)
@@ -301,11 +301,11 @@ func filterSGRParts(parts []string, colors foregroundPolicy) []string {
 			filtered = append(filtered, parts[index])
 			continue
 		}
-		if extendedColorRemoved(code, colors) {
-			index = colorParameterEnd(parts, index)
+		if shouldRemoveExtendedColorCode(code, colors) {
+			index = lastANSIColorParameterIndex(parts, index)
 			continue
 		}
-		if simpleColorRemoved(code, colors) {
+		if shouldRemoveSimpleColorCode(code, colors) {
 			continue
 		}
 		filtered = append(filtered, parts[index])
@@ -313,16 +313,16 @@ func filterSGRParts(parts []string, colors foregroundPolicy) []string {
 	return filtered
 }
 
-func extendedColorRemoved(code int, colors foregroundPolicy) bool {
+func shouldRemoveExtendedColorCode(code int, colors foregroundPolicy) bool {
 	return code == 48 || colors == discardForeground && code == 38
 }
 
-func simpleColorRemoved(code int, colors foregroundPolicy) bool {
-	return backgroundColor(code) ||
-		colors == discardForeground && foregroundColor(code)
+func shouldRemoveSimpleColorCode(code int, colors foregroundPolicy) bool {
+	return isBackgroundColorCode(code) ||
+		colors == discardForeground && isForegroundColorCode(code)
 }
 
-func colorParameterEnd(parts []string, index int) int {
+func lastANSIColorParameterIndex(parts []string, index int) (endIndex int) {
 	if index+1 >= len(parts) {
 		return index
 	}
@@ -336,11 +336,11 @@ func colorParameterEnd(parts []string, index int) int {
 	}
 }
 
-func backgroundColor(code int) bool {
+func isBackgroundColorCode(code int) bool {
 	return code >= 40 && code <= 49 || code >= 100 && code <= 107
 }
 
-func foregroundColor(code int) bool {
+func isForegroundColorCode(code int) bool {
 	return code >= 30 && code <= 39 || code >= 90 && code <= 97
 }
 
@@ -363,7 +363,7 @@ func expandTabs(value string) string {
 	return strings.ReplaceAll(value, "\t", "    ")
 }
 
-func stylePrefix(style lipgloss.Style) string {
+func ansiStartSequenceForStyle(style lipgloss.Style) string {
 	const marker = "\x00"
 	rendered := style.Render(marker)
 	index := strings.Index(rendered, marker)

@@ -30,16 +30,16 @@ func TestCommentWorkflowLifecycle(t *testing.T) {
 				os.WriteFile(
 					script,
 					[]byte(
-						"printf '%s' \"$1\" > "+shellQuote(record)+
+						"printf '%s' \"$1\" > "+quoteShellArgument(record)+
 							"\n"+tc.script+"\n",
 					),
 					0600,
 				),
 			)
 
-			adapter, complete := commentWorkflow(
+			adapter, complete := newCommentEditorWorkflow(
 				context.Background(),
-				"sh "+shellQuote(script),
+				"sh "+quoteShellArgument(script),
 				tc.body,
 				comments.Anchor{
 					QuotedLines: []string{" context", "+added"},
@@ -128,7 +128,7 @@ func TestCommentCancellationAndCreationFailure(t *testing.T) {
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
 			tc.setup(t, dir, cancel)
-			adapter, complete := commentWorkflow(
+			adapter, complete := newCommentEditorWorkflow(
 				ctx,
 				"true",
 				"body",
@@ -156,7 +156,7 @@ func TestCommentCancellationAndCreationFailure(t *testing.T) {
 
 func TestTerminalFailureReachesCompletion(t *testing.T) {
 	sentinel := errors.New("terminal restoration failed")
-	adapter, complete := commentWorkflow(
+	adapter, complete := newCommentEditorWorkflow(
 		context.Background(),
 		"true",
 		"body",
@@ -190,7 +190,7 @@ func TestMissingEditor(t *testing.T) {
 
 func TestSourceArgumentsAndContext(t *testing.T) {
 	var output bytes.Buffer
-	cmd := sourceCommand(
+	cmd := newSourceEditorCommand(
 		context.Background(),
 		"printf '%s\\n'",
 		"/repo with spaces/it's.go",
@@ -204,7 +204,7 @@ func TestSourceArgumentsAndContext(t *testing.T) {
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	err := sourceCommand(ctx, "true", "source", 2).Run()
+	err := newSourceEditorCommand(ctx, "true", "source", 2).Run()
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("error = %v", err)
 	}
@@ -276,7 +276,7 @@ func TestRunningEditorCancellationCleansDraft(t *testing.T) {
 	t.Setenv("TMPDIR", dir)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	adapter, complete := commentWorkflow(
+	adapter, complete := newCommentEditorWorkflow(
 		ctx,
 		"printf started; exec sleep 30 #",
 		"body",

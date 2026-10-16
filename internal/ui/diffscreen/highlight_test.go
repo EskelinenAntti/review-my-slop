@@ -16,8 +16,8 @@ func TestRenamedFileHighlightsEachSideUsingItsOwnPath(t *testing.T) {
 		NewSource: source,
 	}
 	view := &diffView{dark: true}
-	pair := view.highlight(&file)
-	old, updated := strings.Join(pair.Old, "\n"), strings.Join(pair.New, "\n")
+	highlights := view.sourceHighlightsForFile(&file)
+	old, updated := strings.Join(highlights.oldLines, "\n"), strings.Join(highlights.newLines, "\n")
 	if old == updated || stripANSI(old) != strings.TrimSuffix(
 		source,
 		"\n",

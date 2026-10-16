@@ -9,10 +9,10 @@ func BodyHeight(height int) int { return max(1, height-3) }
 
 // BodyRow maps a terminal cell to a body row, excluding header and footer cells
 // and any part of the frame that falls outside the terminal dimensions.
-func BodyRow(x, y, width, height int) (int, bool) {
-	row := y - 1
-	return row, x >= 0 && x < width && row >= 0 &&
-		row < BodyHeight(height) && y < height-2
+func BodyRow(x, y, width, height int) (bodyRow int, insideBody bool) {
+	bodyRow = y - 1
+	return bodyRow, x >= 0 && x < width && bodyRow >= 0 &&
+		bodyRow < BodyHeight(height) && y < height-2
 }
 
 // Render composes a header, padded body, footer, and final blank line.

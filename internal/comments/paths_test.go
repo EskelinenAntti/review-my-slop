@@ -9,7 +9,7 @@ func TestDataDirectoryUsesXDGEnvironment(t *testing.T) {
 	root := t.TempDir()
 	t.Setenv("XDG_DATA_HOME", root)
 
-	data, err := DataDir()
+	data, err := AppDataDir()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -23,7 +23,7 @@ func TestDataDirectoryFallsBackToHome(t *testing.T) {
 	t.Setenv("HOME", home)
 	t.Setenv("XDG_DATA_HOME", "")
 
-	data, err := DataDir()
+	data, err := AppDataDir()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -37,7 +37,7 @@ func TestRelativeXDGDataDirectoryIsIgnored(t *testing.T) {
 	t.Setenv("HOME", home)
 	t.Setenv("XDG_DATA_HOME", "relative-data")
 
-	data, err := DataDir()
+	data, err := AppDataDir()
 	if err != nil {
 		t.Fatal(err)
 	}

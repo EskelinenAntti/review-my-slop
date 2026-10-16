@@ -70,21 +70,21 @@ func TestSplitSelectionOnlyIncludesActivePane(t *testing.T) {
 	removed, _ := v.search("removed one", first, forward)
 	added, _ := v.search("added one", first, forward)
 	left := beginSelection(removed)
-	left, ok := v.extendSelection(left, removed)
-	testutil.RequireEqual(t, ok, true, "left lines = %#v", v.lines(left))
-	testutil.RequireEqual(t, len(v.lines(left)), 1, "left lines = %#v",
-		v.lines(left),
+	left, ok := v.extendSelectionToCursor(left, removed)
+	testutil.RequireEqual(t, ok, true, "left lines = %#v", v.linesCoveredBySelection(left))
+	testutil.RequireEqual(t, len(v.linesCoveredBySelection(left)), 1, "left lines = %#v",
+		v.linesCoveredBySelection(left),
 	)
-	testutil.RequireEqual(t, v.lines(left)[0].Kind, patch.Deletion,
-		"left lines = %#v", v.lines(left),
+	testutil.RequireEqual(t, v.linesCoveredBySelection(left)[0].Kind, patch.Deletion,
+		"left lines = %#v", v.linesCoveredBySelection(left),
 	)
 
 	right := beginSelection(added)
-	testutil.RequireEqual(t, len(v.lines(right)), 1, "right lines = %#v",
-		v.lines(right),
+	testutil.RequireEqual(t, len(v.linesCoveredBySelection(right)), 1, "right lines = %#v",
+		v.linesCoveredBySelection(right),
 	)
-	testutil.RequireEqual(t, v.lines(right)[0].Kind, patch.Addition,
-		"right lines = %#v", v.lines(right),
+	testutil.RequireEqual(t, v.linesCoveredBySelection(right)[0].Kind, patch.Addition,
+		"right lines = %#v", v.linesCoveredBySelection(right),
 	)
 }
 
@@ -243,7 +243,7 @@ func TestSplitVerticalMovementAndHalfPageUseVisualRows(t *testing.T) {
 	)
 	cursor := mustFirst(t, v)
 	viewport := v.newViewport(120, 4)
-	viewport = v.keepVisible(viewport, cursor)
+	viewport = v.keepCursorVisible(viewport, cursor)
 	originalTop := viewport.top
 	viewport, moved := v.scrollHalfPage(viewport, cursor, forward)
 	testutil.RequireEqual(t, viewport.top > originalTop, true,
@@ -350,11 +350,11 @@ func stickyHeaderPatch() patch.Patch {
 func TestKeepVisibleAccountsForStickyFileHeader(t *testing.T) {
 	v := newUnifiedView(longPatch(), true)
 	cursor, _ := v.last()
-	viewport := v.keepVisible(v.newViewport(50, 4), cursor)
+	viewport := v.keepCursorVisible(v.newViewport(50, 4), cursor)
 	rendered := ansi.Strip(v.render(viewport, cursor, nil))
 	line, _ := v.line(cursor)
 	testutil.RequireEqual(t,
-		cursor.row < viewport.top+v.contentHeight(viewport), true,
+		cursor.row < viewport.top+v.viewportBodyHeight(viewport), true,
 		"last cursor row is hidden by sticky header: viewport=%#v render=%q",
 		viewport, rendered,
 	)
@@ -405,7 +405,7 @@ func TestHorizontalScrollKeepsUnifiedGutterFixed(t *testing.T) {
 	v := newUnifiedView(p, true)
 	cursor := mustFirst(t, v)
 	viewport := v.newViewport(37, 1)
-	viewport = v.keepVisible(viewport, cursor)
+	viewport = v.keepCursorVisible(viewport, cursor)
 	before := ansi.Strip(v.render(viewport, cursor, nil))
 	viewport = v.scrollHorizontal(viewport, 4)
 	after := ansi.Strip(v.render(viewport, cursor, nil))
@@ -424,7 +424,7 @@ func TestHorizontalScrollKeepsSplitGuttersAndDividerFixed(t *testing.T) {
 	v := newSideBySideView(longLinePatch(), true)
 	cursor := mustFirst(t, v)
 	viewport := v.newViewport(120, 1)
-	viewport = v.keepVisible(viewport, cursor)
+	viewport = v.keepCursorVisible(viewport, cursor)
 	viewport = v.scrollHorizontal(viewport, 8)
 	rendered := ansi.Strip(v.render(viewport, cursor, nil))
 	testutil.RequireEqual(t, strings.Index(rendered, "│"), 59,

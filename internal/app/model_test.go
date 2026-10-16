@@ -22,7 +22,7 @@ func testModel(
 	items []comments.Comment,
 	save saveCommentFunc,
 ) model {
-	return newModel(
+	return newModelWithSave(
 		p,
 		items,
 		save,
@@ -33,7 +33,7 @@ func testModel(
 func TestStoreBackedCommentLifecycle(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	store := comments.Store{Path: filepath.Join(t.TempDir(), "comments.db")}
-	m, err := newWithStore(store, modelPatch(), nil, defaultSize)
+	m, err := newModelWithStore(store, modelPatch(), nil, defaultSize)
 	testutil.NoError(t, err)
 
 	anchor := comments.Anchor{
@@ -43,7 +43,7 @@ func TestStoreBackedCommentLifecycle(t *testing.T) {
 	}
 	m.edit.body = "check this"
 	m.edit.anchor = anchor
-	m.finishCommentEdit()
+	m.commitCommentEdit()
 	testutil.RequireEqual(t, m.err, nil, "%s", m.err)
 
 	loaded, err := m.load()
@@ -65,7 +65,7 @@ func TestStoreBackedCommentLifecycle(t *testing.T) {
 	id := loaded[0].ID
 	m.edit.index = 0
 	m.edit.body = "edited"
-	m.finishCommentEdit()
+	m.commitCommentEdit()
 	testutil.RequireEqual(t, m.err, nil, "%s", m.err)
 
 	loaded, err = m.load()
@@ -93,7 +93,7 @@ func TestStoreBackedCommentLifecycle(t *testing.T) {
 }
 
 func TestNewUsesSavedSideBySideForWideInitialSize(t *testing.T) {
-	m := newModel(modelPatch(), nil, nil, initialLayout{
+	m := newModelWithSave(modelPatch(), nil, nil, initialLayout{
 		SideBySide: true,
 		size:       size{Width: 120, Height: 30},
 	})
@@ -106,7 +106,7 @@ func TestNewUsesSavedSideBySideForWideInitialSize(t *testing.T) {
 }
 
 func TestNewKeepsSavedSideBySideInactiveForNarrowInitialSize(t *testing.T) {
-	m := newModel(modelPatch(), nil, nil, initialLayout{
+	m := newModelWithSave(modelPatch(), nil, nil, initialLayout{
 		SideBySide: true,
 		size:       size{Width: 80, Height: 30},
 	})
@@ -128,7 +128,7 @@ func TestNewKeepsSavedSideBySideInactiveForNarrowInitialSize(t *testing.T) {
 
 func TestSideBySideToggleStillSavesPreference(t *testing.T) {
 	var saved []bool
-	m := newModel(modelPatch(), nil, nil, initialLayout{
+	m := newModelWithSave(modelPatch(), nil, nil, initialLayout{
 		SaveSideBySide: func(enabled bool) error {
 			saved = append(saved, enabled)
 			return nil
@@ -164,7 +164,7 @@ func TestRefreshTranslatesCursorAndSelection(t *testing.T) {
 func TestUnchangedRefreshPreservesStateAndClearsError(t *testing.T) {
 	p := longModelPatch()
 	p.Files[0].OldPath, p.Files[0].NewPath = "long.go", "long.go"
-	m := newModel(p, nil, nil, initialLayout{size: size{Width: 40, Height: 8}})
+	m := newModelWithSave(p, nil, nil, initialLayout{size: size{Width: 40, Height: 8}})
 	for range 8 {
 		m.diffView.Move(diffscreen.NextLine)
 	}
@@ -221,7 +221,7 @@ func TestCommentSaveUsesPatchAndPreservesAnchor(t *testing.T) {
 	})
 	m.edit.body = "comment"
 	m.edit.anchor = comments.Anchor{FilePath: "main.go"}
-	m.finishCommentEdit()
+	m.commitCommentEdit()
 	testutil.RequireEqual(t, savedPatch.Root, "/repo",
 		"saved patch/comments = %#v %#v", savedPatch, m.comments.items,
 	)
@@ -373,7 +373,7 @@ func TestNarrowLayoutToggleSavesPreferenceWithoutApplicationGeometryRules(
 	t *testing.T,
 ) {
 	var saved []bool
-	m := newModel(modelPatch(), nil, nil, initialLayout{
+	m := newModelWithSave(modelPatch(), nil, nil, initialLayout{
 		size: size{Width: 80, Height: 30},
 		SaveSideBySide: func(enabled bool) error {
 			saved = append(saved, enabled)
