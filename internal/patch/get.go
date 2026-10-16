@@ -60,10 +60,10 @@ func Get(ctx context.Context, kind Kind) (Patch, error) {
 	if err != nil {
 		return Patch{}, fmt.Errorf("resolve working directory: %w", err)
 	}
-	return load(ctx, directory, kind, execRunner{})
+	return readPatch(ctx, directory, kind, execRunner{})
 }
 
-func load(
+func readPatch(
 	ctx context.Context,
 	directory string,
 	kind Kind,
@@ -75,11 +75,11 @@ func load(
 	if err := ctx.Err(); err != nil {
 		return Patch{}, err
 	}
-	root, err := repositoryRoot(ctx, run, directory)
+	root, err := findRepositoryRoot(ctx, run, directory)
 	if err != nil {
 		return Patch{}, err
 	}
-	branch, err := defaultBranch(ctx, run, root)
+	branch, err := findDefaultBranch(ctx, run, root)
 	if err != nil {
 		return Patch{}, fmt.Errorf("discover default branch: %w", err)
 	}
@@ -91,7 +91,7 @@ func load(
 	if err != nil {
 		return Patch{}, err
 	}
-	return build(ctx, run, root, kind, branch, raw, readOld)
+	return makePatch(ctx, run, root, kind, branch, raw, readOld)
 }
 
 func comparisonBase(
@@ -122,7 +122,7 @@ func comparisonBase(
 	return []string{base}, readOld, nil
 }
 
-func repositoryRoot(
+func findRepositoryRoot(
 	ctx context.Context,
 	run runner,
 	directory string,
@@ -157,7 +157,7 @@ func gitDiff(
 
 type sourceReader func(context.Context, runner, string, string) string
 
-func build(
+func makePatch(
 	ctx context.Context,
 	run runner,
 	root string,
@@ -166,11 +166,11 @@ func build(
 	raw []byte,
 	readOld sourceReader,
 ) (Patch, error) {
-	files, err := parseTracked(ctx, run, root, raw, readOld)
+	files, err := readChangedFiles(ctx, run, root, raw, readOld)
 	if err != nil {
 		return Patch{}, err
 	}
-	untracked, err := loadUntracked(ctx, run, root)
+	untracked, err := readUntrackedFiles(ctx, run, root)
 	if err != nil {
 		return Patch{}, err
 	}
@@ -194,7 +194,7 @@ func build(
 	}, nil
 }
 
-func defaultBranch(
+func findDefaultBranch(
 	ctx context.Context,
 	run runner,
 	root string,
@@ -237,7 +237,7 @@ func defaultBranch(
 	return "", nil
 }
 
-func parseTracked(
+func readChangedFiles(
 	ctx context.Context,
 	run runner,
 	root string,
@@ -256,7 +256,7 @@ func parseTracked(
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
-		file, err := parseTrackedFile(ctx, run, root, fd, readOld)
+		file, err := readChangedFile(ctx, run, root, fd, readOld)
 		if err != nil {
 			return nil, err
 		}
@@ -265,7 +265,7 @@ func parseTracked(
 	return files, nil
 }
 
-func parseTrackedFile(
+func readChangedFile(
 	ctx context.Context,
 	run runner,
 	root string,
@@ -291,15 +291,22 @@ func parseTrackedFile(
 		if err != nil {
 			return File{}, fmt.Errorf("%s: %w", display, err)
 		}
-		file.Hunks = append(
-			file.Hunks,
-			Hunk{Header: formatHunkHeader(h), Lines: lines},
+		header := fmt.Sprintf(
+			"@@ -%d,%d +%d,%d @@",
+			h.OrigStartLine,
+			h.OrigLines,
+			h.NewStartLine,
+			h.NewLines,
 		)
+		if h.Section != "" {
+			header += " " + h.Section
+		}
+		file.Hunks = append(file.Hunks, Hunk{Header: header, Lines: lines})
 	}
 	return file, nil
 }
 
-func loadUntracked(
+func readUntrackedFiles(
 	ctx context.Context,
 	run runner,
 	root string,
@@ -315,7 +322,13 @@ func loadUntracked(
 	if err != nil {
 		return nil, err
 	}
-	return readUntrackedPaths(ctx, root, untrackedPaths(out))
+	var paths []string
+	for path := range bytes.SplitSeq(out, []byte{0}) {
+		if len(path) > 0 {
+			paths = append(paths, string(path))
+		}
+	}
+	return readUntrackedPaths(ctx, root, paths)
 }
 
 func readUntrackedPaths(
@@ -339,16 +352,6 @@ func readUntrackedPaths(
 	return files, nil
 }
 
-func untrackedPaths(out []byte) []string {
-	var paths []string
-	for path := range bytes.SplitSeq(out, []byte{0}) {
-		if len(path) > 0 {
-			paths = append(paths, string(path))
-		}
-	}
-	return paths
-}
-
 func readUntrackedFile(root, path string) (File, bool, error) {
 	full := filepath.Join(root, filepath.FromSlash(path))
 	info, err := os.Lstat(full)
@@ -356,12 +359,20 @@ func readUntrackedFile(root, path string) (File, bool, error) {
 		return File{}, false, fmt.Errorf("stat untracked %q: %w", path, err)
 	}
 	if info.Mode()&os.ModeSymlink != 0 {
-		return readUntrackedSymlink(full, path)
+		target, err := os.Readlink(full)
+		if err != nil {
+			return File{}, false, fmt.Errorf("read symlink %q: %w", path, err)
+		}
+		return addedFile(path, visibleText(target)), true, nil
 	}
 	if !info.Mode().IsRegular() {
 		return File{}, false, nil
 	}
-	if info.Size() > maxFileBytes {
+	return readUntrackedContents(full, path, info.Size())
+}
+
+func readUntrackedContents(full, path string, size int64) (File, bool, error) {
+	if size > maxFileBytes {
 		return File{
 			NewPath:     path,
 			DisplayPath: visibleText(path),
@@ -383,14 +394,6 @@ func readUntrackedFile(root, path string) (File, bool, error) {
 		}, true, nil
 	}
 	return addedFile(path, visibleSource(string(content))), true, nil
-}
-
-func readUntrackedSymlink(full, path string) (File, bool, error) {
-	target, err := os.Readlink(full)
-	if err != nil {
-		return File{}, false, fmt.Errorf("read symlink %q: %w", path, err)
-	}
-	return addedFile(path, visibleText(target)), true, nil
 }
 
 func addedFile(path, content string) File {
@@ -556,16 +559,3 @@ func visibleText(value string) string {
 	return strings.ReplaceAll(visibleSource(value), "\n", `\n`)
 }
 
-func formatHunkHeader(h *diff.Hunk) string {
-	header := fmt.Sprintf(
-		"@@ -%d,%d +%d,%d @@",
-		h.OrigStartLine,
-		h.OrigLines,
-		h.NewStartLine,
-		h.NewLines,
-	)
-	if h.Section != "" {
-		header += " " + h.Section
-	}
-	return header
-}

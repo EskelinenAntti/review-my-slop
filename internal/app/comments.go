@@ -74,43 +74,64 @@ func (m *model) beginComment() (tea.Cmd, error) {
 func (m *model) finishCommentEdit() {
 	body := strings.TrimSpace(m.edit.body)
 	if body == "" {
-		if m.edit.index >= 0 {
-			m.deleteComment(m.edit.index)
-		}
-		m.clearCommentEdit()
-		m.diffView.ClearSelection()
+		m.discardCommentEdit()
 		return
 	}
 	if m.save == nil {
-		m.err = errors.New("comment storage is unavailable")
-		m.clearCommentEdit()
+		m.failCommentEdit(errors.New("comment storage is unavailable"))
 		return
 	}
-	var comment comments.Comment
-	if m.edit.index >= 0 {
-		comment = m.comments.items[m.edit.index]
-		comment.Body = body
-	} else {
-		comment = comments.Comment{Anchor: m.edit.anchor, Body: body}
-	}
-	saved, err := m.save(comment, m.currentPatch)
-	if err != nil {
-		m.err = err
-		m.clearCommentEdit()
+	if err := m.saveCommentEdit(body); err != nil {
+		m.failCommentEdit(err)
 		return
 	}
-	if m.edit.index >= 0 {
-		m.comments.items[m.edit.index] = saved
-	} else {
-		m.comments.items = append(m.comments.items, saved)
-		m.commentView.Update(m.comments.items)
-		m.commentView.Move(len(m.comments.items))
-	}
-	m.comments.revision++
-	m.commentView.Update(m.comments.items)
 	m.clearCommentEdit()
 	m.err = nil
 	m.diffView.ClearSelection()
+}
+
+func (m *model) discardCommentEdit() {
+	if m.edit.index >= 0 {
+		m.deleteComment(m.edit.index)
+	}
+	m.clearCommentEdit()
+	m.diffView.ClearSelection()
+}
+
+func (m *model) failCommentEdit(err error) {
+	m.err = err
+	m.clearCommentEdit()
+}
+
+func (m *model) saveCommentEdit(body string) error {
+	saved, err := m.save(m.commentToSave(body), m.currentPatch)
+	if err != nil {
+		return err
+	}
+	m.showSavedComment(saved)
+	m.comments.revision++
+	return nil
+}
+
+func (m model) commentToSave(body string) comments.Comment {
+	if m.edit.index >= 0 {
+		comment := m.comments.items[m.edit.index]
+		comment.Body = body
+		return comment
+	}
+	return comments.Comment{Anchor: m.edit.anchor, Body: body}
+}
+
+func (m *model) showSavedComment(comment comments.Comment) {
+	if m.edit.index >= 0 {
+		m.comments.items[m.edit.index] = comment
+	} else {
+		m.comments.items = append(m.comments.items, comment)
+	}
+	m.commentView.Update(m.comments.items)
+	if m.edit.index < 0 {
+		m.commentView.Move(len(m.comments.items))
+	}
 }
 
 func (m *model) deleteComment(index int) {
@@ -153,13 +174,8 @@ func (m model) sourceLocation() (string, int, error) {
 	if !ok {
 		return "", 0, errors.New("select a code line to open in $EDITOR")
 	}
-	path, number := file.NewPath, line.NewNumber
-	if path == "" || path == "/dev/null" {
-		path = file.OldPath
-	}
-	if number == 0 {
-		number = line.OldNumber
-	}
+	path := sourcePath(file)
+	number := sourceLineNumber(line)
 	if path == "" || path == "/dev/null" || number < 1 {
 		return "", 0, errors.New(
 			"current line has no editable working-tree location",
@@ -169,6 +185,21 @@ func (m model) sourceLocation() (string, int, error) {
 		path = filepath.Join(m.currentPatch.Root, filepath.FromSlash(path))
 	}
 	return path, int(number), nil
+}
+
+func sourcePath(file patch.File) string {
+	path := file.NewPath
+	if path == "" || path == "/dev/null" {
+		return file.OldPath
+	}
+	return path
+}
+
+func sourceLineNumber(line patch.Line) patch.LineNumber {
+	if line.NewNumber == 0 {
+		return line.OldNumber
+	}
+	return line.NewNumber
 }
 
 func (m model) openCommentEditor() (tea.Cmd, error) {
@@ -192,26 +223,35 @@ func (m model) commentIndex(selected comments.Comment) int {
 }
 
 func commentAnchor(file patch.File, lines []patch.Line) comments.Anchor {
-	path := file.NewPath
-	if path == "" {
-		path = file.OldPath
-	}
-	anchor := comments.Anchor{FilePath: path}
+	anchor := comments.Anchor{FilePath: sourcePath(file)}
 	for _, line := range lines {
-		prefix := " "
-		if line.Kind == patch.Addition {
-			prefix = "+"
-		}
-		if line.Kind == patch.Deletion {
-			prefix = "-"
-		}
-		anchor.QuotedLines = append(anchor.QuotedLines, prefix+line.Text)
-		accumulateRange(&anchor.OldStart, &anchor.OldEnd, int(line.OldNumber))
-		accumulateRange(&anchor.NewStart, &anchor.NewEnd, int(line.NewNumber))
+		anchor.QuotedLines = append(anchor.QuotedLines, quotedLine(line))
+		includeLineNumber(
+			&anchor.OldStart,
+			&anchor.OldEnd,
+			int(line.OldNumber),
+		)
+		includeLineNumber(
+			&anchor.NewStart,
+			&anchor.NewEnd,
+			int(line.NewNumber),
+		)
 	}
 	return anchor
 }
-func accumulateRange(start, end *int, value int) {
+
+func quotedLine(line patch.Line) string {
+	prefix := " "
+	if line.Kind == patch.Addition {
+		prefix = "+"
+	}
+	if line.Kind == patch.Deletion {
+		prefix = "-"
+	}
+	return prefix + line.Text
+}
+
+func includeLineNumber(start, end *int, value int) {
 	if value == 0 {
 		return
 	}

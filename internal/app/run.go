@@ -52,11 +52,9 @@ func start(
 	}
 	m.ctx = ctx
 	if refresh != nil {
-		m.setRefresh(
-			func(kind patch.Kind) (patch.Patch, error) {
-				return refresh(ctx, kind)
-			},
-		)
+		m.refresh = func(kind patch.Kind) (patch.Patch, error) {
+			return refresh(ctx, kind)
+		}
 	}
 	return launch(
 		m,

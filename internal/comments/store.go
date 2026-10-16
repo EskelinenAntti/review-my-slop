@@ -45,11 +45,22 @@ func OpenDefault() (Store, error) {
 // Add validates and stores a comment, assigning an ID and timestamp when
 // absent.
 func (s Store) Add(comment Comment) (Comment, error) {
+	comment, data, err := prepareComment(comment)
+	if err != nil {
+		return Comment{}, err
+	}
+	err = s.transact(func(bucket *bolt.Bucket) error {
+		return addComment(bucket, comment.ID, data)
+	})
+	return comment, err
+}
+
+func prepareComment(comment Comment) (Comment, []byte, error) {
 	if comment.Repository == "" {
-		return Comment{}, errors.New("comment requires a repository")
+		return Comment{}, nil, errors.New("comment requires a repository")
 	}
 	if err := validateComment(comment); err != nil {
-		return Comment{}, err
+		return Comment{}, nil, err
 	}
 	if comment.ID == "" {
 		comment.ID = fmt.Sprintf("%d", time.Now().UnixNano())
@@ -59,12 +70,9 @@ func (s Store) Add(comment Comment) (Comment, error) {
 	}
 	data, err := json.Marshal(comment)
 	if err != nil {
-		return Comment{}, fmt.Errorf("encode comment: %w", err)
+		return Comment{}, nil, fmt.Errorf("encode comment: %w", err)
 	}
-	err = s.transact(func(bucket *bolt.Bucket) error {
-		return addComment(bucket, comment.ID, data)
-	})
-	return comment, err
+	return comment, data, nil
 }
 
 func addComment(bucket *bolt.Bucket, id string, data []byte) error {
@@ -266,7 +274,7 @@ func decodeComment(data []byte) (Comment, error) {
 }
 
 func (s Store) transact(fn func(*bolt.Bucket) error) error {
-	db, err := s.open()
+	db, err := s.openDatabase()
 	if err != nil {
 		return err
 	}
@@ -281,7 +289,7 @@ func (s Store) transact(fn func(*bolt.Bucket) error) error {
 }
 
 func (s Store) view(fn func(*bolt.Bucket) error) error {
-	db, err := s.open()
+	db, err := s.openDatabase()
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			return nil
@@ -298,23 +306,37 @@ func (s Store) view(fn func(*bolt.Bucket) error) error {
 	})
 }
 
-func (s Store) open() (*bolt.DB, error) {
+func (s Store) openDatabase() (*bolt.DB, error) {
 	if s.Path == "" {
 		return nil, errors.New("comments path is empty")
 	}
-	if err := os.MkdirAll(filepath.Dir(s.Path), 0o700); err != nil {
-		return nil, fmt.Errorf("create comments directory: %w", err)
-	}
-	if err := os.Chmod(filepath.Dir(s.Path), 0o700); err != nil {
-		return nil, fmt.Errorf("secure comments directory: %w", err)
+	if err := prepareCommentsDirectory(filepath.Dir(s.Path)); err != nil {
+		return nil, err
 	}
 	db, err := bolt.Open(s.Path, 0o600, &bolt.Options{Timeout: 2 * time.Second})
 	if err != nil {
 		return nil, fmt.Errorf("open comments: %w", err)
 	}
-	if err := os.Chmod(s.Path, 0o600); err != nil {
+	if err := secureCommentsFile(s.Path); err != nil {
 		db.Close()
-		return nil, fmt.Errorf("secure comments database: %w", err)
+		return nil, err
 	}
 	return db, nil
+}
+
+func prepareCommentsDirectory(path string) error {
+	if err := os.MkdirAll(path, 0o700); err != nil {
+		return fmt.Errorf("create comments directory: %w", err)
+	}
+	if err := os.Chmod(path, 0o700); err != nil {
+		return fmt.Errorf("secure comments directory: %w", err)
+	}
+	return nil
+}
+
+func secureCommentsFile(path string) error {
+	if err := os.Chmod(path, 0o600); err != nil {
+		return fmt.Errorf("secure comments database: %w", err)
+	}
+	return nil
 }

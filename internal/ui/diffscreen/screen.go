@@ -150,11 +150,11 @@ func (v *View) Move(motion Motion) {
 		}
 
 	default:
-		v.moveBetweenSections(motion)
+		v.moveFileOrPane(motion)
 	}
 }
 
-func (v *View) moveBetweenSections(motion Motion) {
+func (v *View) moveFileOrPane(motion Motion) {
 	switch motion {
 	case PreviousFile:
 		v.jumpFile(backward)
@@ -216,20 +216,28 @@ func (v *View) switchPane(pane diffPane) {
 	if !ok {
 		return
 	}
-	if v.selection != nil {
-		first, firstOK := v.view.switchPane(v.selection.First, pane)
-		last, lastOK := v.view.switchPane(v.selection.Last, pane)
-		if !firstOK || !lastOK {
-			return
-		}
-		selection := beginSelection(first)
-		selection, ok = v.view.extendSelection(selection, last)
-		if !ok {
-			return
-		}
-		v.selection = &selection
+	if !v.moveSelectionToPane(pane) {
+		return
 	}
 	v.setCursor(cursor)
+}
+
+func (v *View) moveSelectionToPane(pane diffPane) bool {
+	if v.selection == nil {
+		return true
+	}
+	first, firstOK := v.view.switchPane(v.selection.First, pane)
+	last, lastOK := v.view.switchPane(v.selection.Last, pane)
+	if !firstOK || !lastOK {
+		return false
+	}
+	selection := beginSelection(first)
+	selection, ok := v.view.extendSelection(selection, last)
+	if !ok {
+		return false
+	}
+	v.selection = &selection
+	return true
 }
 
 // Align positions the focused line at the requested viewport alignment.
