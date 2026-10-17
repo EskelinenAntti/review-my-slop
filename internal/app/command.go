@@ -39,11 +39,11 @@ func writeCommandPendingComments(ctx context.Context, output io.Writer) error {
 	if err != nil {
 		return err
 	}
-	currentPatch, err := patches.Load(ctx, patches.Unstaged)
+	patch, err := patches.Load(ctx, patches.Unstaged)
 	if err != nil {
 		return err
 	}
-	return commentStore.WritePending(output, currentPatch.Root)
+	return commentStore.WritePending(output, patch.Root)
 }
 
 func runCodeReviewCommand(ctx context.Context) error {
