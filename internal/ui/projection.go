@@ -32,12 +32,12 @@ func highlightedSource(path, source, theme string) []string {
 }
 
 func highlightPair(file patches.File,
-	options Options) pair {
+	options Options) highlightedSources {
 	theme := lightTheme
 	if options.Dark {
 		theme = darkTheme
 	}
-	return pair{
+	return highlightedSources{
 		Old: highlightedSource(file.OldPath, file.OldSource, theme),
 		New: highlightedSource(file.NewPath, file.NewSource, theme),
 	}
@@ -97,7 +97,7 @@ func pairedChangeBlock(lines []patches.Line, start int) ([][2]int, int) {
 }
 
 func highlightedLine(line patches.Line,
-	highlighted pair) string {
+	highlighted highlightedSources) string {
 	lines := highlighted.New
 	number := line.NewNumber
 	if line.Kind == patches.Deletion {
@@ -112,7 +112,7 @@ func highlightedLine(line patches.Line,
 
 func projectedLineRow(fileIndex, hunkIndex int, hunk patches.Hunk,
 	pair [2]int, options Options,
-	highlighted pair) entry {
+	highlighted highlightedSources) entry {
 	row := entry{
 		kind: lineRow, file: fileIndex, hunk: hunkIndex,
 		leftLine: pair[0], rightLine: pair[1],

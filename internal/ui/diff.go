@@ -497,7 +497,7 @@ type diffView struct {
 	dark  bool
 }
 
-type pair struct {
+type highlightedSources struct {
 	Old []string
 	New []string
 }
