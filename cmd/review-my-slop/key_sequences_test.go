@@ -1,8 +1,6 @@
 package main
 
-import (
-	testing "testing"
-)
+import "testing"
 
 func TestKeymapFeed(t *testing.T) {
 	for _, test := range []struct {
@@ -30,39 +28,35 @@ func TestKeymapFeed(t *testing.T) {
 		},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			(func(t *testing.T, keys, want []string) {
-				t.Helper()
-				m := (func(sequences ...keymapSequence) keymapMatcher {
-					m := keymapMatcher{sequences: make(map[string]keymapSequence, len(sequences))}
-					for _, sequence := range sequences {
-						sequence.Keys = append([]string(nil), sequence.Keys...)
-						m.sequences[sequence.Prefix] = sequence
-					}
-					return m
-				})(
-					keymapSequence{Prefix: "g", Keys: []string{"g"}, RetryUnmatched: true},
-					keymapSequence{Prefix: "z", Keys: []string{"z", "t", "b"}},
-					keymapSequence{Prefix: "ctrl+w", Keys: []string{"h", "l", "ctrl+w"}},
-				)
-				for i, key := range keys {
-					if got := m.Feed(key); got != want[i] {
-						t.Fatalf("key %d (%q): got %q, want %q", i, key, got, want[i])
-					}
-				}
-			})(t, test.keys, test.want)
+			assertTestKeymapFeed(t, test.keys, test.want)
 		})
 	}
 }
 
-func TestKeymapIndependentCopies(t *testing.T) {
-	m := (func(sequences ...keymapSequence) keymapMatcher {
-		m := keymapMatcher{sequences: make(map[string]keymapSequence, len(sequences))}
-		for _, sequence := range sequences {
-			sequence.Keys = append([]string(nil), sequence.Keys...)
-			m.sequences[sequence.Prefix] = sequence
+func assertTestKeymapFeed(t *testing.T, keys, want []string) {
+	t.Helper()
+	matcher := buildTestKeymapMatcher(
+		keymapSequence{Prefix: "g", Keys: []string{"g"}, RetryUnmatched: true},
+		keymapSequence{Prefix: "z", Keys: []string{"z", "t", "b"}},
+		keymapSequence{Prefix: "ctrl+w", Keys: []string{"h", "l", "ctrl+w"}},
+	)
+	for index, key := range keys {
+		if got := matcher.Feed(key); got != want[index] {
+			t.Fatalf(
+				"key %d (%q): got %q, want %q",
+				index,
+				key,
+				got,
+				want[index],
+			)
 		}
-		return m
-	})(keymapSequence{Prefix: "g", Keys: []string{"g"}, RetryUnmatched: true})
+	}
+}
+
+func TestKeymapIndependentCopies(t *testing.T) {
+	m := buildTestKeymapMatcher(keymapSequence{
+		Prefix: "g", Keys: []string{"g"}, RetryUnmatched: true,
+	})
 	m.Feed("g")
 	cloned := m
 	if got := m.Feed("j"); got != "j" {

@@ -1,8 +1,8 @@
 package main
 
 import (
-	slices "slices"
-	testing "testing"
+	"slices"
+	"testing"
 )
 
 func TestAppCommentAnchorUsesSemanticSelection(t *testing.T) {
@@ -11,106 +11,56 @@ func TestAppCommentAnchorUsesSemanticSelection(t *testing.T) {
 		{Kind: patchDeletion, Text: "removed", OldNumber: 2},
 		{Kind: patchAddition, Text: "added", NewNumber: 2},
 	}
-	anchor := func() commentsAnchor {
-		var file patchFile = patchFile{OldPath: "old.go", NewPath: "new.go"}
-		path := file.NewPath
-		if path == "" {
-			path = file.OldPath
-		}
-		anchor := commentsAnchor{FilePath: path}
-		for _, line := range lines {
-			prefix := " "
-			if line.Kind == patchAddition {
-				prefix = "+"
-			}
-			if line.Kind == patchDeletion {
-				prefix = "-"
-			}
-			anchor.QuotedLines = append(anchor.QuotedLines, prefix+line.Text)
-			func() {
-				var inlineLocalStart1, end *int = &anchor.OldStart, &anchor.OldEnd
-				if int(line.OldNumber) == 0 {
-					return
-				}
-				if *inlineLocalStart1 == 0 || int(line.OldNumber) < *inlineLocalStart1 {
-					*inlineLocalStart1 = int(line.OldNumber)
-				}
-				if int(line.OldNumber) > *end {
-					*end = int(line.OldNumber)
-				}
-			}()
-			func() {
-				var inlineLocalStart4, end *int = &anchor.NewStart, &anchor.NewEnd
-				if int(line.NewNumber) == 0 {
-					return
-				}
-				if *inlineLocalStart4 == 0 || int(line.NewNumber) < *inlineLocalStart4 {
-					*inlineLocalStart4 = int(line.NewNumber)
-				}
-				if int(line.NewNumber) > *end {
-					*end = int(line.NewNumber)
-				}
-			}()
-		}
-		return anchor
-	}()
-	if anchor.FilePath != "new.go" ||
-		anchor.OldStart != 1 || anchor.OldEnd != 2 ||
-		anchor.NewStart != 1 || anchor.NewEnd != 2 || !slices.Equal(
-
-		anchor.QuotedLines,
-
-		[]string{" before", "-removed", "+added"},
-	) {
+	anchor := testAnchorForLines(patchFile{
+		OldPath: "old.go",
+		NewPath: "new.go",
+	}, lines)
+	wantLines := []string{" before", "-removed", "+added"}
+	if anchor.FilePath != "new.go" || anchor.OldStart != 1 ||
+		anchor.OldEnd != 2 ||
+		anchor.NewStart != 1 || anchor.NewEnd != 2 ||
+		!slices.Equal(anchor.QuotedLines, wantLines) {
 		t.Fatalf("anchor=%#v", anchor)
 	}
-	anchor = func() commentsAnchor {
-		var (
-			file  patchFile   = patchFile{OldPath: "deleted.go"}
-			lines []patchLine = lines[1:2]
-		)
-		path := file.NewPath
-		if path == "" {
-			path = file.OldPath
-		}
-		anchor := commentsAnchor{FilePath: path}
-		for _, line := range lines {
-			prefix := " "
-			if line.Kind == patchAddition {
-				prefix = "+"
-			}
-			if line.Kind == patchDeletion {
-				prefix = "-"
-			}
-			anchor.QuotedLines = append(anchor.QuotedLines, prefix+line.Text)
-			func() {
-				var inlineLocalStart2, end *int = &anchor.OldStart, &anchor.OldEnd
-				if int(line.OldNumber) == 0 {
-					return
-				}
-				if *inlineLocalStart2 == 0 || int(line.OldNumber) < *inlineLocalStart2 {
-					*inlineLocalStart2 = int(line.OldNumber)
-				}
-				if int(line.OldNumber) > *end {
-					*end = int(line.OldNumber)
-				}
-			}()
-			func() {
-				var inlineLocalStart3, end *int = &anchor.NewStart, &anchor.NewEnd
-				if int(line.NewNumber) == 0 {
-					return
-				}
-				if *inlineLocalStart3 == 0 || int(line.NewNumber) < *inlineLocalStart3 {
-					*inlineLocalStart3 = int(line.NewNumber)
-				}
-				if int(line.NewNumber) > *end {
-					*end = int(line.NewNumber)
-				}
-			}()
-		}
-		return anchor
-	}()
+	anchor = testAnchorForLines(patchFile{OldPath: "deleted.go"}, lines[1:2])
 	if anchor.FilePath != "deleted.go" || anchor.NewStart != 0 {
 		t.Fatalf("deleted anchor=%#v", anchor)
+	}
+}
+
+func testAnchorForLines(file patchFile, lines []patchLine) commentsAnchor {
+	path := file.NewPath
+	if path == "" {
+		path = file.OldPath
+	}
+	anchor := commentsAnchor{FilePath: path}
+	for _, line := range lines {
+		prefix := " "
+		if line.Kind == patchAddition {
+			prefix = "+"
+		}
+		if line.Kind == patchDeletion {
+			prefix = "-"
+		}
+		anchor.QuotedLines = append(anchor.QuotedLines, prefix+line.Text)
+		includeTestAnchorLine(&anchor.OldStart, &anchor.OldEnd, int(
+			line.OldNumber,
+		))
+		includeTestAnchorLine(&anchor.NewStart, &anchor.NewEnd, int(
+			line.NewNumber,
+		))
+	}
+	return anchor
+}
+
+func includeTestAnchorLine(start, end *int, number int) {
+	if number == 0 {
+		return
+	}
+	if *start == 0 || number < *start {
+		*start = number
+	}
+	if number > *end {
+		*end = number
 	}
 }
