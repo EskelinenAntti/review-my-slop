@@ -243,35 +243,13 @@ func (m *reviewModel) finishCommentEditor(msg commentEditorFinishedMsg) {
 	body := strings.TrimSpace(m.edit.body)
 	if body == "" {
 		if m.edit.index >= 0 {
-			m.deleteEditedComment()
+			*m = m.deleteCommentAt(m.edit.index)
 		}
 		m.edit = commentEdit{index: -1}
 		m.diffView.ClearSelection()
 		return
 	}
 	m.saveEditedComment(body)
-}
-
-func (m *reviewModel) deleteEditedComment() {
-	index := m.edit.index
-	if index < 0 || index >= len(m.comments.items) {
-		return
-	}
-	if m.delete == nil {
-		m.err = errors.New("comment storage is unavailable")
-		return
-	}
-	if err := m.delete(m.comments.items[index], m.currentPatch); err != nil {
-		m.err = err
-		return
-	}
-	m.comments.items = append(
-		m.comments.items[:index],
-		m.comments.items[index+1:]...,
-	)
-	m.commentView.Update(m.comments.items)
-	m.comments.revision++
-	m.err = nil
 }
 
 func (m *reviewModel) saveEditedComment(body string) {
