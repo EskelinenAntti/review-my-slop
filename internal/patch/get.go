@@ -478,10 +478,12 @@ func readWorkingTree(root, path string) string {
 	return visibleSource(string(out))
 }
 
+// cleanDiffPath removes one side prefix and normalizes absent paths.
 func cleanDiffPath(path string) string {
 	path = strings.TrimSpace(path)
-	path = strings.TrimPrefix(path, "a/")
-	path = strings.TrimPrefix(path, "b/")
+	if strings.HasPrefix(path, "a/") || strings.HasPrefix(path, "b/") {
+		path = path[2:]
+	}
 	if path == "/dev/null" {
 		return ""
 	}

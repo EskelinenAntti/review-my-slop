@@ -90,6 +90,39 @@ func TestGetIncludesUnstagedAndUntrackedButNotStagedOnly(t *testing.T) {
 	}
 }
 
+func TestTrackedPathsKeepDirectoryNamedB(t *testing.T) {
+	repo := newRepository(t)
+	path := "b/example.go"
+	writeFile(t, repo, path, "before\n")
+	git(t, repo, "add", ".")
+	git(t, repo, "commit", "-m", "base")
+	writeFile(t, repo, path, "after\n")
+	t.Chdir(repo)
+
+	modified, err := Get(context.Background(), Unstaged)
+	testutil.NoError(t, err)
+	testutil.RequireEqual(t, len(modified.Files), 1,
+		"files=%#v", modified.Files,
+	)
+	file := modified.Files[0]
+	testutil.RequireEqual(t, file.OldPath, path, "file=%#v", file)
+	testutil.RequireEqual(t, file.NewPath, path, "file=%#v", file)
+	testutil.RequireEqual(t, file.OldSource, "before\n", "file=%#v", file)
+	testutil.RequireEqual(t, file.NewSource, "after\n", "file=%#v", file)
+
+	testutil.NoError(t, os.Remove(filepath.Join(repo, path)))
+	deleted, err := Get(context.Background(), Unstaged)
+	testutil.NoError(t, err)
+	testutil.RequireEqual(t, len(deleted.Files), 1,
+		"files=%#v", deleted.Files,
+	)
+	file = deleted.Files[0]
+	testutil.RequireEqual(t, file.OldPath, path, "file=%#v", file)
+	testutil.RequireEqual(t, file.NewPath, "", "file=%#v", file)
+	testutil.RequireEqual(t, file.DisplayPath, path, "file=%#v", file)
+	testutil.RequireEqual(t, file.OldSource, "before\n", "file=%#v", file)
+}
+
 func TestAddedFileKeepsRawAndDisplayPathsSeparate(t *testing.T) {
 	file := addedFile("odd\nname.go", "package main\n")
 	testutil.RequireEqual(t, file.NewPath, "odd\nname.go", "raw path = %q",
