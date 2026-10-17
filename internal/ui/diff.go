@@ -2,9 +2,7 @@ package ui
 
 import (
 	"fmt"
-	"regexp"
 
-	"charm.land/lipgloss/v2"
 	patches "github.com/eskelinenantti/review-my-slop/internal/patch"
 )
 
@@ -400,34 +398,6 @@ func (v *Diff) Render(err error) string {
 	footer := renderFooter(v, err)
 	return renderFrame(header, body, footer, v.height)
 }
-
-var (
-	titleStyle = lipgloss.NewStyle().
-			Bold(true).
-			Foreground(lipgloss.Cyan)
-	mutedStyle = lipgloss.NewStyle().Faint(true)
-	errorStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Red).
-			Bold(true)
-)
-
-type foregroundPolicy uint8
-
-const (
-	preserveForeground foregroundPolicy = iota
-	discardForeground
-)
-
-var (
-	ansiSGRPattern = regexp.MustCompile(`\x1b\[[0-9;]*m`)
-	fileStyle      = lipgloss.NewStyle().Bold(true)
-	metadataStyle  = lipgloss.NewStyle().Faint(true)
-	hunkStyle      = lipgloss.NewStyle().Foreground(lipgloss.Magenta)
-	contextStyle   = lipgloss.NewStyle()
-	addedStyle     = lipgloss.NewStyle().Foreground(lipgloss.Green)
-	removedStyle   = lipgloss.NewStyle().Foreground(lipgloss.Red)
-	cursorStyle    = lipgloss.NewStyle().Reverse(true)
-)
 
 type cursorMatch struct {
 	cursor   diffCursor
