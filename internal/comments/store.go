@@ -200,7 +200,7 @@ func findCommentKey(
 			return nil, err
 		}
 		if comment.Repository == repository && comment.ID == id {
-			return append([]byte(nil), key...), nil
+			return bytes.Clone(key), nil
 		}
 	}
 	return nil, nil
@@ -221,7 +221,7 @@ func findPendingKeys(
 			return nil
 		}
 		if _, ok := wanted[comment.ID]; ok {
-			keys = append(keys, append([]byte(nil), key...))
+			keys = append(keys, bytes.Clone(key))
 		}
 		return nil
 	})
