@@ -149,19 +149,20 @@ func newWithStore(
 	if err != nil {
 		return model{}, err
 	}
-	m := newModel(p, items, func(
+	saveComment := func(
 		comment comments.Comment,
 		current patch.Patch,
 	) (comments.Comment, error) {
 		comment.Repository = current.Root
-		if comment.ID != "" {
-			if err := store.Update(comment); err != nil {
-				return comments.Comment{}, err
-			}
-			return comment, nil
+		if comment.ID == "" {
+			return store.Add(comment)
 		}
-		return store.Add(comment)
-	}, initialLayout{
+		if err := store.Update(comment); err != nil {
+			return comments.Comment{}, err
+		}
+		return comment, nil
+	}
+	m := newModel(p, items, saveComment, initialLayout{
 		SideBySide: preferences.SideBySide,
 		SaveSideBySide: func(enabled bool) error {
 			return settings.Save(settings.Preferences{SideBySide: enabled})
