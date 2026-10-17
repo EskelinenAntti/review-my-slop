@@ -91,9 +91,7 @@ func (v *diffView) findCursor(target cursorIdentity) (diffCursor, bool) {
 		if candidate.rank == sameLineNumbersMatch {
 			return candidate.cursor, true
 		}
-		if candidate.betterThan(best) {
-			best = candidate
-		}
+		best = candidate.preferredTo(best)
 	}
 	return best.cursor, best.rank != noMatch
 }
@@ -111,13 +109,9 @@ type cursorMatch struct {
 	rank, distance int
 }
 
-func (m cursorMatch) betterThan(other cursorMatch) bool {
-	return m.rank > other.rank ||
-		m.rank == other.rank && m.distance < other.distance
-}
-
 func (m cursorMatch) preferredTo(other cursorMatch) cursorMatch {
-	if m.betterThan(other) {
+	if m.rank > other.rank ||
+		m.rank == other.rank && m.distance < other.distance {
 		return m
 	}
 	return other
