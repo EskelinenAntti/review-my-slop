@@ -440,22 +440,6 @@ func NewDiff(
 	return v
 }
 
-func highlightDiffSource(filename, source, theme string) []string {
-	if source == "" {
-		return nil
-	}
-	var buf bytes.Buffer
-	err := quick.Highlight(&buf, source, filename, "terminal16m", theme)
-	if err != nil {
-		return strings.Split(strings.TrimSuffix(source, "\n"), "\n")
-	}
-	rendered, err := io.ReadAll(&buf)
-	if err != nil {
-		return strings.Split(strings.TrimSuffix(source, "\n"), "\n")
-	}
-	return strings.Split(strings.TrimSuffix(string(rendered), "\n"), "\n")
-}
-
 func buildDiffscreenRows(p patches.Patch, v *Diff,
 
 ) *diffView {
@@ -489,26 +473,9 @@ func appendDiffscreenFileRows(
 			leftLine: -1, rightLine: -1, text: metadata,
 		})
 	}
-	highlighted := highlightedDiffPair(
-		file,
-		diffTheme(Options{Dark: view.dark}),
-	)
+	highlighted := highlightPair(file, Options{Dark: view.dark})
 	for hunkIndex, hunk := range file.Hunks {
 		appendDiffscreenHunkRows(view, fileIndex, hunkIndex, hunk, highlighted)
-	}
-}
-
-func diffTheme(options Options) string {
-	if options.Dark {
-		return darkTheme
-	}
-	return lightTheme
-}
-
-func highlightedDiffPair(file patches.File, theme string) pair {
-	return pair{
-		Old: highlightDiffSource(file.OldPath, file.OldSource, theme),
-		New: highlightDiffSource(file.NewPath, file.NewSource, theme),
 	}
 }
 
