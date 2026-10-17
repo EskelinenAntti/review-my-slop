@@ -13,37 +13,13 @@ func loadPatch(ctx context.Context, kind Kind) (Patch, error) {
 	return Load(ctx, kind)
 }
 
-func createGitTestRepository(t *testing.T,
-
-) string {
+func createGitTestRepository(t *testing.T) string {
 	t.Helper()
 	repo, err := filepath.EvalSymlinks(t.TempDir())
 	requireNoError(t, err)
-	var args = []string{"init", "-q"}
-	t.Helper()
-	cmd := exec.Command("git", args...)
-	cmd.Dir = repo
-	if out, err := cmd.CombinedOutput(); err != nil {
-		t.Fatalf("git %s: %v\n%s", strings.Join(args, " "), err, out)
-	}
-	{
-		var args = []string{"config", "user.email", "test@example.com"}
-		t.Helper()
-		cmd := exec.Command("git", args...)
-		cmd.Dir = repo
-		if out, err := cmd.CombinedOutput(); err != nil {
-			t.Fatalf("git %s: %v\n%s", strings.Join(args, " "), err, out)
-		}
-	}
-	{
-		var args = []string{"config", "user.name", "Test"}
-		t.Helper()
-		cmd := exec.Command("git", args...)
-		cmd.Dir = repo
-		if out, err := cmd.CombinedOutput(); err != nil {
-			t.Fatalf("git %s: %v\n%s", strings.Join(args, " "), err, out)
-		}
-	}
+	runGitTestCommand(t, repo, "init", "-q")
+	runGitTestCommand(t, repo, "config", "user.email", "test@example.com")
+	runGitTestCommand(t, repo, "config", "user.name", "Test")
 	return repo
 }
 
