@@ -24,52 +24,6 @@ func diffHunkHeader(h *diff.Hunk) string {
 	return header
 }
 
-func parseDiffHunkLines(h *diff.Hunk) ([]Line, error) {
-	oldLine, newLine := h.OrigStartLine, h.NewStartLine
-	if len(h.Body) == 0 {
-		return []Line{}, nil
-	}
-	rawLines := bytes.Split(
-		bytes.TrimSuffix(h.Body, []byte("\n")),
-		[]byte("\n"),
-	)
-	lines := make([]Line, 0, len(rawLines))
-	for _, raw := range rawLines {
-		if len(raw) == 0 {
-			return nil, errors.New("malformed empty diff line")
-		}
-		text := escapeDiffLine(string(raw[1:]))
-		switch raw[0] {
-		case ' ':
-			lines = append(lines, Line{
-				Kind: Context, Text: text,
-				OldNumber: LineNumber(oldLine),
-				NewNumber: LineNumber(newLine),
-			})
-			oldLine++
-			newLine++
-		case '+':
-			lines = append(lines, Line{
-				Kind: Addition, Text: text, NewNumber: LineNumber(
-					newLine,
-				),
-			})
-			newLine++
-		case '-':
-			lines = append(lines, Line{
-				Kind: Deletion, Text: text, OldNumber: LineNumber(
-					oldLine,
-				),
-			})
-			oldLine++
-		case '\\':
-		default:
-			return nil, fmt.Errorf("unexpected diff prefix %q", raw[0])
-		}
-	}
-	return lines, nil
-}
-
 func escapeDiffLine(text string) string {
 	var escaped strings.Builder
 	for _, r := range text {
@@ -159,7 +113,7 @@ func parseOneDiffFile(
 	file.OldSource = readOld(ctx, execRunner{}, root, oldPath)
 	file.NewSource = readPatchFileSource(newPath, root)
 	for _, h := range fd.Hunks {
-		lines, err := parseOneDiffHunk(h)
+		lines, err := parseDiffHunkLines(h)
 		if err != nil {
 			return File{}, fmt.Errorf("%s: %w", display, err)
 		}
@@ -171,9 +125,7 @@ func parseOneDiffFile(
 	return file, nil
 }
 
-func parseOneDiffHunk(h *diff.Hunk,
-
-) ([]Line, error) {
+func parseDiffHunkLines(h *diff.Hunk) ([]Line, error) {
 	if len(h.Body) == 0 {
 		return []Line{}, nil
 	}
