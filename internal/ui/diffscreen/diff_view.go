@@ -166,24 +166,6 @@ func pairedChangeRows(removedStart, addedStart, end int) []linePair {
 	return rows
 }
 
-func sourceText(highlighted highlightedFile, line patch.Line) string {
-	if line.Kind == patch.Deletion {
-		return highlightedLine(highlighted.Old, line.OldNumber, line.Text)
-	}
-	return highlightedLine(highlighted.New, line.NewNumber, line.Text)
-}
-
-func (v *diffView) highlightFile(file *patch.File) highlightedFile {
-	theme := lightTheme
-	if v.dark {
-		theme = darkTheme
-	}
-	return highlightedFile{
-		Old: highlightSource(file.OldPath, file.OldSource, theme),
-		New: highlightSource(file.NewPath, file.NewSource, theme),
-	}
-}
-
 func hunkHeader(header string) string {
 	if strings.HasPrefix(header, "@@") {
 		return header

@@ -184,14 +184,3 @@ func abs(value int) int {
 	}
 	return value
 }
-
-func highlightedLine(
-	lines []string,
-	number patch.LineNumber,
-	fallback string,
-) string {
-	if number <= 0 || int(number) > len(lines) {
-		return fallback
-	}
-	return lines[int(number)-1]
-}
