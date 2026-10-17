@@ -115,15 +115,12 @@ func buildReviewModel(
 	dimensions size,
 	pending []feedback.Comment,
 	store commentStore,
-
 ) (reviewModel, error) {
-	preferences, err := (func() (settingsPreferences, error) {
-		path, err := userSettingsPath()
-		if err != nil {
-			return settingsPreferences{}, err
-		}
-		return readSettingsPreferences(path)
-	})()
+	path, err := userSettingsPath()
+	if err != nil {
+		return reviewModel{}, err
+	}
+	preferences, err := readSettingsPreferences(path)
 	if err != nil {
 		return reviewModel{}, err
 	}

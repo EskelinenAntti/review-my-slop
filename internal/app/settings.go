@@ -97,11 +97,9 @@ func makeInitialLayout(
 	dimensions size,
 ) initialLayout {
 	return initialLayout{
-		SideBySide: preferences.SideBySide,
-		SaveSideBySide: func(enabled bool) error {
-			return saveLayoutPreference(enabled)
-		},
-		size: dimensions,
+		SideBySide:     preferences.SideBySide,
+		SaveSideBySide: saveLayoutPreference,
+		size:           dimensions,
 	}
 }
 
