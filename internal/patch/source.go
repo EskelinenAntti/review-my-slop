@@ -105,7 +105,7 @@ func untrackedBinaryFile(path string) File {
 func untrackedMetadataFile(path, description string) File {
 	return File{
 		NewPath:     path,
-		DisplayPath: strings.ReplaceAll(escapeDisplayText(path), "\n", `\n`),
+		DisplayPath: escapeDiffDisplayValue(path),
 		Metadata:    []string{description},
 	}
 }
@@ -113,7 +113,7 @@ func untrackedMetadataFile(path, description string) File {
 func makeUntrackedSymlinkFile(path string, target string,
 
 ) File {
-	content := strings.ReplaceAll(escapeSourceText(target), "\n", `\n`)
+	content := escapeDiffDisplayValue(target)
 	return makeUntrackedSourceFile(path, content)
 }
 
@@ -127,7 +127,7 @@ func makeUntrackedSourceFile(path, content string) File {
 	lines := untrackedAdditionLines(content)
 	return File{
 		NewPath:     path,
-		DisplayPath: strings.ReplaceAll(escapeDisplayText(path), "\n", `\n`),
+		DisplayPath: escapeDiffDisplayValue(path),
 		NewSource:   content,
 		Metadata:    []string{"untracked file"},
 		Hunks: []Hunk{{
@@ -182,23 +182,4 @@ func readRegularPatchSource(path string) ([]byte, bool) {
 		return nil, false
 	}
 	return out, true
-}
-
-func escapeDisplayText(path string,
-
-) string {
-	var result strings.Builder
-	for _, r := range path {
-		switch {
-		case r == '\n' || r == '\t':
-			_, _ = result.WriteRune(r)
-		case r == '\r':
-			_, _ = result.WriteString(`\r`)
-		case r < 0x20 || r == 0x7f:
-			fmt.Fprintf(&result, `\x%02x`, r)
-		default:
-			_, _ = result.WriteRune(r)
-		}
-	}
-	return result.String()
 }

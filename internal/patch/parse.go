@@ -24,23 +24,6 @@ func diffHunkHeader(h *diff.Hunk) string {
 	return header
 }
 
-func escapeDiffLine(text string) string {
-	var escaped strings.Builder
-	for _, r := range text {
-		switch {
-		case r == '\n' || r == '\t':
-			_, _ = escaped.WriteRune(r)
-		case r == '\r':
-			_, _ = escaped.WriteString(`\r`)
-		case r < 0x20 || r == 0x7f:
-			fmt.Fprintf(&escaped, `\x%02x`, r)
-		default:
-			_, _ = escaped.WriteRune(r)
-		}
-	}
-	return strings.ReplaceAll(escaped.String(), "\n", `\n`)
-}
-
 func parsePatchDiff(
 	ctx context.Context,
 	raw []byte,
@@ -88,7 +71,7 @@ func escapeDiffMetadata(values []string) []string {
 }
 
 func escapeDiffDisplayValue(value string) string {
-	return strings.ReplaceAll(escapeDisplayText(value), "\n", `\n`)
+	return strings.ReplaceAll(escapeSourceText(value), "\n", `\n`)
 }
 
 func parseOneDiffFile(
