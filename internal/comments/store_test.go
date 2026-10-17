@@ -28,6 +28,44 @@ func TestSaveDoesNotRecreateConsumedComments(t *testing.T) {
 	testutil.RequireEqual(t, len(pending), 0, "pending comments = %#v", pending)
 }
 
+func TestUpdateHonorsPendingLimitAndCreditsReplacedComment(t *testing.T) {
+	store := Store{Path: filepath.Join(t.TempDir(), "comments.db")}
+	original, err := store.Add(Comment{
+		ID: "edited", Repository: "/repo", Body: "before",
+		CreatedAt: time.Unix(1, 0).UTC(),
+	})
+	testutil.NoError(t, err)
+	originalData, err := encodeComment(original)
+	testutil.NoError(t, err)
+	padding := Comment{
+		ID: "padding", Repository: "/other", Body: "padding",
+		CreatedAt: time.Unix(1, 0).UTC(),
+		Anchor:    Anchor{QuotedLines: []string{""}},
+	}
+	paddingData, err := encodeComment(padding)
+	testutil.NoError(t, err)
+	padding.Anchor.QuotedLines[0] = strings.Repeat(
+		"x", maxPendingBytes-len(originalData)-len(paddingData),
+	)
+	_, err = store.Add(padding)
+	testutil.NoError(t, err)
+
+	original.Body = "after!" // Same encoded size: replacement must still fit.
+	testutil.NoError(t, store.Update(original))
+	original.Body = "larger!"
+	err = store.Update(original)
+	if err == nil ||
+		!strings.Contains(err.Error(), "pending feedback exceeds") {
+		t.Fatalf("oversized edit error = %v", err)
+	}
+	pending, err := store.List("/repo")
+	testutil.NoError(t, err)
+	testutil.RequireEqual(t, len(pending), 1, "pending = %#v", pending)
+	testutil.RequireEqual(t, pending[0].Body, "after!", "body = %q",
+		pending[0].Body,
+	)
+}
+
 func TestAcknowledgePreservesNewerAndOtherRepositoryComments(t *testing.T) {
 	store := Store{Path: filepath.Join(t.TempDir(), "state", "comments.db")}
 	first := testComment("/repo/a", "first")

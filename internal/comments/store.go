@@ -77,8 +77,8 @@ func (s Store) Add(comment Comment) (Comment, error) {
 }
 
 func addComment(bucket *bolt.Bucket, id string, data []byte) error {
-	if pendingBytes(bucket)+len(data) > maxPendingBytes {
-		return fmt.Errorf("pending feedback exceeds %d bytes", maxPendingBytes)
+	if err := checkPendingSize(bucket, len(data)); err != nil {
+		return err
 	}
 	if bucket.Get([]byte(id)) != nil {
 		return errors.New("comment ID already exists")
@@ -104,7 +104,8 @@ func (s Store) List(repository string) ([]Comment, error) {
 	return comments, err
 }
 
-// Update replaces an existing comment in the repository.
+// Update replaces an existing comment without exceeding the pending limit.
+// A failed update leaves the stored comment unchanged.
 func (s Store) Update(comment Comment) error {
 	if comment.Repository == "" || comment.ID == "" {
 		return errors.New("repository and comment ID are required")
@@ -173,6 +174,13 @@ func pendingBytes(bucket *bolt.Bucket) int {
 	return total
 }
 
+func checkPendingSize(bucket *bolt.Bucket, sizeChange int) error {
+	if pendingBytes(bucket)+sizeChange > maxPendingBytes {
+		return fmt.Errorf("pending feedback exceeds %d bytes", maxPendingBytes)
+	}
+	return nil
+}
+
 func replaceComment(bucket *bolt.Bucket, comment Comment, data []byte) error {
 	key, err := findCommentKey(bucket, comment.Repository, comment.ID)
 	if err != nil {
@@ -181,12 +189,17 @@ func replaceComment(bucket *bolt.Bucket, comment Comment, data []byte) error {
 	if key == nil {
 		return errors.New("comment is no longer in the comments")
 	}
-	if !bytes.Equal(key, []byte(comment.ID)) {
+	newKey := []byte(comment.ID)
+	if !bytes.Equal(key, newKey) {
 		if err := bucket.Delete(key); err != nil {
 			return err
 		}
 	}
-	return bucket.Put([]byte(comment.ID), data)
+	sizeChange := len(data) - len(bucket.Get(newKey))
+	if err := checkPendingSize(bucket, sizeChange); err != nil {
+		return err
+	}
+	return bucket.Put(newKey, data)
 }
 
 func findCommentKey(
