@@ -3,7 +3,6 @@ package patch
 import (
 	"context"
 	"errors"
-	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -85,34 +84,7 @@ func TestPatchGetIncludesUnstagedAndUntrackedButNotStagedOnly(t *testing.T) {
 }
 
 func TestPatchAddedFileKeepsRawAndDisplayPathsSeparate(t *testing.T) {
-	file := func() File {
-		var path, content = "odd\nname.go", "package main\n"
-		sourceLines := func() []string {
-			var content = content
-			content = strings.TrimSuffix(content, "\n")
-			if content == "" {
-				return nil
-			}
-			return strings.Split(content, "\n")
-		}()
-		lines := make([]Line, 0, len(sourceLines))
-		for i, line := range sourceLines {
-			lines = append(lines, Line{
-				Kind:      Addition,
-				Text:      line,
-				NewNumber: LineNumber(i + 1),
-			})
-		}
-		return File{NewPath: path, DisplayPath: strings.ReplaceAll(
-			escapeDisplayText(path),
-			"\n",
-			`\n`,
-		), NewSource: content, Metadata: []string{
-			"untracked file",
-		}, Hunks: []Hunk{{Header: fmt.Sprintf("@@ -0,0 +1,%d @@", len(
-			lines,
-		)), Lines: lines}}}
-	}()
+	file := makeUntrackedTextFile([]byte("package main\n"), "odd\nname.go")
 	requireEqual(t, file.NewPath, "odd\nname.go", "raw path = %q", file.NewPath)
 	requireEqual(t, file.DisplayPath, `odd\nname.go`,
 		"display path = %q", file.DisplayPath,
