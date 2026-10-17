@@ -42,9 +42,7 @@ func escapeSourceText(source string) string {
 	return result.String()
 }
 
-func loadOneUntrackedFile(path string, root string,
-
-) (File, bool, error) {
+func loadOneUntrackedFile(path, root string) (File, bool, error) {
 	full := filepath.Join(root, filepath.FromSlash(path))
 	info, err := os.Lstat(full)
 	if err != nil {
@@ -110,16 +108,12 @@ func untrackedMetadataFile(path, description string) File {
 	}
 }
 
-func makeUntrackedSymlinkFile(path string, target string,
-
-) File {
+func makeUntrackedSymlinkFile(path, target string) File {
 	content := escapeDiffDisplayValue(target)
 	return makeUntrackedSourceFile(path, content)
 }
 
-func makeUntrackedTextFile(raw []byte, path string,
-
-) File {
+func makeUntrackedTextFile(raw []byte, path string) File {
 	return makeUntrackedSourceFile(path, escapeSourceText(string(raw)))
 }
 
@@ -153,9 +147,7 @@ func untrackedAdditionLines(content string) []Line {
 	return lines
 }
 
-func readPatchFileSource(newPath string, root string,
-
-) string {
+func readPatchFileSource(newPath, root string) string {
 	if !validPatchSourcePath(newPath) {
 		return ""
 	}

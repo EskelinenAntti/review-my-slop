@@ -121,10 +121,8 @@ func comparePatchFilesByPath(a, b File) int {
 	return cmp.Compare(a.DisplayPath, b.DisplayPath)
 }
 
-func loadUntrackedFiles(ctx context.Context, root string,
-
-) ([]File, error) {
-	out, err := runner(execRunner{}).Run(
+func loadUntrackedFiles(ctx context.Context, root string) ([]File, error) {
+	out, err := (execRunner{}).Run(
 		ctx,
 		root,
 		"ls-files",
@@ -173,7 +171,6 @@ func branchComparisonInputs(
 	branch string,
 	kind Kind,
 	root string,
-
 ) ([]string, sourceReader, error) {
 	if kind != Branch {
 		return nil, readIndexSource, nil
@@ -181,9 +178,7 @@ func branchComparisonInputs(
 	if branch == "" {
 		return nil, nil, errors.New("default branch is unavailable")
 	}
-	baseBytes, err := runner(
-		execRunner{},
-	).Run(ctx, root, "merge-base", branch, "HEAD")
+	baseBytes, err := (execRunner{}).Run(ctx, root, "merge-base", branch, "HEAD")
 	if err != nil {
 		return nil, nil, fmt.Errorf(
 			"find branch point with %s: %w",
@@ -216,10 +211,8 @@ func readBranchBaseSource(
 	return escapeSourceText(string(out))
 }
 
-func resolveRepositoryRoot(ctx context.Context, directory string,
-
-) (string, error) {
-	rootBytes, err := runner(execRunner{}).Run(
+func resolveRepositoryRoot(ctx context.Context, directory string) (string, error) {
+	rootBytes, err := (execRunner{}).Run(
 		ctx,
 		directory,
 		"rev-parse",
@@ -235,9 +228,7 @@ func resolveRepositoryRoot(ctx context.Context, directory string,
 	return root, nil
 }
 
-func findDefaultBranch(ctx context.Context, root string,
-
-) (string, error) {
+func findDefaultBranch(ctx context.Context, root string) (string, error) {
 	return findDefaultBranchWithRunner(ctx, execRunner{}, root)
 }
 
@@ -284,9 +275,7 @@ func findDefaultBranchWithRunner(
 	return "", nil
 }
 
-func runPatchDiff(ctx context.Context, revisions []string, root string,
-
-) ([]byte, error) {
+func runPatchDiff(ctx context.Context, revisions []string, root string) ([]byte, error) {
 	args := []string{
 		"-c",
 		"core.quotepath=false",
@@ -303,5 +292,5 @@ func runPatchDiff(ctx context.Context, revisions []string, root string,
 	}
 	args = append(args, revisions...)
 	args = append(args, "--")
-	return runner(execRunner{}).Run(ctx, root, args...)
+	return (execRunner{}).Run(ctx, root, args...)
 }

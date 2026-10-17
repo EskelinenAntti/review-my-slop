@@ -29,7 +29,6 @@ func parsePatchDiff(
 	raw []byte,
 	readOld sourceReader,
 	root string,
-
 ) ([]File, error) {
 	if len(bytes.TrimSpace(raw)) == 0 {
 		return nil, nil
@@ -79,7 +78,6 @@ func parseOneDiffFile(
 	fd *diff.FileDiff,
 	readOld sourceReader,
 	root string,
-
 ) (File, error) {
 	oldPath := normalizeDiffPath(fd.OrigName)
 	newPath := normalizeDiffPath(fd.NewName)
