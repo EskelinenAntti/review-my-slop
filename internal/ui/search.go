@@ -6,6 +6,76 @@ import (
 	"github.com/charmbracelet/x/ansi"
 )
 
+// BeginSearch starts incremental search and remembers the current position.
+func (v *Diff) BeginSearch() {
+	v.ClearSelection()
+	v.search.active = true
+	v.search.query, v.search.miss, v.search.repeatMiss = "", false, false
+	v.search.from = v.cursor
+}
+
+// InsertSearch appends text to the incremental search query.
+func (v *Diff) InsertSearch(text string) {
+	if !v.search.active {
+		v.BeginSearch()
+	}
+	previewSearch(v, v.search.query+text)
+}
+
+// BackspaceSearch removes the last rune from the incremental search query.
+func (v *Diff) BackspaceSearch() {
+	if !v.search.active {
+		return
+	}
+	query := []rune(v.search.query)
+	if len(query) > 0 {
+		query = query[:len(query)-1]
+	}
+	previewSearch(v, string(query))
+}
+
+// AcceptSearch saves a successful query for repeated searches.
+func (v *Diff) AcceptSearch() {
+	if !v.search.active {
+		return
+	}
+	if v.search.query != "" && !v.search.miss {
+		v.search.term = v.search.query
+	}
+	v.search.active, v.search.miss = false, false
+	v.search.query = ""
+}
+
+// CancelSearch exits incremental search and restores its starting position.
+func (v *Diff) CancelSearch() {
+	if !v.search.active {
+		return
+	}
+	v.cursor = v.search.from
+	v.viewport = cursorViewport(v.view, v.viewport, v.cursor)
+	v.search.active, v.search.miss = false, false
+	v.search.query = ""
+}
+
+// Find visits the next match of the accepted search in the given direction.
+func (v *Diff) Find(d Direction) bool {
+	if v.search.term == "" {
+		return false
+	}
+	if d != Forward && d != Backward {
+		return false
+	}
+	cursor, ok := findSearchCursorDirection(
+		v.view, v.search.term, v.cursor, scanDirection(d),
+	)
+	v.search.repeatMiss = !ok
+	if ok {
+		v.cursor = cursor
+		v.viewport = cursorViewport(v.view, v.viewport, cursor)
+	}
+	return ok
+}
+
 // previewSearch always starts at the saved origin so editing a query does not
 // advance through matches.
 func previewSearch(screen *Diff, query string) {
