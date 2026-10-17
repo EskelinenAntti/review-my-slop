@@ -22,6 +22,7 @@ type commentEditorFinishedMsg struct {
 type commentsLoadedMsg struct {
 	comments []comments.Comment
 	revision uint64
+	request  uint64
 	err      error
 }
 type sourceEditorFinishedMsg struct{ err error }
@@ -59,7 +60,8 @@ func (m *model) finishCommentEditor(msg commentEditorFinishedMsg) {
 }
 
 func (m *model) finishCommentsLoad(msg commentsLoadedMsg) {
-	if msg.revision != m.comments.revision {
+	if msg.revision != m.comments.revision ||
+		msg.request != m.comments.loadRequest {
 		return
 	}
 	if msg.err != nil {
@@ -97,16 +99,19 @@ func (m model) startPatchRefresh() (tea.Model, tea.Cmd) {
 	}
 }
 
-func (m model) loadComments() tea.Cmd {
+func (m model) reloadComments() (tea.Model, tea.Cmd) {
 	if m.load == nil {
-		return nil
+		return m, nil
 	}
+	m.comments.loadRequest++
 	revision := m.comments.revision
-	return func() tea.Msg {
+	request := m.comments.loadRequest
+	return m, func() tea.Msg {
 		comments, err := m.load()
 		return commentsLoadedMsg{
 			comments: comments,
 			revision: revision,
+			request:  request,
 			err:      err,
 		}
 	}

@@ -262,6 +262,59 @@ func TestOpeningCommentsReloadsPendingComments(t *testing.T) {
 	)
 }
 
+func TestOlderCommentReloadCannotReplaceNewerComments(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		err  error
+	}{
+		{"older success", nil},
+		{"older failure", errors.New("older reload failed")},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			m := testModel(coveragePatch(), nil, nil)
+			loads := 0
+			loadErrors := [2]error{tc.err, nil}
+			m.load = func() ([]comments.Comment, error) {
+				loads++
+				item := comments.Comment{ID: fmt.Sprintf("load-%d", loads)}
+				return []comments.Comment{item}, loadErrors[loads-1]
+			}
+			next, firstCommand := m.Update(textKey("C"))
+			m = requireModel(t, next)
+			firstResult := firstCommand()
+			m = updateModel(t, m, specialKey(tea.KeyEsc))
+			next, secondCommand := m.Update(textKey("C"))
+			m = requireModel(t, next)
+			m = updateModel(t, m, secondCommand())
+			m = updateModel(t, m, firstResult)
+			testutil.RequireEqual(t, len(m.comments.items), 1,
+				"comments=%#v", m.comments.items,
+			)
+			testutil.RequireEqual(t, m.comments.items[0].ID, "load-2",
+				"comments=%#v", m.comments.items,
+			)
+			testutil.NoError(t, m.err)
+		})
+	}
+}
+
+func TestCommentReloadCannotUndoLocalDeletion(t *testing.T) {
+	item := comments.Comment{ID: "one", Body: "pending"}
+	m := testModel(coveragePatch(), []comments.Comment{item}, nil)
+	m.load = func() ([]comments.Comment, error) {
+		return []comments.Comment{item}, nil
+	}
+	m.delete = func(string, string) error { return nil }
+	next, command := m.Update(textKey("C"))
+	m = requireModel(t, next)
+	loaded := command()
+	m = updateModel(t, m, textKey("D"))
+	m = updateModel(t, m, loaded)
+	testutil.RequireEqual(t, len(m.comments.items), 0,
+		"reload restored deleted comments: %#v", m.comments.items,
+	)
+}
+
 func TestCommentReloadFailurePreservesCurrentComments(t *testing.T) {
 	m := testModel(
 		coveragePatch(),

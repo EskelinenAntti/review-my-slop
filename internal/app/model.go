@@ -54,11 +54,11 @@ const verticalScrollStep = 3
 
 var defaultSize = size{Width: 80, Height: 30}
 
-// commentState pairs stored comments with the revision used to reject stale
-// loads.
+// commentState tracks pending comments, local writes, and background loads.
 type commentState struct {
-	items    []comments.Comment
-	revision uint64
+	items       []comments.Comment
+	revision    uint64
+	loadRequest uint64
 }
 
 // commentEdit keeps its original comment independent of list reloads.
@@ -257,7 +257,7 @@ func (m model) updateBrowseView(name string) (tea.Model, tea.Cmd) {
 	case "C":
 		m.mode = modeComments
 		m.commentView.Update(m.comments.items)
-		return m, m.loadComments()
+		return m.reloadComments()
 	case "t":
 		m.toggleSideBySide()
 	default:
