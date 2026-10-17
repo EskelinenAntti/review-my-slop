@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/eskelinenantti/review-my-slop/internal/testutil"
 )
@@ -12,8 +13,14 @@ import (
 func TestWritePendingAcknowledgesOnlyExportedComments(t *testing.T) {
 	store := Store{Path: filepath.Join(t.TempDir(), "comments.db")}
 	for _, comment := range []Comment{
-		testComment("/repo", "exported"),
-		testComment("/other", "other repository"),
+		func() Comment {
+			var body string = "exported"
+			return Comment{ID: body, Repository: "/repo", CreatedAt: time.Unix(1, 0).UTC(), Anchor: Anchor{FilePath: "file.go", NewStart: 1, NewEnd: 1}, Body: body}
+		}(),
+		func() Comment {
+			var body string = "other repository"
+			return Comment{ID: body, Repository: "/other", CreatedAt: time.Unix(1, 0).UTC(), Anchor: Anchor{FilePath: "file.go", NewStart: 1, NewEnd: 1}, Body: body}
+		}(),
 	} {
 		if _, err := store.Add(comment); err != nil {
 			t.Fatal(err)
@@ -21,7 +28,10 @@ func TestWritePendingAcknowledgesOnlyExportedComments(t *testing.T) {
 	}
 	var output bytes.Buffer
 	writer := &addingWriter{Buffer: &output, add: func() {
-		added := testComment("/repo", "added during output")
+		added := func() Comment {
+			var body string = "added during output"
+			return Comment{ID: body, Repository: "/repo", CreatedAt: time.Unix(1, 0).UTC(), Anchor: Anchor{FilePath: "file.go", NewStart: 1, NewEnd: 1}, Body: body}
+		}()
 		if _, err := store.Add(added); err != nil {
 			t.Fatal(err)
 		}

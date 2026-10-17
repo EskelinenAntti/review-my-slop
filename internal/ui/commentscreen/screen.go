@@ -40,20 +40,35 @@ func (v *View) Update(items []comments.Comment) {
 			}
 		}
 	}
-	v.keepVisible()
+	{
+		height := frame.BodyHeight(v.height)
+		v.top = min(v.top, v.row)
+		v.top = max(v.top, v.row-height+1)
+		v.top = min(max(0, v.top), max(0, len(v.items)-height))
+	}
 }
 
 // Resize updates terminal dimensions and keeps the focused comment visible.
 func (v *View) Resize(width, height int) {
 	v.width, v.height = width, height
-	v.keepVisible()
+	{
+		height := frame.BodyHeight(v.height)
+		v.top = min(v.top, v.row)
+		v.top = max(v.top, v.row-height+1)
+		v.top = min(max(0, v.top), max(0, len(v.items)-height))
+	}
 }
 
 // Move shifts focus by delta comments within the list bounds.
 func (v *View) Move(delta int) {
 	delta = max(-v.row, min(delta, max(0, len(v.items)-1)-v.row))
 	v.row += delta
-	v.keepVisible()
+	{
+		height := frame.BodyHeight(v.height)
+		v.top = min(v.top, v.row)
+		v.top = max(v.top, v.row-height+1)
+		v.top = min(max(0, v.top), max(0, len(v.items)-height))
+	}
 }
 
 // Selected returns the focused comment, or false when the list is empty.
@@ -71,23 +86,12 @@ func (v *View) Click(x, y int) bool {
 	if !ok {
 		return false
 	}
-	row += v.startRow(height)
+	row += min(max(0, v.top), max(0, len(v.items)-height))
 	if row >= len(v.items) {
 		return false
 	}
 	v.row = row
 	return true
-}
-
-func (v *View) startRow(height int) int {
-	return min(max(0, v.top), max(0, len(v.items)-height))
-}
-
-func (v *View) keepVisible() {
-	height := frame.BodyHeight(v.height)
-	v.top = min(v.top, v.row)
-	v.top = max(v.top, v.row-height+1)
-	v.top = v.startRow(height)
 }
 
 // Render composes the screen, showing a non-nil error in place of its hints.
@@ -100,10 +104,29 @@ func (v *View) Render(err error) string {
 		body = make([]string, height)
 		body[min(1, height-1)] = mutedStyle.Render("No pending comments.")
 	} else {
-		start := v.startRow(height)
+		start := min(max(0, v.top), max(0, len(v.items)-height))
 		end := min(len(v.items), start+height)
 		for index := start; index < end; index++ {
-			body = append(body, v.renderRow(index))
+			body = append(body, (func(index int) string {
+				comment := v.items[index]
+				prefix, style := "  ", lipgloss.NewStyle()
+				if index == v.row {
+					prefix, style = "> ", lipgloss.NewStyle().Reverse(true)
+				}
+				location := comment.Anchor.FilePath
+				if comment.Anchor.NewStart > 0 {
+					location += fmt.Sprintf(":%d", comment.Anchor.NewStart)
+				} else if comment.Anchor.OldStart > 0 {
+					location += fmt.Sprintf(":%d", comment.Anchor.OldStart)
+				}
+				text := strings.ReplaceAll(strings.TrimSpace(comment.Body), "\n", " ")
+				line := ansi.Truncate(
+					fmt.Sprintf("%s%s  %s", prefix, location, text),
+					max(20, v.width),
+					"",
+				)
+				return style.Width(max(20, v.width)).Render(line)
+			})(index))
 		}
 	}
 	footer := mutedStyle.Render(
@@ -114,27 +137,6 @@ func (v *View) Render(err error) string {
 		footer = errorStyle.Render(ansi.Truncate(message, max(20, v.width), ""))
 	}
 	return frame.Render(header, body, footer, v.height)
-}
-
-func (v *View) renderRow(index int) string {
-	comment := v.items[index]
-	prefix, style := "  ", lipgloss.NewStyle()
-	if index == v.row {
-		prefix, style = "> ", lipgloss.NewStyle().Reverse(true)
-	}
-	location := comment.Anchor.FilePath
-	if comment.Anchor.NewStart > 0 {
-		location += fmt.Sprintf(":%d", comment.Anchor.NewStart)
-	} else if comment.Anchor.OldStart > 0 {
-		location += fmt.Sprintf(":%d", comment.Anchor.OldStart)
-	}
-	text := strings.ReplaceAll(strings.TrimSpace(comment.Body), "\n", " ")
-	line := ansi.Truncate(
-		fmt.Sprintf("%s%s  %s", prefix, location, text),
-		max(20, v.width),
-		"",
-	)
-	return style.Width(max(20, v.width)).Render(line)
 }
 
 var (

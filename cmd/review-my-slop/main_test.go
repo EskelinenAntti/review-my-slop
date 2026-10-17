@@ -3,18 +3,33 @@ package main
 import (
 	"bytes"
 	"context"
+	"errors"
+	"fmt"
+	"github.com/eskelinenantti/review-my-slop/internal/app"
+	"github.com/eskelinenantti/review-my-slop/internal/comments"
+	"github.com/eskelinenantti/review-my-slop/internal/patch"
+	"github.com/eskelinenantti/review-my-slop/internal/testutil"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
-
-	"github.com/eskelinenantti/review-my-slop/internal/comments"
-	"github.com/eskelinenantti/review-my-slop/internal/testutil"
 )
 
 func TestRunCommentsPrintsAndConsumesCurrentRepositoryFeedback(t *testing.T) {
-	repo := initRepository(t)
+	repo := (func(t *testing.T) string {
+		t.Helper()
+		repo, err := filepath.EvalSymlinks(t.TempDir())
+		testutil.NoError(t, err)
+
+		cmd := exec.Command("git", "init", "-q")
+		cmd.Dir = repo
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git init: %v\n%s", err, out)
+		}
+		return repo
+	})(t)
 	nested := filepath.Join(repo, "nested")
 	testutil.NoError(t, os.Mkdir(nested, 0o755))
 
@@ -38,7 +53,17 @@ func TestRunCommentsPrintsAndConsumesCurrentRepositoryFeedback(t *testing.T) {
 	}
 
 	var output bytes.Buffer
-	testutil.NoError(t, runComments(context.Background(), &output))
+	testutil.NoError(t, (func(ctx context.Context, output io.Writer) error {
+		commentStore, err := comments.OpenDefault()
+		if err != nil {
+			return err
+		}
+		currentPatch, err := patch.Get(ctx, patch.Unstaged)
+		if err != nil {
+			return err
+		}
+		return commentStore.WritePending(output, currentPatch.Root)
+	})(context.Background(), &output))
 	testutil.RequireEqual(t,
 		strings.Contains(output.String(), "Check this error."), true,
 		"unexpected output:\n%s", output.String(),
@@ -55,7 +80,17 @@ func TestRunCommentsPrintsAndConsumesCurrentRepositoryFeedback(t *testing.T) {
 	)
 
 	var empty bytes.Buffer
-	testutil.NoError(t, runComments(context.Background(), &empty))
+	testutil.NoError(t, (func(ctx context.Context, output io.Writer) error {
+		commentStore, err := comments.OpenDefault()
+		if err != nil {
+			return err
+		}
+		currentPatch, err := patch.Get(ctx, patch.Unstaged)
+		if err != nil {
+			return err
+		}
+		return commentStore.WritePending(output, currentPatch.Root)
+	})(context.Background(), &empty))
 	testutil.RequireEqual(
 		t, strings.TrimSpace(empty.String()), "No pending review comments.",
 		"second output = %q", empty.String())
@@ -68,7 +103,18 @@ func TestRunCommentsPrintsAndConsumesCurrentRepositoryFeedback(t *testing.T) {
 }
 
 func TestRunCommentsPreservesFeedbackWhenOutputFails(t *testing.T) {
-	repo := initRepository(t)
+	repo := (func(t *testing.T) string {
+		t.Helper()
+		repo, err := filepath.EvalSymlinks(t.TempDir())
+		testutil.NoError(t, err)
+
+		cmd := exec.Command("git", "init", "-q")
+		cmd.Dir = repo
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git init: %v\n%s", err, out)
+		}
+		return repo
+	})(t)
 	t.Chdir(repo)
 	t.Setenv("XDG_DATA_HOME", t.TempDir())
 	store, err := comments.OpenDefault()
@@ -83,7 +129,17 @@ func TestRunCommentsPreservesFeedbackWhenOutputFails(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := runComments(context.Background(), failingWriter{}); err == nil {
+	if err := (func(ctx context.Context, output io.Writer) error {
+		commentStore, err := comments.OpenDefault()
+		if err != nil {
+			return err
+		}
+		currentPatch, err := patch.Get(ctx, patch.Unstaged)
+		if err != nil {
+			return err
+		}
+		return commentStore.WritePending(output, currentPatch.Root)
+	})(context.Background(), failingWriter{}); err == nil {
 		t.Fatal("output failure was ignored")
 	}
 	pending, err := store.List(repo)
@@ -94,7 +150,55 @@ func TestRunCommentsPreservesFeedbackWhenOutputFails(t *testing.T) {
 }
 
 func TestRunRejectsUnknownSubcommand(t *testing.T) {
-	err := run(context.Background(), []string{"unknown"}, &bytes.Buffer{})
+	err := (func(ctx context.Context, args []string, output io.Writer) error {
+		if len(args) == 0 {
+			return (func(ctx context.Context) error {
+				commentStore, err := comments.OpenDefault()
+				if err != nil {
+					return err
+				}
+				currentPatch, err := patch.Get(ctx, patch.Unstaged)
+				if err != nil {
+					return err
+				}
+				return app.Run(ctx, currentPatch, commentStore, patch.Get)
+			})(ctx)
+		}
+		if len(args) > 1 {
+			return errors.New("usage: review-my-slop [code|comments]")
+		}
+		switch args[0] {
+		case "code":
+			return (func(ctx context.Context) error {
+				commentStore, err := comments.OpenDefault()
+				if err != nil {
+					return err
+				}
+				currentPatch, err := patch.Get(ctx, patch.Unstaged)
+				if err != nil {
+					return err
+				}
+				return app.Run(ctx, currentPatch, commentStore, patch.Get)
+			})(ctx)
+		case "comments":
+			return (func(ctx context.Context, output io.Writer) error {
+				commentStore, err := comments.OpenDefault()
+				if err != nil {
+					return err
+				}
+				currentPatch, err := patch.Get(ctx, patch.Unstaged)
+				if err != nil {
+					return err
+				}
+				return commentStore.WritePending(output, currentPatch.Root)
+			})(ctx, output)
+		default:
+			return fmt.Errorf(
+				"unknown subcommand %q; usage: review-my-slop [code|comments]",
+				args[0],
+			)
+		}
+	})(context.Background(), []string{"unknown"}, &bytes.Buffer{})
 	testutil.RequireEqual(t, err != nil, true, "error = %v", err)
 	testutil.RequireEqual(t,
 		strings.Contains(err.Error(), `unknown subcommand "unknown"`), true,
@@ -106,17 +210,4 @@ type failingWriter struct{}
 
 func (failingWriter) Write([]byte) (int, error) {
 	return 0, os.ErrClosed
-}
-
-func initRepository(t *testing.T) string {
-	t.Helper()
-	repo, err := filepath.EvalSymlinks(t.TempDir())
-	testutil.NoError(t, err)
-
-	cmd := exec.Command("git", "init", "-q")
-	cmd.Dir = repo
-	if out, err := cmd.CombinedOutput(); err != nil {
-		t.Fatalf("git init: %v\n%s", err, out)
-	}
-	return repo
 }

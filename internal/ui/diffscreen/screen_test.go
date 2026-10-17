@@ -9,7 +9,7 @@ import (
 )
 
 func TestSelectedDefaultsToCurrentAndMovementExtendsRange(t *testing.T) {
-	v := New(testPatch(), Options{Dark: true})
+	v := New(patch.Patch{Root: "/repo", Files: []patch.File{{DisplayPath: "first.go", OldPath: "first.go", NewPath: "first.go", Hunks: []patch.Hunk{{Header: "@@ -1,3 +1,3 @@", Lines: []patch.Line{{Kind: patch.Context, Text: "before", OldNumber: 1, NewNumber: 1}, {Kind: patch.Deletion, Text: "removed one", OldNumber: 2}, {Kind: patch.Deletion, Text: "removed two", OldNumber: 3}, {Kind: patch.Addition, Text: "added one", NewNumber: 2}, {Kind: patch.Context, Text: "after", OldNumber: 4, NewNumber: 3}}}}}, {DisplayPath: "second.go", OldPath: "second.go", NewPath: "second.go", Hunks: []patch.Hunk{{Header: "@@ -1 +1 @@", Lines: []patch.Line{{Kind: patch.Addition, Text: "other", NewNumber: 1}}}}}}}, Options{Dark: true})
 	file, lines, ok := v.Selected()
 	testutil.RequireEqual(t, ok, true, "default selection=%#v %#v %v", file,
 		lines, ok,
@@ -50,7 +50,7 @@ func TestSelectedDefaultsToCurrentAndMovementExtendsRange(t *testing.T) {
 }
 
 func TestUpdateAndConfigurePreserveState(t *testing.T) {
-	p := testPatch()
+	p := patch.Patch{Root: "/repo", Files: []patch.File{{DisplayPath: "first.go", OldPath: "first.go", NewPath: "first.go", Hunks: []patch.Hunk{{Header: "@@ -1,3 +1,3 @@", Lines: []patch.Line{{Kind: patch.Context, Text: "before", OldNumber: 1, NewNumber: 1}, {Kind: patch.Deletion, Text: "removed one", OldNumber: 2}, {Kind: patch.Deletion, Text: "removed two", OldNumber: 3}, {Kind: patch.Addition, Text: "added one", NewNumber: 2}, {Kind: patch.Context, Text: "after", OldNumber: 4, NewNumber: 3}}}}}, {DisplayPath: "second.go", OldPath: "second.go", NewPath: "second.go", Hunks: []patch.Hunk{{Header: "@@ -1 +1 @@", Lines: []patch.Line{{Kind: patch.Addition, Text: "other", NewNumber: 1}}}}}}}
 	v := New(p, Options{Dark: true})
 	v.Resize(120, 10)
 	v.Move(NextLine)
@@ -91,7 +91,25 @@ func TestUpdateAndConfigurePreserveState(t *testing.T) {
 }
 
 func TestNarrowLayoutFallbackPreservesPreferenceAndPosition(t *testing.T) {
-	p := longPatch()
+	p := (func() patch.Patch {
+		lines := make([]patch.Line, 20)
+		for index := range lines {
+			lines[index] = patch.Line{
+				Kind:      patch.Context,
+				Text:      strings.Repeat("long", 20),
+				OldNumber: patch.LineNumber(index + 1),
+				NewNumber: patch.LineNumber(index + 1),
+			}
+		}
+		return patch.Patch{
+			Files: []patch.File{
+				{
+					DisplayPath: "long.go",
+					Hunks:       []patch.Hunk{{Header: "@@", Lines: lines}},
+				},
+			},
+		}
+	})()
 	p.Files[0].OldPath, p.Files[0].NewPath = "long.go", "long.go"
 	v := New(p, Options{SideBySide: true, Dark: true})
 	v.Resize(120, 10)
@@ -118,7 +136,7 @@ func TestNarrowLayoutFallbackPreservesPreferenceAndPosition(t *testing.T) {
 }
 
 func TestPageMovementDoesNotPartiallyChangeRejectedSelection(t *testing.T) {
-	v := New(testPatch(), Options{Dark: true})
+	v := New(patch.Patch{Root: "/repo", Files: []patch.File{{DisplayPath: "first.go", OldPath: "first.go", NewPath: "first.go", Hunks: []patch.Hunk{{Header: "@@ -1,3 +1,3 @@", Lines: []patch.Line{{Kind: patch.Context, Text: "before", OldNumber: 1, NewNumber: 1}, {Kind: patch.Deletion, Text: "removed one", OldNumber: 2}, {Kind: patch.Deletion, Text: "removed two", OldNumber: 3}, {Kind: patch.Addition, Text: "added one", NewNumber: 2}, {Kind: patch.Context, Text: "after", OldNumber: 4, NewNumber: 3}}}}}, {DisplayPath: "second.go", OldPath: "second.go", NewPath: "second.go", Hunks: []patch.Hunk{{Header: "@@ -1 +1 @@", Lines: []patch.Line{{Kind: patch.Addition, Text: "other", NewNumber: 1}}}}}}}, Options{Dark: true})
 	v.Resize(80, 30)
 	v.ToggleSelection()
 	beforeCursor, beforeViewport := v.cursor, v.viewport
@@ -132,7 +150,7 @@ func TestPageMovementDoesNotPartiallyChangeRejectedSelection(t *testing.T) {
 }
 
 func TestSearchPreviewAcceptRepeatAndCancel(t *testing.T) {
-	v := New(testPatch(), Options{SideBySide: true, Dark: true})
+	v := New(patch.Patch{Root: "/repo", Files: []patch.File{{DisplayPath: "first.go", OldPath: "first.go", NewPath: "first.go", Hunks: []patch.Hunk{{Header: "@@ -1,3 +1,3 @@", Lines: []patch.Line{{Kind: patch.Context, Text: "before", OldNumber: 1, NewNumber: 1}, {Kind: patch.Deletion, Text: "removed one", OldNumber: 2}, {Kind: patch.Deletion, Text: "removed two", OldNumber: 3}, {Kind: patch.Addition, Text: "added one", NewNumber: 2}, {Kind: patch.Context, Text: "after", OldNumber: 4, NewNumber: 3}}}}}, {DisplayPath: "second.go", OldPath: "second.go", NewPath: "second.go", Hunks: []patch.Hunk{{Header: "@@ -1 +1 @@", Lines: []patch.Line{{Kind: patch.Addition, Text: "other", NewNumber: 1}}}}}}}, Options{SideBySide: true, Dark: true})
 	v.Resize(120, 10)
 	origin := v.cursor
 	v.BeginSearch()
@@ -183,7 +201,45 @@ func TestSearchPreviewAcceptRepeatAndCancel(t *testing.T) {
 }
 
 func TestSearchOriginSurvivesPatchAndLayoutChanges(t *testing.T) {
-	p := testPatch()
+	p := (func() patch.Patch {
+		return patch.Patch{Root: "/repo", Files: []patch.File{
+			{
+				DisplayPath: "first.go",
+				OldPath:     "first.go",
+				NewPath:     "first.go",
+				Hunks: []patch.Hunk{{Header: "@@ -1,3 +1,3 @@", Lines: []patch.Line{
+					{
+						Kind:      patch.Context,
+						Text:      "before",
+						OldNumber: 1,
+						NewNumber: 1,
+					},
+					{Kind: patch.Deletion, Text: "removed one", OldNumber: 2},
+					{Kind: patch.Deletion, Text: "removed two", OldNumber: 3},
+					{Kind: patch.Addition, Text: "added one", NewNumber: 2},
+					{
+						Kind:      patch.Context,
+						Text:      "after",
+						OldNumber: 4,
+						NewNumber: 3,
+					},
+				}}},
+			},
+			{
+				DisplayPath: "second.go",
+				OldPath:     "second.go",
+				NewPath:     "second.go",
+				Hunks: []patch.Hunk{
+					{
+						Header: "@@ -1 +1 @@",
+						Lines: []patch.Line{
+							{Kind: patch.Addition, Text: "other", NewNumber: 1},
+						},
+					},
+				},
+			},
+		}}
+	})()
 	v := New(p, Options{Dark: true})
 	v.Move(NextLine)
 	_, origin, _ := v.Current()
@@ -241,7 +297,25 @@ func TestEmptyAndMetadataOnlyPatches(t *testing.T) {
 }
 
 func TestHorizontalScrollEdgesAreIdempotent(t *testing.T) {
-	v := New(longPatch(), Options{})
+	v := New((func() patch.Patch {
+		lines := make([]patch.Line, 20)
+		for index := range lines {
+			lines[index] = patch.Line{
+				Kind:      patch.Context,
+				Text:      strings.Repeat("long", 20),
+				OldNumber: patch.LineNumber(index + 1),
+				NewNumber: patch.LineNumber(index + 1),
+			}
+		}
+		return patch.Patch{
+			Files: []patch.File{
+				{
+					DisplayPath: "long.go",
+					Hunks:       []patch.Hunk{{Header: "@@", Lines: lines}},
+				},
+			},
+		}
+	})(), Options{})
 	v.Resize(30, 10)
 	distance := int(^uint(0) >> 1)
 	v.ScrollHorizontal(distance)
@@ -262,7 +336,25 @@ func TestHorizontalScrollEdgesAreIdempotent(t *testing.T) {
 }
 
 func TestVerticalScrollKeepsFocusInViewport(t *testing.T) {
-	p := longPatch()
+	p := (func() patch.Patch {
+		lines := make([]patch.Line, 20)
+		for index := range lines {
+			lines[index] = patch.Line{
+				Kind:      patch.Context,
+				Text:      strings.Repeat("long", 20),
+				OldNumber: patch.LineNumber(index + 1),
+				NewNumber: patch.LineNumber(index + 1),
+			}
+		}
+		return patch.Patch{
+			Files: []patch.File{
+				{
+					DisplayPath: "long.go",
+					Hunks:       []patch.Hunk{{Header: "@@", Lines: lines}},
+				},
+			},
+		}
+	})()
 	p.Files[0].OldPath, p.Files[0].NewPath = "long.go", "long.go"
 	for _, split := range []bool{false, true} {
 		v := New(p, Options{SideBySide: split})
@@ -310,20 +402,81 @@ func TestVerticalScrollKeepsFocusInViewport(t *testing.T) {
 		)
 
 		v.Move(NextLine)
-		testutil.RequireEqual(t, v.view.cursorVisible(v.viewport, v.cursor),
+		testutil.RequireEqual(t, func(v *diffView, viewport diffViewport, cursor diffCursor) bool {
+			return cursor.row >= 0 && cursor.row < len(v.rows) && func() int {
+				var current entry = v.rows[cursor.row]
+				if current.kind != lineRow {
+					return -1
+				}
+				if !v.split || cursor.pane == right {
+					return current.rightLine
+				}
+				return current.leftLine
+			}() >= 0 && cursor.row >= viewport.top && cursor.row < viewport.top+func() int {
+				height := viewport.Height
+				if viewport.Height > 1 && viewport.top >= 0 && viewport.top < len(v.rows) && v.rows[viewport.top].kind != fileRow {
+					height--
+				}
+				return max(1, height)
+			}()
+		}(v.view, v.viewport, v.cursor),
 			true, "%s", "keyboard navigation did not reveal focus",
 		)
 
 		v.ScrollVertical(-8)
 		testutil.RequireEqual(t, v.cursor.row,
-			v.viewport.top+v.view.contentHeight(v.viewport)-1, "%s",
+			v.viewport.top+func(v *diffView, viewport diffViewport) int {
+				height := viewport.Height
+				if viewport.Height > 1 && viewport.top >= 0 && viewport.top < len(v.rows) && v.rows[viewport.top].kind != fileRow {
+					height--
+				}
+				return max(1, height)
+			}(v.view, v.viewport)-1, "%s",
 			"scroll up did not clamp focus to bottom of viewport",
 		)
 	}
 }
 
 func TestVerticalScrollDoesNotCrossSelectionHunk(t *testing.T) {
-	v := New(testPatch(), Options{})
+	v := New((func() patch.Patch {
+		return patch.Patch{Root: "/repo", Files: []patch.File{
+			{
+				DisplayPath: "first.go",
+				OldPath:     "first.go",
+				NewPath:     "first.go",
+				Hunks: []patch.Hunk{{Header: "@@ -1,3 +1,3 @@", Lines: []patch.Line{
+					{
+						Kind:      patch.Context,
+						Text:      "before",
+						OldNumber: 1,
+						NewNumber: 1,
+					},
+					{Kind: patch.Deletion, Text: "removed one", OldNumber: 2},
+					{Kind: patch.Deletion, Text: "removed two", OldNumber: 3},
+					{Kind: patch.Addition, Text: "added one", NewNumber: 2},
+					{
+						Kind:      patch.Context,
+						Text:      "after",
+						OldNumber: 4,
+						NewNumber: 3,
+					},
+				}}},
+			},
+			{
+				DisplayPath: "second.go",
+				OldPath:     "second.go",
+				NewPath:     "second.go",
+				Hunks: []patch.Hunk{
+					{
+						Header: "@@ -1 +1 @@",
+						Lines: []patch.Line{
+							{Kind: patch.Addition, Text: "other", NewNumber: 1},
+						},
+					},
+				},
+			},
+		}}
+	})(), Options{})
 	v.Resize(80, 6)
 	v.ToggleSelection()
 	cursor, viewport, selection := v.cursor, v.viewport, *v.selection
@@ -340,7 +493,63 @@ func TestVerticalScrollDoesNotCrossSelectionHunk(t *testing.T) {
 }
 
 func TestVerticalScrollClampsAtContentEdges(t *testing.T) {
-	for _, p := range []patch.Patch{longPatch(), testPatch(), {}} {
+	for _, p := range []patch.Patch{(func() patch.Patch {
+		lines := make([]patch.Line, 20)
+		for index := range lines {
+			lines[index] = patch.Line{
+				Kind:      patch.Context,
+				Text:      strings.Repeat("long", 20),
+				OldNumber: patch.LineNumber(index + 1),
+				NewNumber: patch.LineNumber(index + 1),
+			}
+		}
+		return patch.Patch{
+			Files: []patch.File{
+				{
+					DisplayPath: "long.go",
+					Hunks:       []patch.Hunk{{Header: "@@", Lines: lines}},
+				},
+			},
+		}
+	})(), (func() patch.Patch {
+		return patch.Patch{Root: "/repo", Files: []patch.File{
+			{
+				DisplayPath: "first.go",
+				OldPath:     "first.go",
+				NewPath:     "first.go",
+				Hunks: []patch.Hunk{{Header: "@@ -1,3 +1,3 @@", Lines: []patch.Line{
+					{
+						Kind:      patch.Context,
+						Text:      "before",
+						OldNumber: 1,
+						NewNumber: 1,
+					},
+					{Kind: patch.Deletion, Text: "removed one", OldNumber: 2},
+					{Kind: patch.Deletion, Text: "removed two", OldNumber: 3},
+					{Kind: patch.Addition, Text: "added one", NewNumber: 2},
+					{
+						Kind:      patch.Context,
+						Text:      "after",
+						OldNumber: 4,
+						NewNumber: 3,
+					},
+				}}},
+			},
+			{
+				DisplayPath: "second.go",
+				OldPath:     "second.go",
+				NewPath:     "second.go",
+				Hunks: []patch.Hunk{
+					{
+						Header: "@@ -1 +1 @@",
+						Lines: []patch.Line{
+							{Kind: patch.Addition, Text: "other", NewNumber: 1},
+						},
+					},
+				},
+			},
+		}}
+	})(), {}} {
 		for _, height := range []int{1, 10, 100} {
 			v := New(p, Options{})
 			v.Resize(80, height)
@@ -354,7 +563,13 @@ func TestVerticalScrollClampsAtContentEdges(t *testing.T) {
 			testutil.RequireEqual(
 				t,
 				len(v.view.rows) <= 0 ||
-					end+v.view.contentHeight(v.viewport) >= len(v.view.rows),
+					end+func(v *diffView, viewport diffViewport) int {
+						height := viewport.Height
+						if viewport.Height > 1 && viewport.top >= 0 && viewport.top < len(v.rows) && v.rows[viewport.top].kind != fileRow {
+							height--
+						}
+						return max(1, height)
+					}(v.view, v.viewport) >= len(v.view.rows),
 				true,
 				"%s",
 				"scroll did not reach final row",
@@ -375,7 +590,45 @@ func TestVerticalScrollClampsAtContentEdges(t *testing.T) {
 }
 
 func TestSearchEditingOwnsUnicodeQueryAcrossUpdates(t *testing.T) {
-	p := testPatch()
+	p := (func() patch.Patch {
+		return patch.Patch{Root: "/repo", Files: []patch.File{
+			{
+				DisplayPath: "first.go",
+				OldPath:     "first.go",
+				NewPath:     "first.go",
+				Hunks: []patch.Hunk{{Header: "@@ -1,3 +1,3 @@", Lines: []patch.Line{
+					{
+						Kind:      patch.Context,
+						Text:      "before",
+						OldNumber: 1,
+						NewNumber: 1,
+					},
+					{Kind: patch.Deletion, Text: "removed one", OldNumber: 2},
+					{Kind: patch.Deletion, Text: "removed two", OldNumber: 3},
+					{Kind: patch.Addition, Text: "added one", NewNumber: 2},
+					{
+						Kind:      patch.Context,
+						Text:      "after",
+						OldNumber: 4,
+						NewNumber: 3,
+					},
+				}}},
+			},
+			{
+				DisplayPath: "second.go",
+				OldPath:     "second.go",
+				NewPath:     "second.go",
+				Hunks: []patch.Hunk{
+					{
+						Header: "@@ -1 +1 @@",
+						Lines: []patch.Line{
+							{Kind: patch.Addition, Text: "other", NewNumber: 1},
+						},
+					},
+				},
+			},
+		}}
+	})()
 	v := New(p, Options{Dark: true})
 	_, origin, _ := v.Current()
 	v.InsertSearch("rem")

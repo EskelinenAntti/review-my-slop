@@ -28,22 +28,20 @@ func TestFeed(t *testing.T) {
 		},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			assertKeySequence(t, test.keys, test.want)
+			(func(t *testing.T, keys, want []string) {
+				t.Helper()
+				m := New(
+					Sequence{Prefix: "g", Keys: []string{"g"}, RetryUnmatched: true},
+					Sequence{Prefix: "z", Keys: []string{"z", "t", "b"}},
+					Sequence{Prefix: "ctrl+w", Keys: []string{"h", "l", "ctrl+w"}},
+				)
+				for i, key := range keys {
+					if got := m.Feed(key); got != want[i] {
+						t.Fatalf("key %d (%q): got %q, want %q", i, key, got, want[i])
+					}
+				}
+			})(t, test.keys, test.want)
 		})
-	}
-}
-
-func assertKeySequence(t *testing.T, keys, want []string) {
-	t.Helper()
-	m := New(
-		Sequence{Prefix: "g", Keys: []string{"g"}, RetryUnmatched: true},
-		Sequence{Prefix: "z", Keys: []string{"z", "t", "b"}},
-		Sequence{Prefix: "ctrl+w", Keys: []string{"h", "l", "ctrl+w"}},
-	)
-	for i, key := range keys {
-		if got := m.Feed(key); got != want[i] {
-			t.Fatalf("key %d (%q): got %q, want %q", i, key, got, want[i])
-		}
 	}
 }
 
