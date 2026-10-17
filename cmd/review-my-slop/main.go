@@ -9,12 +9,12 @@ import (
 	"github.com/eskelinenantti/review-my-slop/internal/app"
 )
 
-const mainErrorExitCode = 1
+const errorExitCode = 1
 
 func main() {
 	err := app.Run(context.Background(), os.Args[1:], os.Stdout)
 	if err != nil {
 		_, _ = fmt.Fprintln(os.Stderr, "review-my-slop:", err)
-		os.Exit(mainErrorExitCode)
+		os.Exit(errorExitCode)
 	}
 }
