@@ -15,7 +15,8 @@ const (
 	lineRow
 )
 
-type entry struct {
+// displayRow maps a rendered row to its source; split rows may map two lines.
+type displayRow struct {
 	kind              rowKind
 	file, hunk        int
 	leftLine          int
@@ -30,7 +31,7 @@ type linePair struct {
 
 type diffView struct {
 	patch patch.Patch
-	rows  []entry
+	rows  []displayRow
 	split bool
 	dark  bool
 }
@@ -46,7 +47,7 @@ func newDiffView(p patch.Patch, options Options) *diffView {
 func (v *diffView) appendFileRows(fileIndex int, file patch.File) {
 	v.rows = append(
 		v.rows,
-		entry{
+		displayRow{
 			kind:      fileRow,
 			file:      fileIndex,
 			hunk:      -1,
@@ -58,7 +59,7 @@ func (v *diffView) appendFileRows(fileIndex int, file patch.File) {
 	for _, metadata := range file.Metadata {
 		v.rows = append(
 			v.rows,
-			entry{
+			displayRow{
 				kind:      metadataRow,
 				file:      fileIndex,
 				hunk:      -1,
@@ -81,7 +82,7 @@ func (v *diffView) appendHunkRows(
 ) {
 	v.rows = append(
 		v.rows,
-		entry{
+		displayRow{
 			kind:      hunkRow,
 			file:      fileIndex,
 			hunk:      hunkIndex,
@@ -91,7 +92,7 @@ func (v *diffView) appendHunkRows(
 		},
 	)
 	for _, indices := range v.lineRows(hunk.Lines) {
-		row := entry{
+		row := displayRow{
 			kind:      lineRow,
 			file:      fileIndex,
 			hunk:      hunkIndex,
@@ -104,7 +105,7 @@ func (v *diffView) appendHunkRows(
 }
 
 func (v *diffView) highlightRow(
-	row *entry,
+	row *displayRow,
 	lines []patch.Line,
 	highlighted highlightedFile,
 ) {

@@ -145,7 +145,7 @@ func (v *diffView) matchRow(y int, target cursorIdentity) cursorMatch {
 	return best
 }
 
-func (v *diffView) rowInFile(current entry, file patch.File) bool {
+func (v *diffView) rowInFile(current displayRow, file patch.File) bool {
 	return current.hunk >= 0 && sameFile(v.patch.Files[current.file], file)
 }
 
