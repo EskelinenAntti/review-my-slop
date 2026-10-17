@@ -25,7 +25,7 @@ func Run(ctx context.Context, args []string, output io.Writer) error {
 	case "code":
 		return runCodeReviewCommand(ctx)
 	case "comments":
-		return writeCommandPendingComments(ctx, output)
+		return runWritePendingCommentsCommand(ctx, output)
 	default:
 		return fmt.Errorf(
 			"unknown subcommand %q; usage: review-my-slop [code|comments]",
@@ -34,7 +34,7 @@ func Run(ctx context.Context, args []string, output io.Writer) error {
 	}
 }
 
-func writeCommandPendingComments(ctx context.Context, output io.Writer) error {
+func runWritePendingCommentsCommand(ctx context.Context, output io.Writer) error {
 	commentStore, err := userCommentsStore()
 	if err != nil {
 		return err
