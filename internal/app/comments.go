@@ -88,7 +88,8 @@ func (m *model) finishCommentEdit() {
 		comment = m.comments.items[m.edit.index]
 	}
 	comment.Body = body
-	saved, err := m.save(comment, m.currentPatch.Root)
+	comment.Repository = m.currentPatch.Root
+	saved, err := m.save(comment)
 	if err != nil {
 		m.err = err
 		return

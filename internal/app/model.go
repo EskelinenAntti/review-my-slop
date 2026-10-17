@@ -16,7 +16,6 @@ import (
 
 type saveCommentFunc func(
 	comment comments.Comment,
-	repository string,
 ) (comments.Comment, error)
 type deleteCommentFunc func(repository, id string) error
 type loadCommentsFunc func() ([]comments.Comment, error)
@@ -151,9 +150,7 @@ func newWithStore(
 	}
 	saveComment := func(
 		comment comments.Comment,
-		repository string,
 	) (comments.Comment, error) {
-		comment.Repository = repository
 		if comment.ID == "" {
 			return store.Add(comment)
 		}

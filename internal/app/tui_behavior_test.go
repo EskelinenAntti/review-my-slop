@@ -21,7 +21,6 @@ func TestVisualSelectionCreatesMappedAnchorAndSubmits(t *testing.T) {
 	var saved []comments.Comment
 	m := testModel(coveragePatch(), nil, func(
 		stored comments.Comment,
-		_ string,
 	) (comments.Comment, error) {
 		saved = append(saved, stored)
 		stored.ID = "new"
@@ -48,7 +47,6 @@ func TestCommentSaveFailureClearsPendingEdit(t *testing.T) {
 	t.Setenv("EDITOR", "true")
 	m := testModel(coveragePatch(), nil, func(
 		comments.Comment,
-		string,
 	) (comments.Comment, error) {
 		return comments.Comment{}, errors.New("storage unavailable")
 	})
@@ -79,7 +77,6 @@ func TestEmptyNewCommentIsDiscarded(t *testing.T) {
 	called := false
 	m := testModel(coveragePatch(), nil, func(
 		stored comments.Comment,
-		_ string,
 	) (comments.Comment, error) {
 		called = true
 		return stored, nil
@@ -130,7 +127,6 @@ func TestCommentsCanBeViewedEditedAndDeleted(t *testing.T) {
 	var deletedID string
 	m := testModel(coveragePatch(), items, func(
 		stored comments.Comment,
-		_ string,
 	) (comments.Comment, error) {
 		persisted = stored
 		return stored, nil
@@ -708,9 +704,8 @@ func TestCommentAfterRefreshUsesCurrentRepositoryAndAnchor(t *testing.T) {
 	var saved comments.Comment
 	m := testModel(coveragePatch(), nil, func(
 		stored comments.Comment,
-		repository string,
 	) (comments.Comment, error) {
-		savedRepository, saved = repository, stored
+		savedRepository, saved = stored.Repository, stored
 		return stored, nil
 	})
 	refreshed := coveragePatch()

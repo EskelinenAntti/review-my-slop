@@ -213,9 +213,8 @@ func TestCommentSaveUsesRepositoryAndPreservesAnchor(t *testing.T) {
 	var savedRepository string
 	m := testModel(modelPatch(), nil, func(
 		stored comments.Comment,
-		repository string,
 	) (comments.Comment, error) {
-		savedRepository = repository
+		savedRepository = stored.Repository
 		stored.ID = "1"
 		return stored, nil
 	})
