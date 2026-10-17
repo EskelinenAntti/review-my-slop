@@ -82,31 +82,21 @@ func (v *Comments) Click(x, y int) bool {
 
 // Render draws the comment list and an optional error in its footer.
 func (v *Comments) Render(err error) string {
-	pending := commentscreenMutedStyle.Render(fmt.Sprintf("%d pending", len(
+	pending := mutedStyle.Render(fmt.Sprintf("%d pending", len(
 		v.items,
 	)))
-	header := commentscreenTitleStyle.Render("comments") + "  " + pending
+	header := titleStyle.Render("comments") + "  " + pending
 	body := v.renderRows()
 	footer := v.renderFooter(err)
 	return renderFrame(header, body, footer, v.height)
 }
-
-var (
-	commentscreenTitleStyle = lipgloss.NewStyle().
-				Bold(true).
-				Foreground(lipgloss.Cyan)
-	commentscreenMutedStyle = lipgloss.NewStyle().Faint(true)
-	commentscreenErrorStyle = lipgloss.NewStyle().
-				Foreground(lipgloss.Red).
-				Bold(true)
-)
 
 func (v *Comments) renderRows() []string {
 	height := max(1, v.height-3)
 	if len(v.items) == 0 {
 		body := make([]string, height)
 		row := min(1, height-1)
-		body[row] = commentscreenMutedStyle.Render("No pending comments.")
+		body[row] = mutedStyle.Render("No pending comments.")
 		return body
 	}
 	start := min(max(0, v.top), max(0, len(v.items)-height))
@@ -139,12 +129,12 @@ func (v *Comments) renderRow(index int) string {
 
 func (v *Comments) renderFooter(err error) string {
 	if err == nil {
-		return commentscreenMutedStyle.Render(
+		return mutedStyle.Render(
 			"j/k move  Enter/e edit  D delete  Esc/q return",
 		)
 	}
 	message := strings.ReplaceAll(err.Error(), "\n", " ")
-	return commentscreenErrorStyle.Render(ansi.Truncate(message, max(
+	return errorStyle.Render(ansi.Truncate(message, max(
 		20,
 		v.width,
 	), ""))
