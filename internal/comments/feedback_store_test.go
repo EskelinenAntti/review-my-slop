@@ -2,8 +2,6 @@ package comments
 
 import (
 	"bytes"
-	"errors"
-	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -315,25 +313,11 @@ func TestCommentsLegacyMessageCanBeReadAndUpdated(t *testing.T) {
 }
 
 func writeLegacyCommentRecord(store Store, legacy []byte) error {
-	if store.Path == "" {
-		return errors.New("comments path is empty")
-	}
-	if err := os.MkdirAll(filepath.Dir(store.Path), 0o700); err != nil {
-		return fmt.Errorf("create comments directory: %w", err)
-	}
-	if err := os.Chmod(filepath.Dir(store.Path), 0o700); err != nil {
-		return fmt.Errorf("secure comments directory: %w", err)
-	}
-	db, err := bolt.Open(store.Path, 0o600, &bolt.Options{
-		Timeout: 2 * time.Second,
-	})
+	db, err := store.open()
 	if err != nil {
-		return fmt.Errorf("open comments: %w", err)
+		return err
 	}
 	defer db.Close()
-	if err := os.Chmod(store.Path, 0o600); err != nil {
-		return fmt.Errorf("secure comments database: %w", err)
-	}
 	return db.Update(func(tx *bolt.Tx) error {
 		bucket, err := tx.CreateBucketIfNotExists(messagesBucket)
 		if err != nil {
