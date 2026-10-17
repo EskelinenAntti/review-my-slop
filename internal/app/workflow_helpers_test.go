@@ -163,41 +163,12 @@ func newTestAppModelWithLayout(
 	p patches.Patch,
 	layout initialLayout,
 ) reviewModel {
-	size := layout.size
-	if size.Width <= 0 || size.Height <= 0 {
-		size = defaultSize
-	}
-	m := reviewModel{
-		ctx:          context.Background(),
-		currentPatch: p,
-		comments:     commentState{},
-		commentView:  newTestCommentScreen(nil),
-		edit:         commentEdit{index: -1},
-		width:        size.Width,
-		height:       size.Height,
-		saveLayout:   layout.SaveSideBySide,
-		diffOptions: ui.Options{
-			SideBySide: layout.SideBySide,
-			Dark:       true,
-		},
-		kind: p.Kind,
-		keys: newKeymapMatcher(
-			keymapSequence{Prefix: "g", Keys: []string{
-				"g",
-			}, RetryUnmatched: true},
-			keymapSequence{Prefix: "z", Keys: []string{"z", "t", "b"}},
-			keymapSequence{Prefix: "[", Keys: []string{"f"}},
-			keymapSequence{Prefix: "]", Keys: []string{"f"}},
-			keymapSequence{Prefix: "ctrl+w", Keys: []string{
-				"h",
-				"l",
-				"ctrl+w",
-			}},
-		),
-	}
-	m.diffView = newTestDiffscreenView(p, m.diffOptions)
-	m.diffView.Resize(m.width, m.height)
-	m.commentView.Resize(m.width, m.height)
+	m := createReviewAppModel(
+		p, layout.size, nil,
+		settingsPreferences{SideBySide: layout.SideBySide}, nil,
+	)
+	m.save = nil
+	m.saveLayout = layout.SaveSideBySide
 	return m
 }
 
