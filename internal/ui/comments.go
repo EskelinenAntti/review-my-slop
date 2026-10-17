@@ -64,14 +64,11 @@ func (v *Comments) Selected() (feedback.Comment, bool) {
 
 // Click selects the item at terminal coordinates and reports whether it exists.
 func (v *Comments) Click(x, y int) bool {
-	height := (func(height int) int { return max(1, height-3) })(v.height)
-	row, ok := (func(x, y, width, height int) (int, bool) {
-		row := y - 1
-		return row, x >= 0 && x < width && row >= 0 &&
-			row < (func(height int) int {
-				return max(1, height-3)
-			})(height) && y < height-2
-	})(x, y, v.width, v.height)
+	if x < 0 || x >= v.width {
+		return false
+	}
+	height := max(1, v.height-3)
+	row, ok := pointerRow(y, v.width, v.height)
 	if !ok {
 		return false
 	}
