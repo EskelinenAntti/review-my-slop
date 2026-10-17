@@ -111,7 +111,7 @@ func newStoreBackedTestAppModel(store feedback.Store) (reviewModel, error) {
 	}
 	layout := initialLayout{
 		SideBySide:     preferences.SideBySide,
-		SaveSideBySide: writeTestSideBySidePreference,
+		SaveSideBySide: saveLayoutPreference,
 		size:           defaultSize,
 	}
 	model := newTestAppModelWithLayout(patch, layout)

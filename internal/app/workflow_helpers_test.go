@@ -2,11 +2,8 @@ package app
 
 import (
 	"context"
-	"encoding/json"
-	"errors"
 	"fmt"
 	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 
@@ -91,63 +88,6 @@ func makeTestPatchWithManyLines() patches.Patch {
 		DisplayPath: "long.go",
 		Hunks:       []patches.Hunk{{Header: "@@", Lines: lines}},
 	}}}
-}
-
-func writeTestSideBySidePreference(enabled bool) error {
-	path, err := testUIPreferencesPath()
-	if err != nil {
-		return err
-	}
-	return writeTestUIPreferences(path, settingsPreferences{
-		SideBySide: enabled,
-	})
-}
-
-func testUIPreferencesPath() (string, error) {
-	config, err := os.UserConfigDir()
-	if err != nil {
-		return "", fmt.Errorf("resolve UI settings directory: %w", err)
-	}
-	return filepath.Join(config, "review-my-slop", "ui.json"), nil
-}
-
-func writeTestUIPreferences(
-	path string,
-	preferences settingsPreferences,
-) error {
-	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
-		return fmt.Errorf("create UI settings directory: %w", err)
-	}
-	data, err := json.Marshal(preferences)
-	if err != nil {
-		return fmt.Errorf("encode UI settings: %w", err)
-	}
-	return replaceTestUIPreferences(path, data)
-}
-
-func replaceTestUIPreferences(path string, data []byte) error {
-	data = append(data, '\n')
-	temporary, err := os.CreateTemp(filepath.Dir(path), "ui-*.tmp")
-	if err != nil {
-		return fmt.Errorf("create UI settings file: %w", err)
-	}
-	temporaryPath := temporary.Name()
-	defer os.Remove(temporaryPath)
-	if err := temporary.Chmod(0o600); err != nil {
-		_ = temporary.Close()
-		return fmt.Errorf("secure UI settings file: %w", err)
-	}
-	if _, err := temporary.Write(data); err != nil {
-		_ = temporary.Close()
-		return fmt.Errorf("write UI settings: %w", err)
-	}
-	if err := temporary.Close(); err != nil {
-		return fmt.Errorf("close UI settings: %w", err)
-	}
-	if err := os.Rename(temporaryPath, path); err != nil {
-		return fmt.Errorf("replace UI settings: %w", err)
-	}
-	return nil
 }
 
 func newTestBasicAppModel() reviewModel {
@@ -334,26 +274,11 @@ func newTestEditorCommandAdapter(
 }
 
 func readTestUIPreferences() (settingsPreferences, error) {
-	path, err := testUIPreferencesPath()
+	path, err := userSettingsPath()
 	if err != nil {
 		return settingsPreferences{}, err
 	}
-	data, err := os.ReadFile(path)
-	if errors.Is(err, os.ErrNotExist) {
-		return settingsPreferences{}, nil
-	}
-	if err != nil {
-		return settingsPreferences{}, fmt.Errorf("read UI settings: %w", err)
-	}
-	return decodeTestUIPreferences(data)
-}
-
-func decodeTestUIPreferences(data []byte) (settingsPreferences, error) {
-	var settings settingsPreferences
-	if err := json.Unmarshal(data, &settings); err != nil {
-		return settingsPreferences{}, fmt.Errorf("decode UI settings: %w", err)
-	}
-	return settings, nil
+	return readSettingsPreferences(path)
 }
 
 func renderAppWorkflowMode(m *reviewModel) string {

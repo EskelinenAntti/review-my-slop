@@ -27,7 +27,7 @@ func newTestAppRunModel(
 	}
 	layout := initialLayout{
 		SideBySide:     preferences.SideBySide,
-		SaveSideBySide: writeTestSideBySidePreference,
+		SaveSideBySide: saveLayoutPreference,
 		size:           dimensions,
 	}
 	size := layout.size
