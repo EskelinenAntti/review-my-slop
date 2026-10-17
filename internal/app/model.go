@@ -79,11 +79,12 @@ type model struct {
 	mode        mode
 	keys        keymap.Matcher
 
-	currentPatch patch.Patch
-	kind         patch.Kind
-	diffOptions  diffscreen.Options
-	comments     commentState
-	edit         commentEdit
+	currentPatch   patch.Patch
+	refreshRequest uint64
+	kind           patch.Kind
+	diffOptions    diffscreen.Options
+	comments       commentState
+	edit           commentEdit
 
 	save       saveCommentFunc
 	delete     deleteCommentFunc
@@ -235,7 +236,7 @@ func (m model) updateBrowseKey(name string) (tea.Model, tea.Cmd) {
 	case "e":
 		return m.startSourceEditor()
 	case "R":
-		return m, m.loadRefresh()
+		return m.startPatchRefresh()
 	case "tab":
 		return m.switchPatchKind()
 	default:
@@ -293,5 +294,5 @@ func (m model) switchPatchKind() (tea.Model, tea.Cmd) {
 		m.kind = patch.Unstaged
 	}
 	m.diffView.ClearSelection()
-	return m, m.loadRefresh()
+	return m.startPatchRefresh()
 }

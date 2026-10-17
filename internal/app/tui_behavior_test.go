@@ -595,6 +595,42 @@ func TestFocusAndManualRefreshLoadCurrentView(t *testing.T) {
 	)
 }
 
+func TestOlderRefreshCannotReplaceNewerView(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		err  error
+	}{
+		{"older success", nil},
+		{"older failure", errors.New("older refresh failed")},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			m := testModel(coveragePatch(), nil, nil)
+			loads := 0
+			loadErrors := [2]error{tc.err, nil}
+			m.refresh = func(patch.Kind) (patch.Patch, error) {
+				loads++
+				p := coveragePatch()
+				p.Files[0].Metadata = []string{fmt.Sprintf("load-%d", loads)}
+				return p, loadErrors[loads-1]
+			}
+			next, firstCommand := m.Update(textKey("R"))
+			m = requireModel(t, next)
+			firstResult := firstCommand()
+			next, secondCommand := m.Update(textKey("R"))
+			m = requireModel(t, next)
+			m = updateModel(t, m, secondCommand())
+			m = updateModel(t, m, firstResult)
+			testutil.RequireEqual(t,
+				slices.Equal(
+					m.currentPatch.Files[0].Metadata, []string{"load-2"},
+				),
+				true, "metadata=%q", m.currentPatch.Files[0].Metadata,
+			)
+			testutil.NoError(t, m.err)
+		})
+	}
+}
+
 func TestSourceEditorCompletionRefreshesDiff(t *testing.T) {
 	m := testModel(coveragePatch(), nil, nil)
 	refreshed := coveragePatch()

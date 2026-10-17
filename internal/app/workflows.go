@@ -9,9 +9,10 @@ import (
 )
 
 type refreshDiffMsg struct {
-	patch patch.Patch
-	kind  patch.Kind
-	err   error
+	patch   patch.Patch
+	kind    patch.Kind
+	request uint64
+	err     error
 }
 
 type commentEditorFinishedMsg struct {
@@ -36,9 +37,9 @@ func (m model) updateWorkflow(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.err = fmt.Errorf("editor: %w", msg.err)
 			break
 		}
-		return m, m.loadRefresh()
+		return m.startPatchRefresh()
 	case tea.FocusMsg:
-		return m, m.loadRefresh()
+		return m.startPatchRefresh()
 	case refreshDiffMsg:
 		m.finishDiffRefresh(msg)
 	default:
@@ -71,7 +72,7 @@ func (m *model) finishCommentsLoad(msg commentsLoadedMsg) {
 }
 
 func (m *model) finishDiffRefresh(msg refreshDiffMsg) {
-	if msg.kind != m.kind {
+	if msg.kind != m.kind || msg.request != m.refreshRequest {
 		return
 	}
 	if msg.err != nil {
@@ -82,14 +83,17 @@ func (m *model) finishDiffRefresh(msg refreshDiffMsg) {
 	m.err = nil
 }
 
-func (m model) loadRefresh() tea.Cmd {
+// startPatchRefresh records a request before returning its command.
+func (m model) startPatchRefresh() (tea.Model, tea.Cmd) {
 	if m.refresh == nil {
-		return nil
+		return m, nil
 	}
+	m.refreshRequest++
 	kind := m.kind
-	return func() tea.Msg {
+	request := m.refreshRequest
+	return m, func() tea.Msg {
 		p, err := m.refresh(kind)
-		return refreshDiffMsg{patch: p, kind: kind, err: err}
+		return refreshDiffMsg{patch: p, kind: kind, request: request, err: err}
 	}
 }
 
