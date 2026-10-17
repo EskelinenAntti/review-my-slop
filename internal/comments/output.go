@@ -6,6 +6,19 @@ import (
 	"strings"
 )
 
+// WritePending emits repository feedback and acknowledges only emitted
+// comments.
+func (s Store) WritePending(w io.Writer, repository string) error {
+	pending, err := s.List(repository)
+	if err != nil {
+		return err
+	}
+	if err := writePendingComments(w, pending); err != nil {
+		return err
+	}
+	return s.acknowledge(repository, commentIDs(pending))
+}
+
 func commentIDs(comments []Comment) []string {
 	ids := make([]string, len(comments))
 	for i, comment := range comments {
@@ -102,4 +115,11 @@ func anchorSides(anchor Anchor) []string {
 		))
 	}
 	return sides
+}
+
+func formatAnchorSide(side string, start, end int) string {
+	if end == 0 || end == start {
+		return fmt.Sprintf("%s line %d", side, start)
+	}
+	return fmt.Sprintf("%s lines %d-%d", side, start, end)
 }
