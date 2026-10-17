@@ -454,7 +454,7 @@ func NewDiff(
 ) *Diff {
 	v := &Diff{options: options, width: 80, height: 30}
 	v.view = buildDiffscreenRows(p, v)
-	v.viewport = computeDiffscreenViewport(
+	v.viewport = initialViewport(
 		v.view,
 		v.width,
 		(func(height int) int {

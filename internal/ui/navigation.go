@@ -30,9 +30,7 @@ func viewportLeft(view *diffView,
 		if row.kind != lineRow {
 			continue
 		}
-		text := ansi.Strip(row.text + row.left + row.right)
-		text = strings.ReplaceAll(text, "\t", "    ")
-		longest = max(longest, lipgloss.Width(text)+extraWidth)
+		longest = max(longest, diffRowDisplayWidth(row)+extraWidth)
 	}
 	return max(0, longest-contentWidth)
 }
@@ -574,46 +572,6 @@ func nextCursor(view *diffView, pane diffPane,
 		}
 	}
 	return diffCursor{}, false
-}
-
-func computeDiffscreenViewport(
-	v *diffView,
-	width, height int,
-) diffViewport {
-	viewport := diffViewport{
-		Width:  max(1, width),
-		Height: max(1, height),
-	}
-	viewport.top = min(viewport.top, maximumDiffscreenTop(v, viewport.Height))
-	viewport.LeftColumn = min(viewport.LeftColumn, maximumDiffscreenLeft(
-		v,
-		viewport.Width,
-	))
-	return viewport
-}
-
-func maximumDiffscreenTop(view *diffView, height int) int {
-	end := max(0, len(view.rows)-height)
-	if height > 1 && end < len(
-		view.rows,
-	) && view.rows[end].kind != fileRow {
-		end++
-	}
-	return end
-}
-
-func maximumDiffscreenLeft(view *diffView, width int) int {
-	contentWidth, extra := max(1, width-14), 0
-	if view.split {
-		contentWidth, extra = max(1, (width-3)/2-6), 2
-	}
-	longest := 0
-	for _, row := range view.rows {
-		if row.kind == lineRow {
-			longest = max(longest, diffRowDisplayWidth(row)+extra)
-		}
-	}
-	return max(0, longest-contentWidth)
 }
 
 func diffRowDisplayWidth(row entry) int {
