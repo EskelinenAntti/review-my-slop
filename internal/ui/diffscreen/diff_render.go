@@ -12,6 +12,18 @@ import (
 	"github.com/eskelinenantti/review-my-slop/internal/patch"
 )
 
+const (
+	lineNumberWidth    = 5
+	paneSeparator      = " │ "
+	paneSeparatorWidth = 3
+
+	// Unified rows show two numbers and a marker; split panes show one number.
+	unifiedGutterWidth = 2*lineNumberWidth + 4
+	paneGutterWidth    = lineNumberWidth + 1
+	// Split panes scroll the marker and its following space with the source.
+	changeMarkerWidth = 2
+)
+
 func (v *diffView) render(
 	viewport diffViewport,
 	cursor diffCursor,
@@ -89,8 +101,10 @@ func (v *diffView) renderUnifiedLine(
 	hunk := v.patch.Files[current.file].Hunks[current.hunk]
 	line := hunk.Lines[current.rightLine]
 	gutter := fmt.Sprintf(
-		"%5s %5s %s ",
+		"%*s %*s %s ",
+		lineNumberWidth,
 		number(line.OldNumber),
+		lineNumberWidth,
 		number(line.NewNumber),
 		changeMarker(line.Kind),
 	)
@@ -141,12 +155,12 @@ func (v *diffView) renderSplitRow(
 		cursor,
 		selection,
 	)
-	return left + " │ " + right
+	return left + paneSeparator + right
 }
 
 func splitPaneWidths(width int) (left, right int) {
-	left = max(20, (width-3)/2)
-	return left, max(20, width-3-left)
+	left = max(20, (width-paneSeparatorWidth)/2)
+	return left, max(20, width-paneSeparatorWidth-left)
 }
 
 func (v *diffView) renderPane(
@@ -167,7 +181,7 @@ func (v *diffView) renderPane(
 	if pane == left {
 		text, numberValue = current.left, line.OldNumber
 	}
-	gutter := fmt.Sprintf("%5s ", number(numberValue))
+	gutter := fmt.Sprintf("%*s ", lineNumberWidth, number(numberValue))
 	value := gutter + fitANSIWindow(
 		changeMarker(line.Kind)+" "+text,
 		offset,
