@@ -1,35 +1,10 @@
 package ui
 
 import (
-	"bytes"
-	"io"
 	"strings"
 
-	"github.com/alecthomas/chroma/v2/quick"
 	patches "github.com/eskelinenantti/review-my-slop/internal/patch"
 )
-
-func patchHighlightSource(source, filename, theme string) []string {
-	if source == "" {
-		return nil
-	}
-	var output bytes.Buffer
-	err := quick.Highlight(
-		&output,
-		source,
-		filename,
-		"terminal16m",
-		theme,
-	)
-	if err != nil {
-		return strings.Split(strings.TrimSuffix(source, "\n"), "\n")
-	}
-	rendered, err := io.ReadAll(&output)
-	if err != nil {
-		return strings.Split(strings.TrimSuffix(source, "\n"), "\n")
-	}
-	return strings.Split(strings.TrimSuffix(string(rendered), "\n"), "\n")
-}
 
 func patchStripANSI(value string) string {
 	var result strings.Builder

@@ -15,21 +15,9 @@ func TestDiffscreenRenamedFileHighlightsEachSideUsingItsOwnPath(t *testing.T) {
 		OldSource: source,
 		NewSource: source,
 	}
-	view := &diffView{dark: true}
-	theme := lightTheme
-	if view.dark {
-		theme = darkTheme
-	}
-	old := strings.Join(patchHighlightSource(
-		file.OldSource,
-		file.OldPath,
-		theme,
-	), "\n")
-	updated := strings.Join(patchHighlightSource(
-		file.NewSource,
-		file.NewPath,
-		theme,
-	), "\n")
+	highlighted := highlightPair(file, Options{Dark: true})
+	old := strings.Join(highlighted.Old, "\n")
+	updated := strings.Join(highlighted.New, "\n")
 	plainSource := strings.TrimSuffix(source, "\n")
 	if old == updated || patchStripANSI(old) != plainSource ||
 		patchStripANSI(updated) != plainSource {
@@ -44,7 +32,7 @@ Copyright (c) 2026 Antti Eskelinen
 
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND.
 `
-	lines := patchHighlightSource(source, "LICENSE", darkTheme)
+	lines := highlightedSource("LICENSE", source, darkTheme)
 	if len(lines) != 5 {
 		t.Fatalf("highlighted lines = %d, want 5", len(lines))
 	}
@@ -66,14 +54,14 @@ func answer(value int) string {
 	return ""
 }
 `
-	dark := strings.Join(patchHighlightSource(
-		source,
+	dark := strings.Join(highlightedSource(
 		"example.go",
+		source,
 		darkTheme,
 	), "\n")
-	light := strings.Join(patchHighlightSource(
-		source,
+	light := strings.Join(highlightedSource(
 		"example.go",
+		source,
 		lightTheme,
 	), "\n")
 	if dark == light {
