@@ -41,7 +41,7 @@ func TestSplitPairsUnequalChangeBlocksAndKeepsHunksSeparate(t *testing.T) {
 		}}},
 	}
 	v := newSideBySideView(p, true)
-	var code []entry
+	var code []displayRow
 	for _, current := range v.rows {
 		if current.kind == lineRow {
 			code = append(code, current)
@@ -442,6 +442,20 @@ func TestHorizontalScrollKeepsSplitGuttersAndDividerFixed(t *testing.T) {
 	testutil.RequireEqual(t, strings.Contains(rendered[69:], "ghijkl"), true,
 		"offset differs: %q", rendered,
 	)
+}
+
+func TestSplitScrollEndKeepsBothLineEndsVisible(t *testing.T) {
+	for _, width := range []int{100, 120, 121} {
+		v := New(longLinePatch(), Options{SideBySide: true, Dark: true})
+		v.Resize(width, 6)
+		v.ScrollToLineEnd()
+		rendered := ansi.Strip(v.Render(nil))
+		if got := strings.Count(rendered, "WXYZ"); got != 2 {
+			t.Fatalf("width=%d visible line ends=%d, screen=%q", width, got,
+				rendered,
+			)
+		}
+	}
 }
 
 func TestHorizontalScrollStartAndEndClamp(t *testing.T) {

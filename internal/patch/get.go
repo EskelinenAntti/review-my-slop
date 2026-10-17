@@ -87,11 +87,16 @@ func load(
 	if err != nil {
 		return Patch{}, err
 	}
-	raw, err := gitDiff(ctx, run, root, revisions...)
+	files, err := loadFiles(ctx, run, root, revisions, readOld)
 	if err != nil {
 		return Patch{}, err
 	}
-	return build(ctx, run, root, kind, branch, raw, readOld)
+	return Patch{
+		Root:   root,
+		Kind:   kind,
+		Branch: branch,
+		Files:  files,
+	}, nil
 }
 
 func comparisonBase(
@@ -102,7 +107,10 @@ func comparisonBase(
 	branch string,
 ) ([]string, sourceReader, error) {
 	if kind != Branch {
-		return nil, readIndex, nil
+		readOld := func(path string) string {
+			return readRevision(ctx, run, root, "", path)
+		}
+		return nil, readOld, nil
 	}
 	if branch == "" {
 		return nil, nil, errors.New("default branch is unavailable")
@@ -116,7 +124,7 @@ func comparisonBase(
 		)
 	}
 	base := strings.TrimSpace(string(baseBytes))
-	readOld := func(ctx context.Context, run runner, root, path string) string {
+	readOld := func(path string) string {
 		return readRevision(ctx, run, root, base, path)
 	}
 	return []string{base}, readOld, nil
@@ -155,24 +163,26 @@ func gitDiff(
 	return run.Run(ctx, root, args...)
 }
 
-type sourceReader func(context.Context, runner, string, string) string
+type sourceReader func(path string) string
 
-func build(
+func loadFiles(
 	ctx context.Context,
 	run runner,
 	root string,
-	kind Kind,
-	branch string,
-	raw []byte,
+	revisions []string,
 	readOld sourceReader,
-) (Patch, error) {
-	files, err := parseTracked(ctx, run, root, raw, readOld)
+) ([]File, error) {
+	raw, err := gitDiff(ctx, run, root, revisions...)
 	if err != nil {
-		return Patch{}, err
+		return nil, err
+	}
+	files, err := parseTracked(ctx, root, raw, readOld)
+	if err != nil {
+		return nil, err
 	}
 	untracked, err := loadUntracked(ctx, run, root)
 	if err != nil {
-		return Patch{}, err
+		return nil, err
 	}
 	files = append(files, untracked...)
 	slices.SortStableFunc(
@@ -183,15 +193,10 @@ func build(
 	)
 
 	if err := ctx.Err(); err != nil {
-		return Patch{}, err
+		return nil, err
 	}
 
-	return Patch{
-		Root:   root,
-		Kind:   kind,
-		Branch: branch,
-		Files:  files,
-	}, nil
+	return files, nil
 }
 
 func defaultBranch(
@@ -239,7 +244,6 @@ func defaultBranch(
 
 func parseTracked(
 	ctx context.Context,
-	run runner,
 	root string,
 	raw []byte,
 	readOld sourceReader,
@@ -256,7 +260,7 @@ func parseTracked(
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
-		file, err := parseTrackedFile(ctx, run, root, fd, readOld)
+		file, err := parseTrackedFile(root, fd, readOld)
 		if err != nil {
 			return nil, err
 		}
@@ -266,8 +270,6 @@ func parseTracked(
 }
 
 func parseTrackedFile(
-	ctx context.Context,
-	run runner,
 	root string,
 	fd *diff.FileDiff,
 	readOld sourceReader,
@@ -284,7 +286,7 @@ func parseTrackedFile(
 		DisplayPath: visibleText(display),
 		Metadata:    visibleStrings(fd.Extended),
 	}
-	file.OldSource = readOld(ctx, run, root, oldPath)
+	file.OldSource = readOld(oldPath)
 	file.NewSource = readWorkingTree(root, newPath)
 	for _, h := range fd.Hunks {
 		lines, err := parseHunkBody(h.OrigStartLine, h.NewStartLine, h.Body)
@@ -315,20 +317,23 @@ func loadUntracked(
 	if err != nil {
 		return nil, err
 	}
-	return readUntrackedPaths(ctx, root, untrackedPaths(out))
+	return readUntrackedFiles(ctx, root, out)
 }
 
-func readUntrackedPaths(
+// readUntrackedFiles reads the NUL-delimited paths reported by Git.
+func readUntrackedFiles(
 	ctx context.Context,
 	root string,
-	paths []string,
+	paths []byte,
 ) ([]File, error) {
 	var files []File
-	for _, path := range paths {
+	for _, path := range bytes.FieldsFunc(paths, func(char rune) bool {
+		return char == 0
+	}) {
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
-		file, include, err := readUntrackedFile(root, path)
+		file, include, err := readUntrackedFile(root, string(path))
 		if err != nil {
 			return nil, err
 		}
@@ -337,16 +342,6 @@ func readUntrackedPaths(
 		}
 	}
 	return files, nil
-}
-
-func untrackedPaths(out []byte) []string {
-	var paths []string
-	for path := range bytes.SplitSeq(out, []byte{0}) {
-		if len(path) > 0 {
-			paths = append(paths, string(path))
-		}
-	}
-	return paths
 }
 
 func readUntrackedFile(root, path string) (File, bool, error) {
@@ -424,60 +419,34 @@ func parseHunkBody(oldLine, newLine int32, body []byte) ([]Line, error) {
 		if len(raw) == 0 {
 			return nil, errors.New("malformed empty diff line")
 		}
-		text := visibleText(string(raw[1:]))
+		line := Line{Text: visibleText(string(raw[1:]))}
 		switch raw[0] {
 		case ' ':
-			lines = append(
-				lines,
-				Line{
-					Kind:      Context,
-					Text:      text,
-					OldNumber: LineNumber(oldLine),
-					NewNumber: LineNumber(newLine),
-				},
-			)
+			line.Kind = Context
+			line.OldNumber = LineNumber(oldLine)
+			line.NewNumber = LineNumber(newLine)
 			oldLine++
 			newLine++
 		case '+':
-			lines = append(
-				lines,
-				Line{
-					Kind:      Addition,
-					Text:      text,
-					NewNumber: LineNumber(newLine),
-				},
-			)
+			line.Kind = Addition
+			line.NewNumber = LineNumber(newLine)
 			newLine++
 		case '-':
-			lines = append(
-				lines,
-				Line{
-					Kind:      Deletion,
-					Text:      text,
-					OldNumber: LineNumber(oldLine),
-				},
-			)
+			line.Kind = Deletion
+			line.OldNumber = LineNumber(oldLine)
 			oldLine++
 		case '\\':
 			// "\ No newline at end of file" belongs to the preceding line.
+			continue
 		default:
 			return nil, fmt.Errorf("unexpected diff prefix %q", raw[0])
 		}
+		lines = append(lines, line)
 	}
 	return lines, nil
 }
 
-func readIndex(ctx context.Context, run runner, root, path string) string {
-	if path == "" || path == "/dev/null" {
-		return ""
-	}
-	out, err := run.Run(ctx, root, "show", ":"+path)
-	if err != nil || len(out) > maxFileBytes || bytes.IndexByte(out, 0) >= 0 {
-		return ""
-	}
-	return visibleSource(string(out))
-}
-
+// An empty revision reads the index using Git's ":path" object syntax.
 func readRevision(
 	ctx context.Context,
 	run runner,
@@ -509,10 +478,12 @@ func readWorkingTree(root, path string) string {
 	return visibleSource(string(out))
 }
 
+// cleanDiffPath removes one side prefix and normalizes absent paths.
 func cleanDiffPath(path string) string {
 	path = strings.TrimSpace(path)
-	path = strings.TrimPrefix(path, "a/")
-	path = strings.TrimPrefix(path, "b/")
+	if strings.HasPrefix(path, "a/") || strings.HasPrefix(path, "b/") {
+		path = path[2:]
+	}
 	if path == "/dev/null" {
 		return ""
 	}

@@ -41,12 +41,14 @@ func (m model) editSelectedComment() (tea.Model, tea.Cmd) {
 	if !ok {
 		return m, nil
 	}
-	m.edit.index = m.commentIndex(selected)
-	if m.edit.index < 0 {
+	index := m.commentIndex(selected)
+	if index < 0 {
 		return m, nil
 	}
-	m.edit.body = m.comments.items[m.edit.index].Body
-	m.edit.anchor = m.comments.items[m.edit.index].Anchor
+	original := m.comments.items[index]
+	m.edit = commentEdit{
+		body: original.Body, anchor: original.Anchor, original: &original,
+	}
 	cmd, err := m.openCommentEditor()
 	if err != nil {
 		m.err = err
@@ -62,7 +64,7 @@ func (m *model) beginComment() (tea.Cmd, error) {
 		return nil, errors.New("select code lines before commenting")
 	}
 	anchor := commentAnchor(file, lines)
-	m.edit.body, m.edit.index, m.edit.anchor = "", -1, anchor
+	m.edit = commentEdit{anchor: anchor}
 	cmd, err := m.openCommentEditor()
 	if err != nil {
 		m.clearCommentEdit()
@@ -72,43 +74,42 @@ func (m *model) beginComment() (tea.Cmd, error) {
 }
 
 func (m *model) finishCommentEdit() {
+	defer m.clearCommentEdit()
+	index := -1
+	if m.edit.original != nil {
+		index = m.commentIndex(*m.edit.original)
+	}
 	body := strings.TrimSpace(m.edit.body)
 	if body == "" {
-		if m.edit.index >= 0 {
-			m.deleteComment(m.edit.index)
-		}
-		m.clearCommentEdit()
+		m.deleteComment(index)
 		m.diffView.ClearSelection()
 		return
 	}
 	if m.save == nil {
 		m.err = errors.New("comment storage is unavailable")
-		m.clearCommentEdit()
 		return
 	}
-	var comment comments.Comment
-	if m.edit.index >= 0 {
-		comment = m.comments.items[m.edit.index]
-		comment.Body = body
-	} else {
-		comment = comments.Comment{Anchor: m.edit.anchor, Body: body}
+	comment := comments.Comment{Anchor: m.edit.anchor}
+	if m.edit.original != nil {
+		comment = *m.edit.original
 	}
-	saved, err := m.save(comment, m.currentPatch)
+	comment.Body = body
+	comment.Repository = m.currentPatch.Root
+	saved, err := m.save(comment)
 	if err != nil {
 		m.err = err
-		m.clearCommentEdit()
 		return
 	}
-	if m.edit.index >= 0 {
-		m.comments.items[m.edit.index] = saved
+	if index >= 0 {
+		m.comments.items[index] = saved
 	} else {
 		m.comments.items = append(m.comments.items, saved)
-		m.commentView.Update(m.comments.items)
-		m.commentView.Move(len(m.comments.items))
 	}
 	m.comments.revision++
 	m.commentView.Update(m.comments.items)
-	m.clearCommentEdit()
+	if m.edit.original == nil {
+		m.commentView.Move(len(m.comments.items))
+	}
 	m.err = nil
 	m.diffView.ClearSelection()
 }
@@ -121,7 +122,8 @@ func (m *model) deleteComment(index int) {
 		m.err = errors.New("comment storage is unavailable")
 		return
 	}
-	if err := m.delete(m.comments.items[index], m.currentPatch); err != nil {
+	id := m.comments.items[index].ID
+	if err := m.delete(m.currentPatch.Root, id); err != nil {
 		m.err = err
 		return
 	}
@@ -135,7 +137,7 @@ func (m *model) deleteComment(index int) {
 }
 
 func (m *model) clearCommentEdit() {
-	m.edit = commentEdit{index: -1}
+	m.edit = commentEdit{}
 }
 
 func (m model) openCurrentLine() (tea.Cmd, error) {
@@ -172,12 +174,12 @@ func (m model) sourceLocation() (string, int, error) {
 }
 
 func (m model) openCommentEditor() (tea.Cmd, error) {
-	return editor.EditComment(m.ctx, m.edit.body, m.edit.anchor, func(
-		body string,
-		err error,
-	) tea.Msg {
-		return commentEditorFinishedMsg{body: body, err: err}
-	})
+	return editor.EditComment(
+		m.ctx, m.edit.body, m.edit.anchor.QuotedLines,
+		func(body string, err error) tea.Msg {
+			return commentEditorFinishedMsg{body: body, err: err}
+		},
+	)
 }
 
 func (m model) commentIndex(selected comments.Comment) int {

@@ -63,7 +63,8 @@ func TestStoreBackedCommentLifecycle(t *testing.T) {
 	)
 
 	id := loaded[0].ID
-	m.edit.index = 0
+	original := m.comments.items[0]
+	m.edit.original = &original
 	m.edit.body = "edited"
 	m.finishCommentEdit()
 	testutil.RequireEqual(t, m.err, nil, "%s", m.err)
@@ -209,27 +210,26 @@ func TestViewSwitchPreservesSemanticCursor(t *testing.T) {
 	testutil.RequireEqual(t, got, want, "focused line=%#v, want %#v", got, want)
 }
 
-func TestCommentSaveUsesPatchAndPreservesAnchor(t *testing.T) {
-	var savedPatch patch.Patch
+func TestCommentSaveUsesRepositoryAndPreservesAnchor(t *testing.T) {
+	var savedRepository string
 	m := testModel(modelPatch(), nil, func(
 		stored comments.Comment,
-		p patch.Patch,
 	) (comments.Comment, error) {
-		savedPatch = p
+		savedRepository = stored.Repository
 		stored.ID = "1"
 		return stored, nil
 	})
 	m.edit.body = "comment"
 	m.edit.anchor = comments.Anchor{FilePath: "main.go"}
 	m.finishCommentEdit()
-	testutil.RequireEqual(t, savedPatch.Root, "/repo",
-		"saved patch/comments = %#v %#v", savedPatch, m.comments.items,
+	testutil.RequireEqual(t, savedRepository, "/repo",
+		"saved repository/comments = %q %#v", savedRepository, m.comments.items,
 	)
 	testutil.RequireEqual(t, len(m.comments.items), 1,
-		"saved patch/comments = %#v %#v", savedPatch, m.comments.items,
+		"saved repository/comments = %q %#v", savedRepository, m.comments.items,
 	)
 	testutil.RequireEqual(t, m.comments.items[0].Anchor.FilePath, "main.go",
-		"saved patch/comments = %#v %#v", savedPatch, m.comments.items,
+		"saved repository/comments = %q %#v", savedRepository, m.comments.items,
 	)
 }
 

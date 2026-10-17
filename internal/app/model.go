@@ -2,7 +2,6 @@ package app
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/eskelinenantti/review-my-slop/internal/comments"
 	"github.com/eskelinenantti/review-my-slop/internal/settings"
@@ -16,19 +15,17 @@ import (
 )
 
 type saveCommentFunc func(
-	comments.Comment,
-	patch.Patch,
+	comment comments.Comment,
 ) (comments.Comment, error)
-type deleteCommentFunc func(comments.Comment, patch.Patch) error
+type deleteCommentFunc func(repository, id string) error
 type loadCommentsFunc func() ([]comments.Comment, error)
 type refreshDiffFunc func(patch.Kind) (patch.Patch, error)
 type saveSideBySideFunc func(bool) error
 
 // commentStore supplies the persistence operations used by the terminal client.
 type commentStore interface {
-	Add(comments.Comment) (comments.Comment, error)
+	Save(comments.Comment) (comments.Comment, error)
 	List(string) ([]comments.Comment, error)
-	Update(comments.Comment) error
 	Delete(string, string) error
 }
 
@@ -42,23 +39,6 @@ type initialLayout struct {
 	SaveSideBySide saveSideBySideFunc
 	size           size
 }
-
-type refreshDiffMsg struct {
-	patch patch.Patch
-	kind  patch.Kind
-	err   error
-}
-
-type commentEditorFinishedMsg struct {
-	body string
-	err  error
-}
-type commentsLoadedMsg struct {
-	comments []comments.Comment
-	revision uint64
-	err      error
-}
-type sourceEditorFinishedMsg struct{ err error }
 
 type mode uint8
 
@@ -74,17 +54,19 @@ const verticalScrollStep = 3
 
 var defaultSize = size{Width: 80, Height: 30}
 
-// commentState pairs stored comments with the revision used to reject stale
-// loads.
+// commentState tracks pending comments, local writes, and background loads.
 type commentState struct {
-	items    []comments.Comment
-	revision uint64
+	items       []comments.Comment
+	revision    uint64
+	loadRequest uint64
 }
 
+// commentEdit keeps its original comment independent of list reloads.
+// A nil original represents a new comment.
 type commentEdit struct {
-	body   string
-	index  int
-	anchor comments.Anchor
+	body     string
+	anchor   comments.Anchor
+	original *comments.Comment
 }
 
 type model struct {
@@ -97,11 +79,12 @@ type model struct {
 	mode        mode
 	keys        keymap.Matcher
 
-	currentPatch patch.Patch
-	kind         patch.Kind
-	diffOptions  diffscreen.Options
-	comments     commentState
-	edit         commentEdit
+	currentPatch   patch.Patch
+	refreshRequest uint64
+	kind           patch.Kind
+	diffOptions    diffscreen.Options
+	comments       commentState
+	edit           commentEdit
 
 	save       saveCommentFunc
 	delete     deleteCommentFunc
@@ -127,7 +110,6 @@ func newModel(
 		currentPatch: p,
 		comments:     commentState{items: items},
 		commentView:  commentscreen.New(items),
-		edit:         commentEdit{index: -1},
 		width:        size.Width,
 		height:       size.Height,
 		save:         save,
@@ -167,37 +149,20 @@ func newWithStore(
 	if err != nil {
 		return model{}, err
 	}
-	m := newModel(p, items, func(
-		comment comments.Comment,
-		current patch.Patch,
-	) (comments.Comment, error) {
-		comment.Repository = current.Root
-		if comment.ID != "" {
-			if err := store.Update(comment); err != nil {
-				return comments.Comment{}, err
-			}
-			return comment, nil
-		}
-		return store.Add(comment)
-	}, initialLayout{
+	m := newModel(p, items, store.Save, initialLayout{
 		SideBySide: preferences.SideBySide,
 		SaveSideBySide: func(enabled bool) error {
 			return settings.Save(settings.Preferences{SideBySide: enabled})
 		},
 		size: size,
 	})
-	m.setDelete(func(comment comments.Comment, current patch.Patch) error {
-		return store.Delete(current.Root, comment.ID)
-	})
-	m.setLoadComments(func() ([]comments.Comment, error) {
+	m.delete = store.Delete
+	m.load = func() ([]comments.Comment, error) {
 		return store.List(p.Root)
-	})
+	}
 	return m, nil
 }
 
-func (m *model) setRefresh(refresh refreshDiffFunc)    { m.refresh = refresh }
-func (m *model) setDelete(remove deleteCommentFunc)    { m.delete = remove }
-func (m *model) setLoadComments(load loadCommentsFunc) { m.load = load }
 func (m *model) configureSideBySide(enabled bool, save saveSideBySideFunc) {
 	m.saveLayout = save
 	m.setSideBySide(enabled)
@@ -228,89 +193,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.updateWorkflow(msg)
 	}
 	return m, nil
-}
-
-func (m model) updateWorkflow(msg tea.Msg) (tea.Model, tea.Cmd) {
-	switch msg := msg.(type) {
-	case commentEditorFinishedMsg:
-		m.finishCommentEditor(msg)
-	case commentsLoadedMsg:
-		m.finishCommentsLoad(msg)
-	case sourceEditorFinishedMsg:
-		if msg.err != nil {
-			m.err = fmt.Errorf("editor: %w", msg.err)
-			break
-		}
-		return m, m.loadRefresh()
-	case tea.FocusMsg:
-		return m, m.loadRefresh()
-	case refreshDiffMsg:
-		m.finishDiffRefresh(msg)
-	default:
-		return m, nil
-	}
-	return m, nil
-}
-
-func (m *model) finishCommentEditor(msg commentEditorFinishedMsg) {
-	if msg.err != nil {
-		m.err = msg.err
-		m.clearCommentEdit()
-		return
-	}
-	m.edit.body = msg.body
-	m.finishCommentEdit()
-}
-
-func (m *model) finishCommentsLoad(msg commentsLoadedMsg) {
-	if msg.revision != m.comments.revision {
-		return
-	}
-	if msg.err != nil {
-		m.err = fmt.Errorf("refresh comments: %w", msg.err)
-		return
-	}
-	m.comments.items = msg.comments
-	m.commentView.Update(m.comments.items)
-	m.err = nil
-}
-
-func (m *model) finishDiffRefresh(msg refreshDiffMsg) {
-	if msg.kind != m.kind {
-		return
-	}
-	if msg.err != nil {
-		m.err = fmt.Errorf("refresh diff: %w", msg.err)
-		return
-	}
-	m.updatePatch(msg.patch)
-	m.err = nil
-}
-
-func (m model) loadRefresh() tea.Cmd {
-	if m.refresh == nil {
-		return nil
-	}
-	kind := m.kind
-	return func() tea.Msg {
-		p, err := m.refresh(kind)
-		return refreshDiffMsg{patch: p, kind: kind, err: err}
-	}
-}
-
-func (m model) loadComments() tea.Cmd {
-	if m.load == nil {
-		return nil
-	}
-	revision := m.comments.revision
-	return func() tea.Msg {
-		comments, err := m.load()
-		return commentsLoadedMsg{
-			comments: comments,
-			revision: revision,
-			err:      err,
-		}
-	}
 }
 
 func (m *model) updatePatch(p patch.Patch) {
@@ -354,7 +236,7 @@ func (m model) updateBrowseKey(name string) (tea.Model, tea.Cmd) {
 	case "e":
 		return m.startSourceEditor()
 	case "R":
-		return m, m.loadRefresh()
+		return m.startPatchRefresh()
 	case "tab":
 		return m.switchPatchKind()
 	default:
@@ -375,7 +257,7 @@ func (m model) updateBrowseView(name string) (tea.Model, tea.Cmd) {
 	case "C":
 		m.mode = modeComments
 		m.commentView.Update(m.comments.items)
-		return m, m.loadComments()
+		return m.reloadComments()
 	case "t":
 		m.toggleSideBySide()
 	default:
@@ -412,5 +294,5 @@ func (m model) switchPatchKind() (tea.Model, tea.Cmd) {
 		m.kind = patch.Unstaged
 	}
 	m.diffView.ClearSelection()
-	return m, m.loadRefresh()
+	return m.startPatchRefresh()
 }

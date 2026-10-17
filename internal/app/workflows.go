@@ -1,0 +1,118 @@
+package app
+
+import (
+	"fmt"
+
+	tea "charm.land/bubbletea/v2"
+	"github.com/eskelinenantti/review-my-slop/internal/comments"
+	"github.com/eskelinenantti/review-my-slop/internal/patch"
+)
+
+type refreshDiffMsg struct {
+	patch   patch.Patch
+	kind    patch.Kind
+	request uint64
+	err     error
+}
+
+type commentEditorFinishedMsg struct {
+	body string
+	err  error
+}
+type commentsLoadedMsg struct {
+	comments []comments.Comment
+	revision uint64
+	request  uint64
+	err      error
+}
+type sourceEditorFinishedMsg struct{ err error }
+
+func (m model) updateWorkflow(msg tea.Msg) (tea.Model, tea.Cmd) {
+	switch msg := msg.(type) {
+	case commentEditorFinishedMsg:
+		m.finishCommentEditor(msg)
+	case commentsLoadedMsg:
+		m.finishCommentsLoad(msg)
+	case sourceEditorFinishedMsg:
+		if msg.err != nil {
+			m.err = fmt.Errorf("editor: %w", msg.err)
+			break
+		}
+		return m.startPatchRefresh()
+	case tea.FocusMsg:
+		return m.startPatchRefresh()
+	case refreshDiffMsg:
+		m.finishDiffRefresh(msg)
+	default:
+		return m, nil
+	}
+	return m, nil
+}
+
+func (m *model) finishCommentEditor(msg commentEditorFinishedMsg) {
+	if msg.err != nil {
+		m.err = msg.err
+		m.clearCommentEdit()
+		return
+	}
+	m.edit.body = msg.body
+	m.finishCommentEdit()
+}
+
+func (m *model) finishCommentsLoad(msg commentsLoadedMsg) {
+	if msg.revision != m.comments.revision ||
+		msg.request != m.comments.loadRequest {
+		return
+	}
+	if msg.err != nil {
+		m.err = fmt.Errorf("refresh comments: %w", msg.err)
+		return
+	}
+	m.comments.items = msg.comments
+	m.commentView.Update(m.comments.items)
+	m.err = nil
+}
+
+func (m *model) finishDiffRefresh(msg refreshDiffMsg) {
+	if msg.kind != m.kind || msg.request != m.refreshRequest {
+		return
+	}
+	if msg.err != nil {
+		m.err = fmt.Errorf("refresh diff: %w", msg.err)
+		return
+	}
+	m.updatePatch(msg.patch)
+	m.err = nil
+}
+
+// startPatchRefresh records a request before returning its command.
+func (m model) startPatchRefresh() (tea.Model, tea.Cmd) {
+	if m.refresh == nil {
+		return m, nil
+	}
+	m.refreshRequest++
+	kind := m.kind
+	request := m.refreshRequest
+	return m, func() tea.Msg {
+		p, err := m.refresh(kind)
+		return refreshDiffMsg{patch: p, kind: kind, request: request, err: err}
+	}
+}
+
+func (m model) reloadComments() (tea.Model, tea.Cmd) {
+	if m.load == nil {
+		return m, nil
+	}
+	m.comments.loadRequest++
+	revision := m.comments.revision
+	request := m.comments.loadRequest
+	return m, func() tea.Msg {
+		comments, err := m.load()
+		return commentsLoadedMsg{
+			comments: comments,
+			revision: revision,
+			request:  request,
+			err:      err,
+		}
+	}
+}

@@ -2,7 +2,6 @@ package comments
 
 import (
 	"bytes"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -17,7 +16,8 @@ const (
 	maxPendingBytes = 16 << 20
 )
 
-var messagesBucket = []byte("messages")
+// Retain the persisted name so existing databases remain readable.
+var commentsBucket = []byte("messages")
 
 // Store persists pending review comments in a database at Path.
 type Store struct {
@@ -42,14 +42,23 @@ func OpenDefault() (Store, error) {
 	return Store{Path: path}, nil
 }
 
+// Save creates a comment when its ID is absent, or updates it when present.
+// Updating a comment that no longer exists returns an error.
+func (s Store) Save(comment Comment) (Comment, error) {
+	if comment.ID == "" {
+		return s.Add(comment)
+	}
+	if err := s.Update(comment); err != nil {
+		return Comment{}, err
+	}
+	return comment, nil
+}
+
 // Add validates and stores a comment, assigning an ID and timestamp when
 // absent.
 func (s Store) Add(comment Comment) (Comment, error) {
 	if comment.Repository == "" {
 		return Comment{}, errors.New("comment requires a repository")
-	}
-	if err := validateComment(comment); err != nil {
-		return Comment{}, err
 	}
 	if comment.ID == "" {
 		comment.ID = fmt.Sprintf("%d", time.Now().UnixNano())
@@ -57,9 +66,9 @@ func (s Store) Add(comment Comment) (Comment, error) {
 	if comment.CreatedAt.IsZero() {
 		comment.CreatedAt = time.Now().UTC()
 	}
-	data, err := json.Marshal(comment)
+	data, err := encodeComment(comment)
 	if err != nil {
-		return Comment{}, fmt.Errorf("encode comment: %w", err)
+		return Comment{}, err
 	}
 	err = s.transact(func(bucket *bolt.Bucket) error {
 		return addComment(bucket, comment.ID, data)
@@ -68,8 +77,8 @@ func (s Store) Add(comment Comment) (Comment, error) {
 }
 
 func addComment(bucket *bolt.Bucket, id string, data []byte) error {
-	if pendingBytes(bucket)+len(data) > maxPendingBytes {
-		return fmt.Errorf("pending feedback exceeds %d bytes", maxPendingBytes)
+	if err := checkPendingSize(bucket, len(data)); err != nil {
+		return err
 	}
 	if bucket.Get([]byte(id)) != nil {
 		return errors.New("comment ID already exists")
@@ -95,17 +104,15 @@ func (s Store) List(repository string) ([]Comment, error) {
 	return comments, err
 }
 
-// Update replaces an existing comment in the repository.
+// Update replaces an existing comment without exceeding the pending limit.
+// A failed update leaves the stored comment unchanged.
 func (s Store) Update(comment Comment) error {
 	if comment.Repository == "" || comment.ID == "" {
 		return errors.New("repository and comment ID are required")
 	}
-	if err := validateComment(comment); err != nil {
-		return err
-	}
-	data, err := json.Marshal(comment)
+	data, err := encodeComment(comment)
 	if err != nil {
-		return fmt.Errorf("encode comment: %w", err)
+		return err
 	}
 	return s.transact(
 		func(bucket *bolt.Bucket) error {
@@ -167,6 +174,13 @@ func pendingBytes(bucket *bolt.Bucket) int {
 	return total
 }
 
+func checkPendingSize(bucket *bolt.Bucket, sizeChange int) error {
+	if pendingBytes(bucket)+sizeChange > maxPendingBytes {
+		return fmt.Errorf("pending feedback exceeds %d bytes", maxPendingBytes)
+	}
+	return nil
+}
+
 func replaceComment(bucket *bolt.Bucket, comment Comment, data []byte) error {
 	key, err := findCommentKey(bucket, comment.Repository, comment.ID)
 	if err != nil {
@@ -175,12 +189,17 @@ func replaceComment(bucket *bolt.Bucket, comment Comment, data []byte) error {
 	if key == nil {
 		return errors.New("comment is no longer in the comments")
 	}
-	if !bytes.Equal(key, []byte(comment.ID)) {
+	newKey := []byte(comment.ID)
+	if !bytes.Equal(key, newKey) {
 		if err := bucket.Delete(key); err != nil {
 			return err
 		}
 	}
-	return bucket.Put([]byte(comment.ID), data)
+	sizeChange := len(data) - len(bucket.Get(newKey))
+	if err := checkPendingSize(bucket, sizeChange); err != nil {
+		return err
+	}
+	return bucket.Put(newKey, data)
 }
 
 func findCommentKey(
@@ -194,7 +213,7 @@ func findCommentKey(
 			return nil, err
 		}
 		if comment.Repository == repository && comment.ID == id {
-			return append([]byte(nil), key...), nil
+			return bytes.Clone(key), nil
 		}
 	}
 	return nil, nil
@@ -215,54 +234,11 @@ func findPendingKeys(
 			return nil
 		}
 		if _, ok := wanted[comment.ID]; ok {
-			keys = append(keys, append([]byte(nil), key...))
+			keys = append(keys, bytes.Clone(key))
 		}
 		return nil
 	})
 	return keys, err
-}
-
-func validateComment(comment Comment) error {
-	if len(comment.Body) == 0 {
-		return errors.New("comment body is empty")
-	}
-	if len(comment.Body) > maxCommentBytes {
-		return fmt.Errorf("comment exceeds %d bytes", maxCommentBytes)
-	}
-	return nil
-}
-
-type legacyComment struct {
-	Anchor Anchor `json:"anchor"`
-	Body   string `json:"body"`
-}
-
-type legacyRecord struct {
-	ID         string         `json:"id"`
-	Repository string         `json:"repository"`
-	CreatedAt  time.Time      `json:"created_at"`
-	Comment    *legacyComment `json:"comment"`
-}
-
-func decodeComment(data []byte) (Comment, error) {
-	var legacy legacyRecord
-	if err := json.Unmarshal(data, &legacy); err != nil {
-		return Comment{}, fmt.Errorf("decode comment: %w", err)
-	}
-	if legacy.Comment != nil {
-		return Comment{
-			ID:         legacy.ID,
-			Repository: legacy.Repository,
-			CreatedAt:  legacy.CreatedAt,
-			Anchor:     legacy.Comment.Anchor,
-			Body:       legacy.Comment.Body,
-		}, nil
-	}
-	var comment Comment
-	if err := json.Unmarshal(data, &comment); err != nil {
-		return Comment{}, fmt.Errorf("decode comment: %w", err)
-	}
-	return comment, nil
 }
 
 func (s Store) transact(fn func(*bolt.Bucket) error) error {
@@ -272,7 +248,7 @@ func (s Store) transact(fn func(*bolt.Bucket) error) error {
 	}
 	defer db.Close()
 	return db.Update(func(tx *bolt.Tx) error {
-		bucket, err := tx.CreateBucketIfNotExists(messagesBucket)
+		bucket, err := tx.CreateBucketIfNotExists(commentsBucket)
 		if err != nil {
 			return err
 		}
@@ -290,7 +266,7 @@ func (s Store) view(fn func(*bolt.Bucket) error) error {
 	}
 	defer db.Close()
 	return db.View(func(tx *bolt.Tx) error {
-		bucket := tx.Bucket(messagesBucket)
+		bucket := tx.Bucket(commentsBucket)
 		if bucket == nil {
 			return nil
 		}

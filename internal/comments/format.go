@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"io"
 	"strings"
+
+	"github.com/eskelinenantti/review-my-slop/internal/markdown"
 )
 
 // WritePending writes the repository's pending feedback and acknowledges only
@@ -44,9 +46,9 @@ func writePromptComment(w io.Writer, number int, comment Comment) error {
 	anchor := comment.Anchor
 	_, headingErr := fmt.Fprintf(
 		w,
-		"\n### %d. `%s` (%s)\n\n",
+		"\n### %d. %s (%s)\n\n",
 		number,
-		anchor.FilePath,
+		markdown.CodeSpan(anchor.FilePath),
 		describeRange(anchor),
 	)
 	if headingErr != nil {
@@ -63,7 +65,8 @@ func writeQuotedLines(w io.Writer, lines []string) error {
 	if len(lines) == 0 {
 		return nil
 	}
-	if _, err := fmt.Fprintln(w, "```diff"); err != nil {
+	fence := markdown.CodeFence(lines)
+	if _, err := fmt.Fprintln(w, fence+"diff"); err != nil {
 		return err
 	}
 	for _, line := range lines {
@@ -71,7 +74,7 @@ func writeQuotedLines(w io.Writer, lines []string) error {
 			return err
 		}
 	}
-	_, err := fmt.Fprintln(w, "```")
+	_, err := fmt.Fprintln(w, fence)
 	return err
 }
 

@@ -2,13 +2,13 @@ package diffscreen
 
 import (
 	"bytes"
-	"io"
 	"strings"
 
 	"github.com/alecthomas/chroma/v2/quick"
+	"github.com/eskelinenantti/review-my-slop/internal/patch"
 )
 
-type pair struct {
+type highlightedFile struct {
 	Old []string
 	New []string
 }
@@ -18,7 +18,18 @@ const (
 	darkTheme  = "catppuccin-mocha"
 )
 
-func render(filename, source, theme string) []string {
+func (v *diffView) highlightFile(file *patch.File) highlightedFile {
+	theme := lightTheme
+	if v.dark {
+		theme = darkTheme
+	}
+	return highlightedFile{
+		Old: highlightSource(file.OldPath, file.OldSource, theme),
+		New: highlightSource(file.NewPath, file.NewSource, theme),
+	}
+}
+
+func highlightSource(filename, source, theme string) []string {
 	if source == "" {
 		return nil
 	}
@@ -33,9 +44,16 @@ func render(filename, source, theme string) []string {
 	if highlightErr != nil {
 		return strings.Split(strings.TrimSuffix(source, "\n"), "\n")
 	}
-	rendered, err := io.ReadAll(&buf)
-	if err != nil {
-		return strings.Split(strings.TrimSuffix(source, "\n"), "\n")
+	return strings.Split(strings.TrimSuffix(buf.String(), "\n"), "\n")
+}
+
+func (file highlightedFile) lineText(line patch.Line) string {
+	lines, number := file.New, line.NewNumber
+	if line.Kind == patch.Deletion {
+		lines, number = file.Old, line.OldNumber
 	}
-	return strings.Split(strings.TrimSuffix(string(rendered), "\n"), "\n")
+	if number <= 0 || int(number) > len(lines) {
+		return line.Text
+	}
+	return lines[int(number)-1]
 }

@@ -38,7 +38,9 @@ func TestRunCommentsPrintsAndConsumesCurrentRepositoryFeedback(t *testing.T) {
 	}
 
 	var output bytes.Buffer
-	testutil.NoError(t, runComments(context.Background(), &output))
+	testutil.NoError(t,
+		run(context.Background(), []string{"comments"}, &output),
+	)
 	testutil.RequireEqual(t,
 		strings.Contains(output.String(), "Check this error."), true,
 		"unexpected output:\n%s", output.String(),
@@ -55,7 +57,9 @@ func TestRunCommentsPrintsAndConsumesCurrentRepositoryFeedback(t *testing.T) {
 	)
 
 	var empty bytes.Buffer
-	testutil.NoError(t, runComments(context.Background(), &empty))
+	testutil.NoError(t,
+		run(context.Background(), []string{"comments"}, &empty),
+	)
 	testutil.RequireEqual(
 		t, strings.TrimSpace(empty.String()), "No pending review comments.",
 		"second output = %q", empty.String())
@@ -83,7 +87,8 @@ func TestRunCommentsPreservesFeedbackWhenOutputFails(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := runComments(context.Background(), failingWriter{}); err == nil {
+	err = run(context.Background(), []string{"comments"}, failingWriter{})
+	if err == nil {
 		t.Fatal("output failure was ignored")
 	}
 	pending, err := store.List(repo)

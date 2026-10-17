@@ -21,7 +21,6 @@ func TestVisualSelectionCreatesMappedAnchorAndSubmits(t *testing.T) {
 	var saved []comments.Comment
 	m := testModel(coveragePatch(), nil, func(
 		stored comments.Comment,
-		_ patch.Patch,
 	) (comments.Comment, error) {
 		saved = append(saved, stored)
 		stored.ID = "new"
@@ -48,7 +47,6 @@ func TestCommentSaveFailureClearsPendingEdit(t *testing.T) {
 	t.Setenv("EDITOR", "true")
 	m := testModel(coveragePatch(), nil, func(
 		comments.Comment,
-		patch.Patch,
 	) (comments.Comment, error) {
 		return comments.Comment{}, errors.New("storage unavailable")
 	})
@@ -79,7 +77,6 @@ func TestEmptyNewCommentIsDiscarded(t *testing.T) {
 	called := false
 	m := testModel(coveragePatch(), nil, func(
 		stored comments.Comment,
-		_ patch.Patch,
 	) (comments.Comment, error) {
 		called = true
 		return stored, nil
@@ -126,23 +123,18 @@ func TestCommentsCanBeViewedEditedAndDeleted(t *testing.T) {
 		{ID: "one", Body: "old body"},
 		{ID: "two", Body: "second"},
 	}
-	var persisted, deleted comments.Comment
+	var persisted comments.Comment
+	var deletedID string
 	m := testModel(coveragePatch(), items, func(
 		stored comments.Comment,
-		_ patch.Patch,
 	) (comments.Comment, error) {
 		persisted = stored
 		return stored, nil
 	})
-	m.setDelete(
-		func(
-			stored comments.Comment,
-			_ patch.Patch,
-		) error {
-			deleted = stored
-			return nil
-		},
-	)
+	m.delete = func(_ string, id string) error {
+		deletedID = id
+		return nil
+	}
 	m = updateModel(t, m, textKey("C"))
 	testutil.RequireEqual(t, m.mode, modeComments, "%s",
 		"comments did not open",
@@ -159,11 +151,11 @@ func TestCommentsCanBeViewedEditedAndDeleted(t *testing.T) {
 	)
 
 	m = updateModel(t, m, textKey("D"))
-	testutil.RequireEqual(t, deleted.ID, "one", "deleted=%#v comments=%#v",
-		deleted, m.comments.items,
+	testutil.RequireEqual(t, deletedID, "one", "deleted=%q comments=%#v",
+		deletedID, m.comments.items,
 	)
 	testutil.RequireEqual(t, len(m.comments.items), 1,
-		"deleted=%#v comments=%#v", deleted, m.comments.items,
+		"deleted=%q comments=%#v", deletedID, m.comments.items,
 	)
 
 	m = updateModel(t, m, textKey("q"))
@@ -175,59 +167,6 @@ func TestCommentsCanBeViewedEditedAndDeleted(t *testing.T) {
 	)
 }
 
-func TestOpeningCommentsReloadsPendingComments(t *testing.T) {
-	m := testModel(
-		coveragePatch(),
-		[]comments.Comment{{ID: "read", Body: "already read"}},
-		nil,
-	)
-	m.setLoadComments(func() ([]comments.Comment, error) { return nil, nil })
-
-	next, cmd := m.Update(textKey("C"))
-	m = requireModel(t, next)
-	testutil.RequireEqual(t, cmd != nil, true, "%s",
-		"opening comments did not request a refresh",
-	)
-
-	m = updateModel(t, m, cmd())
-	testutil.RequireEqual(t, m.mode, modeComments, "mode=%v comments=%#v",
-		m.mode, m.comments.items,
-	)
-	testutil.RequireEqual(t, len(m.comments.items), 0, "mode=%v comments=%#v",
-		m.mode, m.comments.items,
-	)
-}
-
-func TestCommentReloadFailurePreservesCurrentComments(t *testing.T) {
-	m := testModel(
-		coveragePatch(),
-		[]comments.Comment{{ID: "keep", Body: "keep"}},
-		nil,
-	)
-	m.setLoadComments(
-		func() (
-			[]comments.Comment,
-			error,
-		) {
-			return nil, errors.New("storage unavailable")
-		},
-	)
-
-	next, cmd := m.Update(textKey("C"))
-	m = requireModel(t, next)
-	m = updateModel(t, m, cmd())
-	testutil.RequireEqual(t, len(m.comments.items), 1, "comments=%#v error=%v",
-		m.comments.items, m.err,
-	)
-	testutil.RequireEqual(t, m.err != nil, true, "comments=%#v error=%v",
-		m.comments.items, m.err,
-	)
-	testutil.RequireEqual(t, m.err.Error(),
-		"refresh comments: storage unavailable", "comments=%#v error=%v",
-		m.comments.items, m.err,
-	)
-}
-
 func TestEmptyEditedCommentIsDeleted(t *testing.T) {
 	t.Setenv("EDITOR", "true")
 	m := testModel(
@@ -236,15 +175,10 @@ func TestEmptyEditedCommentIsDeleted(t *testing.T) {
 		nil,
 	)
 	deleted := false
-	m.setDelete(
-		func(
-			comments.Comment,
-			patch.Patch,
-		) error {
-			deleted = true
-			return nil
-		},
-	)
+	m.delete = func(string, string) error {
+		deleted = true
+		return nil
+	}
 	m = updateModel(t, m, textKey("C"))
 	m = updateModel(t, m, specialKey(tea.KeyEnter))
 	m = updateModel(t, m, commentEditorFinishedMsg{body: "\n"})
@@ -262,14 +196,9 @@ func TestCommentDeleteFailureKeepsCommentAndShowsError(t *testing.T) {
 		[]comments.Comment{{ID: "one", Body: "keep"}},
 		nil,
 	)
-	m.setDelete(
-		func(
-			comments.Comment,
-			patch.Patch,
-		) error {
-			return errors.New("delete failed")
-		},
-	)
+	m.delete = func(string, string) error {
+		return errors.New("delete failed")
+	}
 	m = updateModel(t, m, textKey("C"))
 	m = updateModel(t, m, textKey("D"))
 	testutil.RequireEqual(t, len(m.comments.items), 1, "comments=%#v render=%q",
@@ -509,67 +438,6 @@ func TestHorizontalScrollKeysMoveByStepAndReset(t *testing.T) {
 	)
 }
 
-func TestFocusAndManualRefreshLoadCurrentView(t *testing.T) {
-	m := testModel(coveragePatch(), nil, nil)
-	m.currentPatch.Branch = "main"
-	m.kind = patch.Branch
-	var requested []patch.Kind
-	m.setRefresh(func(kind patch.Kind) (patch.Patch, error) {
-		requested = append(requested, kind)
-		p := coveragePatch()
-		p.Kind, p.Branch = kind, "main"
-		p.Files[0].Metadata = []string{
-			fmt.Sprintf("refresh-%d", len(requested)),
-		}
-		return p, nil
-	})
-	next, cmd := m.Update(tea.FocusMsg{})
-	m = requireModel(t, next)
-	testutil.RequireEqual(t, cmd != nil, true, "%s", "focus did not refresh")
-
-	m = updateModel(t, m, cmd())
-	next, cmd = m.Update(textKey("R"))
-	m = requireModel(t, next)
-	testutil.RequireEqual(t, cmd != nil, true, "%s", "R did not refresh")
-
-	m = updateModel(t, m, cmd())
-	testutil.RequireEqual(t,
-		slices.Equal(requested, []patch.Kind{patch.Branch, patch.Branch}), true,
-		"requested=%v metadata=%q", requested, m.currentPatch.Files[0].Metadata,
-	)
-	testutil.RequireEqual(t,
-		slices.Equal(
-			m.currentPatch.Files[0].Metadata,
-			[]string{"refresh-2"},
-		), true,
-		"requested=%v metadata=%q", requested, m.currentPatch.Files[0].Metadata,
-	)
-}
-
-func TestSourceEditorCompletionRefreshesDiff(t *testing.T) {
-	m := testModel(coveragePatch(), nil, nil)
-	refreshed := coveragePatch()
-	refreshed.Files[0].Metadata = []string{"after-editor"}
-	m.setRefresh(
-		func(patch.Kind) (patch.Patch, error) { return refreshed, nil },
-	)
-
-	next, cmd := m.Update(sourceEditorFinishedMsg{})
-	m = requireModel(t, next)
-	testutil.RequireEqual(t, cmd != nil, true, "%s",
-		"editor completion did not refresh",
-	)
-
-	m = updateModel(t, m, cmd())
-	testutil.RequireEqual(t,
-		slices.Equal(
-			m.currentPatch.Files[0].Metadata,
-			[]string{"after-editor"},
-		),
-		true, "metadata=%q", m.currentPatch.Files[0].Metadata,
-	)
-}
-
 func TestHeaderShowsAddedAndRemovedLineCounts(t *testing.T) {
 	header := strings.SplitN(
 		ansi.Strip(testModel(coveragePatch(), nil, nil).render()),
@@ -658,11 +526,11 @@ func TestSideBySideSearchActivatesPaneAndCancelRestoresIt(t *testing.T) {
 func TestTabTogglesDefaultBranchAndIgnoresStaleRefresh(t *testing.T) {
 	m := testModel(coveragePatch(), nil, nil)
 	m.currentPatch.Branch = "main"
-	m.setRefresh(func(kind patch.Kind) (patch.Patch, error) {
+	m.refresh = func(kind patch.Kind) (patch.Patch, error) {
 		p := coveragePatch()
 		p.Kind, p.Branch = kind, "main"
 		return p, nil
-	})
+	}
 	next, _ := m.Update(textKey("tab"))
 	m = requireModel(t, next)
 	testutil.RequireEqual(t, m.kind, patch.Branch, "kind=%v", m.kind)
@@ -687,10 +555,10 @@ func TestTabTogglesDefaultBranchAndIgnoresStaleRefresh(t *testing.T) {
 func TestTabDoesNothingWithoutDefaultBranch(t *testing.T) {
 	m := testModel(coveragePatch(), nil, nil)
 	refreshed := false
-	m.setRefresh(func(patch.Kind) (patch.Patch, error) {
+	m.refresh = func(patch.Kind) (patch.Patch, error) {
 		refreshed = true
 		return coveragePatch(), nil
-	})
+	}
 	next, cmd := m.Update(textKey("tab"))
 	m = requireModel(t, next)
 	testutil.RequireEqual(t, cmd == nil, true,
@@ -723,24 +591,29 @@ func TestDiffRefreshFallbackAndEmptyDiff(t *testing.T) {
 	}
 }
 
-func TestCommentAfterRefreshUsesCurrentPatch(t *testing.T) {
+func TestCommentAfterRefreshUsesCurrentRepositoryAndAnchor(t *testing.T) {
 	t.Setenv("EDITOR", "true")
-	var saved patch.Patch
+	var savedRepository string
+	var saved comments.Comment
 	m := testModel(coveragePatch(), nil, func(
 		stored comments.Comment,
-		p patch.Patch,
 	) (comments.Comment, error) {
-		saved = p
+		savedRepository, saved = stored.Repository, stored
 		return stored, nil
 	})
 	refreshed := coveragePatch()
-	refreshed.Files[0].Metadata = []string{"refreshed"}
+	refreshed.Root = "/refreshed/repo"
+	refreshed.Files[0].Hunks[0].Lines[2].Text = "refreshed()"
 	m = updateModel(t, m, refreshDiffMsg{patch: refreshed})
+	focusLine(t, &m, "refreshed()")
 	m = updateModel(t, m, textKey("c"))
 	_ = updateModel(t, m, commentEditorFinishedMsg{body: "comment"})
+	testutil.RequireEqual(t, savedRepository, refreshed.Root,
+		"repository=%q", savedRepository,
+	)
 	testutil.RequireEqual(t,
-		slices.Equal(saved.Files[0].Metadata, []string{"refreshed"}), true,
-		"metadata=%q", saved.Files[0].Metadata,
+		slices.Equal(saved.Anchor.QuotedLines, []string{"+refreshed()"}), true,
+		"anchor=%#v", saved.Anchor,
 	)
 }
 

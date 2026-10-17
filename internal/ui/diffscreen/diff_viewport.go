@@ -203,22 +203,27 @@ func (v *diffView) cursorInViewport(
 }
 
 func (v *diffView) maxHorizontalOffset(width int) int {
-	contentWidth := max(1, width-14)
+	contentWidth := max(1, width-unifiedGutterWidth)
 	extra := 0
 	if v.split {
-		contentWidth, extra = max(1, (width-3)/2-6), 2
+		contentWidth = max(1, (width-paneSeparatorWidth)/2-paneGutterWidth)
+		extra = changeMarkerWidth
 	}
 	longest := 0
 	for _, current := range v.rows {
 		if current.kind != lineRow {
 			continue
 		}
-		longest = max(
-			longest,
-			lipgloss.Width(
-				expandTabs(ansi.Strip(current.text+current.left+current.right)),
-			)+extra,
-		)
+		longest = max(longest, current.codeWidth()+extra)
 	}
 	return max(0, longest-contentWidth)
+}
+
+// codeWidth measures the widest code cell in terminal columns, excluding color.
+func (row displayRow) codeWidth() int {
+	width := 0
+	for _, text := range [3]string{row.text, row.left, row.right} {
+		width = max(width, lipgloss.Width(expandTabs(ansi.Strip(text))))
+	}
+	return width
 }

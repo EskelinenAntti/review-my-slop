@@ -88,28 +88,30 @@ func (v *diffView) findCursor(target cursorIdentity) (diffCursor, bool) {
 	best := cursorMatch{}
 	for y := range v.rows {
 		candidate := v.matchRow(y, target)
-		if candidate.rank == 3 {
+		if candidate.rank == sameLineNumbersMatch {
 			return candidate.cursor, true
 		}
-		if candidate.betterThan(best) {
-			best = candidate
-		}
+		best = candidate.preferredTo(best)
 	}
-	return best.cursor, best.rank > 0
+	return best.cursor, best.rank != noMatch
 }
+
+// Larger ranks are preferred; distance breaks ties within a rank.
+const (
+	noMatch = iota
+	sameFileMatch
+	sameTextMatch
+	sameLineNumbersMatch
+)
 
 type cursorMatch struct {
 	cursor         diffCursor
 	rank, distance int
 }
 
-func (m cursorMatch) betterThan(other cursorMatch) bool {
-	return m.rank > other.rank ||
-		m.rank == other.rank && m.distance < other.distance
-}
-
 func (m cursorMatch) preferredTo(other cursorMatch) cursorMatch {
-	if m.betterThan(other) {
+	if m.rank > other.rank ||
+		m.rank == other.rank && m.distance < other.distance {
 		return m
 	}
 	return other
@@ -135,7 +137,7 @@ func (v *diffView) matchRow(y int, target cursorIdentity) cursorMatch {
 			rank:     lineMatchRank(line, target.line),
 			distance: lineDistance(line, target.line, y-target.cursor.row),
 		}
-		if match.rank == 3 {
+		if match.rank == sameLineNumbersMatch {
 			return match
 		}
 		best = match.preferredTo(best)
@@ -143,22 +145,22 @@ func (v *diffView) matchRow(y int, target cursorIdentity) cursorMatch {
 	return best
 }
 
-func (v *diffView) rowInFile(current entry, file patch.File) bool {
+func (v *diffView) rowInFile(current displayRow, file patch.File) bool {
 	return current.hunk >= 0 && sameFile(v.patch.Files[current.file], file)
 }
 
 func lineMatchRank(line, target patch.Line) int {
 	if line.Kind != target.Kind {
-		return 1
+		return sameFileMatch
 	}
 	if line.OldNumber == target.OldNumber &&
 		line.NewNumber == target.NewNumber {
-		return 3
+		return sameLineNumbersMatch
 	}
 	if line.Text == target.Text {
-		return 2
+		return sameTextMatch
 	}
-	return 1
+	return sameFileMatch
 }
 
 func lineDistance(line, target patch.Line, rowDistance int) int {
@@ -181,15 +183,4 @@ func abs(value int) int {
 		return -value
 	}
 	return value
-}
-
-func highlightedLine(
-	lines []string,
-	number patch.LineNumber,
-	fallback string,
-) string {
-	if number <= 0 || int(number) > len(lines) {
-		return fallback
-	}
-	return lines[int(number)-1]
 }

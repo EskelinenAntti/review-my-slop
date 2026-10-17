@@ -8,16 +8,16 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/eskelinenantti/review-my-slop/internal/comments"
+	"github.com/eskelinenantti/review-my-slop/internal/markdown"
 )
 
-func createCommentFile(body string, anchor comments.Anchor) (string, error) {
+func createCommentFile(body string, quotedLines []string) (string, error) {
 	file, err := os.CreateTemp("", "review-my-slop-comment-*.md")
 	if err != nil {
 		return "", fmt.Errorf("create comment file: %w", err)
 	}
 	path := file.Name()
-	if _, err := file.WriteString(commentDraft(body, anchor)); err != nil {
+	if _, err := file.WriteString(commentDraft(body, quotedLines)); err != nil {
 		_ = file.Close()
 		_ = os.Remove(path)
 		return "", fmt.Errorf("write comment file: %w", err)
@@ -29,43 +29,47 @@ func createCommentFile(body string, anchor comments.Anchor) (string, error) {
 	return path, nil
 }
 
-func readCommentFile(path string, anchor comments.Anchor) (string, error) {
+func readCommentFile(path string, quotedLines []string) (string, error) {
 	body, err := os.ReadFile(path)
 	if err != nil {
 		return "", fmt.Errorf("read comment file: %w", err)
 	}
-	return stripUnchangedSuggestion(string(body), anchor.QuotedLines), nil
+	return stripUnchangedSuggestion(string(body), quotedLines), nil
 }
 
-func commentDraft(body string, anchor comments.Anchor) string {
-	if len(anchor.QuotedLines) == 0 {
+func commentDraft(body string, quotedLines []string) string {
+	if len(quotedLines) == 0 {
 		return body
 	}
-	lines := suggestionLines(anchor.QuotedLines)
-	var draft strings.Builder
-	_, _ = draft.WriteString(body)
 	if body != "" && !strings.HasSuffix(body, "\n") {
-		_ = draft.WriteByte('\n')
+		body += "\n"
 	}
-	_ = draft.WriteByte('\n')
-	fence := contextFence(lines)
-	_, _ = draft.WriteString(fence)
-	_, _ = draft.WriteString("suggestion\n")
-	for _, line := range lines {
-		_, _ = draft.WriteString(line)
-		_ = draft.WriteByte('\n')
-	}
-	_, _ = draft.WriteString(fence)
-	_ = draft.WriteByte('\n')
-	return draft.String()
+	return body + "\n" + suggestionBlock(quotedLines) + "\n"
 }
 
 func stripUnchangedSuggestion(body string, quoted []string) string {
 	if len(quoted) == 0 {
 		return body
 	}
+	suggestion := suggestionBlock(quoted)
+	start := strings.Index(body, suggestion)
+	if start < 0 {
+		return body
+	}
+	end := start + len(suggestion)
+	before := strings.TrimRight(body[:start], "\n")
+	after := body[end:]
+	if strings.TrimSpace(after) == "" {
+		return before
+	}
+	return before + "\n" + strings.TrimLeft(after, "\n")
+}
+
+// suggestionBlock has no trailing newline so it can also match an editor's
+// output when the final newline was removed.
+func suggestionBlock(quoted []string) string {
 	lines := suggestionLines(quoted)
-	fence := contextFence(lines)
+	fence := markdown.CodeFence(lines)
 	var suggestion strings.Builder
 	_, _ = suggestion.WriteString(fence)
 	_, _ = suggestion.WriteString("suggestion\n")
@@ -74,17 +78,7 @@ func stripUnchangedSuggestion(body string, quoted []string) string {
 		_ = suggestion.WriteByte('\n')
 	}
 	_, _ = suggestion.WriteString(fence)
-	start := strings.Index(body, suggestion.String())
-	if start < 0 {
-		return body
-	}
-	end := start + suggestion.Len()
-	before := strings.TrimRight(body[:start], "\n")
-	after := body[end:]
-	if strings.TrimSpace(after) == "" {
-		return before
-	}
-	return before + "\n" + strings.TrimLeft(after, "\n")
+	return suggestion.String()
 }
 
 func commentCommand(ctx context.Context, editor, path string) *exec.Cmd {
@@ -112,22 +106,6 @@ func suggestionLines(quoted []string) []string {
 		}
 	}
 	return lines
-}
-
-func contextFence(lines []string) string {
-	longest := 0
-	for _, line := range lines {
-		run := 0
-		for _, char := range line {
-			if char == '`' {
-				run++
-				longest = max(longest, run)
-			} else {
-				run = 0
-			}
-		}
-	}
-	return strings.Repeat("`", max(3, longest+1))
 }
 
 func shellQuote(value string) string {

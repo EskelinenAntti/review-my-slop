@@ -13,7 +13,60 @@ import (
 	"github.com/eskelinenantti/review-my-slop/internal/testutil"
 )
 
-func TestStoreQueuesByRepositoryAndDeletesExactPeek(t *testing.T) {
+func TestSaveDoesNotRecreateConsumedComments(t *testing.T) {
+	store := Store{Path: filepath.Join(t.TempDir(), "comments.db")}
+	saved, err := store.Save(Comment{Repository: "/repo", Body: "first"})
+	testutil.NoError(t, err)
+	testutil.NoError(t, store.Acknowledge("/repo", []string{saved.ID}))
+
+	saved.Body = "edited after consumption"
+	if _, err := store.Save(saved); err == nil {
+		t.Fatal("save recreated a consumed comment")
+	}
+	pending, err := store.List("/repo")
+	testutil.NoError(t, err)
+	testutil.RequireEqual(t, len(pending), 0, "pending comments = %#v", pending)
+}
+
+func TestUpdateHonorsPendingLimitAndCreditsReplacedComment(t *testing.T) {
+	store := Store{Path: filepath.Join(t.TempDir(), "comments.db")}
+	original, err := store.Add(Comment{
+		ID: "edited", Repository: "/repo", Body: "before",
+		CreatedAt: time.Unix(1, 0).UTC(),
+	})
+	testutil.NoError(t, err)
+	originalData, err := encodeComment(original)
+	testutil.NoError(t, err)
+	padding := Comment{
+		ID: "padding", Repository: "/other", Body: "padding",
+		CreatedAt: time.Unix(1, 0).UTC(),
+		Anchor:    Anchor{QuotedLines: []string{""}},
+	}
+	paddingData, err := encodeComment(padding)
+	testutil.NoError(t, err)
+	padding.Anchor.QuotedLines[0] = strings.Repeat(
+		"x", maxPendingBytes-len(originalData)-len(paddingData),
+	)
+	_, err = store.Add(padding)
+	testutil.NoError(t, err)
+
+	original.Body = "after!" // Same encoded size: replacement must still fit.
+	testutil.NoError(t, store.Update(original))
+	original.Body = "larger!"
+	err = store.Update(original)
+	if err == nil ||
+		!strings.Contains(err.Error(), "pending feedback exceeds") {
+		t.Fatalf("oversized edit error = %v", err)
+	}
+	pending, err := store.List("/repo")
+	testutil.NoError(t, err)
+	testutil.RequireEqual(t, len(pending), 1, "pending = %#v", pending)
+	testutil.RequireEqual(t, pending[0].Body, "after!", "body = %q",
+		pending[0].Body,
+	)
+}
+
+func TestAcknowledgePreservesNewerAndOtherRepositoryComments(t *testing.T) {
 	store := Store{Path: filepath.Join(t.TempDir(), "state", "comments.db")}
 	first := testComment("/repo/a", "first")
 	second := testComment("/repo/b", "other")
@@ -97,7 +150,7 @@ func TestWritePrompt(t *testing.T) {
 	)
 }
 
-func TestWritePromptNumbersMessages(t *testing.T) {
+func TestWritePromptNumbersComments(t *testing.T) {
 	var out bytes.Buffer
 	comments := []Comment{
 		testComment("/repo", "First."),
@@ -153,7 +206,7 @@ func TestListAndUpdateComments(t *testing.T) {
 	}
 }
 
-func TestDeleteCommentRemovesMessage(t *testing.T) {
+func TestDeleteCommentRemovesStoredComment(t *testing.T) {
 	store := Store{Path: filepath.Join(t.TempDir(), "comments.db")}
 	if _, err := store.Add(testComment("/repo", "first")); err != nil {
 		t.Fatal(err)

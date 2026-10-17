@@ -9,6 +9,46 @@ import (
 	"github.com/eskelinenantti/review-my-slop/internal/testutil"
 )
 
+func TestWritePromptKeepsQuotedFencesInsideDiff(t *testing.T) {
+	comment := Comment{
+		Anchor: Anchor{
+			FilePath: "README.md", NewStart: 1,
+			QuotedLines: []string{" ```markdown", " text", " ```"},
+		},
+		Body: "Review the fenced example.",
+	}
+	var output bytes.Buffer
+	testutil.NoError(t, WritePrompt(&output, []Comment{comment}))
+	want := "````diff\n ```markdown\n text\n ```\n````\n" + comment.Body + "\n"
+	if !strings.Contains(output.String(), want) {
+		t.Fatalf("quoted block escaped its fence: %q", output.String())
+	}
+}
+
+func TestWritePromptKeepsFileLabelsLiteral(t *testing.T) {
+	for _, tc := range []struct{ path, span string }{
+		{"file`name.go", "``file`name.go``"},
+		{"`leading.go", "`` `leading.go ``"},
+		{"trailing.go`", "`` trailing.go` ``"},
+		{" spaced.go ", "`  spaced.go  `"},
+		{"   ", "`   `"},
+	} {
+		t.Run(tc.path, func(t *testing.T) {
+			comment := Comment{
+				Anchor: Anchor{FilePath: tc.path}, Body: "Check.",
+			}
+			var output bytes.Buffer
+			testutil.NoError(t, WritePrompt(&output, []Comment{comment}))
+			want := "### 1. " + tc.span + " (diff lines)\n"
+			if !strings.Contains(output.String(), want) {
+				t.Fatalf("file label=%q, want heading %q",
+					output.String(), want,
+				)
+			}
+		})
+	}
+}
+
 func TestWritePendingAcknowledgesOnlyExportedComments(t *testing.T) {
 	store := Store{Path: filepath.Join(t.TempDir(), "comments.db")}
 	for _, comment := range []Comment{

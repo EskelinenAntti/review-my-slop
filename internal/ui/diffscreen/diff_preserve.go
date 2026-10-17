@@ -3,11 +3,11 @@ package diffscreen
 import "github.com/eskelinenantti/review-my-slop/internal/patch"
 
 type cursorIdentity struct {
-	file   patch.File
-	hunk   patch.Hunk
-	line   patch.Line
-	cursor diffCursor
-	valid  bool
+	file       patch.File
+	hunkHeader string
+	line       patch.Line
+	cursor     diffCursor
+	valid      bool
 }
 
 // replaceView translates interactive state before replacing the row projection.
@@ -50,11 +50,11 @@ func identify(v *diffView, cursor diffCursor) cursorIdentity {
 	hunk := file.Hunks[row.hunk]
 	line := hunk.Lines[v.lineIndex(row, cursor.pane)]
 	return cursorIdentity{
-		file:   file,
-		hunk:   hunk,
-		line:   line,
-		cursor: cursor,
-		valid:  true,
+		file:       file,
+		hunkHeader: hunk.Header,
+		line:       line,
+		cursor:     cursor,
+		valid:      true,
 	}
 }
 
@@ -76,7 +76,7 @@ func preserveSelection(
 	if !firstOK || !lastOK || !sameFile(
 		first.file,
 		last.file,
-	) || first.hunk.Header != last.hunk.Header {
+	) || first.hunkHeader != last.hunkHeader {
 		return nil
 	}
 	translated := beginSelection(translatedFirst)
