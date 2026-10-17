@@ -31,35 +31,27 @@ func (v *Comments) Update(items []feedback.Comment) {
 			}
 		}
 	}
-	{
-		height := (func(height int) int { return max(1, height-3) })(v.height)
-		v.top = min(v.top, v.row)
-		v.top = max(v.top, v.row-height+1)
-		v.top = min(max(0, v.top), max(0, len(v.items)-height))
-	}
+	v.keepSelectionVisible()
 }
 
 // Resize sets the terminal dimensions and keeps the selection visible.
 func (v *Comments) Resize(width, height int) {
 	v.width, v.height = width, height
-	{
-		height := (func(height int) int { return max(1, height-3) })(v.height)
-		v.top = min(v.top, v.row)
-		v.top = max(v.top, v.row-height+1)
-		v.top = min(max(0, v.top), max(0, len(v.items)-height))
-	}
+	v.keepSelectionVisible()
 }
 
 // Move changes the selected row by delta, clamping to the list bounds.
 func (v *Comments) Move(delta int) {
 	delta = max(-v.row, min(delta, max(0, len(v.items)-1)-v.row))
 	v.row += delta
-	{
-		height := (func(height int) int { return max(1, height-3) })(v.height)
-		v.top = min(v.top, v.row)
-		v.top = max(v.top, v.row-height+1)
-		v.top = min(max(0, v.top), max(0, len(v.items)-height))
-	}
+	v.keepSelectionVisible()
+}
+
+func (v *Comments) keepSelectionVisible() {
+	height := max(1, v.height-3)
+	v.top = min(v.top, v.row)
+	v.top = max(v.top, v.row-height+1)
+	v.top = min(max(0, v.top), max(0, len(v.items)-height))
 }
 
 // Selected returns the current comment, or false when the list is empty.
