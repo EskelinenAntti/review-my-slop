@@ -235,18 +235,20 @@ func preservedViewport(view *diffView,
 	return clampViewport(view, viewport)
 }
 
-func cursorMatchRank(candidate, original patches.Line) int {
+func cursorMatchRank(
+	candidate, original patches.Line,
+) cursorMatchQuality {
 	if candidate.Kind != original.Kind {
-		return 1
+		return fileCursorMatch
 	}
 	if candidate.OldNumber == original.OldNumber &&
 		candidate.NewNumber == original.NewNumber {
-		return 3
+		return numberCursorMatch
 	}
 	if candidate.Text == original.Text {
-		return 2
+		return textCursorMatch
 	}
-	return 1
+	return fileCursorMatch
 }
 
 func absoluteDistance(distance int) int {
@@ -317,7 +319,7 @@ func findCursorMatch(view *diffView,
 	if exact {
 		return best.cursor, true
 	}
-	return best.cursor, best.rank > 0
+	return best.cursor, best.rank > noCursorMatch
 }
 
 func searchCursorRows(view *diffView,
@@ -358,12 +360,12 @@ func bestCursorMatchAtRow(
 		if !ok {
 			continue
 		}
-		if candidate.rank == 3 {
+		if candidate.rank == numberCursorMatch {
 			return candidate, true, true
 		}
 		best = betterCursorMatch(candidate, best)
 	}
-	return best, false, best.rank > 0
+	return best, false, best.rank > noCursorMatch
 }
 
 func translatedSelection(next, old *diffView,

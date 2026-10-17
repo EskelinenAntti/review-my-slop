@@ -430,9 +430,20 @@ var (
 )
 
 type cursorMatch struct {
-	cursor         diffCursor
-	rank, distance int
+	cursor   diffCursor
+	rank     cursorMatchQuality
+	distance int
 }
+
+type cursorMatchQuality uint8
+
+// Cursor restoration prefers line numbers, then text, then any line in the file.
+const (
+	noCursorMatch cursorMatchQuality = iota
+	fileCursorMatch
+	textCursorMatch
+	numberCursorMatch
+)
 
 type diffPane uint8
 
