@@ -1,8 +1,10 @@
 package patch
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -14,26 +16,91 @@ import (
 )
 
 func TestGetIncludesUnstagedAndUntrackedButNotStagedOnly(t *testing.T) {
-	repo := newRepository(t)
-	writeFile(
-		t,
-		repo,
-		"modified.go",
-		"package main\n\nfunc value() int { return 1 }\n",
-	)
-	writeFile(t, repo, "staged.txt", "before\n")
-	git(t, repo, "add", ".")
-	git(t, repo, "commit", "-m", "base")
+	repo := func() string {
+		t.Helper()
+		repo, err := filepath.EvalSymlinks(t.TempDir())
+		testutil.NoError(t, err)
+		var args []string = []string{"init", "-q"}
+		t.Helper()
+		cmd := exec.Command("git", args...)
+		cmd.Dir = repo
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %s: %v\n%s", strings.Join(args, " "), err, out)
+		}
+		{
+			var args []string = []string{"config", "user.email", "test@example.com"}
+			t.Helper()
+			cmd := exec.Command("git", args...)
+			cmd.Dir = repo
+			if out, err := cmd.CombinedOutput(); err != nil {
+				t.Fatalf("git %s: %v\n%s", strings.Join(args, " "), err, out)
+			}
+		}
+		{
+			var args []string = []string{"config", "user.name", "Test"}
+			t.Helper()
+			cmd := exec.Command("git", args...)
+			cmd.Dir = repo
+			if out, err := cmd.CombinedOutput(); err != nil {
+				t.Fatalf("git %s: %v\n%s", strings.Join(args, " "), err, out)
+			}
+		}
+		return repo
+	}()
+	t.Helper()
+	path := filepath.Join(repo, "modified.go")
+	testutil.NoError(t, os.MkdirAll(filepath.Dir(path), 0o755))
+	testutil.NoError(t, os.WriteFile(path, []byte("package main\n\nfunc value() int { return 1 }\n"), 0o644))
+	{
+		t.Helper()
+		path := filepath.Join(repo, "staged.txt")
+		testutil.NoError(t, os.MkdirAll(filepath.Dir(path), 0o755))
+		testutil.NoError(t, os.WriteFile(path, []byte("before\n"), 0o644))
+	}
+	var args []string = []string{"add", "."}
+	t.Helper()
+	cmd := exec.Command("git", args...)
+	cmd.Dir = repo
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("git %s: %v\n%s", strings.Join(args, " "), err, out)
+	}
+	{
+		var args []string = []string{"commit", "-m", "base"}
+		t.Helper()
+		cmd := exec.Command("git", args...)
+		cmd.Dir = repo
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %s: %v\n%s", strings.Join(args, " "), err, out)
+		}
+	}
 
-	writeFile(
-		t,
-		repo,
-		"modified.go",
-		"package main\n\nfunc value() int { return 2 }\n",
-	)
-	writeFile(t, repo, "staged.txt", "after\n")
-	git(t, repo, "add", "staged.txt")
-	writeFile(t, repo, "new.py", "def hello():\n    return 'world'\n")
+	{
+		t.Helper()
+		path := filepath.Join(repo, "modified.go")
+		testutil.NoError(t, os.MkdirAll(filepath.Dir(path), 0o755))
+		testutil.NoError(t, os.WriteFile(path, []byte("package main\n\nfunc value() int { return 2 }\n"), 0o644))
+	}
+	{
+		t.Helper()
+		path := filepath.Join(repo, "staged.txt")
+		testutil.NoError(t, os.MkdirAll(filepath.Dir(path), 0o755))
+		testutil.NoError(t, os.WriteFile(path, []byte("after\n"), 0o644))
+	}
+	{
+		var args []string = []string{"add", "staged.txt"}
+		t.Helper()
+		cmd := exec.Command("git", args...)
+		cmd.Dir = repo
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %s: %v\n%s", strings.Join(args, " "), err, out)
+		}
+	}
+	{
+		t.Helper()
+		path := filepath.Join(repo, "new.py")
+		testutil.NoError(t, os.MkdirAll(filepath.Dir(path), 0o755))
+		testutil.NoError(t, os.WriteFile(path, []byte("def hello():\n    return 'world'\n"), 0o644))
+	}
 
 	t.Chdir(repo)
 	got, err := Get(context.Background(), Unstaged)
@@ -57,15 +124,29 @@ func TestGetIncludesUnstagedAndUntrackedButNotStagedOnly(t *testing.T) {
 	)
 
 	modified := got.Files[0]
-	testutil.RequireEqual(t, containsKind(modified, Deletion, "return 1"), true,
+	testutil.RequireEqual(t, func() bool {
+		for _, hunk := range modified.Hunks {
+			for _, line := range hunk.Lines {
+				if line.Kind == Deletion && strings.Contains(line.Text, "return 1") {
+					return true
+				}
+			}
+		}
+		return false
+	}(), true,
 		"modified file lacks expected lines: %#v", modified.Hunks,
 	)
 	testutil.RequireEqual(t,
-		containsKind(
-			modified,
-			Addition,
-			"return 2",
-		), true, "modified file lacks expected lines: %#v", modified.Hunks)
+		func() bool {
+			for _, hunk := range modified.Hunks {
+				for _, line := range hunk.Lines {
+					if line.Kind == Addition && strings.Contains(line.Text, "return 2") {
+						return true
+					}
+				}
+			}
+			return false
+		}(), true, "modified file lacks expected lines: %#v", modified.Hunks)
 
 	untracked := got.Files[1]
 	testutil.RequireEqual(t, untracked.OldSource, "",
@@ -91,7 +172,37 @@ func TestGetIncludesUnstagedAndUntrackedButNotStagedOnly(t *testing.T) {
 }
 
 func TestAddedFileKeepsRawAndDisplayPathsSeparate(t *testing.T) {
-	file := addedFile("odd\nname.go", "package main\n")
+	file := func() File {
+		var path, content string = "odd\nname.go", "package main\n"
+		sourceLines := func() []string {
+			var content string = content
+			content = strings.TrimSuffix(content, "\n")
+			if content == "" {
+				return nil
+			}
+			return strings.Split(content, "\n")
+		}()
+		lines := make([]Line, 0, len(sourceLines))
+		for i, line := range sourceLines {
+			lines = append(lines, Line{Kind: Addition, Text: line, NewNumber: LineNumber(i + 1)})
+		}
+		return File{NewPath: path, DisplayPath: strings.ReplaceAll(func() string {
+			var result strings.Builder
+			for _, r := range path {
+				switch {
+				case r == '\n' || r == '\t':
+					_, _ = result.WriteRune(r)
+				case r == '\r':
+					_, _ = result.WriteString(`\r`)
+				case r < 0x20 || r == 0x7f:
+					fmt.Fprintf(&result, `\x%02x`, r)
+				default:
+					_, _ = result.WriteRune(r)
+				}
+			}
+			return result.String()
+		}(), "\n", `\n`), NewSource: content, Metadata: []string{"untracked file"}, Hunks: []Hunk{{Header: fmt.Sprintf("@@ -0,0 +1,%d @@", len(lines)), Lines: lines}}}
+	}()
 	testutil.RequireEqual(t, file.NewPath, "odd\nname.go", "raw path = %q",
 		file.NewPath,
 	)
@@ -101,8 +212,41 @@ func TestAddedFileKeepsRawAndDisplayPathsSeparate(t *testing.T) {
 }
 
 func TestGetFromSubdirectoryKeepsRawUntrackedPaths(t *testing.T) {
-	repo := newRepository(t)
-	writeFile(t, repo, "nested/odd\nname.go", "package main\n")
+	repo := func() string {
+		t.Helper()
+		repo, err := filepath.EvalSymlinks(t.TempDir())
+		testutil.NoError(t, err)
+		var args []string = []string{"init", "-q"}
+		t.Helper()
+		cmd := exec.Command("git", args...)
+		cmd.Dir = repo
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %s: %v\n%s", strings.Join(args, " "), err, out)
+		}
+		{
+			var args []string = []string{"config", "user.email", "test@example.com"}
+			t.Helper()
+			cmd := exec.Command("git", args...)
+			cmd.Dir = repo
+			if out, err := cmd.CombinedOutput(); err != nil {
+				t.Fatalf("git %s: %v\n%s", strings.Join(args, " "), err, out)
+			}
+		}
+		{
+			var args []string = []string{"config", "user.name", "Test"}
+			t.Helper()
+			cmd := exec.Command("git", args...)
+			cmd.Dir = repo
+			if out, err := cmd.CombinedOutput(); err != nil {
+				t.Fatalf("git %s: %v\n%s", strings.Join(args, " "), err, out)
+			}
+		}
+		return repo
+	}()
+	t.Helper()
+	path := filepath.Join(repo, "nested/odd\nname.go")
+	testutil.NoError(t, os.MkdirAll(filepath.Dir(path), 0o755))
+	testutil.NoError(t, os.WriteFile(path, []byte("package main\n"), 0o644))
 	t.Chdir(filepath.Join(repo, "nested"))
 
 	got, err := Get(context.Background(), Unstaged)
@@ -121,7 +265,37 @@ func TestGetFromSubdirectoryKeepsRawUntrackedPaths(t *testing.T) {
 }
 
 func TestGetReportsUnavailableBranchAndInvalidKind(t *testing.T) {
-	t.Chdir(newRepository(t))
+	t.Chdir(func() string {
+		t.Helper()
+		repo, err := filepath.EvalSymlinks(t.TempDir())
+		testutil.NoError(t, err)
+		var args []string = []string{"init", "-q"}
+		t.Helper()
+		cmd := exec.Command("git", args...)
+		cmd.Dir = repo
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %s: %v\n%s", strings.Join(args, " "), err, out)
+		}
+		{
+			var args []string = []string{"config", "user.email", "test@example.com"}
+			t.Helper()
+			cmd := exec.Command("git", args...)
+			cmd.Dir = repo
+			if out, err := cmd.CombinedOutput(); err != nil {
+				t.Fatalf("git %s: %v\n%s", strings.Join(args, " "), err, out)
+			}
+		}
+		{
+			var args []string = []string{"config", "user.name", "Test"}
+			t.Helper()
+			cmd := exec.Command("git", args...)
+			cmd.Dir = repo
+			if out, err := cmd.CombinedOutput(); err != nil {
+				t.Fatalf("git %s: %v\n%s", strings.Join(args, " "), err, out)
+			}
+		}
+		return repo
+	}())
 	local, err := Get(context.Background(), Unstaged)
 	testutil.RequireEqual(t, err, nil, "local patch = %#v, error = %v", local,
 		err,
@@ -162,7 +336,37 @@ func TestGetOutsideRepositoryReturnsZeroPatch(t *testing.T) {
 }
 
 func TestGetHonorsCanceledContext(t *testing.T) {
-	t.Chdir(newRepository(t))
+	t.Chdir(func() string {
+		t.Helper()
+		repo, err := filepath.EvalSymlinks(t.TempDir())
+		testutil.NoError(t, err)
+		var args []string = []string{"init", "-q"}
+		t.Helper()
+		cmd := exec.Command("git", args...)
+		cmd.Dir = repo
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %s: %v\n%s", strings.Join(args, " "), err, out)
+		}
+		{
+			var args []string = []string{"config", "user.email", "test@example.com"}
+			t.Helper()
+			cmd := exec.Command("git", args...)
+			cmd.Dir = repo
+			if out, err := cmd.CombinedOutput(); err != nil {
+				t.Fatalf("git %s: %v\n%s", strings.Join(args, " "), err, out)
+			}
+		}
+		{
+			var args []string = []string{"config", "user.name", "Test"}
+			t.Helper()
+			cmd := exec.Command("git", args...)
+			cmd.Dir = repo
+			if out, err := cmd.CombinedOutput(); err != nil {
+				t.Fatalf("git %s: %v\n%s", strings.Join(args, " "), err, out)
+			}
+		}
+		return repo
+	}())
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	got, err := Get(ctx, Unstaged)
@@ -175,8 +379,42 @@ func TestGetHonorsCanceledContext(t *testing.T) {
 }
 
 func TestGetOmitsLargeUntrackedContents(t *testing.T) {
-	repo := newRepository(t)
-	writeFile(t, repo, "large.txt", strings.Repeat("x", maxFileBytes+1))
+	repo := func() string {
+		t.Helper()
+		repo, err := filepath.EvalSymlinks(t.TempDir())
+		testutil.NoError(t, err)
+		var args []string = []string{"init", "-q"}
+		t.Helper()
+		cmd := exec.Command("git", args...)
+		cmd.Dir = repo
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %s: %v\n%s", strings.Join(args, " "), err, out)
+		}
+		{
+			var args []string = []string{"config", "user.email", "test@example.com"}
+			t.Helper()
+			cmd := exec.Command("git", args...)
+			cmd.Dir = repo
+			if out, err := cmd.CombinedOutput(); err != nil {
+				t.Fatalf("git %s: %v\n%s", strings.Join(args, " "), err, out)
+			}
+		}
+		{
+			var args []string = []string{"config", "user.name", "Test"}
+			t.Helper()
+			cmd := exec.Command("git", args...)
+			cmd.Dir = repo
+			if out, err := cmd.CombinedOutput(); err != nil {
+				t.Fatalf("git %s: %v\n%s", strings.Join(args, " "), err, out)
+			}
+		}
+		return repo
+	}()
+	var content string = strings.Repeat("x", maxFileBytes+1)
+	t.Helper()
+	path := filepath.Join(repo, "large.txt")
+	testutil.NoError(t, os.MkdirAll(filepath.Dir(path), 0o755))
+	testutil.NoError(t, os.WriteFile(path, []byte(content), 0o644))
 	t.Chdir(repo)
 	got, err := Get(context.Background(), Unstaged)
 	testutil.NoError(t, err)
@@ -197,12 +435,69 @@ func TestGetOmitsLargeUntrackedContents(t *testing.T) {
 }
 
 func TestGetShowsBinaryMetadataWithoutBinaryDiffLines(t *testing.T) {
-	repo := newRepository(t)
-	writeFile(t, repo, "tracked.bin", "\x00old")
-	git(t, repo, "add", "tracked.bin")
-	git(t, repo, "commit", "-m", "base")
-	writeFile(t, repo, "tracked.bin", "\x00new")
-	writeFile(t, repo, "untracked.bin", "\x00content")
+	repo := func() string {
+		t.Helper()
+		repo, err := filepath.EvalSymlinks(t.TempDir())
+		testutil.NoError(t, err)
+		var args []string = []string{"init", "-q"}
+		t.Helper()
+		cmd := exec.Command("git", args...)
+		cmd.Dir = repo
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %s: %v\n%s", strings.Join(args, " "), err, out)
+		}
+		{
+			var args []string = []string{"config", "user.email", "test@example.com"}
+			t.Helper()
+			cmd := exec.Command("git", args...)
+			cmd.Dir = repo
+			if out, err := cmd.CombinedOutput(); err != nil {
+				t.Fatalf("git %s: %v\n%s", strings.Join(args, " "), err, out)
+			}
+		}
+		{
+			var args []string = []string{"config", "user.name", "Test"}
+			t.Helper()
+			cmd := exec.Command("git", args...)
+			cmd.Dir = repo
+			if out, err := cmd.CombinedOutput(); err != nil {
+				t.Fatalf("git %s: %v\n%s", strings.Join(args, " "), err, out)
+			}
+		}
+		return repo
+	}()
+	t.Helper()
+	path := filepath.Join(repo, "tracked.bin")
+	testutil.NoError(t, os.MkdirAll(filepath.Dir(path), 0o755))
+	testutil.NoError(t, os.WriteFile(path, []byte("\x00old"), 0o644))
+	var args []string = []string{"add", "tracked.bin"}
+	t.Helper()
+	cmd := exec.Command("git", args...)
+	cmd.Dir = repo
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("git %s: %v\n%s", strings.Join(args, " "), err, out)
+	}
+	{
+		var args []string = []string{"commit", "-m", "base"}
+		t.Helper()
+		cmd := exec.Command("git", args...)
+		cmd.Dir = repo
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %s: %v\n%s", strings.Join(args, " "), err, out)
+		}
+	}
+	{
+		t.Helper()
+		path := filepath.Join(repo, "tracked.bin")
+		testutil.NoError(t, os.MkdirAll(filepath.Dir(path), 0o755))
+		testutil.NoError(t, os.WriteFile(path, []byte("\x00new"), 0o644))
+	}
+	{
+		t.Helper()
+		path := filepath.Join(repo, "untracked.bin")
+		testutil.NoError(t, os.MkdirAll(filepath.Dir(path), 0o755))
+		testutil.NoError(t, os.WriteFile(path, []byte("\x00content"), 0o644))
+	}
 
 	t.Chdir(repo)
 	got, err := Get(context.Background(), Unstaged)
@@ -241,22 +536,139 @@ func TestGetShowsBinaryMetadataWithoutBinaryDiffLines(t *testing.T) {
 func TestGetBranchIncludesCommittedStagedUnstagedAndUntrackedChanges(
 	t *testing.T,
 ) {
-	repo := newRepository(t)
-	git(t, repo, "branch", "-M", "main")
-	writeFile(t, repo, "committed.txt", "base\n")
-	writeFile(t, repo, "mixed.txt", "base\n")
-	writeFile(t, repo, "staged.txt", "base\n")
-	git(t, repo, "add", ".")
-	git(t, repo, "commit", "-m", "base")
+	repo := func() string {
+		t.Helper()
+		repo, err := filepath.EvalSymlinks(t.TempDir())
+		testutil.NoError(t, err)
+		var args []string = []string{"init", "-q"}
+		t.Helper()
+		cmd := exec.Command("git", args...)
+		cmd.Dir = repo
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %s: %v\n%s", strings.Join(args, " "), err, out)
+		}
+		{
+			var args []string = []string{"config", "user.email", "test@example.com"}
+			t.Helper()
+			cmd := exec.Command("git", args...)
+			cmd.Dir = repo
+			if out, err := cmd.CombinedOutput(); err != nil {
+				t.Fatalf("git %s: %v\n%s", strings.Join(args, " "), err, out)
+			}
+		}
+		{
+			var args []string = []string{"config", "user.name", "Test"}
+			t.Helper()
+			cmd := exec.Command("git", args...)
+			cmd.Dir = repo
+			if out, err := cmd.CombinedOutput(); err != nil {
+				t.Fatalf("git %s: %v\n%s", strings.Join(args, " "), err, out)
+			}
+		}
+		return repo
+	}()
+	var args []string = []string{"branch", "-M", "main"}
+	t.Helper()
+	cmd := exec.Command("git", args...)
+	cmd.Dir = repo
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("git %s: %v\n%s", strings.Join(args, " "), err, out)
+	}
+	t.Helper()
+	path := filepath.Join(repo, "committed.txt")
+	testutil.NoError(t, os.MkdirAll(filepath.Dir(path), 0o755))
+	testutil.NoError(t, os.WriteFile(path, []byte("base\n"), 0o644))
+	{
+		t.Helper()
+		path := filepath.Join(repo, "mixed.txt")
+		testutil.NoError(t, os.MkdirAll(filepath.Dir(path), 0o755))
+		testutil.NoError(t, os.WriteFile(path, []byte("base\n"), 0o644))
+	}
+	{
+		t.Helper()
+		path := filepath.Join(repo, "staged.txt")
+		testutil.NoError(t, os.MkdirAll(filepath.Dir(path), 0o755))
+		testutil.NoError(t, os.WriteFile(path, []byte("base\n"), 0o644))
+	}
+	{
+		var args []string = []string{"add", "."}
+		t.Helper()
+		cmd := exec.Command("git", args...)
+		cmd.Dir = repo
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %s: %v\n%s", strings.Join(args, " "), err, out)
+		}
+	}
+	{
+		var args []string = []string{"commit", "-m", "base"}
+		t.Helper()
+		cmd := exec.Command("git", args...)
+		cmd.Dir = repo
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %s: %v\n%s", strings.Join(args, " "), err, out)
+		}
+	}
 
-	git(t, repo, "switch", "-c", "feature")
-	writeFile(t, repo, "committed.txt", "committed on feature\n")
-	git(t, repo, "add", "committed.txt")
-	git(t, repo, "commit", "-m", "feature commit")
-	writeFile(t, repo, "staged.txt", "staged on feature\n")
-	git(t, repo, "add", "staged.txt")
-	writeFile(t, repo, "mixed.txt", "unstaged on feature\n")
-	writeFile(t, repo, "untracked.txt", "untracked on feature\n")
+	{
+		var args []string = []string{"switch", "-c", "feature"}
+		t.Helper()
+		cmd := exec.Command("git", args...)
+		cmd.Dir = repo
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %s: %v\n%s", strings.Join(args, " "), err, out)
+		}
+	}
+	{
+		t.Helper()
+		path := filepath.Join(repo, "committed.txt")
+		testutil.NoError(t, os.MkdirAll(filepath.Dir(path), 0o755))
+		testutil.NoError(t, os.WriteFile(path, []byte("committed on feature\n"), 0o644))
+	}
+	{
+		var args []string = []string{"add", "committed.txt"}
+		t.Helper()
+		cmd := exec.Command("git", args...)
+		cmd.Dir = repo
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %s: %v\n%s", strings.Join(args, " "), err, out)
+		}
+	}
+	{
+		var args []string = []string{"commit", "-m", "feature commit"}
+		t.Helper()
+		cmd := exec.Command("git", args...)
+		cmd.Dir = repo
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %s: %v\n%s", strings.Join(args, " "), err, out)
+		}
+	}
+	{
+		t.Helper()
+		path := filepath.Join(repo, "staged.txt")
+		testutil.NoError(t, os.MkdirAll(filepath.Dir(path), 0o755))
+		testutil.NoError(t, os.WriteFile(path, []byte("staged on feature\n"), 0o644))
+	}
+	{
+		var args []string = []string{"add", "staged.txt"}
+		t.Helper()
+		cmd := exec.Command("git", args...)
+		cmd.Dir = repo
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %s: %v\n%s", strings.Join(args, " "), err, out)
+		}
+	}
+	{
+		t.Helper()
+		path := filepath.Join(repo, "mixed.txt")
+		testutil.NoError(t, os.MkdirAll(filepath.Dir(path), 0o755))
+		testutil.NoError(t, os.WriteFile(path, []byte("unstaged on feature\n"), 0o644))
+	}
+	{
+		t.Helper()
+		path := filepath.Join(repo, "untracked.txt")
+		testutil.NoError(t, os.MkdirAll(filepath.Dir(path), 0o755))
+		testutil.NoError(t, os.WriteFile(path, []byte("untracked on feature\n"), 0o644))
+	}
 
 	t.Chdir(repo)
 	got, err := Get(context.Background(), Branch)
@@ -281,29 +693,53 @@ func TestGetBranchIncludesCommittedStagedUnstagedAndUntrackedChanges(
 		)
 	}
 	testutil.RequireEqual(t,
-		containsKind(got.Files[0], Addition, "committed on feature"), true,
+		func() bool {
+			for _, hunk := range got.Files[0].Hunks {
+				for _, line := range hunk.Lines {
+					if line.Kind == Addition && strings.Contains(line.Text, "committed on feature") {
+						return true
+					}
+				}
+			}
+			return false
+		}(), true,
 		"branch diff lacks expected changes: %#v", got.Files,
 	)
 	testutil.RequireEqual(t,
-		containsKind(
-			got.Files[1],
-			Addition,
-			"unstaged on feature",
-		), true, "branch diff lacks expected changes: %#v", got.Files)
+		func() bool {
+			for _, hunk := range got.Files[1].Hunks {
+				for _, line := range hunk.Lines {
+					if line.Kind == Addition && strings.Contains(line.Text, "unstaged on feature") {
+						return true
+					}
+				}
+			}
+			return false
+		}(), true, "branch diff lacks expected changes: %#v", got.Files)
 	testutil.RequireEqual(t,
 
-		containsKind(
-			got.Files[2],
-			Addition,
-			"staged on feature",
-		), true, "branch diff lacks expected changes: %#v", got.Files)
+		func() bool {
+			for _, hunk := range got.Files[2].Hunks {
+				for _, line := range hunk.Lines {
+					if line.Kind == Addition && strings.Contains(line.Text, "staged on feature") {
+						return true
+					}
+				}
+			}
+			return false
+		}(), true, "branch diff lacks expected changes: %#v", got.Files)
 	testutil.RequireEqual(t,
 
-		containsKind(
-			got.Files[3],
-			Addition,
-			"untracked on feature",
-		), true, "branch diff lacks expected changes: %#v", got.Files)
+		func() bool {
+			for _, hunk := range got.Files[3].Hunks {
+				for _, line := range hunk.Lines {
+					if line.Kind == Addition && strings.Contains(line.Text, "untracked on feature") {
+						return true
+					}
+				}
+			}
+			return false
+		}(), true, "branch diff lacks expected changes: %#v", got.Files)
 	testutil.RequireEqual(t, got.Files[0].OldSource, "base\n",
 		"unexpected branch sources: old=%q new=%q", got.Files[0].OldSource,
 		got.Files[0].NewSource,
@@ -335,18 +771,37 @@ func TestDefaultBranchFallbacks(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			root := t.TempDir()
-			runner := &defaultBranchRunner{
+			commandRunner := &defaultBranchRunner{
 				root:       root,
 				originHEAD: tt.originHEAD,
 				available:  tt.available,
 			}
-			got, err := defaultBranch(context.Background(), runner, root)
+			got, err := func() (string, error) {
+				var ctx context.Context = context.Background()
+				out, err := runner(commandRunner).Run(ctx, root, "symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD")
+				if ctx.Err() != nil {
+					return "", ctx.Err()
+				}
+				if err == nil {
+					return strings.TrimSpace(string(out)), nil
+				}
+				for _, candidate := range []string{"origin/main", "main", "origin/master", "master"} {
+					_, err := runner(commandRunner).Run(ctx, root, "rev-parse", "--verify", "--quiet", candidate+"^{commit}")
+					if ctx.Err() != nil {
+						return "", ctx.Err()
+					}
+					if err == nil {
+						return candidate, nil
+					}
+				}
+				return "", nil
+			}()
 			testutil.NoError(t, err)
 			testutil.RequireEqual(t, got, tt.want,
 				"default branch = %q, want %q", got, tt.want,
 			)
 
-			for _, call := range runner.calls {
+			for _, call := range commandRunner.calls {
 				testutil.RequireEqual(t,
 					!strings.Contains(call, "for-each-ref"), true,
 					"default branch discovery inspected refs: git %s", call,
@@ -365,19 +820,129 @@ func TestDefaultBranchFallbacks(t *testing.T) {
 }
 
 func TestGetBranchKeepsPathsForAdditionsDeletionsAndRenames(t *testing.T) {
-	repo := newRepository(t)
-	git(t, repo, "branch", "-M", "main")
-	writeFile(t, repo, "deleted.txt", "delete this\n")
-	writeFile(t, repo, "old.go", "package main\n\nfunc example() {}\n")
-	git(t, repo, "add", ".")
-	git(t, repo, "commit", "-m", "base")
-	git(t, repo, "switch", "-c", "feature")
-	git(t, repo, "mv", "old.go", "new.go")
-	git(t, repo, "rm", "deleted.txt")
-	writeFile(t, repo, "added.txt", "new content\n")
-	git(t, repo, "add", ".")
-	git(t, repo, "commit", "-m", "changes")
-	writeFile(t, repo, "untracked.txt", "untracked content\n")
+	repo := func() string {
+		t.Helper()
+		repo, err := filepath.EvalSymlinks(t.TempDir())
+		testutil.NoError(t, err)
+		var args []string = []string{"init", "-q"}
+		t.Helper()
+		cmd := exec.Command("git", args...)
+		cmd.Dir = repo
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %s: %v\n%s", strings.Join(args, " "), err, out)
+		}
+		{
+			var args []string = []string{"config", "user.email", "test@example.com"}
+			t.Helper()
+			cmd := exec.Command("git", args...)
+			cmd.Dir = repo
+			if out, err := cmd.CombinedOutput(); err != nil {
+				t.Fatalf("git %s: %v\n%s", strings.Join(args, " "), err, out)
+			}
+		}
+		{
+			var args []string = []string{"config", "user.name", "Test"}
+			t.Helper()
+			cmd := exec.Command("git", args...)
+			cmd.Dir = repo
+			if out, err := cmd.CombinedOutput(); err != nil {
+				t.Fatalf("git %s: %v\n%s", strings.Join(args, " "), err, out)
+			}
+		}
+		return repo
+	}()
+	var args []string = []string{"branch", "-M", "main"}
+	t.Helper()
+	cmd := exec.Command("git", args...)
+	cmd.Dir = repo
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("git %s: %v\n%s", strings.Join(args, " "), err, out)
+	}
+	t.Helper()
+	path := filepath.Join(repo, "deleted.txt")
+	testutil.NoError(t, os.MkdirAll(filepath.Dir(path), 0o755))
+	testutil.NoError(t, os.WriteFile(path, []byte("delete this\n"), 0o644))
+	{
+		t.Helper()
+		path := filepath.Join(repo, "old.go")
+		testutil.NoError(t, os.MkdirAll(filepath.Dir(path), 0o755))
+		testutil.NoError(t, os.WriteFile(path, []byte("package main\n\nfunc example() {}\n"), 0o644))
+	}
+	{
+		var args []string = []string{"add", "."}
+		t.Helper()
+		cmd := exec.Command("git", args...)
+		cmd.Dir = repo
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %s: %v\n%s", strings.Join(args, " "), err, out)
+		}
+	}
+	{
+		var args []string = []string{"commit", "-m", "base"}
+		t.Helper()
+		cmd := exec.Command("git", args...)
+		cmd.Dir = repo
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %s: %v\n%s", strings.Join(args, " "), err, out)
+		}
+	}
+	{
+		var args []string = []string{"switch", "-c", "feature"}
+		t.Helper()
+		cmd := exec.Command("git", args...)
+		cmd.Dir = repo
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %s: %v\n%s", strings.Join(args, " "), err, out)
+		}
+	}
+	{
+		var args []string = []string{"mv", "old.go", "new.go"}
+		t.Helper()
+		cmd := exec.Command("git", args...)
+		cmd.Dir = repo
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %s: %v\n%s", strings.Join(args, " "), err, out)
+		}
+	}
+	{
+		var args []string = []string{"rm", "deleted.txt"}
+		t.Helper()
+		cmd := exec.Command("git", args...)
+		cmd.Dir = repo
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %s: %v\n%s", strings.Join(args, " "), err, out)
+		}
+	}
+	{
+		t.Helper()
+		path := filepath.Join(repo, "added.txt")
+		testutil.NoError(t, os.MkdirAll(filepath.Dir(path), 0o755))
+		testutil.NoError(t, os.WriteFile(path, []byte("new content\n"), 0o644))
+	}
+	{
+		var args []string = []string{"add", "."}
+		t.Helper()
+		cmd := exec.Command("git", args...)
+		cmd.Dir = repo
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %s: %v\n%s", strings.Join(args, " "), err, out)
+		}
+	}
+	{
+		var args []string = []string{"commit", "-m", "changes"}
+		t.Helper()
+		cmd := exec.Command("git", args...)
+		cmd.Dir = repo
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %s: %v\n%s", strings.Join(args, " "), err, out)
+		}
+	}
+	{
+		t.Helper()
+		path := filepath.Join(repo, "untracked.txt")
+		testutil.NoError(t, os.MkdirAll(filepath.Dir(path), 0o755))
+		testutil.NoError(t, os.WriteFile(path, []byte("untracked content\n"), 0o644))
+	}
 	t.Chdir(repo)
 	got, err := Get(context.Background(), Branch)
 	testutil.NoError(t, err)
@@ -440,7 +1005,37 @@ func (r *defaultBranchRunner) Run(
 }
 
 func TestGetDoesNotFollowUntrackedSymlink(t *testing.T) {
-	repo := newRepository(t)
+	repo := func() string {
+		t.Helper()
+		repo, err := filepath.EvalSymlinks(t.TempDir())
+		testutil.NoError(t, err)
+		var args []string = []string{"init", "-q"}
+		t.Helper()
+		cmd := exec.Command("git", args...)
+		cmd.Dir = repo
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %s: %v\n%s", strings.Join(args, " "), err, out)
+		}
+		{
+			var args []string = []string{"config", "user.email", "test@example.com"}
+			t.Helper()
+			cmd := exec.Command("git", args...)
+			cmd.Dir = repo
+			if out, err := cmd.CombinedOutput(); err != nil {
+				t.Fatalf("git %s: %v\n%s", strings.Join(args, " "), err, out)
+			}
+		}
+		{
+			var args []string = []string{"config", "user.name", "Test"}
+			t.Helper()
+			cmd := exec.Command("git", args...)
+			cmd.Dir = repo
+			if out, err := cmd.CombinedOutput(); err != nil {
+				t.Fatalf("git %s: %v\n%s", strings.Join(args, " "), err, out)
+			}
+		}
+		return repo
+	}()
 	outside := filepath.Join(t.TempDir(), "secret")
 	testutil.NoError(t, os.WriteFile(outside, []byte("do not read"), 0o600))
 	testutil.NoError(t, os.Symlink(outside, filepath.Join(repo, "link")))
@@ -468,11 +1063,58 @@ func TestGetDoesNotFollowUntrackedSymlink(t *testing.T) {
 }
 
 func TestParseHunkBodyLineNumbers(t *testing.T) {
-	lines, err := parseHunkBody(
-		10,
-		20,
-		[]byte(" context\n-old\n+new\n same\n\\ No newline at end of file\n"),
-	)
+	lines, err := func() ([]Line, error) {
+		var (
+			oldLine, newLine int32 = 10,
+				20
+			body []byte = []byte(" context\n-old\n+new\n same\n\\ No newline at end of file\n")
+		)
+		rawLines := bytes.Split(bytes.TrimSuffix(body, []byte("\n")), []byte("\n"))
+		if len(body) == 0 {
+			return []Line{}, nil
+		}
+		lines := make([]Line, 0, len(rawLines))
+		for _, raw := range rawLines {
+			if len(raw) == 0 {
+				return nil, errors.New("malformed empty diff line")
+			}
+			text := func() string {
+				var value string = string(raw[1:])
+				return strings.ReplaceAll(func() string {
+					var result strings.Builder
+					for _, r := range value {
+						switch {
+						case r == '\n' || r == '\t':
+							_, _ = result.WriteRune(r)
+						case r == '\r':
+							_, _ = result.WriteString(`\r`)
+						case r < 0x20 || r == 0x7f:
+							fmt.Fprintf(&result, `\x%02x`, r)
+						default:
+							_, _ = result.WriteRune(r)
+						}
+					}
+					return result.String()
+				}(), "\n", `\n`)
+			}()
+			switch raw[0] {
+			case ' ':
+				lines = append(lines, Line{Kind: Context, Text: text, OldNumber: LineNumber(oldLine), NewNumber: LineNumber(newLine)})
+				oldLine++
+				newLine++
+			case '+':
+				lines = append(lines, Line{Kind: Addition, Text: text, NewNumber: LineNumber(newLine)})
+				newLine++
+			case '-':
+				lines = append(lines, Line{Kind: Deletion, Text: text, OldNumber: LineNumber(oldLine)})
+				oldLine++
+			case '\\':
+			default:
+				return nil, fmt.Errorf("unexpected diff prefix %q", raw[0])
+			}
+		}
+		return lines, nil
+	}()
 	testutil.NoError(t, err)
 
 	want := []Line{
@@ -491,7 +1133,57 @@ func TestParseHunkBodyLineNumbers(t *testing.T) {
 }
 
 func TestParseHunkBodyEscapesTerminalControls(t *testing.T) {
-	lines, err := parseHunkBody(1, 1, []byte("+hello\x1b[2J\n"))
+	lines, err := func() ([]Line, error) {
+		var (
+			oldLine, newLine int32  = 1, 1
+			body             []byte = []byte("+hello\x1b[2J\n")
+		)
+		rawLines := bytes.Split(bytes.TrimSuffix(body, []byte("\n")), []byte("\n"))
+		if len(body) == 0 {
+			return []Line{}, nil
+		}
+		lines := make([]Line, 0, len(rawLines))
+		for _, raw := range rawLines {
+			if len(raw) == 0 {
+				return nil, errors.New("malformed empty diff line")
+			}
+			text := func() string {
+				var value string = string(raw[1:])
+				return strings.ReplaceAll(func() string {
+					var result strings.Builder
+					for _, r := range value {
+						switch {
+						case r == '\n' || r == '\t':
+							_, _ = result.WriteRune(r)
+						case r == '\r':
+							_, _ = result.WriteString(`\r`)
+						case r < 0x20 || r == 0x7f:
+							fmt.Fprintf(&result, `\x%02x`, r)
+						default:
+							_, _ = result.WriteRune(r)
+						}
+					}
+					return result.String()
+				}(), "\n", `\n`)
+			}()
+			switch raw[0] {
+			case ' ':
+				lines = append(lines, Line{Kind: Context, Text: text, OldNumber: LineNumber(oldLine), NewNumber: LineNumber(newLine)})
+				oldLine++
+				newLine++
+			case '+':
+				lines = append(lines, Line{Kind: Addition, Text: text, NewNumber: LineNumber(newLine)})
+				newLine++
+			case '-':
+				lines = append(lines, Line{Kind: Deletion, Text: text, OldNumber: LineNumber(oldLine)})
+				oldLine++
+			case '\\':
+			default:
+				return nil, fmt.Errorf("unexpected diff prefix %q", raw[0])
+			}
+		}
+		return lines, nil
+	}()
 	testutil.NoError(t, err)
 	testutil.RequireEqual(t, lines[0].Text, `hello\x1b[2J`, "text = %q",
 		lines[0].Text,
@@ -502,44 +1194,53 @@ func FuzzParseHunkBody(f *testing.F) {
 	f.Add([]byte("+hello\n-world\n"))
 	f.Add([]byte(" context\n"))
 	f.Fuzz(func(_ *testing.T, body []byte) {
-		_, _ = parseHunkBody(1, 1, body)
-	})
-}
-
-func containsKind(file File, kind LineKind, text string) bool {
-	for _, hunk := range file.Hunks {
-		for _, line := range hunk.Lines {
-			if line.Kind == kind && strings.Contains(line.Text, text) {
-				return true
+		_, _ = func() ([]Line, error) {
+			var oldLine, newLine int32 = 1, 1
+			rawLines := bytes.Split(bytes.TrimSuffix(body, []byte("\n")), []byte("\n"))
+			if len(body) == 0 {
+				return []Line{}, nil
 			}
-		}
-	}
-	return false
-}
-
-func newRepository(t *testing.T) string {
-	t.Helper()
-	repo, err := filepath.EvalSymlinks(t.TempDir())
-	testutil.NoError(t, err)
-
-	git(t, repo, "init", "-q")
-	git(t, repo, "config", "user.email", "test@example.com")
-	git(t, repo, "config", "user.name", "Test")
-	return repo
-}
-
-func git(t *testing.T, dir string, args ...string) {
-	t.Helper()
-	cmd := exec.Command("git", args...)
-	cmd.Dir = dir
-	if out, err := cmd.CombinedOutput(); err != nil {
-		t.Fatalf("git %s: %v\n%s", strings.Join(args, " "), err, out)
-	}
-}
-
-func writeFile(t *testing.T, root, name, content string) {
-	t.Helper()
-	path := filepath.Join(root, name)
-	testutil.NoError(t, os.MkdirAll(filepath.Dir(path), 0o755))
-	testutil.NoError(t, os.WriteFile(path, []byte(content), 0o644))
+			lines := make([]Line, 0, len(rawLines))
+			for _, raw := range rawLines {
+				if len(raw) == 0 {
+					return nil, errors.New("malformed empty diff line")
+				}
+				text := func() string {
+					var value string = string(raw[1:])
+					return strings.ReplaceAll(func() string {
+						var result strings.Builder
+						for _, r := range value {
+							switch {
+							case r == '\n' || r == '\t':
+								_, _ = result.WriteRune(r)
+							case r == '\r':
+								_, _ = result.WriteString(`\r`)
+							case r < 0x20 || r == 0x7f:
+								fmt.Fprintf(&result, `\x%02x`, r)
+							default:
+								_, _ = result.WriteRune(r)
+							}
+						}
+						return result.String()
+					}(), "\n", `\n`)
+				}()
+				switch raw[0] {
+				case ' ':
+					lines = append(lines, Line{Kind: Context, Text: text, OldNumber: LineNumber(oldLine), NewNumber: LineNumber(newLine)})
+					oldLine++
+					newLine++
+				case '+':
+					lines = append(lines, Line{Kind: Addition, Text: text, NewNumber: LineNumber(newLine)})
+					newLine++
+				case '-':
+					lines = append(lines, Line{Kind: Deletion, Text: text, OldNumber: LineNumber(oldLine)})
+					oldLine++
+				case '\\':
+				default:
+					return nil, fmt.Errorf("unexpected diff prefix %q", raw[0])
+				}
+			}
+			return lines, nil
+		}()
+	})
 }

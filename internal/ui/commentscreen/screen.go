@@ -33,31 +33,42 @@ func (v *View) Update(items []comments.Comment) {
 	v.items = append([]comments.Comment(nil), items...)
 	v.row = min(v.row, max(0, len(items)-1))
 	if ok && selected.ID != "" {
-		v.focusComment(selected.ID)
-	}
-	v.revealFocusedComment()
-}
-
-func (v *View) focusComment(id string) {
-	for index, item := range v.items {
-		if item.ID == id {
-			v.row = index
-			return
+		for index, item := range items {
+			if item.ID == selected.ID {
+				v.row = index
+				break
+			}
 		}
+	}
+	{
+		height := frame.BodyHeight(v.height)
+		v.top = min(v.top, v.row)
+		v.top = max(v.top, v.row-height+1)
+		v.top = min(max(0, v.top), max(0, len(v.items)-height))
 	}
 }
 
 // Resize updates terminal dimensions and keeps the focused comment visible.
 func (v *View) Resize(width, height int) {
 	v.width, v.height = width, height
-	v.revealFocusedComment()
+	{
+		height := frame.BodyHeight(v.height)
+		v.top = min(v.top, v.row)
+		v.top = max(v.top, v.row-height+1)
+		v.top = min(max(0, v.top), max(0, len(v.items)-height))
+	}
 }
 
 // Move shifts focus by delta comments within the list bounds.
 func (v *View) Move(delta int) {
 	delta = max(-v.row, min(delta, max(0, len(v.items)-1)-v.row))
 	v.row += delta
-	v.revealFocusedComment()
+	{
+		height := frame.BodyHeight(v.height)
+		v.top = min(v.top, v.row)
+		v.top = max(v.top, v.row-height+1)
+		v.top = min(max(0, v.top), max(0, len(v.items)-height))
+	}
 }
 
 // Selected returns the focused comment, or false when the list is empty.
@@ -75,7 +86,7 @@ func (v *View) Click(x, y int) bool {
 	if !ok {
 		return false
 	}
-	row += v.visibleStart(height)
+	row += min(max(0, v.top), max(0, len(v.items)-height))
 	if row >= len(v.items) {
 		return false
 	}
@@ -83,80 +94,49 @@ func (v *View) Click(x, y int) bool {
 	return true
 }
 
-func (v *View) visibleStart(height int) int {
-	return min(max(0, v.top), max(0, len(v.items)-height))
-}
-
-func (v *View) revealFocusedComment() {
-	height := frame.BodyHeight(v.height)
-	v.top = min(v.top, v.row)
-	v.top = max(v.top, v.row-height+1)
-	v.top = v.visibleStart(height)
-}
-
 // Render composes the screen, showing a non-nil error in place of its hints.
 func (v *View) Render(err error) string {
-	return frame.Render(
-		v.renderHeader(), v.renderBody(), v.renderFooter(err), v.height,
-	)
-}
-
-func (v *View) renderHeader() string {
 	pending := mutedStyle.Render(fmt.Sprintf("%d pending", len(v.items)))
-	return titleStyle.Render("comments") + "  " + pending
-}
-
-func (v *View) renderBody() []string {
+	header := titleStyle.Render("comments") + "  " + pending
 	height := frame.BodyHeight(v.height)
-	if len(v.items) == 0 {
-		body := make([]string, height)
-		body[min(1, height-1)] = mutedStyle.Render("No pending comments.")
-		return body
-	}
 	body := make([]string, 0, height)
-	start := v.visibleStart(height)
-	end := min(len(v.items), start+height)
-	for index := start; index < end; index++ {
-		body = append(body, v.renderRow(index))
+	if len(v.items) == 0 {
+		body = make([]string, height)
+		body[min(1, height-1)] = mutedStyle.Render("No pending comments.")
+	} else {
+		start := min(max(0, v.top), max(0, len(v.items)-height))
+		end := min(len(v.items), start+height)
+		for index := start; index < end; index++ {
+			body = append(body, (func(index int) string {
+				comment := v.items[index]
+				prefix, style := "  ", lipgloss.NewStyle()
+				if index == v.row {
+					prefix, style = "> ", lipgloss.NewStyle().Reverse(true)
+				}
+				location := comment.Anchor.FilePath
+				if comment.Anchor.NewStart > 0 {
+					location += fmt.Sprintf(":%d", comment.Anchor.NewStart)
+				} else if comment.Anchor.OldStart > 0 {
+					location += fmt.Sprintf(":%d", comment.Anchor.OldStart)
+				}
+				text := strings.ReplaceAll(strings.TrimSpace(comment.Body), "\n", " ")
+				line := ansi.Truncate(
+					fmt.Sprintf("%s%s  %s", prefix, location, text),
+					max(20, v.width),
+					"",
+				)
+				return style.Width(max(20, v.width)).Render(line)
+			})(index))
+		}
 	}
-	return body
-}
-
-func (v *View) renderFooter(err error) string {
-	if err != nil {
-		message := strings.ReplaceAll(err.Error(), "\n", " ")
-		return errorStyle.Render(
-			ansi.Truncate(message, max(20, v.width), ""),
-		)
-	}
-	return mutedStyle.Render(
+	footer := mutedStyle.Render(
 		"j/k move  Enter/e edit  D delete  Esc/q return",
 	)
-}
-
-func (v *View) renderRow(index int) string {
-	comment := v.items[index]
-	prefix, style := "  ", lipgloss.NewStyle()
-	if index == v.row {
-		prefix, style = "> ", lipgloss.NewStyle().Reverse(true)
+	if err != nil {
+		message := strings.ReplaceAll(err.Error(), "\n", " ")
+		footer = errorStyle.Render(ansi.Truncate(message, max(20, v.width), ""))
 	}
-	text := strings.ReplaceAll(strings.TrimSpace(comment.Body), "\n", " ")
-	line := ansi.Truncate(
-		fmt.Sprintf("%s%s  %s", prefix, commentLocation(comment.Anchor), text),
-		max(20, v.width),
-		"",
-	)
-	return style.Width(max(20, v.width)).Render(line)
-}
-
-func commentLocation(anchor comments.Anchor) string {
-	if anchor.NewStart > 0 {
-		return fmt.Sprintf("%s:%d", anchor.FilePath, anchor.NewStart)
-	}
-	if anchor.OldStart > 0 {
-		return fmt.Sprintf("%s:%d", anchor.FilePath, anchor.OldStart)
-	}
-	return anchor.FilePath
+	return frame.Render(header, body, footer, v.height)
 }
 
 var (

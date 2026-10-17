@@ -33,65 +33,58 @@ func WritePrompt(w io.Writer, comments []Comment) error {
 		return err
 	}
 	for index, comment := range comments {
-		if err := writePromptComment(w, index+1, comment); err != nil {
+		if err := func() error {
+			anchor := comment.Anchor
+			_, headingErr := fmt.Fprintf(w, "\n### %d. `%s` (%s)\n\n", index+1, anchor.FilePath, func() string {
+				var sides []string
+				if anchor.OldStart > 0 {
+					sides = append(sides, func() string {
+						var side string = "old"
+						if anchor.OldEnd == 0 || anchor.OldEnd == anchor.OldStart {
+							return fmt.Sprintf("%s line %d", side, anchor.OldStart)
+						}
+						return fmt.Sprintf("%s lines %d-%d", side, anchor.OldStart, anchor.OldEnd)
+					}())
+				}
+				if anchor.NewStart > 0 {
+					sides = append(sides, func() string {
+						var side string = "new"
+						if anchor.NewEnd == 0 || anchor.NewEnd == anchor.NewStart {
+							return fmt.Sprintf("%s line %d", side, anchor.NewStart)
+						}
+						return fmt.Sprintf("%s lines %d-%d", side, anchor.NewStart, anchor.NewEnd)
+					}())
+				}
+				if len(sides) == 0 {
+					return "diff lines"
+				}
+				return strings.Join(sides, ", ")
+			}())
+			if headingErr != nil {
+				return headingErr
+			}
+			if err := func() error {
+				if len(anchor.QuotedLines) == 0 {
+					return nil
+				}
+				if _, err := fmt.Fprintln(w, "```diff"); err != nil {
+					return err
+				}
+				for _, line := range anchor.QuotedLines {
+					if _, err := fmt.Fprintln(w, line); err != nil {
+						return err
+					}
+				}
+				_, err := fmt.Fprintln(w, "```")
+				return err
+			}(); err != nil {
+				return err
+			}
+			_, err := fmt.Fprintln(w, strings.TrimSpace(comment.Body))
+			return err
+		}(); err != nil {
 			return err
 		}
 	}
 	return nil
-}
-
-func writePromptComment(w io.Writer, number int, comment Comment) error {
-	anchor := comment.Anchor
-	_, headingErr := fmt.Fprintf(
-		w,
-		"\n### %d. `%s` (%s)\n\n",
-		number,
-		anchor.FilePath,
-		describeRange(anchor),
-	)
-	if headingErr != nil {
-		return headingErr
-	}
-	if err := writeQuotedLines(w, anchor.QuotedLines); err != nil {
-		return err
-	}
-	_, err := fmt.Fprintln(w, strings.TrimSpace(comment.Body))
-	return err
-}
-
-func writeQuotedLines(w io.Writer, lines []string) error {
-	if len(lines) == 0 {
-		return nil
-	}
-	if _, err := fmt.Fprintln(w, "```diff"); err != nil {
-		return err
-	}
-	for _, line := range lines {
-		if _, err := fmt.Fprintln(w, line); err != nil {
-			return err
-		}
-	}
-	_, err := fmt.Fprintln(w, "```")
-	return err
-}
-
-func describeRange(anchor Anchor) string {
-	var sides []string
-	if anchor.OldStart > 0 {
-		sides = append(sides, lineRange("old", anchor.OldStart, anchor.OldEnd))
-	}
-	if anchor.NewStart > 0 {
-		sides = append(sides, lineRange("new", anchor.NewStart, anchor.NewEnd))
-	}
-	if len(sides) == 0 {
-		return "diff lines"
-	}
-	return strings.Join(sides, ", ")
-}
-
-func lineRange(side string, start, end int) string {
-	if end == 0 || end == start {
-		return fmt.Sprintf("%s line %d", side, start)
-	}
-	return fmt.Sprintf("%s lines %d-%d", side, start, end)
 }
