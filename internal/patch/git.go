@@ -52,49 +52,6 @@ func (execRunner) Run(
 
 type sourceReader func(context.Context, runner, string, string) string
 
-func discoverDefaultBranch(
-	ctx context.Context,
-	root string,
-	runner runner,
-) (string, error) {
-	branchBytes, err := runner.Run(
-		ctx,
-		root,
-		"symbolic-ref",
-		"--quiet",
-		"--short",
-		"refs/remotes/origin/HEAD",
-	)
-	if ctx.Err() != nil {
-		return "", ctx.Err()
-	}
-	if err == nil {
-		return strings.TrimSpace(string(branchBytes)), nil
-	}
-	for _, candidate := range []string{
-		"origin/main",
-		"main",
-		"origin/master",
-		"master",
-	} {
-		_, err := runner.Run(
-			ctx,
-			root,
-			"rev-parse",
-			"--verify",
-			"--quiet",
-			candidate+"^{commit}",
-		)
-		if ctx.Err() != nil {
-			return "", ctx.Err()
-		}
-		if err == nil {
-			return candidate, nil
-		}
-	}
-	return "", nil
-}
-
 // Load reads local or branch changes from the current Git repository.
 func Load(ctx context.Context, kind Kind) (Patch, error) {
 	directory, err := os.Getwd()
