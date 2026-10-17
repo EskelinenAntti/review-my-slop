@@ -220,7 +220,7 @@ func TestDiffscreenFindCursorUsesSemanticIdentityAcrossChangedCoordinates(
 	changed.Files[0].Metadata = []string{"mode changed", "more metadata"}
 	newView := diffscreenTestViewWithTheme(changed, true)
 	identity := cursorIdentityAt(oldView, cursor)
-	translated, ok := translateCursorIdentity(newView, identity)
+	translated, ok := findCursorMatch(newView, identity)
 	requireEqual(t, ok, true, "%s", "semantic cursor was not found")
 	requireEqual(t, translated.row != cursor.row, true, "%s",
 		"cursor coordinate was reused after rows shifted",
@@ -281,7 +281,7 @@ func TestDiffscreenFindCursorFallsBackNearRemovedLine(t *testing.T) {
 	changed.Files[0].Hunks[0].Lines = changed.Files[0].Hunks[0].Lines[:2]
 	newView := diffscreenTestViewWithTheme(changed, true)
 	identity := cursorIdentityAt(oldView, cursor)
-	fallback, ok := translateCursorIdentity(newView, identity)
+	fallback, ok := findCursorMatch(newView, identity)
 	requireEqual(t, ok, true, "%s", "nearby cursor was not found")
 
 	_, fallbackLine, _ := patchLineAtCursor(newView, fallback)

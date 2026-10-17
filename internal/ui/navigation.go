@@ -398,13 +398,6 @@ func selectionPaneAtRow(selection diffSelection,
 	return selection.First.pane
 }
 
-func translateCursorIdentity(
-	next *diffView,
-	origin cursorIdentity,
-) (diffCursor, bool) {
-	return findCursorMatch(next, origin)
-}
-
 func lineForCursor(candidate diffCursor,
 	next *diffView) (patches.Line, bool) {
 	_, line, ok := patchLineAtCursor(next, candidate)
@@ -492,11 +485,6 @@ func cursorMovedToFile(
 	}
 	return nextFile.OldPath != file.OldPath || nextFile.NewPath != file.NewPath,
 		true
-}
-
-func viewportClamp(v *diffView,
-	viewport *diffViewport) diffViewport {
-	return clampViewport(v, *viewport)
 }
 
 func closestCursorInPane(

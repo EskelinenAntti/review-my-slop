@@ -418,7 +418,7 @@ func preserveSearch(screen *Diff, next *diffView,
 		return
 	}
 	screen.search.from = screen.cursor
-	if translated, ok := translateCursorIdentity(next, origin); ok {
+	if translated, ok := findCursorMatch(next, origin); ok {
 		screen.search.from = translated
 	}
 	previewSearch(screen, screen.search.query)

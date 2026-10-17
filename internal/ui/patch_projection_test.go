@@ -210,7 +210,7 @@ func assertCursorRestorationCase(
 		t.Run(header, func(t *testing.T) {
 			patch.Files[0].Hunks[0].Header = header
 			next := diffscreenTestViewWithTheme(patch, true)
-			restored, ok := translateCursorIdentity(next, identity)
+			restored, ok := findCursorMatch(next, identity)
 			line, lineOK := lineForCursor(restored, next)
 			requireEqual(t, ok, true, "restored cursor=%#v", restored)
 			requireEqual(t, lineOK, true, "restored=%#v, want %#v",

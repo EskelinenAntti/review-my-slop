@@ -149,7 +149,7 @@ func renderPatch(
 	cursor diffCursor,
 	selection *diffSelection,
 ) string {
-	viewport = viewportClamp(view, &viewport)
+	viewport = clampViewport(view, viewport)
 	lines := renderViewportHeader(view, viewport)
 	lines = append(lines, renderVisibleRows(
 		view, viewport, cursor, selection,
