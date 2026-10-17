@@ -64,9 +64,9 @@ func (m *model) navigate(name string) bool {
 	case "l", "right":
 		m.diffView.ScrollHorizontal(horizontalScrollStep)
 	case "0":
-		m.diffView.ScrollHorizontal(-int(^uint(0) >> 1))
+		m.diffView.ScrollToLineStart()
 	case "$":
-		m.diffView.ScrollHorizontal(int(^uint(0) >> 1))
+		m.diffView.ScrollToLineEnd()
 	default:
 		return false
 	}

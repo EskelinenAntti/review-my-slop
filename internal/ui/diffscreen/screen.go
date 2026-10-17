@@ -251,6 +251,20 @@ func (v *View) ScrollHorizontal(columns int) {
 	v.viewport = v.view.scrollHorizontal(v.viewport, columns)
 }
 
+// ScrollToLineStart shows the first column of the source lines.
+func (v *View) ScrollToLineStart() {
+	v.search.repeatMiss = false
+	v.viewport.LeftColumn = 0
+	v.viewport = v.view.clampViewport(v.viewport)
+}
+
+// ScrollToLineEnd shows the end of the widest source line.
+func (v *View) ScrollToLineEnd() {
+	v.search.repeatMiss = false
+	v.viewport.LeftColumn = v.view.maxHorizontalOffset(v.viewport.Width)
+	v.viewport = v.view.clampViewport(v.viewport)
+}
+
 // ScrollVertical moves content first, moving focus only when it leaves the
 // visible code. Like keyboard movement, it extends selection within its hunk.
 func (v *View) ScrollVertical(rows int) {
