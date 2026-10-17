@@ -493,7 +493,7 @@ func appendDiffscreenHunkRows(
 		kind: hunkRow, file: fileIndex, hunk: hunkIndex,
 		leftLine: -1, rightLine: -1, text: header,
 	})
-	for _, indices := range pairDiffHunkLines(hunk, view) {
+	for _, indices := range hunkLinePairs(hunk.Lines, Options{SideBySide: view.split}) {
 		row := entry{
 			kind: lineRow, file: fileIndex, hunk: hunkIndex,
 			leftLine: indices[0], rightLine: indices[1],
@@ -534,69 +534,6 @@ func highlightedDiffLineAt(
 	return highlightedDiffLine(highlighted, hunk, &entry{
 		rightLine: lineIndex,
 	})
-}
-
-func pairDiffHunkLines(hunk patches.Hunk, v *diffView,
-
-) [][2]int {
-	rows := make([][2]int, 0, len(hunk.Lines))
-	for index := 0; index < len(hunk.Lines); {
-		row, simple := simpleDiffRow(hunk.Lines[index], index, v)
-		if simple {
-			rows = append(rows, row)
-			index++
-			continue
-		}
-		addedStart, end := diffChangeBounds(hunk.Lines, index)
-		rows = append(rows, pairedDiffChangeRows(index, addedStart, end)...)
-		index = end
-	}
-	return rows
-}
-
-func simpleDiffRow(
-	line patches.Line,
-	index int,
-	view *diffView,
-) ([2]int, bool) {
-	if !view.split || line.Kind == patches.Context {
-		return [2]int{index, index}, true
-	}
-	if line.Kind == patches.Addition {
-		return [2]int{-1, index}, true
-	}
-	return [2]int{}, false
-}
-
-func diffChangeBounds(
-	lines []patches.Line,
-	start int,
-) (addedStart, changeEnd int) {
-	addedStart = start
-	for addedStart < len(lines) && lines[addedStart].Kind == patches.Deletion {
-		addedStart++
-	}
-	changeEnd = addedStart
-	for changeEnd < len(lines) && lines[changeEnd].Kind == patches.Addition {
-		changeEnd++
-	}
-	return addedStart, changeEnd
-}
-
-func pairedDiffChangeRows(start, addedStart, end int) [][2]int {
-	count := max(addedStart-start, end-addedStart)
-	rows := make([][2]int, 0, count)
-	for offset := 0; offset < count; offset++ {
-		row := [2]int{-1, -1}
-		if start+offset < addedStart {
-			row[0] = start + offset
-		}
-		if addedStart+offset < end {
-			row[1] = addedStart + offset
-		}
-		rows = append(rows, row)
-	}
-	return rows
 }
 
 func highlightedDiffLine(
