@@ -42,6 +42,18 @@ func OpenDefault() (Store, error) {
 	return Store{Path: path}, nil
 }
 
+// Save creates a comment when its ID is absent, or updates that ID when present.
+// Updating a comment that no longer exists returns an error.
+func (s Store) Save(comment Comment) (Comment, error) {
+	if comment.ID == "" {
+		return s.Add(comment)
+	}
+	if err := s.Update(comment); err != nil {
+		return Comment{}, err
+	}
+	return comment, nil
+}
+
 // Add validates and stores a comment, assigning an ID and timestamp when
 // absent.
 func (s Store) Add(comment Comment) (Comment, error) {

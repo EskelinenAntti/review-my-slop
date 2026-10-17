@@ -13,6 +13,21 @@ import (
 	"github.com/eskelinenantti/review-my-slop/internal/testutil"
 )
 
+func TestSaveDoesNotRecreateConsumedComments(t *testing.T) {
+	store := Store{Path: filepath.Join(t.TempDir(), "comments.db")}
+	saved, err := store.Save(Comment{Repository: "/repo", Body: "first"})
+	testutil.NoError(t, err)
+	testutil.NoError(t, store.Acknowledge("/repo", []string{saved.ID}))
+
+	saved.Body = "edited after consumption"
+	if _, err := store.Save(saved); err == nil {
+		t.Fatal("save recreated a consumed comment")
+	}
+	pending, err := store.List("/repo")
+	testutil.NoError(t, err)
+	testutil.RequireEqual(t, len(pending), 0, "pending comments = %#v", pending)
+}
+
 func TestAcknowledgePreservesNewerAndOtherRepositoryComments(t *testing.T) {
 	store := Store{Path: filepath.Join(t.TempDir(), "state", "comments.db")}
 	first := testComment("/repo/a", "first")
