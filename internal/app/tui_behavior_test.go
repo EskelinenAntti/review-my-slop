@@ -134,15 +134,10 @@ func TestCommentsCanBeViewedEditedAndDeleted(t *testing.T) {
 		persisted = stored
 		return stored, nil
 	})
-	m.setDelete(
-		func(
-			stored comments.Comment,
-			_ patch.Patch,
-		) error {
-			deleted = stored
-			return nil
-		},
-	)
+	m.delete = func(stored comments.Comment, _ patch.Patch) error {
+		deleted = stored
+		return nil
+	}
 	m = updateModel(t, m, textKey("C"))
 	testutil.RequireEqual(t, m.mode, modeComments, "%s",
 		"comments did not open",
@@ -181,7 +176,7 @@ func TestOpeningCommentsReloadsPendingComments(t *testing.T) {
 		[]comments.Comment{{ID: "read", Body: "already read"}},
 		nil,
 	)
-	m.setLoadComments(func() ([]comments.Comment, error) { return nil, nil })
+	m.load = func() ([]comments.Comment, error) { return nil, nil }
 
 	next, cmd := m.Update(textKey("C"))
 	m = requireModel(t, next)
@@ -204,14 +199,9 @@ func TestCommentReloadFailurePreservesCurrentComments(t *testing.T) {
 		[]comments.Comment{{ID: "keep", Body: "keep"}},
 		nil,
 	)
-	m.setLoadComments(
-		func() (
-			[]comments.Comment,
-			error,
-		) {
-			return nil, errors.New("storage unavailable")
-		},
-	)
+	m.load = func() ([]comments.Comment, error) {
+		return nil, errors.New("storage unavailable")
+	}
 
 	next, cmd := m.Update(textKey("C"))
 	m = requireModel(t, next)
@@ -236,15 +226,10 @@ func TestEmptyEditedCommentIsDeleted(t *testing.T) {
 		nil,
 	)
 	deleted := false
-	m.setDelete(
-		func(
-			comments.Comment,
-			patch.Patch,
-		) error {
-			deleted = true
-			return nil
-		},
-	)
+	m.delete = func(comments.Comment, patch.Patch) error {
+		deleted = true
+		return nil
+	}
 	m = updateModel(t, m, textKey("C"))
 	m = updateModel(t, m, specialKey(tea.KeyEnter))
 	m = updateModel(t, m, commentEditorFinishedMsg{body: "\n"})
@@ -262,14 +247,9 @@ func TestCommentDeleteFailureKeepsCommentAndShowsError(t *testing.T) {
 		[]comments.Comment{{ID: "one", Body: "keep"}},
 		nil,
 	)
-	m.setDelete(
-		func(
-			comments.Comment,
-			patch.Patch,
-		) error {
-			return errors.New("delete failed")
-		},
-	)
+	m.delete = func(comments.Comment, patch.Patch) error {
+		return errors.New("delete failed")
+	}
 	m = updateModel(t, m, textKey("C"))
 	m = updateModel(t, m, textKey("D"))
 	testutil.RequireEqual(t, len(m.comments.items), 1, "comments=%#v render=%q",
@@ -514,7 +494,7 @@ func TestFocusAndManualRefreshLoadCurrentView(t *testing.T) {
 	m.currentPatch.Branch = "main"
 	m.kind = patch.Branch
 	var requested []patch.Kind
-	m.setRefresh(func(kind patch.Kind) (patch.Patch, error) {
+	m.refresh = func(kind patch.Kind) (patch.Patch, error) {
 		requested = append(requested, kind)
 		p := coveragePatch()
 		p.Kind, p.Branch = kind, "main"
@@ -522,7 +502,7 @@ func TestFocusAndManualRefreshLoadCurrentView(t *testing.T) {
 			fmt.Sprintf("refresh-%d", len(requested)),
 		}
 		return p, nil
-	})
+	}
 	next, cmd := m.Update(tea.FocusMsg{})
 	m = requireModel(t, next)
 	testutil.RequireEqual(t, cmd != nil, true, "%s", "focus did not refresh")
@@ -550,9 +530,7 @@ func TestSourceEditorCompletionRefreshesDiff(t *testing.T) {
 	m := testModel(coveragePatch(), nil, nil)
 	refreshed := coveragePatch()
 	refreshed.Files[0].Metadata = []string{"after-editor"}
-	m.setRefresh(
-		func(patch.Kind) (patch.Patch, error) { return refreshed, nil },
-	)
+	m.refresh = func(patch.Kind) (patch.Patch, error) { return refreshed, nil }
 
 	next, cmd := m.Update(sourceEditorFinishedMsg{})
 	m = requireModel(t, next)
@@ -658,11 +636,11 @@ func TestSideBySideSearchActivatesPaneAndCancelRestoresIt(t *testing.T) {
 func TestTabTogglesDefaultBranchAndIgnoresStaleRefresh(t *testing.T) {
 	m := testModel(coveragePatch(), nil, nil)
 	m.currentPatch.Branch = "main"
-	m.setRefresh(func(kind patch.Kind) (patch.Patch, error) {
+	m.refresh = func(kind patch.Kind) (patch.Patch, error) {
 		p := coveragePatch()
 		p.Kind, p.Branch = kind, "main"
 		return p, nil
-	})
+	}
 	next, _ := m.Update(textKey("tab"))
 	m = requireModel(t, next)
 	testutil.RequireEqual(t, m.kind, patch.Branch, "kind=%v", m.kind)
@@ -687,10 +665,10 @@ func TestTabTogglesDefaultBranchAndIgnoresStaleRefresh(t *testing.T) {
 func TestTabDoesNothingWithoutDefaultBranch(t *testing.T) {
 	m := testModel(coveragePatch(), nil, nil)
 	refreshed := false
-	m.setRefresh(func(patch.Kind) (patch.Patch, error) {
+	m.refresh = func(patch.Kind) (patch.Patch, error) {
 		refreshed = true
 		return coveragePatch(), nil
-	})
+	}
 	next, cmd := m.Update(textKey("tab"))
 	m = requireModel(t, next)
 	testutil.RequireEqual(t, cmd == nil, true,
