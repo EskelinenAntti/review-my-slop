@@ -178,7 +178,9 @@ func branchComparisonInputs(
 	if branch == "" {
 		return nil, nil, errors.New("default branch is unavailable")
 	}
-	baseBytes, err := (execRunner{}).Run(ctx, root, "merge-base", branch, "HEAD")
+	baseBytes, err := (execRunner{}).Run(
+		ctx, root, "merge-base", branch, "HEAD",
+	)
 	if err != nil {
 		return nil, nil, fmt.Errorf(
 			"find branch point with %s: %w",
@@ -211,7 +213,9 @@ func readBranchBaseSource(
 	return escapeSourceText(string(out))
 }
 
-func resolveRepositoryRoot(ctx context.Context, directory string) (string, error) {
+func resolveRepositoryRoot(
+	ctx context.Context, directory string,
+) (string, error) {
 	rootBytes, err := (execRunner{}).Run(
 		ctx,
 		directory,
@@ -275,7 +279,9 @@ func findDefaultBranchWithRunner(
 	return "", nil
 }
 
-func runPatchDiff(ctx context.Context, revisions []string, root string) ([]byte, error) {
+func runPatchDiff(
+	ctx context.Context, revisions []string, root string,
+) ([]byte, error) {
 	args := []string{
 		"-c",
 		"core.quotepath=false",

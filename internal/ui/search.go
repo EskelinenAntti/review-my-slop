@@ -12,7 +12,9 @@ func previewSearch(screen *Diff, query string) {
 	screen.search.query = query
 	if query == "" {
 		screen.cursor = screen.search.from
-		screen.viewport = cursorViewport(screen.view, screen.viewport, screen.cursor)
+		screen.viewport = cursorViewport(
+			screen.view, screen.viewport, screen.cursor,
+		)
 		screen.search.miss = false
 		return
 	}

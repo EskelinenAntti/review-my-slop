@@ -54,7 +54,9 @@ var navigationAlignments = map[string]ui.Alignment{
 	"z b": ui.Bottom,
 }
 
-type saveCommentFunc func(feedback.Comment, patches.Patch) (feedback.Comment, error)
+type saveCommentFunc func(
+	feedback.Comment, patches.Patch,
+) (feedback.Comment, error)
 
 type deleteCommentFunc func(feedback.Comment, patches.Patch) error
 
