@@ -50,75 +50,50 @@ func hunkHeader(header string) string {
 	return "@@ " + header
 }
 
-func hunkLinePairs(lines []patches.Line,
-	options Options) [][2]int {
+func hunkLinePairs(lines []patches.Line, options Options) [][2]int {
 	pairs := make([][2]int, 0, len(lines))
 	for index := 0; index < len(lines); {
-		linePairs, next := hunkLinePair(lines, options, index)
-		pairs = append(pairs, linePairs...)
-		index = next
+		line := lines[index]
+		switch {
+		case !options.SideBySide || line.Kind == patches.Context:
+			pairs = append(pairs, [2]int{index, index})
+			index++
+		case line.Kind == patches.Addition:
+			pairs = append(pairs, [2]int{-1, index})
+			index++
+		default:
+			block, next := pairedChangeBlock(lines, index)
+			pairs = append(pairs, block...)
+			index = next
+		}
 	}
 	return pairs
 }
 
-func hunkLinePair(lines []patches.Line, options Options,
-	index int) ([][2]int,
-	int) {
-	line := lines[index]
-	if !options.SideBySide || line.Kind == patches.Context {
-		return [][2]int{{index, index}}, index + 1
-	}
-	if line.Kind == patches.Addition {
-		return [][2]int{{-1, index}}, index + 1
-	}
-	return pairedChangeBlock(lines, index)
-}
-
+// pairedChangeBlock pairs consecutive deletions with the additions that follow.
+// A missing line on either side is represented by -1.
 func pairedChangeBlock(lines []patches.Line, start int) ([][2]int, int) {
-	deletedEnd := deletionEnd(lines, start)
-	addedEnd := additionEnd(lines, deletedEnd)
-	return changePairs(start, deletedEnd, addedEnd), addedEnd
-}
-
-func deletionEnd(lines []patches.Line, start int) int {
-	end := start
-	for end < len(lines) && lines[end].Kind == patches.Deletion {
-		end++
+	deletedEnd := start
+	for deletedEnd < len(lines) && lines[deletedEnd].Kind == patches.Deletion {
+		deletedEnd++
 	}
-	return end
-}
-
-func additionEnd(lines []patches.Line, start int) int {
-	end := start
-	for end < len(lines) && lines[end].Kind == patches.Addition {
-		end++
+	addedEnd := deletedEnd
+	for addedEnd < len(lines) && lines[addedEnd].Kind == patches.Addition {
+		addedEnd++
 	}
-	return end
-}
-
-func changePairs(start, deletedEnd, addedEnd int) [][2]int {
 	count := max(deletedEnd-start, addedEnd-deletedEnd)
 	pairs := make([][2]int, 0, count)
 	for offset := 0; offset < count; offset++ {
-		pairs = append(pairs, changePair(
-			start,
-			deletedEnd,
-			addedEnd,
-			offset,
-		))
+		pair := [2]int{-1, -1}
+		if start+offset < deletedEnd {
+			pair[0] = start + offset
+		}
+		if deletedEnd+offset < addedEnd {
+			pair[1] = deletedEnd + offset
+		}
+		pairs = append(pairs, pair)
 	}
-	return pairs
-}
-
-func changePair(start, deletedEnd, addedEnd, offset int) [2]int {
-	pair := [2]int{-1, -1}
-	if start+offset < deletedEnd {
-		pair[0] = start + offset
-	}
-	if deletedEnd+offset < addedEnd {
-		pair[1] = deletedEnd + offset
-	}
-	return pair
+	return pairs, addedEnd
 }
 
 func highlightedLine(line patches.Line,
