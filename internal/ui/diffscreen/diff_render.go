@@ -24,6 +24,14 @@ const (
 	changeMarkerWidth = 2
 )
 
+// rowRenderer holds the presentation state shared by every row in one frame.
+type rowRenderer struct {
+	view      *diffView
+	viewport  diffViewport
+	cursor    diffCursor
+	selection *diffSelection
+}
+
 func (v *diffView) render(
 	viewport diffViewport,
 	cursor diffCursor,
@@ -41,12 +49,15 @@ func (v *diffView) render(
 			),
 		)
 	}
+	renderer := rowRenderer{
+		view: v, viewport: viewport, cursor: cursor, selection: selection,
+	}
 	end := min(len(v.rows), viewport.top+v.contentHeight(viewport))
 	for y := viewport.top; y < end; y++ {
 		current := v.rows[y]
 		lines = append(
 			lines,
-			v.renderRow(current, y, viewport, cursor, selection),
+			renderer.renderRow(current, y),
 		)
 	}
 	for len(lines) < viewport.Height {
@@ -55,44 +66,26 @@ func (v *diffView) render(
 	return strings.Join(lines, "\n")
 }
 
-func (v *diffView) renderRow(
-	current displayRow,
-	y int,
-	viewport diffViewport,
-	cursor diffCursor,
-	selection *diffSelection,
-) string {
+func (r rowRenderer) renderRow(current displayRow, y int) string {
 	switch current.kind {
 	case fileRow:
-		return renderFileRow(current.text, viewport.Width)
+		return renderFileRow(current.text, r.viewport.Width)
 	case metadataRow:
 		return metadataStyle.Render("  " + current.text)
 	case hunkRow:
 		return hunkStyle.Render(current.text)
 	case lineRow:
-		if v.split {
-			return v.renderSplitRow(current, y, viewport, cursor, selection)
+		if r.view.split {
+			return r.renderSplitRow(current, y)
 		}
-		return v.renderUnifiedLine(
-			current,
-			y,
-			viewport,
-			cursor,
-			selection,
-		)
+		return r.renderUnifiedLine(current, y)
 	}
 	return ""
 }
 
-func (v *diffView) renderUnifiedLine(
-	current displayRow,
-	y int,
-	viewport diffViewport,
-	cursor diffCursor,
-	selection *diffSelection,
-) string {
-	width := max(20, viewport.Width)
-	hunk := v.patch.Files[current.file].Hunks[current.hunk]
+func (r rowRenderer) renderUnifiedLine(current displayRow, y int) string {
+	width := max(20, r.viewport.Width)
+	hunk := r.view.patch.Files[current.file].Hunks[current.hunk]
 	line := hunk.Lines[current.rightLine]
 	gutter := fmt.Sprintf(
 		"%*s %*s %s ",
@@ -104,16 +97,16 @@ func (v *diffView) renderUnifiedLine(
 	)
 	value := gutter + fitANSIWindow(
 		current.text,
-		viewport.LeftColumn,
+		r.viewport.LeftColumn,
 		width-lipgloss.Width(gutter),
 	)
-	style := lineStyle(line.Kind, v.dark)
+	style := lineStyle(line.Kind, r.view.dark)
 	colors := preserveForeground
-	candidate := diffCursor{row: y, pane: cursor.pane}
-	if selected(selection, candidate) {
-		style, colors = selectionRowStyle(v.dark), discardForeground
+	candidate := diffCursor{row: y, pane: r.cursor.pane}
+	if selected(r.selection, candidate) {
+		style, colors = selectionRowStyle(r.view.dark), discardForeground
 	}
-	if cursor.row == y {
+	if r.cursor.row == y {
 		style, colors = cursorStyle, discardForeground
 	}
 	return renderStyledRow(style, value, width, colors)
@@ -123,32 +116,10 @@ func renderFileRow(path string, width int) string {
 	return fileStyle.Width(max(20, width)).Render(path)
 }
 
-func (v *diffView) renderSplitRow(
-	current displayRow,
-	y int,
-	viewport diffViewport,
-	cursor diffCursor,
-	selection *diffSelection,
-) string {
-	leftWidth, rightWidth := splitPaneWidths(viewport.Width)
-	left := v.renderPane(
-		current,
-		y,
-		left,
-		leftWidth,
-		viewport.LeftColumn,
-		cursor,
-		selection,
-	)
-	right := v.renderPane(
-		current,
-		y,
-		right,
-		rightWidth,
-		viewport.LeftColumn,
-		cursor,
-		selection,
-	)
+func (r rowRenderer) renderSplitRow(current displayRow, y int) string {
+	leftWidth, rightWidth := splitPaneWidths(r.viewport.Width)
+	left := r.renderPane(current, y, left, leftWidth)
+	right := r.renderPane(current, y, right, rightWidth)
 	return left + paneSeparator + right
 }
 
@@ -157,19 +128,17 @@ func splitPaneWidths(width int) (left, right int) {
 	return left, max(20, width-paneSeparatorWidth-left)
 }
 
-func (v *diffView) renderPane(
+func (r rowRenderer) renderPane(
 	current displayRow,
 	y int,
 	pane diffPane,
-	width, offset int,
-	cursor diffCursor,
-	selection *diffSelection,
+	width int,
 ) string {
-	index := v.lineIndex(current, pane)
+	index := r.view.lineIndex(current, pane)
 	if index < 0 {
 		return strings.Repeat(" ", width)
 	}
-	line := v.patch.Files[current.file].Hunks[current.hunk].Lines[index]
+	line := r.view.patch.Files[current.file].Hunks[current.hunk].Lines[index]
 	text := current.right
 	numberValue := line.NewNumber
 	if pane == left {
@@ -178,16 +147,16 @@ func (v *diffView) renderPane(
 	gutter := fmt.Sprintf("%*s ", lineNumberWidth, number(numberValue))
 	value := gutter + fitANSIWindow(
 		changeMarker(line.Kind)+" "+text,
-		offset,
+		r.viewport.LeftColumn,
 		width-lipgloss.Width(gutter),
 	)
-	style := lineStyle(line.Kind, v.dark)
+	style := lineStyle(line.Kind, r.view.dark)
 	colors := preserveForeground
 	candidate := diffCursor{row: y, pane: pane}
-	if selected(selection, candidate) {
-		style, colors = selectionRowStyle(v.dark), discardForeground
+	if selected(r.selection, candidate) {
+		style, colors = selectionRowStyle(r.view.dark), discardForeground
 	}
-	if cursor == candidate {
+	if r.cursor == candidate {
 		style, colors = cursorStyle, discardForeground
 	}
 	return renderStyledRow(style, value, width, colors)
