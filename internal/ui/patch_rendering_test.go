@@ -284,9 +284,7 @@ func TestDiffscreenSplitVerticalMovementAndHalfPageUseVisualRows(t *testing.T) {
 	start, ok := firstCursor(screen.view)
 	requireEqual(t, ok, true, "%s", "no initial cursor")
 	screen.cursor = start
-	screen.viewport = cursorVisibleViewport(
-		start, screen.view, screen.viewport,
-	)
+	screen.viewport = cursorViewport(screen.view, screen.viewport, start)
 	originalTop := screen.viewport.top
 	screen.Move(NextPage)
 	requireEqual(t, screen.viewport.top > originalTop, true,
@@ -399,7 +397,7 @@ func TestDiffscreenKeepVisibleAccountsForStickyFileHeader(t *testing.T) {
 	cursor, ok := lastCursor(view)
 	requireEqual(t, ok, true, "%s", "no last cursor")
 	viewport := initialViewport(view, 50, 4)
-	viewport = cursorVisibleViewport(cursor, view, viewport)
+	viewport = cursorViewport(view, viewport, cursor)
 	rendered := ansi.Strip(renderPatch(view, viewport, cursor, nil))
 	_, line, ok := patchLineAtCursor(view, cursor)
 	requireEqual(t, ok, true, "last cursor=%#v", cursor)

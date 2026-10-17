@@ -204,20 +204,12 @@ func (v *Diff) Move(motion Motion) {
 	case FirstLine:
 		if cursor, ok := firstCursor(v.view); ok {
 			v.cursor = cursor
-			v.viewport = cursorVisibleViewport(
-				cursor,
-				v.view,
-				v.viewport,
-			)
+			v.viewport = cursorViewport(v.view, v.viewport, cursor)
 		}
 	case LastLine:
 		if cursor, ok := lastCursor(v.view); ok {
 			v.cursor = cursor
-			v.viewport = cursorVisibleViewport(
-				cursor,
-				v.view,
-				v.viewport,
-			)
+			v.viewport = cursorViewport(v.view, v.viewport, cursor)
 		}
 	default:
 		moveFileOrPane(v, motion)
@@ -394,7 +386,7 @@ func (v *Diff) Find(d Direction) bool {
 	v.search.repeatMiss = !ok
 	if ok {
 		v.cursor = cursor
-		v.viewport = cursorVisibleViewport(cursor, v.view, v.viewport)
+		v.viewport = cursorViewport(v.view, v.viewport, cursor)
 	}
 	return ok
 }

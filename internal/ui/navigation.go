@@ -107,11 +107,7 @@ func moveFile(screen *Diff,
 	)
 	if ok {
 		screen.cursor = cursor
-		screen.viewport = cursorVisibleViewport(
-			cursor,
-			screen.view,
-			screen.viewport,
-		)
+		screen.viewport = cursorViewport(screen.view, screen.viewport, cursor)
 	}
 }
 
@@ -218,11 +214,7 @@ func switchPane(screen *Diff, pane diffPane) {
 	}
 	screen.cursor = cursor
 	screen.selection = selection
-	screen.viewport = cursorVisibleViewport(
-		cursor,
-		screen.view,
-		screen.viewport,
-	)
+	screen.viewport = cursorViewport(screen.view, screen.viewport, cursor)
 }
 
 func selectionInPane(pane diffPane,
@@ -406,20 +398,6 @@ func selectionPaneAtRow(selection diffSelection,
 	return selection.First.pane
 }
 
-func lineNumberAtCursor(cursor diffCursor,
-	v *diffView,
-
-) int {
-	var current = v.rows[cursor.row]
-	if current.kind != lineRow {
-		return -1
-	}
-	if !v.split || cursor.pane == right {
-		return current.rightLine
-	}
-	return current.leftLine
-}
-
 func translateCursorIdentity(
 	next *diffView,
 	origin cursorIdentity,
@@ -444,12 +422,6 @@ func firstCursor(next *diffView) (diffCursor,
 		}
 	}
 	return diffCursor{}, false
-}
-
-func cursorVisibleViewport(cursor diffCursor,
-	v *diffView,
-	viewport diffViewport) diffViewport {
-	return cursorViewport(v, viewport, cursor)
 }
 
 func cursorAtRow(next *diffView, pane diffPane,
