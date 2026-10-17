@@ -102,7 +102,10 @@ func comparisonBase(
 	branch string,
 ) ([]string, sourceReader, error) {
 	if kind != Branch {
-		return nil, readIndex, nil
+		readOld := func(path string) string {
+			return readIndex(ctx, run, root, path)
+		}
+		return nil, readOld, nil
 	}
 	if branch == "" {
 		return nil, nil, errors.New("default branch is unavailable")
@@ -116,7 +119,7 @@ func comparisonBase(
 		)
 	}
 	base := strings.TrimSpace(string(baseBytes))
-	readOld := func(ctx context.Context, run runner, root, path string) string {
+	readOld := func(path string) string {
 		return readRevision(ctx, run, root, base, path)
 	}
 	return []string{base}, readOld, nil
@@ -155,7 +158,7 @@ func gitDiff(
 	return run.Run(ctx, root, args...)
 }
 
-type sourceReader func(context.Context, runner, string, string) string
+type sourceReader func(path string) string
 
 func build(
 	ctx context.Context,
@@ -166,7 +169,7 @@ func build(
 	raw []byte,
 	readOld sourceReader,
 ) (Patch, error) {
-	files, err := parseTracked(ctx, run, root, raw, readOld)
+	files, err := parseTracked(ctx, root, raw, readOld)
 	if err != nil {
 		return Patch{}, err
 	}
@@ -239,7 +242,6 @@ func defaultBranch(
 
 func parseTracked(
 	ctx context.Context,
-	run runner,
 	root string,
 	raw []byte,
 	readOld sourceReader,
@@ -256,7 +258,7 @@ func parseTracked(
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
-		file, err := parseTrackedFile(ctx, run, root, fd, readOld)
+		file, err := parseTrackedFile(root, fd, readOld)
 		if err != nil {
 			return nil, err
 		}
@@ -266,8 +268,6 @@ func parseTracked(
 }
 
 func parseTrackedFile(
-	ctx context.Context,
-	run runner,
 	root string,
 	fd *diff.FileDiff,
 	readOld sourceReader,
@@ -284,7 +284,7 @@ func parseTrackedFile(
 		DisplayPath: visibleText(display),
 		Metadata:    visibleStrings(fd.Extended),
 	}
-	file.OldSource = readOld(ctx, run, root, oldPath)
+	file.OldSource = readOld(oldPath)
 	file.NewSource = readWorkingTree(root, newPath)
 	for _, h := range fd.Hunks {
 		lines, err := parseHunkBody(h.OrigStartLine, h.NewStartLine, h.Body)
