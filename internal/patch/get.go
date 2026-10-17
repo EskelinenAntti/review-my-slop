@@ -103,7 +103,7 @@ func comparisonBase(
 ) ([]string, sourceReader, error) {
 	if kind != Branch {
 		readOld := func(path string) string {
-			return readIndex(ctx, run, root, path)
+			return readRevision(ctx, run, root, "", path)
 		}
 		return nil, readOld, nil
 	}
@@ -444,17 +444,7 @@ func parseHunkBody(oldLine, newLine int32, body []byte) ([]Line, error) {
 	return lines, nil
 }
 
-func readIndex(ctx context.Context, run runner, root, path string) string {
-	if path == "" || path == "/dev/null" {
-		return ""
-	}
-	out, err := run.Run(ctx, root, "show", ":"+path)
-	if err != nil || len(out) > maxFileBytes || bytes.IndexByte(out, 0) >= 0 {
-		return ""
-	}
-	return visibleSource(string(out))
-}
-
+// An empty revision reads the index using Git's ":path" object syntax.
 func readRevision(
 	ctx context.Context,
 	run runner,
