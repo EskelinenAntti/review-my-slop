@@ -2,18 +2,16 @@ package editor
 
 import (
 	"bytes"
-	tea "charm.land/bubbletea/v2"
 	"context"
 	"errors"
-	"fmt"
-	"github.com/eskelinenantti/review-my-slop/internal/comments"
-	"github.com/eskelinenantti/review-my-slop/internal/testutil"
 	"os"
-	"os/exec"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"testing"
+
+	tea "charm.land/bubbletea/v2"
+	"github.com/eskelinenantti/review-my-slop/internal/comments"
+	"github.com/eskelinenantti/review-my-slop/internal/testutil"
 )
 
 func TestCommentWorkflowLifecycle(t *testing.T) {
@@ -32,184 +30,22 @@ func TestCommentWorkflowLifecycle(t *testing.T) {
 				os.WriteFile(
 					script,
 					[]byte(
-						"printf '%s' \"$1\" > "+(func(value string) string {
-							return "'" + strings.ReplaceAll(value, "'", "'\"'\"'") + "'"
-						})(record)+
+						"printf '%s' \"$1\" > "+shellQuote(record)+
 							"\n"+tc.script+"\n",
 					),
 					0600,
 				),
 			)
 
-			adapter, complete := (func(
-				ctx context.Context,
-				command, body string,
-				anchor comments.Anchor,
-				onComplete func(string, error) tea.Msg,
-			) (*commandAdapter, tea.ExecCallback) {
-				adapter := &commandAdapter{}
-				adapter.run = func() error {
-					path, err := func() (string, error) {
-						file, err := os.CreateTemp("", "review-my-slop-comment-*.md")
-						if err != nil {
-							return "", fmt.Errorf("create comment file: %w", err)
-						}
-						path := file.Name()
-						if _, err := file.WriteString(func() string {
-							if len(anchor.QuotedLines) == 0 {
-								return body
-							}
-							lines := func() []string {
-								lines := make([]string, 0, len(anchor.QuotedLines))
-								for _, line := range anchor.QuotedLines {
-									if line != "" && line[0] != '-' {
-										lines = append(lines, line[1:])
-									}
-								}
-								return lines
-							}()
-							var draft strings.Builder
-							_, _ = draft.WriteString(body)
-							if body != "" && !strings.HasSuffix(body, "\n") {
-								_ = draft.WriteByte('\n')
-							}
-							_ = draft.WriteByte('\n')
-							fence := (func(lines []string) string {
-								longest := 0
-								for _, line := range lines {
-									run := 0
-									for _, char := range line {
-										if char == '`' {
-											run++
-											longest = max(longest, run)
-										} else {
-											run = 0
-										}
-									}
-								}
-								return strings.Repeat("`", max(3, longest+1))
-							})(lines)
-							_, _ = draft.WriteString(fence)
-							_, _ = draft.WriteString("suggestion\n")
-							for _, line := range lines {
-								_, _ = draft.WriteString(line)
-								_ = draft.WriteByte('\n')
-							}
-							_, _ = draft.WriteString(fence)
-							_ = draft.WriteByte('\n')
-							return draft.String()
-						}()); err != nil {
-							_ = file.Close()
-							_ = os.Remove(path)
-							return "", fmt.Errorf("write comment file: %w", err)
-						}
-						if err := file.Close(); err != nil {
-							_ = os.Remove(path)
-							return "", fmt.Errorf("close comment file: %w", err)
-						}
-						return path, nil
-					}()
-					if err != nil {
-						return err
-					}
-					defer os.Remove(path)
-					editorCommand := exec.CommandContext(ctx, "sh", "-c", command+" "+(func(value string) string {
-						return "'" + strings.ReplaceAll(value, "'", "'\"'\"'") + "'"
-					})(path))
-					if err := func() error {
-						editorCommand.Stdin, editorCommand.Stdout, editorCommand.Stderr = adapter.stdin, adapter.stdout, adapter.stderr
-						return editorCommand.Run()
-					}(); err != nil {
-						return fmt.Errorf("editor: %w", err)
-					}
-					adapter.body, err = func() (string, error) {
-						body, err := os.ReadFile(path)
-						if err != nil {
-							return "", fmt.Errorf("read comment file: %w", err)
-						}
-						return func() string {
-							if len(anchor.QuotedLines) == 0 {
-								return string(body)
-							}
-							lines := func() []string {
-								lines := make([]string, 0, len(anchor.QuotedLines))
-								for _, line := range anchor.QuotedLines {
-									if line != "" && line[0] != '-' {
-										lines = append(lines, line[1:])
-									}
-								}
-								return lines
-							}()
-							fence := (func(lines []string) string {
-								longest := 0
-								for _, line := range lines {
-									run := 0
-									for _, char := range line {
-										if char == '`' {
-											run++
-											longest = max(longest, run)
-										} else {
-											run = 0
-										}
-									}
-								}
-								return strings.Repeat("`", max(3, longest+1))
-							})(lines)
-							var suggestion strings.Builder
-							_, _ = suggestion.WriteString(fence)
-							_, _ = suggestion.WriteString("suggestion\n")
-							for _, line := range lines {
-								_, _ = suggestion.WriteString(line)
-								_ = suggestion.WriteByte('\n')
-							}
-							_, _ = suggestion.WriteString(fence)
-							start := strings.Index(string(body), suggestion.String())
-							if start < 0 {
-								return string(body)
-							}
-							end := start + suggestion.Len()
-							before := strings.TrimRight(string(body)[:start], "\n")
-							after := string(body)[end:]
-							if strings.TrimSpace(after) == "" {
-								return before
-							}
-							return before + "\n" + strings.TrimLeft(after, "\n")
-						}(), nil
-					}()
-					return err
-				}
-				return adapter, func(err error) tea.Msg {
-					return onComplete(adapter.body, err)
-				}
-			})(
+			adapter, complete := commentWorkflow(
 				context.Background(),
-				"sh "+(func(value string) string {
-					return "'" + strings.ReplaceAll(value, "'", "'\"'\"'") + "'"
-				})(script),
+				"sh "+shellQuote(script),
 				tc.body,
 				comments.Anchor{
 					QuotedLines: []string{" context", "+added"},
 				},
 				func(body string, err error) tea.Msg {
-					(func(
-						t *testing.T,
-						body string,
-						err error,
-						want, errorText string,
-					) {
-						t.Helper()
-						testutil.CheckEqual(t, body, want, "body=%q want=%q", body, want)
-						if errorText == "" {
-							testutil.NoError(t, err)
-							return
-						}
-						testutil.RequireEqual(t, err != nil, true, "expected error containing %q",
-							errorText,
-						)
-						testutil.CheckEqual(t, strings.Contains(err.Error(), errorText), true,
-							"error=%v", err,
-						)
-					})(t, body, err, tc.want, tc.errorText)
+					assertWorkflowResult(t, body, err, tc.want, tc.errorText)
 					return nil
 				},
 			)
@@ -223,6 +59,26 @@ func TestCommentWorkflowLifecycle(t *testing.T) {
 			}
 		})
 	}
+}
+
+func assertWorkflowResult(
+	t *testing.T,
+	body string,
+	err error,
+	want, errorText string,
+) {
+	t.Helper()
+	testutil.CheckEqual(t, body, want, "body=%q want=%q", body, want)
+	if errorText == "" {
+		testutil.NoError(t, err)
+		return
+	}
+	testutil.RequireEqual(t, err != nil, true, "expected error containing %q",
+		errorText,
+	)
+	testutil.CheckEqual(t, strings.Contains(err.Error(), errorText), true,
+		"error=%v", err,
+	)
 }
 
 func TestUnusedCommandCreatesNoDraft(t *testing.T) {
@@ -272,147 +128,7 @@ func TestCommentCancellationAndCreationFailure(t *testing.T) {
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
 			tc.setup(t, dir, cancel)
-			adapter, complete := (func(
-				ctx context.Context,
-				command, body string,
-				anchor comments.Anchor,
-				onComplete func(string, error) tea.Msg,
-			) (*commandAdapter, tea.ExecCallback) {
-				adapter := &commandAdapter{}
-				adapter.run = func() error {
-					path, err := func() (string, error) {
-						file, err := os.CreateTemp("", "review-my-slop-comment-*.md")
-						if err != nil {
-							return "", fmt.Errorf("create comment file: %w", err)
-						}
-						path := file.Name()
-						if _, err := file.WriteString(func() string {
-							if len(anchor.QuotedLines) == 0 {
-								return body
-							}
-							lines := func() []string {
-								lines := make([]string, 0, len(anchor.QuotedLines))
-								for _, line := range anchor.QuotedLines {
-									if line != "" && line[0] != '-' {
-										lines = append(lines, line[1:])
-									}
-								}
-								return lines
-							}()
-							var draft strings.Builder
-							_, _ = draft.WriteString(body)
-							if body != "" && !strings.HasSuffix(body, "\n") {
-								_ = draft.WriteByte('\n')
-							}
-							_ = draft.WriteByte('\n')
-							fence := (func(lines []string) string {
-								longest := 0
-								for _, line := range lines {
-									run := 0
-									for _, char := range line {
-										if char == '`' {
-											run++
-											longest = max(longest, run)
-										} else {
-											run = 0
-										}
-									}
-								}
-								return strings.Repeat("`", max(3, longest+1))
-							})(lines)
-							_, _ = draft.WriteString(fence)
-							_, _ = draft.WriteString("suggestion\n")
-							for _, line := range lines {
-								_, _ = draft.WriteString(line)
-								_ = draft.WriteByte('\n')
-							}
-							_, _ = draft.WriteString(fence)
-							_ = draft.WriteByte('\n')
-							return draft.String()
-						}()); err != nil {
-							_ = file.Close()
-							_ = os.Remove(path)
-							return "", fmt.Errorf("write comment file: %w", err)
-						}
-						if err := file.Close(); err != nil {
-							_ = os.Remove(path)
-							return "", fmt.Errorf("close comment file: %w", err)
-						}
-						return path, nil
-					}()
-					if err != nil {
-						return err
-					}
-					defer os.Remove(path)
-					editorCommand := exec.CommandContext(ctx, "sh", "-c", command+" "+(func(value string) string {
-						return "'" + strings.ReplaceAll(value, "'", "'\"'\"'") + "'"
-					})(path))
-					if err := func() error {
-						editorCommand.Stdin, editorCommand.Stdout, editorCommand.Stderr = adapter.stdin, adapter.stdout, adapter.stderr
-						return editorCommand.Run()
-					}(); err != nil {
-						return fmt.Errorf("editor: %w", err)
-					}
-					adapter.body, err = func() (string, error) {
-						body, err := os.ReadFile(path)
-						if err != nil {
-							return "", fmt.Errorf("read comment file: %w", err)
-						}
-						return func() string {
-							if len(anchor.QuotedLines) == 0 {
-								return string(body)
-							}
-							lines := func() []string {
-								lines := make([]string, 0, len(anchor.QuotedLines))
-								for _, line := range anchor.QuotedLines {
-									if line != "" && line[0] != '-' {
-										lines = append(lines, line[1:])
-									}
-								}
-								return lines
-							}()
-							fence := (func(lines []string) string {
-								longest := 0
-								for _, line := range lines {
-									run := 0
-									for _, char := range line {
-										if char == '`' {
-											run++
-											longest = max(longest, run)
-										} else {
-											run = 0
-										}
-									}
-								}
-								return strings.Repeat("`", max(3, longest+1))
-							})(lines)
-							var suggestion strings.Builder
-							_, _ = suggestion.WriteString(fence)
-							_, _ = suggestion.WriteString("suggestion\n")
-							for _, line := range lines {
-								_, _ = suggestion.WriteString(line)
-								_ = suggestion.WriteByte('\n')
-							}
-							_, _ = suggestion.WriteString(fence)
-							start := strings.Index(string(body), suggestion.String())
-							if start < 0 {
-								return string(body)
-							}
-							end := start + suggestion.Len()
-							before := strings.TrimRight(string(body)[:start], "\n")
-							after := string(body)[end:]
-							if strings.TrimSpace(after) == "" {
-								return before
-							}
-							return before + "\n" + strings.TrimLeft(after, "\n")
-						}(), nil
-					}()
-					return err
-				}
-				return adapter, func(err error) tea.Msg {
-					return onComplete(adapter.body, err)
-				}
-			})(
+			adapter, complete := commentWorkflow(
 				ctx,
 				"true",
 				"body",
@@ -440,147 +156,7 @@ func TestCommentCancellationAndCreationFailure(t *testing.T) {
 
 func TestTerminalFailureReachesCompletion(t *testing.T) {
 	sentinel := errors.New("terminal restoration failed")
-	adapter, complete := (func(
-		ctx context.Context,
-		command, body string,
-		anchor comments.Anchor,
-		onComplete func(string, error) tea.Msg,
-	) (*commandAdapter, tea.ExecCallback) {
-		adapter := &commandAdapter{}
-		adapter.run = func() error {
-			path, err := func() (string, error) {
-				file, err := os.CreateTemp("", "review-my-slop-comment-*.md")
-				if err != nil {
-					return "", fmt.Errorf("create comment file: %w", err)
-				}
-				path := file.Name()
-				if _, err := file.WriteString(func() string {
-					if len(anchor.QuotedLines) == 0 {
-						return body
-					}
-					lines := func() []string {
-						lines := make([]string, 0, len(anchor.QuotedLines))
-						for _, line := range anchor.QuotedLines {
-							if line != "" && line[0] != '-' {
-								lines = append(lines, line[1:])
-							}
-						}
-						return lines
-					}()
-					var draft strings.Builder
-					_, _ = draft.WriteString(body)
-					if body != "" && !strings.HasSuffix(body, "\n") {
-						_ = draft.WriteByte('\n')
-					}
-					_ = draft.WriteByte('\n')
-					fence := (func(lines []string) string {
-						longest := 0
-						for _, line := range lines {
-							run := 0
-							for _, char := range line {
-								if char == '`' {
-									run++
-									longest = max(longest, run)
-								} else {
-									run = 0
-								}
-							}
-						}
-						return strings.Repeat("`", max(3, longest+1))
-					})(lines)
-					_, _ = draft.WriteString(fence)
-					_, _ = draft.WriteString("suggestion\n")
-					for _, line := range lines {
-						_, _ = draft.WriteString(line)
-						_ = draft.WriteByte('\n')
-					}
-					_, _ = draft.WriteString(fence)
-					_ = draft.WriteByte('\n')
-					return draft.String()
-				}()); err != nil {
-					_ = file.Close()
-					_ = os.Remove(path)
-					return "", fmt.Errorf("write comment file: %w", err)
-				}
-				if err := file.Close(); err != nil {
-					_ = os.Remove(path)
-					return "", fmt.Errorf("close comment file: %w", err)
-				}
-				return path, nil
-			}()
-			if err != nil {
-				return err
-			}
-			defer os.Remove(path)
-			editorCommand := exec.CommandContext(ctx, "sh", "-c", command+" "+(func(value string) string {
-				return "'" + strings.ReplaceAll(value, "'", "'\"'\"'") + "'"
-			})(path))
-			if err := func() error {
-				editorCommand.Stdin, editorCommand.Stdout, editorCommand.Stderr = adapter.stdin, adapter.stdout, adapter.stderr
-				return editorCommand.Run()
-			}(); err != nil {
-				return fmt.Errorf("editor: %w", err)
-			}
-			adapter.body, err = func() (string, error) {
-				body, err := os.ReadFile(path)
-				if err != nil {
-					return "", fmt.Errorf("read comment file: %w", err)
-				}
-				return func() string {
-					if len(anchor.QuotedLines) == 0 {
-						return string(body)
-					}
-					lines := func() []string {
-						lines := make([]string, 0, len(anchor.QuotedLines))
-						for _, line := range anchor.QuotedLines {
-							if line != "" && line[0] != '-' {
-								lines = append(lines, line[1:])
-							}
-						}
-						return lines
-					}()
-					fence := (func(lines []string) string {
-						longest := 0
-						for _, line := range lines {
-							run := 0
-							for _, char := range line {
-								if char == '`' {
-									run++
-									longest = max(longest, run)
-								} else {
-									run = 0
-								}
-							}
-						}
-						return strings.Repeat("`", max(3, longest+1))
-					})(lines)
-					var suggestion strings.Builder
-					_, _ = suggestion.WriteString(fence)
-					_, _ = suggestion.WriteString("suggestion\n")
-					for _, line := range lines {
-						_, _ = suggestion.WriteString(line)
-						_ = suggestion.WriteByte('\n')
-					}
-					_, _ = suggestion.WriteString(fence)
-					start := strings.Index(string(body), suggestion.String())
-					if start < 0 {
-						return string(body)
-					}
-					end := start + suggestion.Len()
-					before := strings.TrimRight(string(body)[:start], "\n")
-					after := string(body)[end:]
-					if strings.TrimSpace(after) == "" {
-						return before
-					}
-					return before + "\n" + strings.TrimLeft(after, "\n")
-				}(), nil
-			}()
-			return err
-		}
-		return adapter, func(err error) tea.Msg {
-			return onComplete(adapter.body, err)
-		}
-	})(
+	adapter, complete := commentWorkflow(
 		context.Background(),
 		"true",
 		"body",
@@ -614,9 +190,12 @@ func TestMissingEditor(t *testing.T) {
 
 func TestSourceArgumentsAndContext(t *testing.T) {
 	var output bytes.Buffer
-	cmd := exec.CommandContext(context.Background(), "sh", "-c", "printf '%s\\n'"+" +"+strconv.Itoa(42)+" "+(func(value string) string {
-		return "'" + strings.ReplaceAll(value, "'", "'\"'\"'") + "'"
-	})("/repo with spaces/it's.go"))
+	cmd := sourceCommand(
+		context.Background(),
+		"printf '%s\\n'",
+		"/repo with spaces/it's.go",
+		42,
+	)
 	cmd.Stdout = &output
 	testutil.NoError(t, cmd.Run())
 
@@ -625,9 +204,7 @@ func TestSourceArgumentsAndContext(t *testing.T) {
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	err := exec.CommandContext(ctx, "sh", "-c", "true"+" +"+strconv.Itoa(2)+" "+(func(value string) string {
-		return "'" + strings.ReplaceAll(value, "'", "'\"'\"'") + "'"
-	})("source")).Run()
+	err := sourceCommand(ctx, "true", "source", 2).Run()
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("error = %v", err)
 	}
@@ -699,147 +276,7 @@ func TestRunningEditorCancellationCleansDraft(t *testing.T) {
 	t.Setenv("TMPDIR", dir)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	adapter, complete := (func(
-		ctx context.Context,
-		command, body string,
-		anchor comments.Anchor,
-		onComplete func(string, error) tea.Msg,
-	) (*commandAdapter, tea.ExecCallback) {
-		adapter := &commandAdapter{}
-		adapter.run = func() error {
-			path, err := func() (string, error) {
-				file, err := os.CreateTemp("", "review-my-slop-comment-*.md")
-				if err != nil {
-					return "", fmt.Errorf("create comment file: %w", err)
-				}
-				path := file.Name()
-				if _, err := file.WriteString(func() string {
-					if len(anchor.QuotedLines) == 0 {
-						return body
-					}
-					lines := func() []string {
-						lines := make([]string, 0, len(anchor.QuotedLines))
-						for _, line := range anchor.QuotedLines {
-							if line != "" && line[0] != '-' {
-								lines = append(lines, line[1:])
-							}
-						}
-						return lines
-					}()
-					var draft strings.Builder
-					_, _ = draft.WriteString(body)
-					if body != "" && !strings.HasSuffix(body, "\n") {
-						_ = draft.WriteByte('\n')
-					}
-					_ = draft.WriteByte('\n')
-					fence := (func(lines []string) string {
-						longest := 0
-						for _, line := range lines {
-							run := 0
-							for _, char := range line {
-								if char == '`' {
-									run++
-									longest = max(longest, run)
-								} else {
-									run = 0
-								}
-							}
-						}
-						return strings.Repeat("`", max(3, longest+1))
-					})(lines)
-					_, _ = draft.WriteString(fence)
-					_, _ = draft.WriteString("suggestion\n")
-					for _, line := range lines {
-						_, _ = draft.WriteString(line)
-						_ = draft.WriteByte('\n')
-					}
-					_, _ = draft.WriteString(fence)
-					_ = draft.WriteByte('\n')
-					return draft.String()
-				}()); err != nil {
-					_ = file.Close()
-					_ = os.Remove(path)
-					return "", fmt.Errorf("write comment file: %w", err)
-				}
-				if err := file.Close(); err != nil {
-					_ = os.Remove(path)
-					return "", fmt.Errorf("close comment file: %w", err)
-				}
-				return path, nil
-			}()
-			if err != nil {
-				return err
-			}
-			defer os.Remove(path)
-			editorCommand := exec.CommandContext(ctx, "sh", "-c", command+" "+(func(value string) string {
-				return "'" + strings.ReplaceAll(value, "'", "'\"'\"'") + "'"
-			})(path))
-			if err := func() error {
-				editorCommand.Stdin, editorCommand.Stdout, editorCommand.Stderr = adapter.stdin, adapter.stdout, adapter.stderr
-				return editorCommand.Run()
-			}(); err != nil {
-				return fmt.Errorf("editor: %w", err)
-			}
-			adapter.body, err = func() (string, error) {
-				body, err := os.ReadFile(path)
-				if err != nil {
-					return "", fmt.Errorf("read comment file: %w", err)
-				}
-				return func() string {
-					if len(anchor.QuotedLines) == 0 {
-						return string(body)
-					}
-					lines := func() []string {
-						lines := make([]string, 0, len(anchor.QuotedLines))
-						for _, line := range anchor.QuotedLines {
-							if line != "" && line[0] != '-' {
-								lines = append(lines, line[1:])
-							}
-						}
-						return lines
-					}()
-					fence := (func(lines []string) string {
-						longest := 0
-						for _, line := range lines {
-							run := 0
-							for _, char := range line {
-								if char == '`' {
-									run++
-									longest = max(longest, run)
-								} else {
-									run = 0
-								}
-							}
-						}
-						return strings.Repeat("`", max(3, longest+1))
-					})(lines)
-					var suggestion strings.Builder
-					_, _ = suggestion.WriteString(fence)
-					_, _ = suggestion.WriteString("suggestion\n")
-					for _, line := range lines {
-						_, _ = suggestion.WriteString(line)
-						_ = suggestion.WriteByte('\n')
-					}
-					_, _ = suggestion.WriteString(fence)
-					start := strings.Index(string(body), suggestion.String())
-					if start < 0 {
-						return string(body)
-					}
-					end := start + suggestion.Len()
-					before := strings.TrimRight(string(body)[:start], "\n")
-					after := string(body)[end:]
-					if strings.TrimSpace(after) == "" {
-						return before
-					}
-					return before + "\n" + strings.TrimLeft(after, "\n")
-				}(), nil
-			}()
-			return err
-		}
-		return adapter, func(err error) tea.Msg {
-			return onComplete(adapter.body, err)
-		}
-	})(
+	adapter, complete := commentWorkflow(
 		ctx,
 		"printf started; exec sleep 30 #",
 		"body",

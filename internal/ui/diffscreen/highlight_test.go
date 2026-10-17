@@ -1,12 +1,9 @@
 package diffscreen
 
 import (
-	"bytes"
-	"io"
 	"strings"
 	"testing"
 
-	"github.com/alecthomas/chroma/v2/quick"
 	"github.com/eskelinenantti/review-my-slop/internal/patch"
 )
 
@@ -19,130 +16,27 @@ func TestRenamedFileHighlightsEachSideUsingItsOwnPath(t *testing.T) {
 		NewSource: source,
 	}
 	view := &diffView{dark: true}
-	inlineLocalPair1 := func() pair {
-		var file *patch.File = &file
-		theme := lightTheme
-		if view.dark {
-			theme = darkTheme
-		}
-		return pair{Old: func() []string {
-			var filename, source, theme string = file.OldPath, file.OldSource, theme
-			if source == "" {
-				return nil
-			}
-			var buf bytes.Buffer
-			highlightErr := quick.Highlight(&buf, source, filename, "terminal16m", theme)
-			if highlightErr != nil {
-				return strings.Split(strings.TrimSuffix(source, "\n"), "\n")
-			}
-			rendered, err := io.ReadAll(&buf)
-			if err != nil {
-				return strings.Split(strings.TrimSuffix(source, "\n"), "\n")
-			}
-			return strings.Split(strings.TrimSuffix(string(rendered), "\n"), "\n")
-		}(), New: func() []string {
-			var filename, source, theme string = file.NewPath, file.NewSource, theme
-			if source == "" {
-				return nil
-			}
-			var buf bytes.Buffer
-			highlightErr := quick.Highlight(&buf, source, filename, "terminal16m", theme)
-			if highlightErr != nil {
-				return strings.Split(strings.TrimSuffix(source, "\n"), "\n")
-			}
-			rendered, err := io.ReadAll(&buf)
-			if err != nil {
-				return strings.Split(strings.TrimSuffix(source, "\n"), "\n")
-			}
-			return strings.Split(strings.TrimSuffix(string(rendered), "\n"), "\n")
-		}()}
-	}()
-	old, updated := strings.Join(inlineLocalPair1.Old, "\n"), strings.Join(inlineLocalPair1.New, "\n")
-	if old == updated || (func(value string) string {
-		var result strings.Builder
-		for len(value) > 0 {
-			start := strings.Index(value, "\x1b[")
-			if start < 0 {
-				_, _ = result.WriteString(value)
-				break
-			}
-			_, _ = result.WriteString(value[:start])
-			end := strings.IndexByte(value[start:], 'm')
-			if end < 0 {
-				_, _ = result.WriteString(value[start:])
-				break
-			}
-			value = value[start+end+1:]
-		}
-		return result.String()
-	})(old) != strings.TrimSuffix(
+	pair := view.highlight(&file)
+	old, updated := strings.Join(pair.Old, "\n"), strings.Join(pair.New, "\n")
+	if old == updated || stripANSI(old) != strings.TrimSuffix(
 		source,
 		"\n",
-	) || (func(value string) string {
-		var result strings.Builder
-		for len(value) > 0 {
-			start := strings.Index(value, "\x1b[")
-			if start < 0 {
-				_, _ = result.WriteString(value)
-				break
-			}
-			_, _ = result.WriteString(value[:start])
-			end := strings.IndexByte(value[start:], 'm')
-			if end < 0 {
-				_, _ = result.WriteString(value[start:])
-				break
-			}
-			value = value[start+end+1:]
-		}
-		return result.String()
-	})(updated) != strings.TrimSuffix(source, "\n") {
+	) || stripANSI(updated) != strings.TrimSuffix(source, "\n") {
 		t.Fatalf("highlighted old=%q new=%q", old, updated)
 	}
 }
 
 func TestLicenseHighlightFixture(t *testing.T) {
-	lines := func() []string {
-		var source string = `MIT License
+	lines := render("LICENSE", `MIT License
 
 Copyright (c) 2026 Antti Eskelinen
 
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND.
-`
-		if source == "" {
-			return nil
-		}
-		var buf bytes.Buffer
-		highlightErr := quick.Highlight(&buf, source, "LICENSE", "terminal16m", darkTheme)
-		if highlightErr != nil {
-			return strings.Split(strings.TrimSuffix(source, "\n"), "\n")
-		}
-		rendered, err := io.ReadAll(&buf)
-		if err != nil {
-			return strings.Split(strings.TrimSuffix(source, "\n"), "\n")
-		}
-		return strings.Split(strings.TrimSuffix(string(rendered), "\n"), "\n")
-	}()
+`, darkTheme)
 	if len(lines) != 5 {
 		t.Fatalf("highlighted lines = %d, want 5", len(lines))
 	}
-	plain := (func(value string) string {
-		var result strings.Builder
-		for len(value) > 0 {
-			start := strings.Index(value, "\x1b[")
-			if start < 0 {
-				_, _ = result.WriteString(value)
-				break
-			}
-			_, _ = result.WriteString(value[:start])
-			end := strings.IndexByte(value[start:], 'm')
-			if end < 0 {
-				_, _ = result.WriteString(value[start:])
-				break
-			}
-			value = value[start+end+1:]
-		}
-		return result.String()
-	})(strings.Join(lines, "\n"))
+	plain := stripANSI(strings.Join(lines, "\n"))
 	if !strings.Contains(plain, `Copyright (c) 2026`) ||
 		!strings.Contains(plain, `"AS IS"`) {
 		t.Fatalf("highlighted text was corrupted: %q", plain)
@@ -160,36 +54,8 @@ func answer(value int) string {
 	return ""
 }
 `
-	dark := strings.Join(func() []string {
-		if source == "" {
-			return nil
-		}
-		var buf bytes.Buffer
-		highlightErr := quick.Highlight(&buf, source, "example.go", "terminal16m", darkTheme)
-		if highlightErr != nil {
-			return strings.Split(strings.TrimSuffix(source, "\n"), "\n")
-		}
-		rendered, err := io.ReadAll(&buf)
-		if err != nil {
-			return strings.Split(strings.TrimSuffix(source, "\n"), "\n")
-		}
-		return strings.Split(strings.TrimSuffix(string(rendered), "\n"), "\n")
-	}(), "\n")
-	light := strings.Join(func() []string {
-		if source == "" {
-			return nil
-		}
-		var buf bytes.Buffer
-		highlightErr := quick.Highlight(&buf, source, "example.go", "terminal16m", lightTheme)
-		if highlightErr != nil {
-			return strings.Split(strings.TrimSuffix(source, "\n"), "\n")
-		}
-		rendered, err := io.ReadAll(&buf)
-		if err != nil {
-			return strings.Split(strings.TrimSuffix(source, "\n"), "\n")
-		}
-		return strings.Split(strings.TrimSuffix(string(rendered), "\n"), "\n")
-	}(), "\n")
+	dark := strings.Join(render("example.go", source, darkTheme), "\n")
+	light := strings.Join(render("example.go", source, lightTheme), "\n")
 	if dark == light {
 		t.Fatal(
 			"light and dark terminal backgrounds use identical highlighting",
@@ -214,4 +80,23 @@ func answer(value int) string {
 			)
 		}
 	}
+}
+
+func stripANSI(value string) string {
+	var result strings.Builder
+	for len(value) > 0 {
+		start := strings.Index(value, "\x1b[")
+		if start < 0 {
+			_, _ = result.WriteString(value)
+			break
+		}
+		_, _ = result.WriteString(value[:start])
+		end := strings.IndexByte(value[start:], 'm')
+		if end < 0 {
+			_, _ = result.WriteString(value[start:])
+			break
+		}
+		value = value[start+end+1:]
+	}
+	return result.String()
 }

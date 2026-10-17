@@ -1,15 +1,13 @@
 package diffscreen
 
 import (
-	"strings"
 	"testing"
 
-	"github.com/eskelinenantti/review-my-slop/internal/patch"
 	"github.com/eskelinenantti/review-my-slop/internal/testutil"
 )
 
 func TestClickAndDragSelectCode(t *testing.T) {
-	v := New(patch.Patch{Root: "/repo", Files: []patch.File{{DisplayPath: "first.go", OldPath: "first.go", NewPath: "first.go", Hunks: []patch.Hunk{{Header: "@@ -1,3 +1,3 @@", Lines: []patch.Line{{Kind: patch.Context, Text: "before", OldNumber: 1, NewNumber: 1}, {Kind: patch.Deletion, Text: "removed one", OldNumber: 2}, {Kind: patch.Deletion, Text: "removed two", OldNumber: 3}, {Kind: patch.Addition, Text: "added one", NewNumber: 2}, {Kind: patch.Context, Text: "after", OldNumber: 4, NewNumber: 3}}}}}, {DisplayPath: "second.go", OldPath: "second.go", NewPath: "second.go", Hunks: []patch.Hunk{{Header: "@@ -1 +1 @@", Lines: []patch.Line{{Kind: patch.Addition, Text: "other", NewNumber: 1}}}}}}}, Options{})
+	v := New(testPatch(), Options{})
 	v.Resize(80, 20)
 	testutil.RequireEqual(t, v.BeginDrag(20, 4), true, "%s",
 		"code click was ignored",
@@ -61,25 +59,7 @@ func TestClickAndDragSelectCode(t *testing.T) {
 
 func TestMouseHitTestingMatchesScrolledProjection(t *testing.T) {
 	for _, split := range []bool{false, true} {
-		v := New((func() patch.Patch {
-			lines := make([]patch.Line, 20)
-			for index := range lines {
-				lines[index] = patch.Line{
-					Kind:      patch.Context,
-					Text:      strings.Repeat("long", 20),
-					OldNumber: patch.LineNumber(index + 1),
-					NewNumber: patch.LineNumber(index + 1),
-				}
-			}
-			return patch.Patch{
-				Files: []patch.File{
-					{
-						DisplayPath: "long.go",
-						Hunks:       []patch.Hunk{{Header: "@@", Lines: lines}},
-					},
-				},
-			}
-		})(), Options{SideBySide: split})
+		v := New(longPatch(), Options{SideBySide: split})
 		v.Resize(121, 10)
 		v.ScrollVertical(5)
 		v.ScrollHorizontal(20)
@@ -117,7 +97,7 @@ func TestMouseHitTestingMatchesScrolledProjection(t *testing.T) {
 }
 
 func TestSplitMouseRejectsDividerEmptyPaneAndCrossPaneDrag(t *testing.T) {
-	v := New(patch.Patch{Root: "/repo", Files: []patch.File{{DisplayPath: "first.go", OldPath: "first.go", NewPath: "first.go", Hunks: []patch.Hunk{{Header: "@@ -1,3 +1,3 @@", Lines: []patch.Line{{Kind: patch.Context, Text: "before", OldNumber: 1, NewNumber: 1}, {Kind: patch.Deletion, Text: "removed one", OldNumber: 2}, {Kind: patch.Deletion, Text: "removed two", OldNumber: 3}, {Kind: patch.Addition, Text: "added one", NewNumber: 2}, {Kind: patch.Context, Text: "after", OldNumber: 4, NewNumber: 3}}}}}, {DisplayPath: "second.go", OldPath: "second.go", NewPath: "second.go", Hunks: []patch.Hunk{{Header: "@@ -1 +1 @@", Lines: []patch.Line{{Kind: patch.Addition, Text: "other", NewNumber: 1}}}}}}}, Options{SideBySide: true})
+	v := New(testPatch(), Options{SideBySide: true})
 	v.Resize(120, 20)
 	for _, x := range []int{58, 59, 60} {
 		testutil.RequireEqual(t, !v.BeginDrag(x, 3), true, "%s",
@@ -149,7 +129,7 @@ func TestSplitMouseRejectsDividerEmptyPaneAndCrossPaneDrag(t *testing.T) {
 }
 
 func TestDragRejectsOtherHunksAndCancelsOnStateChanges(t *testing.T) {
-	v := New(patch.Patch{Root: "/repo", Files: []patch.File{{DisplayPath: "first.go", OldPath: "first.go", NewPath: "first.go", Hunks: []patch.Hunk{{Header: "@@ -1,3 +1,3 @@", Lines: []patch.Line{{Kind: patch.Context, Text: "before", OldNumber: 1, NewNumber: 1}, {Kind: patch.Deletion, Text: "removed one", OldNumber: 2}, {Kind: patch.Deletion, Text: "removed two", OldNumber: 3}, {Kind: patch.Addition, Text: "added one", NewNumber: 2}, {Kind: patch.Context, Text: "after", OldNumber: 4, NewNumber: 3}}}}}, {DisplayPath: "second.go", OldPath: "second.go", NewPath: "second.go", Hunks: []patch.Hunk{{Header: "@@ -1 +1 @@", Lines: []patch.Line{{Kind: patch.Addition, Text: "other", NewNumber: 1}}}}}}}, Options{})
+	v := New(testPatch(), Options{})
 	v.Resize(80, 20)
 	v.BeginDrag(10, 3)
 	v.DragTo(10, 4)
@@ -163,9 +143,7 @@ func TestDragRejectsOtherHunksAndCancelsOnStateChanges(t *testing.T) {
 	)
 
 	for _, change := range []func(){
-		func() {
-			v.Update(patch.Patch{Root: "/repo", Files: []patch.File{{DisplayPath: "first.go", OldPath: "first.go", NewPath: "first.go", Hunks: []patch.Hunk{{Header: "@@ -1,3 +1,3 @@", Lines: []patch.Line{{Kind: patch.Context, Text: "before", OldNumber: 1, NewNumber: 1}, {Kind: patch.Deletion, Text: "removed one", OldNumber: 2}, {Kind: patch.Deletion, Text: "removed two", OldNumber: 3}, {Kind: patch.Addition, Text: "added one", NewNumber: 2}, {Kind: patch.Context, Text: "after", OldNumber: 4, NewNumber: 3}}}}}, {DisplayPath: "second.go", OldPath: "second.go", NewPath: "second.go", Hunks: []patch.Hunk{{Header: "@@ -1 +1 @@", Lines: []patch.Line{{Kind: patch.Addition, Text: "other", NewNumber: 1}}}}}}})
-		},
+		func() { v.Update(testPatch()) },
 		func() { v.Resize(80, 20) },
 		func() { v.Move(NextLine) },
 		func() { v.ClearSelection() },

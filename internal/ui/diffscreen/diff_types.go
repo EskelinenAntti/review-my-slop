@@ -7,6 +7,13 @@ const (
 	right
 )
 
+func (pane diffPane) other() diffPane {
+	if pane == left {
+		return right
+	}
+	return left
+}
+
 type diffCursor struct {
 	row  int
 	pane diffPane
