@@ -71,18 +71,6 @@ func expectedTestHelpBindings() []ui.Binding {
 	}}
 }
 
-func buildTestKeymapMatcher(sequences ...keymapSequence) keymapMatcher {
-	m := keymapMatcher{sequences: make(
-		map[string]keymapSequence,
-		len(sequences),
-	)}
-	for _, sequence := range sequences {
-		sequence.Keys = append([]string(nil), sequence.Keys...)
-		m.sequences[sequence.Prefix] = sequence
-	}
-	return m
-}
-
 func newTestCommentScreen(items []feedback.Comment) *ui.Comments {
 	return ui.NewComments(items)
 }
@@ -193,7 +181,7 @@ func newTestAppModelWithLayout(
 			Dark:       true,
 		},
 		kind: p.Kind,
-		keys: buildTestKeymapMatcher(
+		keys: newKeymapMatcher(
 			keymapSequence{Prefix: "g", Keys: []string{
 				"g",
 			}, RetryUnmatched: true},

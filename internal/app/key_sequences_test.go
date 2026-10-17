@@ -37,7 +37,7 @@ func TestKeymapFeed(t *testing.T) {
 
 func assertTestKeymapFeed(t *testing.T, keys, want []string) {
 	t.Helper()
-	matcher := buildTestKeymapMatcher(
+	matcher := newKeymapMatcher(
 		keymapSequence{Prefix: "g", Keys: []string{"g"}, RetryUnmatched: true},
 		keymapSequence{Prefix: "z", Keys: []string{"z", "t", "b"}},
 		keymapSequence{Prefix: "ctrl+w", Keys: []string{"h", "l", "ctrl+w"}},
@@ -56,7 +56,7 @@ func assertTestKeymapFeed(t *testing.T, keys, want []string) {
 }
 
 func TestKeymapIndependentCopies(t *testing.T) {
-	m := buildTestKeymapMatcher(keymapSequence{
+	m := newKeymapMatcher(keymapSequence{
 		Prefix: "g", Keys: []string{"g"}, RetryUnmatched: true,
 	})
 	m.Feed("g")
