@@ -16,16 +16,16 @@ func (m reviewModel) View() tea.View {
 	if m.quitting {
 		return tea.NewView("")
 	}
-	result := tea.NewView(func() string {
-		switch m.mode {
-		case modeHelp:
-			return renderAppHelp(m.width, m.height)
-		case modeComments:
-			return m.commentView.Render(m.err)
-		default:
-			return m.diffView.Render(m.err)
-		}
-	}())
+	var content string
+	switch m.mode {
+	case modeHelp:
+		content = renderAppHelp(m.width, m.height)
+	case modeComments:
+		content = m.commentView.Render(m.err)
+	default:
+		content = m.diffView.Render(m.err)
+	}
+	result := tea.NewView(content)
 	result.AltScreen = true
 	result.ReportFocus = true
 	result.MouseMode = tea.MouseModeCellMotion
@@ -54,9 +54,7 @@ var navigationAlignments = map[string]ui.Alignment{
 	"z b": ui.Bottom,
 }
 
-type saveCommentFunc func(feedback.Comment, patches.Patch,
-
-) (feedback.Comment, error)
+type saveCommentFunc func(feedback.Comment, patches.Patch) (feedback.Comment, error)
 
 type deleteCommentFunc func(feedback.Comment, patches.Patch) error
 
@@ -331,7 +329,6 @@ func createReviewAppModel(
 	pending []feedback.Comment,
 	preferences settingsPreferences,
 	store commentStore,
-
 ) reviewModel {
 	layout := makeInitialLayout(preferences, dimensions)
 	size := layout.size
