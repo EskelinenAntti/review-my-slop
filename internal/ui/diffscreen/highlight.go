@@ -47,20 +47,13 @@ func highlightSource(filename, source, theme string) []string {
 	return strings.Split(strings.TrimSuffix(buf.String(), "\n"), "\n")
 }
 
-func sourceText(highlighted highlightedFile, line patch.Line) string {
+func (file highlightedFile) lineText(line patch.Line) string {
+	lines, number := file.New, line.NewNumber
 	if line.Kind == patch.Deletion {
-		return highlightedLine(highlighted.Old, line.OldNumber, line.Text)
+		lines, number = file.Old, line.OldNumber
 	}
-	return highlightedLine(highlighted.New, line.NewNumber, line.Text)
-}
-
-func highlightedLine(
-	lines []string,
-	number patch.LineNumber,
-	fallback string,
-) string {
 	if number <= 0 || int(number) > len(lines) {
-		return fallback
+		return line.Text
 	}
 	return lines[int(number)-1]
 }

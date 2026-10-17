@@ -109,14 +109,14 @@ func (v *diffView) highlightRow(
 	highlighted highlightedFile,
 ) {
 	if !v.split {
-		row.text = sourceText(highlighted, lines[row.rightLine])
+		row.text = highlighted.lineText(lines[row.rightLine])
 		return
 	}
 	if row.leftLine >= 0 {
-		row.left = sourceText(highlighted, lines[row.leftLine])
+		row.left = highlighted.lineText(lines[row.leftLine])
 	}
 	if row.rightLine >= 0 {
-		row.right = sourceText(highlighted, lines[row.rightLine])
+		row.right = highlighted.lineText(lines[row.rightLine])
 	}
 }
 
