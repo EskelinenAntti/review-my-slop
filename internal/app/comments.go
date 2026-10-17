@@ -75,9 +75,7 @@ func (m *model) finishCommentEdit() {
 	defer m.clearCommentEdit()
 	body := strings.TrimSpace(m.edit.body)
 	if body == "" {
-		if m.edit.index >= 0 {
-			m.deleteComment(m.edit.index)
-		}
+		m.deleteComment(m.edit.index)
 		m.diffView.ClearSelection()
 		return
 	}
@@ -85,13 +83,11 @@ func (m *model) finishCommentEdit() {
 		m.err = errors.New("comment storage is unavailable")
 		return
 	}
-	var comment comments.Comment
+	comment := comments.Comment{Anchor: m.edit.anchor}
 	if m.edit.index >= 0 {
 		comment = m.comments.items[m.edit.index]
-		comment.Body = body
-	} else {
-		comment = comments.Comment{Anchor: m.edit.anchor, Body: body}
 	}
+	comment.Body = body
 	saved, err := m.save(comment, m.currentPatch)
 	if err != nil {
 		m.err = err
@@ -101,11 +97,12 @@ func (m *model) finishCommentEdit() {
 		m.comments.items[m.edit.index] = saved
 	} else {
 		m.comments.items = append(m.comments.items, saved)
-		m.commentView.Update(m.comments.items)
-		m.commentView.Move(len(m.comments.items))
 	}
 	m.comments.revision++
 	m.commentView.Update(m.comments.items)
+	if m.edit.index < 0 {
+		m.commentView.Move(len(m.comments.items))
+	}
 	m.err = nil
 	m.diffView.ClearSelection()
 }
