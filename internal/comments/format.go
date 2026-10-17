@@ -46,9 +46,9 @@ func writePromptComment(w io.Writer, number int, comment Comment) error {
 	anchor := comment.Anchor
 	_, headingErr := fmt.Fprintf(
 		w,
-		"\n### %d. `%s` (%s)\n\n",
+		"\n### %d. %s (%s)\n\n",
 		number,
-		anchor.FilePath,
+		markdown.CodeSpan(anchor.FilePath),
 		describeRange(anchor),
 	)
 	if headingErr != nil {
