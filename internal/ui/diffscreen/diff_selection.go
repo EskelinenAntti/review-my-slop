@@ -88,15 +88,23 @@ func (v *diffView) findCursor(target cursorIdentity) (diffCursor, bool) {
 	best := cursorMatch{}
 	for y := range v.rows {
 		candidate := v.matchRow(y, target)
-		if candidate.rank == 3 {
+		if candidate.rank == sameLineNumbersMatch {
 			return candidate.cursor, true
 		}
 		if candidate.betterThan(best) {
 			best = candidate
 		}
 	}
-	return best.cursor, best.rank > 0
+	return best.cursor, best.rank != noMatch
 }
+
+// Larger ranks are preferred; distance breaks ties within a rank.
+const (
+	noMatch = iota
+	sameFileMatch
+	sameTextMatch
+	sameLineNumbersMatch
+)
 
 type cursorMatch struct {
 	cursor         diffCursor
@@ -135,7 +143,7 @@ func (v *diffView) matchRow(y int, target cursorIdentity) cursorMatch {
 			rank:     lineMatchRank(line, target.line),
 			distance: lineDistance(line, target.line, y-target.cursor.row),
 		}
-		if match.rank == 3 {
+		if match.rank == sameLineNumbersMatch {
 			return match
 		}
 		best = match.preferredTo(best)
@@ -149,16 +157,16 @@ func (v *diffView) rowInFile(current entry, file patch.File) bool {
 
 func lineMatchRank(line, target patch.Line) int {
 	if line.Kind != target.Kind {
-		return 1
+		return sameFileMatch
 	}
 	if line.OldNumber == target.OldNumber &&
 		line.NewNumber == target.NewNumber {
-		return 3
+		return sameLineNumbersMatch
 	}
 	if line.Text == target.Text {
-		return 2
+		return sameTextMatch
 	}
-	return 1
+	return sameFileMatch
 }
 
 func lineDistance(line, target patch.Line, rowDistance int) int {
