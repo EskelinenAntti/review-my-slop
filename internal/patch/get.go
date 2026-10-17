@@ -424,45 +424,29 @@ func parseHunkBody(oldLine, newLine int32, body []byte) ([]Line, error) {
 		if len(raw) == 0 {
 			return nil, errors.New("malformed empty diff line")
 		}
-		text := visibleText(string(raw[1:]))
+		line := Line{Text: visibleText(string(raw[1:]))}
 		switch raw[0] {
 		case ' ':
-			lines = append(
-				lines,
-				Line{
-					Kind:      Context,
-					Text:      text,
-					OldNumber: LineNumber(oldLine),
-					NewNumber: LineNumber(newLine),
-				},
-			)
+			line.Kind = Context
+			line.OldNumber = LineNumber(oldLine)
+			line.NewNumber = LineNumber(newLine)
 			oldLine++
 			newLine++
 		case '+':
-			lines = append(
-				lines,
-				Line{
-					Kind:      Addition,
-					Text:      text,
-					NewNumber: LineNumber(newLine),
-				},
-			)
+			line.Kind = Addition
+			line.NewNumber = LineNumber(newLine)
 			newLine++
 		case '-':
-			lines = append(
-				lines,
-				Line{
-					Kind:      Deletion,
-					Text:      text,
-					OldNumber: LineNumber(oldLine),
-				},
-			)
+			line.Kind = Deletion
+			line.OldNumber = LineNumber(oldLine)
 			oldLine++
 		case '\\':
 			// "\ No newline at end of file" belongs to the preceding line.
+			continue
 		default:
 			return nil, fmt.Errorf("unexpected diff prefix %q", raw[0])
 		}
+		lines = append(lines, line)
 	}
 	return lines, nil
 }
