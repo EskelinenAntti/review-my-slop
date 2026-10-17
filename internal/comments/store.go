@@ -17,7 +17,8 @@ const (
 	maxPendingBytes = 16 << 20
 )
 
-var messagesBucket = []byte("messages")
+// Retain the persisted name so existing databases remain readable.
+var commentsBucket = []byte("messages")
 
 // Store persists pending review comments in a database at Path.
 type Store struct {
@@ -272,7 +273,7 @@ func (s Store) transact(fn func(*bolt.Bucket) error) error {
 	}
 	defer db.Close()
 	return db.Update(func(tx *bolt.Tx) error {
-		bucket, err := tx.CreateBucketIfNotExists(messagesBucket)
+		bucket, err := tx.CreateBucketIfNotExists(commentsBucket)
 		if err != nil {
 			return err
 		}
@@ -290,7 +291,7 @@ func (s Store) view(fn func(*bolt.Bucket) error) error {
 	}
 	defer db.Close()
 	return db.View(func(tx *bolt.Tx) error {
-		bucket := tx.Bucket(messagesBucket)
+		bucket := tx.Bucket(commentsBucket)
 		if bucket == nil {
 			return nil
 		}

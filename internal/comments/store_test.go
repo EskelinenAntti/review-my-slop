@@ -13,7 +13,7 @@ import (
 	"github.com/eskelinenantti/review-my-slop/internal/testutil"
 )
 
-func TestStoreQueuesByRepositoryAndDeletesExactPeek(t *testing.T) {
+func TestAcknowledgePreservesNewerAndOtherRepositoryComments(t *testing.T) {
 	store := Store{Path: filepath.Join(t.TempDir(), "state", "comments.db")}
 	first := testComment("/repo/a", "first")
 	second := testComment("/repo/b", "other")
@@ -97,7 +97,7 @@ func TestWritePrompt(t *testing.T) {
 	)
 }
 
-func TestWritePromptNumbersMessages(t *testing.T) {
+func TestWritePromptNumbersComments(t *testing.T) {
 	var out bytes.Buffer
 	comments := []Comment{
 		testComment("/repo", "First."),
@@ -153,7 +153,7 @@ func TestListAndUpdateComments(t *testing.T) {
 	}
 }
 
-func TestDeleteCommentRemovesMessage(t *testing.T) {
+func TestDeleteCommentRemovesStoredComment(t *testing.T) {
 	store := Store{Path: filepath.Join(t.TempDir(), "comments.db")}
 	if _, err := store.Add(testComment("/repo", "first")); err != nil {
 		t.Fatal(err)
