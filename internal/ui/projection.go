@@ -430,7 +430,10 @@ func NewDiff(
 	options Options,
 ) *Diff {
 	v := &Diff{options: options, width: 80, height: 30}
-	v.view = buildDiffscreenRows(p, v)
+	v.view = buildDiffView(p, Options{
+		SideBySide: v.options.SideBySide && v.width >= 100,
+		Dark:       v.options.Dark,
+	})
 	v.viewport = initialViewport(
 		v.view,
 		v.width,
@@ -438,65 +441,4 @@ func NewDiff(
 	)
 	v.cursor, _ = firstCursor(v.view)
 	return v
-}
-
-func buildDiffscreenRows(p patches.Patch, v *Diff,
-
-) *diffView {
-	options := Options{
-		SideBySide: v.options.SideBySide && v.width >= 100,
-		Dark:       v.options.Dark,
-	}
-	view := &diffView{
-		patch: p,
-		split: options.SideBySide,
-		dark:  options.Dark,
-	}
-	for fileIndex, file := range p.Files {
-		appendDiffscreenFileRows(view, fileIndex, file)
-	}
-	return view
-}
-
-func appendDiffscreenFileRows(
-	view *diffView,
-	fileIndex int,
-	file patches.File,
-) {
-	view.rows = append(view.rows, entry{
-		kind: fileRow, file: fileIndex, hunk: -1,
-		leftLine: -1, rightLine: -1, text: file.DisplayPath,
-	})
-	for _, metadata := range file.Metadata {
-		view.rows = append(view.rows, entry{
-			kind: metadataRow, file: fileIndex, hunk: -1,
-			leftLine: -1, rightLine: -1, text: metadata,
-		})
-	}
-	highlighted := highlightPair(file, Options{Dark: view.dark})
-	for hunkIndex, hunk := range file.Hunks {
-		appendDiffscreenHunkRows(view, fileIndex, hunkIndex, hunk, highlighted)
-	}
-}
-
-func appendDiffscreenHunkRows(
-	view *diffView,
-	fileIndex, hunkIndex int,
-	hunk patches.Hunk,
-	highlighted pair,
-) {
-	header := hunk.Header
-	if !strings.HasPrefix(header, "@@") {
-		header = "@@ " + header
-	}
-	view.rows = append(view.rows, entry{
-		kind: hunkRow, file: fileIndex, hunk: hunkIndex,
-		leftLine: -1, rightLine: -1, text: header,
-	})
-	for _, indices := range hunkLinePairs(hunk.Lines, Options{SideBySide: view.split}) {
-		view.rows = append(view.rows, projectedLineRow(
-			fileIndex, hunkIndex, hunk, indices,
-			Options{SideBySide: view.split}, highlighted,
-		))
-	}
 }
