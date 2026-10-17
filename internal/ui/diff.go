@@ -337,7 +337,7 @@ type cursorMatch struct {
 
 type cursorMatchQuality uint8
 
-// Cursor restoration prefers line numbers, then text, then any line in the file.
+// Cursor restoration prefers line numbers, then text, then any file line.
 const (
 	noCursorMatch cursorMatchQuality = iota
 	fileCursorMatch

@@ -34,7 +34,8 @@ func Run(ctx context.Context, args []string, output io.Writer) error {
 	}
 }
 
-func runWritePendingCommentsCommand(ctx context.Context, output io.Writer) error {
+func runWritePendingCommentsCommand(ctx context.Context,
+	output io.Writer) error {
 	commentStore, err := userCommentsStore()
 	if err != nil {
 		return err

@@ -24,7 +24,9 @@ func TestAppCommentAnchorUsesSemanticSelection(t *testing.T) {
 		!slices.Equal(anchor.QuotedLines, wantLines) {
 		t.Fatalf("anchor=%#v", anchor)
 	}
-	anchor = selectedCommentAnchor(patches.File{OldPath: "deleted.go"}, lines[1:2])
+	anchor = selectedCommentAnchor(
+		patches.File{OldPath: "deleted.go"}, lines[1:2],
+	)
 	if anchor.FilePath != "deleted.go" || anchor.NewStart != 0 {
 		t.Fatalf("deleted anchor=%#v", anchor)
 	}

@@ -87,16 +87,15 @@ func pairedChangeBlock(lines []patches.Line, start int) ([]linePair, int) {
 		addedEnd++
 	}
 	count := max(deletedEnd-start, addedEnd-deletedEnd)
-	pairs := make([]linePair, 0, count)
-	for offset := 0; offset < count; offset++ {
-		pair := linePair{left: -1, right: -1}
-		if start+offset < deletedEnd {
-			pair.left = start + offset
-		}
-		if deletedEnd+offset < addedEnd {
-			pair.right = deletedEnd + offset
-		}
-		pairs = append(pairs, pair)
+	pairs := make([]linePair, count)
+	for offset := range pairs {
+		pairs[offset] = linePair{left: -1, right: -1}
+	}
+	for offset := range lines[start:deletedEnd] {
+		pairs[offset].left = start + offset
+	}
+	for offset := range lines[deletedEnd:addedEnd] {
+		pairs[offset].right = deletedEnd + offset
 	}
 	return pairs, addedEnd
 }
