@@ -457,11 +457,9 @@ func NewDiff(
 	v.viewport = initialViewport(
 		v.view,
 		v.width,
-		(func(height int) int {
-			return max(1, height-3)
-		})(v.height),
+		max(1, v.height-3),
 	)
-	v.cursor, _ = findInitialDiffCursor(v)
+	v.cursor, _ = firstCursor(v.view)
 	return v
 }
 
