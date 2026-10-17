@@ -1,2 +1,2 @@
-// Package app coordinates review workflows and terminal UI screens.
+// Package app coordinates CLI commands, input, editors, and review workflows.
 package app

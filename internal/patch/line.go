@@ -1,6 +1,6 @@
 package patch
 
-// Line holds diff text and its old and new source line numbers.
+// Line contains display-safe text and its original and updated line numbers.
 type Line struct {
 	Kind      LineKind
 	Text      string
@@ -8,13 +8,13 @@ type Line struct {
 	NewNumber LineNumber
 }
 
-// LineNumber is one-based; zero means absent on that side.
+// LineNumber is a one-based source line number; zero means no line.
 type LineNumber int
 
-// LineKind distinguishes unchanged, added, and deleted diff lines.
+// LineKind distinguishes context, added, and deleted lines.
 type LineKind uint8
 
-// Context, Addition, and Deletion identify the kind of a diff line.
+// Line kinds describe each side of a change.
 const (
 	Context LineKind = iota
 	Addition

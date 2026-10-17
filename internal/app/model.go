@@ -2,33 +2,74 @@ package app
 
 import (
 	"context"
+	"errors"
 	"fmt"
-
-	"github.com/eskelinenantti/review-my-slop/internal/comments"
-	"github.com/eskelinenantti/review-my-slop/internal/settings"
-	"github.com/eskelinenantti/review-my-slop/internal/ui/commentscreen"
-	"github.com/eskelinenantti/review-my-slop/internal/ui/diffscreen"
-	"github.com/eskelinenantti/review-my-slop/internal/ui/keymap"
+	"strings"
 
 	tea "charm.land/bubbletea/v2"
-
-	"github.com/eskelinenantti/review-my-slop/internal/patch"
+	feedback "github.com/eskelinenantti/review-my-slop/internal/comments"
+	patches "github.com/eskelinenantti/review-my-slop/internal/patch"
+	"github.com/eskelinenantti/review-my-slop/internal/ui"
 )
 
+func (m reviewModel) View() tea.View {
+	if m.quitting {
+		return tea.NewView("")
+	}
+	var content string
+	switch m.mode {
+	case modeHelp:
+		content = renderAppHelp(m.width, m.height)
+	case modeComments:
+		content = m.commentView.Render(m.err)
+	default:
+		content = m.diffView.Render(m.err)
+	}
+	result := tea.NewView(content)
+	result.AltScreen = true
+	result.ReportFocus = true
+	result.MouseMode = tea.MouseModeCellMotion
+	return result
+}
+
+var navigationMotions = map[string]ui.Motion{
+	"j":             ui.NextLine,
+	"down":          ui.NextLine,
+	"k":             ui.PreviousLine,
+	"up":            ui.PreviousLine,
+	"ctrl+d":        ui.NextPage,
+	"ctrl+u":        ui.PreviousPage,
+	"g g":           ui.FirstLine,
+	"G":             ui.LastLine,
+	"] f":           ui.NextFile,
+	"[ f":           ui.PreviousFile,
+	"ctrl+w h":      ui.OldPane,
+	"ctrl+w l":      ui.NewPane,
+	"ctrl+w ctrl+w": ui.OtherPane,
+}
+
+var navigationAlignments = map[string]ui.Alignment{
+	"z z": ui.Center,
+	"z t": ui.Top,
+	"z b": ui.Bottom,
+}
+
 type saveCommentFunc func(
-	comments.Comment,
-	patch.Patch,
-) (comments.Comment, error)
-type deleteCommentFunc func(comments.Comment, patch.Patch) error
-type loadCommentsFunc func() ([]comments.Comment, error)
-type refreshDiffFunc func(patch.Kind) (patch.Patch, error)
+	feedback.Comment, patches.Patch,
+) (feedback.Comment, error)
+
+type deleteCommentFunc func(feedback.Comment, patches.Patch) error
+
+type loadCommentsFunc func() ([]feedback.Comment, error)
+
+type refreshDiffFunc func(patches.Kind) (patches.Patch, error)
+
 type saveSideBySideFunc func(bool) error
 
-// commentStore supplies the persistence operations used by the terminal client.
 type commentStore interface {
-	Add(comments.Comment) (comments.Comment, error)
-	List(string) ([]comments.Comment, error)
-	Update(comments.Comment) error
+	Add(feedback.Comment) (feedback.Comment, error)
+	List(string) ([]feedback.Comment, error)
+	Update(feedback.Comment) error
 	Delete(string, string) error
 }
 
@@ -44,8 +85,8 @@ type initialLayout struct {
 }
 
 type refreshDiffMsg struct {
-	patch patch.Patch
-	kind  patch.Kind
+	patch patches.Patch
+	kind  patches.Kind
 	err   error
 }
 
@@ -53,11 +94,13 @@ type commentEditorFinishedMsg struct {
 	body string
 	err  error
 }
+
 type commentsLoadedMsg struct {
-	comments []comments.Comment
+	comments []feedback.Comment
 	revision uint64
 	err      error
 }
+
 type sourceEditorFinishedMsg struct{ err error }
 
 type mode uint8
@@ -70,36 +113,35 @@ const (
 )
 
 const horizontalScrollStep = 4
+
 const verticalScrollStep = 3
 
 var defaultSize = size{Width: 80, Height: 30}
 
-// commentState pairs stored comments with the revision used to reject stale
-// loads.
 type commentState struct {
-	items    []comments.Comment
+	items    []feedback.Comment
 	revision uint64
 }
 
 type commentEdit struct {
 	body   string
 	index  int
-	anchor comments.Anchor
+	anchor feedback.Anchor
 }
 
-type model struct {
+type reviewModel struct {
 	ctx context.Context
 
-	diffView    *diffscreen.View
-	commentView *commentscreen.View
+	diffView    *ui.Diff
+	commentView *ui.Comments
 	width       int
 	height      int
 	mode        mode
-	keys        keymap.Matcher
+	keys        keymapMatcher
 
-	currentPatch patch.Patch
-	kind         patch.Kind
-	diffOptions  diffscreen.Options
+	currentPatch patches.Patch
+	kind         patches.Kind
+	diffOptions  ui.Options
 	comments     commentState
 	edit         commentEdit
 
@@ -112,102 +154,11 @@ type model struct {
 	quitting   bool
 }
 
-func newModel(
-	p patch.Patch,
-	items []comments.Comment,
-	save saveCommentFunc,
-	layout initialLayout,
-) model {
-	size := layout.size
-	if size.Width <= 0 || size.Height <= 0 {
-		size = defaultSize
-	}
-	m := model{
-		ctx:          context.Background(),
-		currentPatch: p,
-		comments:     commentState{items: items},
-		commentView:  commentscreen.New(items),
-		edit:         commentEdit{index: -1},
-		width:        size.Width,
-		height:       size.Height,
-		save:         save,
-		saveLayout:   layout.SaveSideBySide,
-		diffOptions: diffscreen.Options{
-			SideBySide: layout.SideBySide,
-			Dark:       true,
-		},
-		kind: p.Kind,
-		keys: keymap.New(
-			keymap.Sequence{
-				Prefix:         "g",
-				Keys:           []string{"g"},
-				RetryUnmatched: true,
-			},
-			keymap.Sequence{Prefix: "z", Keys: []string{"z", "t", "b"}},
-			keymap.Sequence{Prefix: "[", Keys: []string{"f"}},
-			keymap.Sequence{Prefix: "]", Keys: []string{"f"}},
-			keymap.Sequence{
-				Prefix: "ctrl+w",
-				Keys:   []string{"h", "l", "ctrl+w"},
-			},
-		),
-	}
-	m.diffView = diffscreen.New(p, m.diffOptions)
-	m.resizeScreens()
-	return m
-}
-
-func newWithStore(
-	store commentStore,
-	p patch.Patch,
-	items []comments.Comment,
-	size size,
-) (model, error) {
-	preferences, err := settings.Load()
-	if err != nil {
-		return model{}, err
-	}
-	m := newModel(p, items, func(
-		comment comments.Comment,
-		current patch.Patch,
-	) (comments.Comment, error) {
-		comment.Repository = current.Root
-		if comment.ID != "" {
-			if err := store.Update(comment); err != nil {
-				return comments.Comment{}, err
-			}
-			return comment, nil
-		}
-		return store.Add(comment)
-	}, initialLayout{
-		SideBySide: preferences.SideBySide,
-		SaveSideBySide: func(enabled bool) error {
-			return settings.Save(settings.Preferences{SideBySide: enabled})
-		},
-		size: size,
-	})
-	m.setDelete(func(comment comments.Comment, current patch.Patch) error {
-		return store.Delete(current.Root, comment.ID)
-	})
-	m.setLoadComments(func() ([]comments.Comment, error) {
-		return store.List(p.Root)
-	})
-	return m, nil
-}
-
-func (m *model) setRefresh(refresh refreshDiffFunc)    { m.refresh = refresh }
-func (m *model) setDelete(remove deleteCommentFunc)    { m.delete = remove }
-func (m *model) setLoadComments(load loadCommentsFunc) { m.load = load }
-func (m *model) configureSideBySide(enabled bool, save saveSideBySideFunc) {
-	m.saveLayout = save
-	m.setSideBySide(enabled)
-}
-
-func (model) Init() tea.Cmd {
+func (reviewModel) Init() tea.Cmd {
 	return func() tea.Msg { return tea.RequestBackgroundColor() }
 }
 
-func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+func (m reviewModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.BackgroundColorMsg:
 		if dark := msg.IsDark(); dark != m.diffOptions.Dark {
@@ -216,53 +167,128 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
-		m.resizeScreens()
+		m.diffView.Resize(m.width, m.height)
+		m.commentView.Resize(m.width, m.height)
 
 	case tea.KeyPressMsg:
-		m.diffView.EndDrag()
-		return m.updateKey(msg)
+		return m.updateKeyPress(msg)
 	case tea.MouseClickMsg, tea.MouseMotionMsg,
 		tea.MouseReleaseMsg, tea.MouseWheelMsg:
-		m.updateMouse(msg)
+		m.handleMouseInput(msg)
+		return m, nil
 	default:
-		return m.updateWorkflow(msg)
+		return m.updateOtherMessage(msg)
 	}
 	return m, nil
 }
 
-func (m model) updateWorkflow(msg tea.Msg) (tea.Model, tea.Cmd) {
+func renderAppHelp(width, height int) string {
+	return ui.RenderHelp(helpBindings(), width, height)
+}
+
+func helpBindings() []ui.Binding {
+	return []ui.Binding{
+		{Keys: "j/k, arrows", Description: "move"},
+		{Keys: "h/l, left/right", Description: "scroll horizontally"},
+		{Keys: "Mouse wheel", Description: "scroll content"},
+		{Keys: "Click/drag", Description: "focus line/select range"},
+		{Keys: "Ctrl-w h/l/w", Description: "switch side-by-side pane"},
+		{Keys: "0/$", Description: "start/end of lines"},
+		{Keys: "gg/G", Description: "first/last changed line"},
+		{Keys: "zz/zt/zb", Description: "center/top/bottom current line"},
+		{Keys: "Ctrl-d/Ctrl-u", Description: "half-page down/up"},
+		{Keys: "/", Description: "search diff text"},
+		{Keys: "n/N", Description: "next/previous search match"},
+		{Keys: "]f/[f", Description: "next/previous file"},
+		{Keys: "v", Description: "select a line range"},
+		{Keys: "c", Description: "comment on selection/current line"},
+		{Keys: "e", Description: "open current line in $EDITOR"},
+		{Keys: "C", Description: "view comments"},
+		{Keys: "R", Description: "refresh diff"},
+		{Keys: "Tab", Description: "toggle local/branch changes"},
+		{Keys: "t", Description: "toggle unified/side-by-side"},
+		{Keys: "q", Description: "quit"},
+	}
+}
+
+func (m reviewModel) updateOtherMessage(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case commentEditorFinishedMsg:
 		m.finishCommentEditor(msg)
 	case commentsLoadedMsg:
-		m.finishCommentsLoad(msg)
+		m.applyLoadedComments(msg)
 	case sourceEditorFinishedMsg:
 		if msg.err != nil {
 			m.err = fmt.Errorf("editor: %w", msg.err)
-			break
+			return m, nil
 		}
-		return m, m.loadRefresh()
+		return m, m.refreshDiffCommand()
 	case tea.FocusMsg:
-		return m, m.loadRefresh()
+		return m, m.refreshDiffCommand()
 	case refreshDiffMsg:
-		m.finishDiffRefresh(msg)
+		m.applyRefreshedPatch(msg)
 	default:
 		return m, nil
 	}
 	return m, nil
 }
 
-func (m *model) finishCommentEditor(msg commentEditorFinishedMsg) {
+func (m *reviewModel) finishCommentEditor(msg commentEditorFinishedMsg) {
 	if msg.err != nil {
 		m.err = msg.err
-		m.clearCommentEdit()
+		m.edit = commentEdit{index: -1}
 		return
 	}
 	m.edit.body = msg.body
-	m.finishCommentEdit()
+	body := strings.TrimSpace(m.edit.body)
+	if body == "" {
+		if m.edit.index >= 0 {
+			*m = m.deleteCommentAt(m.edit.index)
+		}
+		m.edit = commentEdit{index: -1}
+		m.diffView.ClearSelection()
+		return
+	}
+	m.saveEditedComment(body)
 }
 
-func (m *model) finishCommentsLoad(msg commentsLoadedMsg) {
+func (m *reviewModel) saveEditedComment(body string) {
+	if m.save == nil {
+		m.err = errors.New("comment storage is unavailable")
+		m.edit = commentEdit{index: -1}
+		return
+	}
+	comment := m.editedComment(body)
+	saved, err := m.save(comment, m.currentPatch)
+	if err != nil {
+		m.err = err
+		m.edit = commentEdit{index: -1}
+		return
+	}
+	if m.edit.index >= 0 {
+		m.comments.items[m.edit.index] = saved
+	} else {
+		m.comments.items = append(m.comments.items, saved)
+		m.commentView.Update(m.comments.items)
+		m.commentView.Move(len(m.comments.items))
+	}
+	m.comments.revision++
+	m.commentView.Update(m.comments.items)
+	m.edit = commentEdit{index: -1}
+	m.err = nil
+	m.diffView.ClearSelection()
+}
+
+func (m *reviewModel) editedComment(body string) feedback.Comment {
+	if m.edit.index >= 0 {
+		comment := m.comments.items[m.edit.index]
+		comment.Body = body
+		return comment
+	}
+	return feedback.Comment{Anchor: m.edit.anchor, Body: body}
+}
+
+func (m *reviewModel) applyLoadedComments(msg commentsLoadedMsg) {
 	if msg.revision != m.comments.revision {
 		return
 	}
@@ -275,7 +301,7 @@ func (m *model) finishCommentsLoad(msg commentsLoadedMsg) {
 	m.err = nil
 }
 
-func (m *model) finishDiffRefresh(msg refreshDiffMsg) {
+func (m *reviewModel) applyRefreshedPatch(msg refreshDiffMsg) {
 	if msg.kind != m.kind {
 		return
 	}
@@ -283,134 +309,66 @@ func (m *model) finishDiffRefresh(msg refreshDiffMsg) {
 		m.err = fmt.Errorf("refresh diff: %w", msg.err)
 		return
 	}
-	m.updatePatch(msg.patch)
+	m.currentPatch = msg.patch
+	m.diffView.Update(msg.patch)
 	m.err = nil
 }
 
-func (m model) loadRefresh() tea.Cmd {
+func (m reviewModel) refreshDiffCommand() tea.Cmd {
 	if m.refresh == nil {
 		return nil
 	}
 	kind := m.kind
 	return func() tea.Msg {
-		p, err := m.refresh(kind)
-		return refreshDiffMsg{patch: p, kind: kind, err: err}
+		patch, err := m.refresh(kind)
+		return refreshDiffMsg{patch: patch, kind: kind, err: err}
 	}
 }
 
-func (m model) loadComments() tea.Cmd {
-	if m.load == nil {
-		return nil
+func createReviewAppModel(
+	currentPatch patches.Patch,
+	dimensions size,
+	pending []feedback.Comment,
+	preferences settingsPreferences,
+	store commentStore,
+) reviewModel {
+	layout := makeInitialLayout(preferences, dimensions)
+	size := layout.size
+	if size.Width <= 0 || size.Height <= 0 {
+		size = defaultSize
 	}
-	revision := m.comments.revision
-	return func() tea.Msg {
-		comments, err := m.load()
-		return commentsLoadedMsg{
-			comments: comments,
-			revision: revision,
-			err:      err,
-		}
+	m := reviewModel{
+		ctx:          context.Background(),
+		currentPatch: currentPatch,
+		comments:     commentState{items: pending},
+		commentView:  ui.NewComments(pending),
+		edit:         commentEdit{index: -1},
+		width:        size.Width,
+		height:       size.Height,
+		save:         saveReviewComment(store),
+		saveLayout:   layout.SaveSideBySide,
+		diffOptions: ui.Options{
+			SideBySide: layout.SideBySide,
+			Dark:       true,
+		},
+		kind: currentPatch.Kind,
+		keys: newKeymapMatcher(
+			keymapSequence{
+				Prefix:         "g",
+				Keys:           []string{"g"},
+				RetryUnmatched: true,
+			},
+			keymapSequence{Prefix: "z", Keys: []string{"z", "t", "b"}},
+			keymapSequence{Prefix: "[", Keys: []string{"f"}},
+			keymapSequence{Prefix: "]", Keys: []string{"f"}},
+			keymapSequence{
+				Prefix: "ctrl+w",
+				Keys:   []string{"h", "l", "ctrl+w"},
+			},
+		),
 	}
-}
-
-func (m *model) updatePatch(p patch.Patch) {
-	m.currentPatch = p
-	m.diffView.Update(p)
-}
-func (m *model) resizeScreens() {
+	m.diffView = ui.NewDiff(currentPatch, m.diffOptions)
 	m.diffView.Resize(m.width, m.height)
 	m.commentView.Resize(m.width, m.height)
-}
-
-func (m model) updateKey(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
-	name := key.String()
-	if m.mode == modeComments {
-		return m.updateComments(name)
-	}
-	if m.mode == modeHelp {
-		if name == "esc" || name == "?" || name == "q" {
-			m.mode = modeBrowse
-		}
-		return m, nil
-	}
-	if m.mode == modeSearch {
-		return m.updateSearch(name, key)
-	}
-	return m.updateBrowseKey(name)
-}
-
-func (m model) updateBrowseKey(name string) (tea.Model, tea.Cmd) {
-	m.err = nil
-	name = m.keys.Feed(name)
-	if m.navigate(name) {
-		return m, nil
-	}
-	switch name {
-	case "ctrl+c", "q":
-		m.quitting = true
-		return m, tea.Quit
-	case "c":
-		return m.startCommentEditor()
-	case "e":
-		return m.startSourceEditor()
-	case "R":
-		return m, m.loadRefresh()
-	case "tab":
-		return m.switchPatchKind()
-	default:
-		return m.updateBrowseView(name)
-	}
-}
-func (m model) updateBrowseView(name string) (tea.Model, tea.Cmd) {
-	switch name {
-	case "?":
-		m.mode = modeHelp
-	case "/":
-		m.mode = modeSearch
-		m.diffView.BeginSearch()
-	case "v":
-		m.diffView.ToggleSelection()
-	case "esc":
-		m.diffView.ClearSelection()
-	case "C":
-		m.mode = modeComments
-		m.commentView.Update(m.comments.items)
-		return m, m.loadComments()
-	case "t":
-		m.toggleSideBySide()
-	default:
-		return m, nil
-	}
-	return m, nil
-}
-
-func (m model) startCommentEditor() (tea.Model, tea.Cmd) {
-	cmd, err := m.beginComment()
-	if err != nil {
-		m.err = err
-		return m, nil
-	}
-	return m, cmd
-}
-
-func (m model) startSourceEditor() (tea.Model, tea.Cmd) {
-	cmd, err := m.openCurrentLine()
-	if err != nil {
-		m.err = err
-		return m, nil
-	}
-	return m, cmd
-}
-
-func (m model) switchPatchKind() (tea.Model, tea.Cmd) {
-	if m.currentPatch.Branch == "" {
-		return m, nil
-	}
-	if m.kind == patch.Unstaged {
-		m.kind = patch.Branch
-	} else {
-		m.kind = patch.Unstaged
-	}
-	m.diffView.ClearSelection()
-	return m, m.loadRefresh()
+	return m
 }

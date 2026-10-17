@@ -1,8 +1,22 @@
 package comments
 
-import "time"
+import (
+	"time"
+)
 
-// Anchor identifies the reviewed diff range and its quoted lines.
+type legacyComment struct {
+	Anchor Anchor `json:"anchor"`
+	Body   string `json:"body"`
+}
+
+type legacyRecord struct {
+	ID         string         `json:"id"`
+	Repository string         `json:"repository"`
+	CreatedAt  time.Time      `json:"created_at"`
+	Comment    *legacyComment `json:"comment"`
+}
+
+// Anchor identifies reviewed source lines and preserves their quoted text.
 type Anchor struct {
 	FilePath    string   `json:"file"`
 	OldStart    int      `json:"old_start,omitempty"`
@@ -12,7 +26,7 @@ type Anchor struct {
 	QuotedLines []string `json:"quoted_lines"`
 }
 
-// Comment stores review feedback for a repository and diff anchor.
+// Comment is repository feedback attached to a source anchor.
 type Comment struct {
 	ID         string    `json:"id"`
 	Repository string    `json:"repository"`

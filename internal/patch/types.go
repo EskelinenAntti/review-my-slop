@@ -1,29 +1,25 @@
 package patch
 
-// Kind selects which changes to review.
+// Kind identifies the comparison used to load a patch.
 type Kind uint8
 
+// Patch comparisons include working-tree changes and branch changes.
 const (
-	// Unstaged compares the index to the working tree and includes untracked
-	// files.
 	Unstaged Kind = iota
-	// Branch compares the default branch's merge base to the working tree and
-	// includes untracked files.
+
 	Branch
 )
 
-// Patch is a fully loaded snapshot. Its data belongs to the caller and is
-// treated as read-only; exported fields do not enforce immutability.
+// Patch contains the changes for a repository and comparison.
 type Patch struct {
 	Root   string
 	Kind   Kind
-	Branch string // Discovered default branch, or empty if unavailable.
+	Branch string
 	Files  []File
 }
 
-// File holds paths, source text, metadata, and hunks for a changed file.
+// File contains a changed file, its source text, metadata, and hunks.
 type File struct {
-	// Paths are repository-relative; empty means absent on that side.
 	OldPath     string
 	NewPath     string
 	DisplayPath string
@@ -33,7 +29,7 @@ type File struct {
 	Hunks       []Hunk
 }
 
-// Hunk groups diff lines under a unified diff header.
+// Hunk groups adjacent changed and context lines.
 type Hunk struct {
 	Header string
 	Lines  []Line

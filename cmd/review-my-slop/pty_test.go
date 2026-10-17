@@ -15,17 +15,10 @@ import (
 	"time"
 
 	"github.com/creack/pty"
-	"github.com/eskelinenantti/review-my-slop/internal/testutil"
 )
 
-func TestCommandStartsAndQuitsInPTY(t *testing.T) {
-	binary := filepath.Join(t.TempDir(), "review-my-slop")
-	build := exec.Command("go", "build", "-o", binary, ".")
-	build.Dir = "."
-	if output, err := build.CombinedOutput(); err != nil {
-		t.Fatalf("build command: %v\n%s", err, output)
-	}
-
+func TestMainCommandStartsAndQuitsInPTY(t *testing.T) {
+	binary := buildReviewTestBinary(t)
 	for _, test := range []struct {
 		name string
 		args []string
@@ -34,26 +27,25 @@ func TestCommandStartsAndQuitsInPTY(t *testing.T) {
 		{name: "code subcommand", args: []string{"code"}},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			checkCommandLifecycle(t, binary, test.args)
+			runReviewCommandInPTY(t, binary, test.args...)
 		})
 	}
 }
 
-func checkCommandLifecycle(t *testing.T, binary string, args []string) {
+func buildReviewTestBinary(t *testing.T) string {
 	t.Helper()
-	repo, err := filepath.EvalSymlinks(t.TempDir())
-	testutil.NoError(t, err)
+	binary := filepath.Join(t.TempDir(), "review-my-slop")
+	build := exec.Command("go", "build", "-o", binary, ".")
+	if output, err := build.CombinedOutput(); err != nil {
+		t.Fatalf("build command: %v\n%s", err, output)
+	}
+	return binary
+}
 
-	runGit(t, repo, "init", "-q")
-	testutil.NoError(
-		t,
-		os.WriteFile(
-			filepath.Join(repo, "main.go"),
-			[]byte("package main\n\nfunc main() {}\n"),
-			0o644,
-		),
-	)
-
+func runReviewCommandInPTY(t *testing.T, binary string, args ...string) {
+	t.Helper()
+	repo := createInitializedGitTestRepository(t)
+	writeGitTestFile(t, repo, "main.go", "package main\n\nfunc main() {}\n")
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	command := exec.CommandContext(ctx, binary, args...)
@@ -64,31 +56,45 @@ func checkCommandLifecycle(t *testing.T, binary string, args []string) {
 		"XDG_STATE_HOME="+t.TempDir(),
 	)
 	terminal, err := pty.StartWithSize(
-		command,
-		&pty.Winsize{Rows: 24, Cols: 100},
+		command, &pty.Winsize{Rows: 24, Cols: 100},
 	)
-	testutil.NoError(t, err)
-
+	requireNoError(t, err)
 	defer terminal.Close()
+	var output mainLockedBuffer
+	readDone := readPTYOutput(&output, terminal)
+	waitForReviewScreen(t, &output)
+	quitReviewCommand(t, terminal, command, &output, readDone)
+}
 
-	var output lockedBuffer
+func readPTYOutput(output *mainLockedBuffer, terminal io.Reader) <-chan error {
 	readDone := make(chan error, 1)
 	go func() {
-		_, readErr := io.Copy(&output, terminal)
+		_, readErr := io.Copy(output, terminal)
 		readDone <- readErr
 	}()
+	return readDone
+}
 
+func waitForReviewScreen(t *testing.T, output *mainLockedBuffer) {
+	t.Helper()
 	deadline := time.Now().Add(5 * time.Second)
-	for !strings.Contains(
-		output.String(),
-		"review-my-slop",
-	) && time.Now().Before(deadline) {
+	for !strings.Contains(output.String(), "review-my-slop") &&
+		time.Now().Before(deadline) {
 		time.Sleep(20 * time.Millisecond)
 	}
-	testutil.RequireEqual(t, strings.Contains(output.String(), "main.go"), true,
+	requireEqual(t, strings.Contains(output.String(), "main.go"), true,
 		"TUI did not render untracked file:\n%s", output.String(),
 	)
+}
 
+func quitReviewCommand(
+	t *testing.T,
+	terminal *os.File,
+	command *exec.Cmd,
+	output *mainLockedBuffer,
+	readDone <-chan error,
+) {
+	t.Helper()
 	if _, err := terminal.Write([]byte("q")); err != nil {
 		t.Fatalf("write quit: %v\n%s", err, output.String())
 	}
@@ -102,28 +108,19 @@ func checkCommandLifecycle(t *testing.T, binary string, args []string) {
 	}
 }
 
-type lockedBuffer struct {
+type mainLockedBuffer struct {
 	mu     sync.Mutex
 	buffer bytes.Buffer
 }
 
-func (b *lockedBuffer) Write(data []byte) (int, error) {
+func (b *mainLockedBuffer) Write(data []byte) (int, error) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	return b.buffer.Write(data)
 }
 
-func (b *lockedBuffer) String() string {
+func (b *mainLockedBuffer) String() string {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	return b.buffer.String()
-}
-
-func runGit(t *testing.T, dir string, args ...string) {
-	t.Helper()
-	command := exec.Command("git", args...)
-	command.Dir = dir
-	if output, err := command.CombinedOutput(); err != nil {
-		t.Fatalf("git %s: %v\n%s", strings.Join(args, " "), err, output)
-	}
 }
