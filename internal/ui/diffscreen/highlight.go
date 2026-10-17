@@ -7,7 +7,7 @@ import (
 	"github.com/alecthomas/chroma/v2/quick"
 )
 
-type pair struct {
+type highlightedFile struct {
 	Old []string
 	New []string
 }
@@ -17,7 +17,7 @@ const (
 	darkTheme  = "catppuccin-mocha"
 )
 
-func render(filename, source, theme string) []string {
+func highlightSource(filename, source, theme string) []string {
 	if source == "" {
 		return nil
 	}
