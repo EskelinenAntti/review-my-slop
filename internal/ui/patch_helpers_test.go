@@ -56,27 +56,7 @@ func diffscreenTestSplitViewWithTheme(p patches.Patch,
 func diffscreenRenderAtCursor(
 	v *diffView, target, active diffCursor, width int,
 	selection *diffSelection) string {
-	viewport := func() diffViewport {
-		var viewport = diffViewport{}
-		viewport.Width, viewport.Height = max(1, width), max(1, 1)
-		{
-			var viewport = viewport
-			viewport.top = max(0, min(viewport.top, func() int {
-				end := max(0, len(v.rows)-viewport.Height)
-				if viewport.Height > 1 && end >= 0 && end < len(
-					v.rows,
-				) && v.rows[end].kind != fileRow {
-					end++
-				}
-				return end
-			}()))
-			viewport.LeftColumn = max(
-				0,
-				min(viewport.LeftColumn, contentWidth(v, &viewport)),
-			)
-			return viewport
-		}
-	}()
+	viewport := initialViewport(v, width, 1)
 	viewport.top = target.row
 	return renderPatch(v, viewport, active, selection)
 }

@@ -499,11 +499,6 @@ func viewportClamp(v *diffView,
 	return clampViewport(v, *viewport)
 }
 
-func contentWidth(v *diffView,
-	viewport *diffViewport) int {
-	return viewportLeft(v, *viewport)
-}
-
 func closestCursorInPane(
 	pane diffPane,
 	view *diffView,
