@@ -214,12 +214,16 @@ func (v *diffView) maxHorizontalOffset(width int) int {
 		if current.kind != lineRow {
 			continue
 		}
-		longest = max(
-			longest,
-			lipgloss.Width(
-				expandTabs(ansi.Strip(current.text+current.left+current.right)),
-			)+extra,
-		)
+		longest = max(longest, current.codeWidth()+extra)
 	}
 	return max(0, longest-contentWidth)
+}
+
+// codeWidth measures the widest code cell in terminal columns, excluding color.
+func (row displayRow) codeWidth() int {
+	width := 0
+	for _, text := range [3]string{row.text, row.left, row.right} {
+		width = max(width, lipgloss.Width(expandTabs(ansi.Strip(text))))
+	}
+	return width
 }

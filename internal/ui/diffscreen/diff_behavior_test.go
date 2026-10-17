@@ -444,6 +444,20 @@ func TestHorizontalScrollKeepsSplitGuttersAndDividerFixed(t *testing.T) {
 	)
 }
 
+func TestSplitScrollEndKeepsBothLineEndsVisible(t *testing.T) {
+	for _, width := range []int{100, 120, 121} {
+		v := New(longLinePatch(), Options{SideBySide: true, Dark: true})
+		v.Resize(width, 6)
+		v.ScrollToLineEnd()
+		rendered := ansi.Strip(v.Render(nil))
+		if got := strings.Count(rendered, "WXYZ"); got != 2 {
+			t.Fatalf("width=%d visible line ends=%d, screen=%q", width, got,
+				rendered,
+			)
+		}
+	}
+}
+
 func TestHorizontalScrollStartAndEndClamp(t *testing.T) {
 	v := newUnifiedView(longLinePatch(), true)
 	viewport := v.newViewport(37, 1)
