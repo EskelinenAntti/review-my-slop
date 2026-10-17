@@ -315,20 +315,23 @@ func loadUntracked(
 	if err != nil {
 		return nil, err
 	}
-	return readUntrackedPaths(ctx, root, untrackedPaths(out))
+	return readUntrackedFiles(ctx, root, out)
 }
 
-func readUntrackedPaths(
+// readUntrackedFiles reads the NUL-delimited paths reported by Git.
+func readUntrackedFiles(
 	ctx context.Context,
 	root string,
-	paths []string,
+	paths []byte,
 ) ([]File, error) {
 	var files []File
-	for _, path := range paths {
+	for _, path := range bytes.FieldsFunc(paths, func(char rune) bool {
+		return char == 0
+	}) {
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
-		file, include, err := readUntrackedFile(root, path)
+		file, include, err := readUntrackedFile(root, string(path))
 		if err != nil {
 			return nil, err
 		}
@@ -337,16 +340,6 @@ func readUntrackedPaths(
 		}
 	}
 	return files, nil
-}
-
-func untrackedPaths(out []byte) []string {
-	var paths []string
-	for path := range bytes.SplitSeq(out, []byte{0}) {
-		if len(path) > 0 {
-			paths = append(paths, string(path))
-		}
-	}
-	return paths
 }
 
 func readUntrackedFile(root, path string) (File, bool, error) {
