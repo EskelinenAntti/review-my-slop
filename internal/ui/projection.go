@@ -315,31 +315,24 @@ func findCursorMatch(view *diffView,
 	if !identity.valid {
 		return diffCursor{}, false
 	}
-	best, exact := searchCursorRows(view, identity)
-	if exact {
-		return best.cursor, true
-	}
+	best := searchCursorRows(view, identity)
 	return best.cursor, best.rank > noCursorMatch
 }
 
 func searchCursorRows(view *diffView,
-	identity cursorIdentity) (cursorMatch, bool) {
+	identity cursorIdentity) cursorMatch {
 	best := cursorMatch{}
 	for row, entry := range view.rows {
 		if !rowMatchesIdentity(view, entry, identity) {
 			continue
 		}
-		candidate, exact, ok := bestCursorMatchAtRow(
-			view, identity, row,
-		)
-		if exact {
-			return candidate, true
+		candidate := bestCursorMatchAtRow(view, identity, row)
+		if candidate.rank == numberCursorMatch {
+			return candidate
 		}
-		if ok {
-			best = betterCursorMatch(candidate, best)
-		}
+		best = betterCursorMatch(candidate, best)
 	}
-	return best, false
+	return best
 }
 
 func rowMatchesIdentity(view *diffView,
@@ -353,7 +346,7 @@ func bestCursorMatchAtRow(
 	view *diffView,
 	identity cursorIdentity,
 	row int,
-) (match cursorMatch, exact, found bool) {
+) cursorMatch {
 	best := cursorMatch{}
 	for _, pane := range searchPanes(view, identity.cursor.pane) {
 		candidate, ok := cursorMatchAt(view, identity, row, pane)
@@ -361,11 +354,11 @@ func bestCursorMatchAtRow(
 			continue
 		}
 		if candidate.rank == numberCursorMatch {
-			return candidate, true, true
+			return candidate
 		}
 		best = betterCursorMatch(candidate, best)
 	}
-	return best, false, best.rank > noCursorMatch
+	return best
 }
 
 func translatedSelection(next, old *diffView,
