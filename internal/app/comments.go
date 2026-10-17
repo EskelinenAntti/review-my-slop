@@ -41,12 +41,14 @@ func (m model) editSelectedComment() (tea.Model, tea.Cmd) {
 	if !ok {
 		return m, nil
 	}
-	m.edit.index = m.commentIndex(selected)
-	if m.edit.index < 0 {
+	index := m.commentIndex(selected)
+	if index < 0 {
 		return m, nil
 	}
-	m.edit.body = m.comments.items[m.edit.index].Body
-	m.edit.anchor = m.comments.items[m.edit.index].Anchor
+	original := m.comments.items[index]
+	m.edit = commentEdit{
+		body: original.Body, anchor: original.Anchor, original: &original,
+	}
 	cmd, err := m.openCommentEditor()
 	if err != nil {
 		m.err = err
@@ -62,7 +64,7 @@ func (m *model) beginComment() (tea.Cmd, error) {
 		return nil, errors.New("select code lines before commenting")
 	}
 	anchor := commentAnchor(file, lines)
-	m.edit.body, m.edit.index, m.edit.anchor = "", -1, anchor
+	m.edit = commentEdit{anchor: anchor}
 	cmd, err := m.openCommentEditor()
 	if err != nil {
 		m.clearCommentEdit()
@@ -73,9 +75,13 @@ func (m *model) beginComment() (tea.Cmd, error) {
 
 func (m *model) finishCommentEdit() {
 	defer m.clearCommentEdit()
+	index := -1
+	if m.edit.original != nil {
+		index = m.commentIndex(*m.edit.original)
+	}
 	body := strings.TrimSpace(m.edit.body)
 	if body == "" {
-		m.deleteComment(m.edit.index)
+		m.deleteComment(index)
 		m.diffView.ClearSelection()
 		return
 	}
@@ -84,8 +90,8 @@ func (m *model) finishCommentEdit() {
 		return
 	}
 	comment := comments.Comment{Anchor: m.edit.anchor}
-	if m.edit.index >= 0 {
-		comment = m.comments.items[m.edit.index]
+	if m.edit.original != nil {
+		comment = *m.edit.original
 	}
 	comment.Body = body
 	comment.Repository = m.currentPatch.Root
@@ -94,14 +100,14 @@ func (m *model) finishCommentEdit() {
 		m.err = err
 		return
 	}
-	if m.edit.index >= 0 {
-		m.comments.items[m.edit.index] = saved
+	if index >= 0 {
+		m.comments.items[index] = saved
 	} else {
 		m.comments.items = append(m.comments.items, saved)
 	}
 	m.comments.revision++
 	m.commentView.Update(m.comments.items)
-	if m.edit.index < 0 {
+	if m.edit.original == nil {
 		m.commentView.Move(len(m.comments.items))
 	}
 	m.err = nil
@@ -131,7 +137,7 @@ func (m *model) deleteComment(index int) {
 }
 
 func (m *model) clearCommentEdit() {
-	m.edit = commentEdit{index: -1}
+	m.edit = commentEdit{}
 }
 
 func (m model) openCurrentLine() (tea.Cmd, error) {

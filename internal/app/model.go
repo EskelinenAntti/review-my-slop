@@ -61,10 +61,12 @@ type commentState struct {
 	revision uint64
 }
 
+// commentEdit keeps its original comment independent of list reloads.
+// A nil original represents a new comment.
 type commentEdit struct {
-	body   string
-	index  int
-	anchor comments.Anchor
+	body     string
+	anchor   comments.Anchor
+	original *comments.Comment
 }
 
 type model struct {
@@ -107,7 +109,6 @@ func newModel(
 		currentPatch: p,
 		comments:     commentState{items: items},
 		commentView:  commentscreen.New(items),
-		edit:         commentEdit{index: -1},
 		width:        size.Width,
 		height:       size.Height,
 		save:         save,

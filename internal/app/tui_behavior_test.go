@@ -167,6 +167,78 @@ func TestCommentsCanBeViewedEditedAndDeleted(t *testing.T) {
 	)
 }
 
+func TestOpenCommentEditSurvivesListReload(t *testing.T) {
+	t.Setenv("EDITOR", "true")
+	first := comments.Comment{ID: "one", Body: "first"}
+	second := comments.Comment{ID: "two", Body: "second"}
+	for _, tc := range []struct {
+		name       string
+		loaded     []comments.Comment
+		saveError  error
+		wantBodies []string
+	}{
+		{"reordered", []comments.Comment{second, first}, nil,
+			[]string{"edited body", "first"}},
+		{"removed", []comments.Comment{first}, errors.New("comment consumed"),
+			[]string{"first"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var saved comments.Comment
+			m := testModel(coveragePatch(), []comments.Comment{first, second},
+				func(comment comments.Comment) (comments.Comment, error) {
+					saved = comment
+					return comment, tc.saveError
+				},
+			)
+			m = updateModel(t, m, textKey("C"))
+			m = updateModel(t, m, textKey("j"))
+			m = updateModel(t, m, specialKey(tea.KeyEnter))
+			m = updateModel(t, m, commentsLoadedMsg{comments: tc.loaded})
+			m = updateModel(t, m,
+				commentEditorFinishedMsg{body: "edited body"},
+			)
+			testutil.RequireEqual(t, saved.ID, second.ID, "saved=%#v", saved)
+			testutil.RequireEqual(t, errors.Is(m.err, tc.saveError), true,
+				"save error=%v, want %v", m.err, tc.saveError,
+			)
+			testutil.RequireEqual(t, len(m.comments.items), len(tc.wantBodies),
+				"comments=%#v", m.comments.items,
+			)
+			for index, comment := range m.comments.items {
+				testutil.RequireEqual(t, comment.Body, tc.wantBodies[index],
+					"comments=%#v", m.comments.items,
+				)
+			}
+		})
+	}
+}
+
+func TestEmptyEditDeletesOriginalCommentAfterListReload(t *testing.T) {
+	t.Setenv("EDITOR", "true")
+	first := comments.Comment{ID: "one", Body: "first"}
+	second := comments.Comment{ID: "two", Body: "second"}
+	m := testModel(coveragePatch(), []comments.Comment{first, second}, nil)
+	var deletedID string
+	m.delete = func(_ string, id string) error {
+		deletedID = id
+		return nil
+	}
+	m = updateModel(t, m, textKey("C"))
+	m = updateModel(t, m, textKey("j"))
+	m = updateModel(t, m, specialKey(tea.KeyEnter))
+	m = updateModel(t, m, commentsLoadedMsg{
+		comments: []comments.Comment{second, first},
+	})
+	m = updateModel(t, m, commentEditorFinishedMsg{})
+	testutil.RequireEqual(t, deletedID, second.ID, "deleted ID=%q", deletedID)
+	testutil.RequireEqual(t, len(m.comments.items), 1,
+		"comments=%#v", m.comments.items,
+	)
+	testutil.RequireEqual(t, m.comments.items[0].ID, first.ID,
+		"comments=%#v", m.comments.items,
+	)
+}
+
 func TestOpeningCommentsReloadsPendingComments(t *testing.T) {
 	m := testModel(
 		coveragePatch(),

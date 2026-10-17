@@ -63,7 +63,8 @@ func TestStoreBackedCommentLifecycle(t *testing.T) {
 	)
 
 	id := loaded[0].ID
-	m.edit.index = 0
+	original := m.comments.items[0]
+	m.edit.original = &original
 	m.edit.body = "edited"
 	m.finishCommentEdit()
 	testutil.RequireEqual(t, m.err, nil, "%s", m.err)
