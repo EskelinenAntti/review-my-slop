@@ -50,16 +50,21 @@ func hunkHeader(header string) string {
 	return "@@ " + header
 }
 
-func hunkLinePairs(lines []patches.Line, options Options) [][2]int {
-	pairs := make([][2]int, 0, len(lines))
+// linePair holds hunk line indices; -1 means that side has no line.
+type linePair struct {
+	left, right int
+}
+
+func hunkLinePairs(lines []patches.Line, options Options) []linePair {
+	pairs := make([]linePair, 0, len(lines))
 	for index := 0; index < len(lines); {
 		line := lines[index]
 		switch {
 		case !options.SideBySide || line.Kind == patches.Context:
-			pairs = append(pairs, [2]int{index, index})
+			pairs = append(pairs, linePair{left: index, right: index})
 			index++
 		case line.Kind == patches.Addition:
-			pairs = append(pairs, [2]int{-1, index})
+			pairs = append(pairs, linePair{left: -1, right: index})
 			index++
 		default:
 			block, next := pairedChangeBlock(lines, index)
@@ -72,7 +77,7 @@ func hunkLinePairs(lines []patches.Line, options Options) [][2]int {
 
 // pairedChangeBlock pairs consecutive deletions with the additions that follow.
 // A missing line on either side is represented by -1.
-func pairedChangeBlock(lines []patches.Line, start int) ([][2]int, int) {
+func pairedChangeBlock(lines []patches.Line, start int) ([]linePair, int) {
 	deletedEnd := start
 	for deletedEnd < len(lines) && lines[deletedEnd].Kind == patches.Deletion {
 		deletedEnd++
@@ -82,14 +87,14 @@ func pairedChangeBlock(lines []patches.Line, start int) ([][2]int, int) {
 		addedEnd++
 	}
 	count := max(deletedEnd-start, addedEnd-deletedEnd)
-	pairs := make([][2]int, 0, count)
+	pairs := make([]linePair, 0, count)
 	for offset := 0; offset < count; offset++ {
-		pair := [2]int{-1, -1}
+		pair := linePair{left: -1, right: -1}
 		if start+offset < deletedEnd {
-			pair[0] = start + offset
+			pair.left = start + offset
 		}
 		if deletedEnd+offset < addedEnd {
-			pair[1] = deletedEnd + offset
+			pair.right = deletedEnd + offset
 		}
 		pairs = append(pairs, pair)
 	}
@@ -111,11 +116,11 @@ func highlightedLine(line patches.Line,
 }
 
 func projectedLineRow(fileIndex, hunkIndex int, hunk patches.Hunk,
-	pair [2]int, options Options,
+	pair linePair, options Options,
 	highlighted highlightedSources) entry {
 	row := entry{
 		kind: lineRow, file: fileIndex, hunk: hunkIndex,
-		leftLine: pair[0], rightLine: pair[1],
+		leftLine: pair.left, rightLine: pair.right,
 	}
 	if !options.SideBySide {
 		row.text = highlightedLine(
