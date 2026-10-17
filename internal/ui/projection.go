@@ -421,30 +421,7 @@ func preserveSearch(screen *Diff, next *diffView,
 	if translated, ok := translateCursorIdentity(next, origin); ok {
 		screen.search.from = translated
 	}
-	if screen.search.query == "" {
-		screen.cursor = screen.search.from
-		screen.viewport = cursorViewport(
-			next,
-			screen.viewport,
-			screen.cursor,
-		)
-		screen.search.miss = false
-		return
-	}
-	cursor, ok := findSearchCursor(
-		next,
-		screen.search.query,
-		screen.search.from,
-	)
-	screen.search.miss = !ok
-	if ok {
-		screen.cursor = cursor
-		screen.viewport = cursorViewport(
-			next,
-			screen.viewport,
-			cursor,
-		)
-	}
+	previewSearch(screen, screen.search.query)
 }
 
 // NewDiff creates a diff view with default terminal dimensions.

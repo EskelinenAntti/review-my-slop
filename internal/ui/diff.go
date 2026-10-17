@@ -342,31 +342,7 @@ func (v *Diff) InsertSearch(text string) {
 	if !v.search.active {
 		v.BeginSearch()
 	}
-	func() {
-		var query = v.search.query + text
-		v.search.query = query
-		if query == "" {
-			var cursor = v.search.from
-			v.cursor = cursor
-			v.viewport = cursorVisibleViewport(
-				cursor,
-				v.view,
-				v.viewport,
-			)
-			v.search.miss = false
-			return
-		}
-		cursor, ok := findSearchCursor(v.view, query, v.search.from)
-		v.search.miss = !ok
-		if ok {
-			v.cursor = cursor
-			v.viewport = cursorVisibleViewport(
-				cursor,
-				v.view,
-				v.viewport,
-			)
-		}
-	}()
+	previewSearch(v, v.search.query+text)
 }
 
 // BackspaceSearch removes the last rune from the incremental search query.
@@ -378,34 +354,7 @@ func (v *Diff) BackspaceSearch() {
 	if len(query) > 0 {
 		query = query[:len(query)-1]
 	}
-	func() {
-		v.search.query = string(query)
-		if string(query) == "" {
-			var cursor = v.search.from
-			v.cursor = cursor
-			v.viewport = cursorVisibleViewport(
-				cursor,
-				v.view,
-				v.viewport,
-			)
-			v.search.miss = false
-			return
-		}
-		cursor, ok := findSearchCursor(
-			v.view,
-			string(query),
-			v.search.from,
-		)
-		v.search.miss = !ok
-		if ok {
-			v.cursor = cursor
-			v.viewport = cursorVisibleViewport(
-				cursor,
-				v.view,
-				v.viewport,
-			)
-		}
-	}()
+	previewSearch(v, string(query))
 }
 
 // AcceptSearch saves a successful query for repeated searches.

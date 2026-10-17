@@ -6,6 +6,24 @@ import (
 	"github.com/charmbracelet/x/ansi"
 )
 
+// previewSearch always starts at the saved origin so editing a query does not
+// advance through matches.
+func previewSearch(screen *Diff, query string) {
+	screen.search.query = query
+	if query == "" {
+		screen.cursor = screen.search.from
+		screen.viewport = cursorViewport(screen.view, screen.viewport, screen.cursor)
+		screen.search.miss = false
+		return
+	}
+	cursor, ok := findSearchCursor(screen.view, query, screen.search.from)
+	screen.search.miss = !ok
+	if ok {
+		screen.cursor = cursor
+		screen.viewport = cursorViewport(screen.view, screen.viewport, cursor)
+	}
+}
+
 func findSearchCursor(view *diffView, query string,
 	cursor diffCursor) (diffCursor, bool) {
 	return findSearchCursorDirection(
