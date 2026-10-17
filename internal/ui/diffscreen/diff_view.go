@@ -23,6 +23,11 @@ type entry struct {
 	text, left, right string
 }
 
+// linePair holds hunk line indices for a display row; -1 means an empty pane.
+type linePair struct {
+	leftLine, rightLine int
+}
+
 type diffView struct {
 	patch patch.Patch
 	rows  []entry
@@ -90,8 +95,8 @@ func (v *diffView) appendHunkRows(
 			kind:      lineRow,
 			file:      fileIndex,
 			hunk:      hunkIndex,
-			leftLine:  indices[0],
-			rightLine: indices[1],
+			leftLine:  indices.leftLine,
+			rightLine: indices.rightLine,
 		}
 		v.highlightRow(&row, hunk.Lines, highlighted)
 		v.rows = append(v.rows, row)
@@ -117,16 +122,16 @@ func (v *diffView) highlightRow(
 
 // lineRows maps source lines to display rows. Split mode pairs each deletion
 // block with the immediately following additions; unmatched panes use -1.
-func (v *diffView) lineRows(lines []patch.Line) [][2]int {
-	rows := make([][2]int, 0, len(lines))
+func (v *diffView) lineRows(lines []patch.Line) []linePair {
+	rows := make([]linePair, 0, len(lines))
 	for index := 0; index < len(lines); {
 		if !v.split || lines[index].Kind == patch.Context {
-			rows = append(rows, [2]int{index, index})
+			rows = append(rows, linePair{leftLine: index, rightLine: index})
 			index++
 			continue
 		}
 		if lines[index].Kind == patch.Addition {
-			rows = append(rows, [2]int{-1, index})
+			rows = append(rows, linePair{leftLine: -1, rightLine: index})
 			index++
 			continue
 		}
@@ -145,16 +150,16 @@ func changeBlockEnd(lines []patch.Line, start int, kind patch.LineKind) int {
 	return start
 }
 
-func pairedChangeRows(removedStart, addedStart, end int) [][2]int {
+func pairedChangeRows(removedStart, addedStart, end int) []linePair {
 	count := max(addedStart-removedStart, end-addedStart)
-	rows := make([][2]int, 0, count)
+	rows := make([]linePair, 0, count)
 	for offset := 0; offset < count; offset++ {
-		pair := [2]int{-1, -1}
+		pair := linePair{leftLine: -1, rightLine: -1}
 		if removedStart+offset < addedStart {
-			pair[0] = removedStart + offset
+			pair.leftLine = removedStart + offset
 		}
 		if addedStart+offset < end {
-			pair[1] = addedStart + offset
+			pair.rightLine = addedStart + offset
 		}
 		rows = append(rows, pair)
 	}
