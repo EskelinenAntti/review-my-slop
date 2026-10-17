@@ -44,17 +44,10 @@ func (v *diffView) render(
 	end := min(len(v.rows), viewport.top+v.contentHeight(viewport))
 	for y := viewport.top; y < end; y++ {
 		current := v.rows[y]
-		if v.split && current.kind == lineRow {
-			lines = append(
-				lines,
-				v.renderSplitRow(current, y, viewport, cursor, selection),
-			)
-		} else {
-			lines = append(
-				lines,
-				v.renderUnifiedRow(current, y, viewport, cursor, selection),
-			)
-		}
+		lines = append(
+			lines,
+			v.renderRow(current, y, viewport, cursor, selection),
+		)
 	}
 	for len(lines) < viewport.Height {
 		lines = append(lines, "")
@@ -62,7 +55,7 @@ func (v *diffView) render(
 	return strings.Join(lines, "\n")
 }
 
-func (v *diffView) renderUnifiedRow(
+func (v *diffView) renderRow(
 	current displayRow,
 	y int,
 	viewport diffViewport,
@@ -77,6 +70,9 @@ func (v *diffView) renderUnifiedRow(
 	case hunkRow:
 		return hunkStyle.Render(current.text)
 	case lineRow:
+		if v.split {
+			return v.renderSplitRow(current, y, viewport, cursor, selection)
+		}
 		return v.renderUnifiedLine(
 			current,
 			y,
