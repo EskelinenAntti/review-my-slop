@@ -69,10 +69,9 @@ func (v *diffView) renderUnifiedRow(
 	cursor diffCursor,
 	selection *diffSelection,
 ) string {
-	width := max(20, viewport.Width)
 	switch current.kind {
 	case fileRow:
-		return renderFileRow(current.text, width)
+		return renderFileRow(current.text, viewport.Width)
 	case metadataRow:
 		return metadataStyle.Render("  " + current.text)
 	case hunkRow:
@@ -84,7 +83,6 @@ func (v *diffView) renderUnifiedRow(
 			viewport,
 			cursor,
 			selection,
-			width,
 		)
 	}
 	return ""
@@ -96,8 +94,8 @@ func (v *diffView) renderUnifiedLine(
 	viewport diffViewport,
 	cursor diffCursor,
 	selection *diffSelection,
-	width int,
 ) string {
+	width := max(20, viewport.Width)
 	hunk := v.patch.Files[current.file].Hunks[current.hunk]
 	line := hunk.Lines[current.rightLine]
 	gutter := fmt.Sprintf(
