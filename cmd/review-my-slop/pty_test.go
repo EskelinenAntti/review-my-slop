@@ -3,21 +3,21 @@
 package main
 
 import (
-	"bytes"
-	"context"
-	"github.com/creack/pty"
-	"github.com/eskelinenantti/review-my-slop/internal/testutil"
-	"io"
-	"os"
-	"os/exec"
-	"path/filepath"
-	"strings"
-	"sync"
-	"testing"
-	"time"
+	bytes "bytes"
+	context "context"
+	io "io"
+	os "os"
+	exec "os/exec"
+	filepath "path/filepath"
+	strings "strings"
+	sync "sync"
+	testing "testing"
+	time "time"
+
+	pty "github.com/creack/pty"
 )
 
-func TestCommandStartsAndQuitsInPTY(t *testing.T) {
+func TestMainCommandStartsAndQuitsInPTY(t *testing.T) {
 	binary := filepath.Join(t.TempDir(), "review-my-slop")
 	build := exec.Command("go", "build", "-o", binary, ".")
 	build.Dir = "."
@@ -36,7 +36,12 @@ func TestCommandStartsAndQuitsInPTY(t *testing.T) {
 			(func(t *testing.T, binary string, args []string) {
 				t.Helper()
 				repo, err := filepath.EvalSymlinks(t.TempDir())
-				testutil.NoError(t, err)
+				(func(t *testing.T, err error) {
+					t.Helper()
+					if err != nil {
+						t.Fatal(err)
+					}
+				})(t, err)
 
 				(func(t *testing.T, dir string, args ...string) {
 					t.Helper()
@@ -46,7 +51,12 @@ func TestCommandStartsAndQuitsInPTY(t *testing.T) {
 						t.Fatalf("git %s: %v\n%s", strings.Join(args, " "), err, output)
 					}
 				})(t, repo, "init", "-q")
-				testutil.NoError(
+				(func(t *testing.T, err error) {
+					t.Helper()
+					if err != nil {
+						t.Fatal(err)
+					}
+				})(
 					t,
 					os.WriteFile(
 						filepath.Join(repo, "main.go"),
@@ -68,11 +78,16 @@ func TestCommandStartsAndQuitsInPTY(t *testing.T) {
 					command,
 					&pty.Winsize{Rows: 24, Cols: 100},
 				)
-				testutil.NoError(t, err)
+				(func(t *testing.T, err error) {
+					t.Helper()
+					if err != nil {
+						t.Fatal(err)
+					}
+				})(t, err)
 
 				defer terminal.Close()
 
-				var output lockedBuffer
+				var output mainLockedBuffer
 				readDone := make(chan error, 1)
 				go func() {
 					_, readErr := io.Copy(&output, terminal)
@@ -86,7 +101,12 @@ func TestCommandStartsAndQuitsInPTY(t *testing.T) {
 				) && time.Now().Before(deadline) {
 					time.Sleep(20 * time.Millisecond)
 				}
-				testutil.RequireEqual(t, strings.Contains(output.String(), "main.go"), true,
+				(func(t *testing.T, got, want bool, format string, args ...any) {
+					t.Helper()
+					if got != want {
+						t.Fatalf(format, args...)
+					}
+				})(t, strings.Contains(output.String(), "main.go"), true,
 					"TUI did not render untracked file:\n%s", output.String(),
 				)
 
@@ -106,18 +126,18 @@ func TestCommandStartsAndQuitsInPTY(t *testing.T) {
 	}
 }
 
-type lockedBuffer struct {
+type mainLockedBuffer struct {
 	mu     sync.Mutex
 	buffer bytes.Buffer
 }
 
-func (b *lockedBuffer) Write(data []byte) (int, error) {
+func (b *mainLockedBuffer) Write(data []byte) (int, error) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	return b.buffer.Write(data)
 }
 
-func (b *lockedBuffer) String() string {
+func (b *mainLockedBuffer) String() string {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	return b.buffer.String()
