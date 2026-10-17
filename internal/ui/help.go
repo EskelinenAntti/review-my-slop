@@ -30,23 +30,7 @@ func RenderHelp(
 			"  " + binding.Description
 		body = append(body, ansi.Truncate(line, max(20, width), ""))
 	}
-	return renderHelpContent(body, height)
-}
-
-func renderHelpContent(body []string, height int) string {
-	bodyHeight := max(1, height-3)
-	lines := make([]string, 0, bodyHeight+3)
-	lines = append(lines, lipgloss.NewStyle().Bold(
-		true,
-	).Foreground(lipgloss.Cyan).Render(
-		"review-my-slop help",
-	))
-	lines = append(lines, body[:min(len(body), bodyHeight)]...)
-	for len(lines) < bodyHeight+1 {
-		lines = append(lines, "")
-	}
-	lines = append(lines, lipgloss.NewStyle().Faint(
-		true,
-	).Render("? or Esc closes help"), "")
-	return strings.Join(lines, "\n")
+	header := titleStyle.Render("review-my-slop help")
+	footer := mutedStyle.Render("? or Esc closes help")
+	return renderFrame(header, body, footer, height)
 }

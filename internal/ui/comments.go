@@ -88,7 +88,7 @@ func (v *Comments) Render(err error) string {
 	header := commentscreenTitleStyle.Render("comments") + "  " + pending
 	body := v.renderRows()
 	footer := v.renderFooter(err)
-	return renderCommentScreenFrame(header, body, footer, v.height)
+	return renderFrame(header, body, footer, v.height)
 }
 
 var (
@@ -148,23 +148,6 @@ func (v *Comments) renderFooter(err error) string {
 		20,
 		v.width,
 	), ""))
-}
-
-func renderCommentScreenFrame(
-	header string,
-	body []string,
-	footer string,
-	height int,
-) string {
-	bodyHeight := max(1, height-3)
-	lines := make([]string, 0, bodyHeight+3)
-	lines = append(lines, header)
-	lines = append(lines, body[:min(len(body), bodyHeight)]...)
-	for len(lines) < bodyHeight+1 {
-		lines = append(lines, "")
-	}
-	lines = append(lines, footer, "")
-	return strings.Join(lines, "\n")
 }
 
 // NewComments creates a comment list with default terminal dimensions.
