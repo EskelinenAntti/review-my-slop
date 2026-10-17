@@ -246,7 +246,7 @@ func initialViewport(view *diffView, width,
 
 func preservedViewport(view *diffView,
 	viewport diffViewport, leftColumn int) diffViewport {
-	maxColumn := viewportLeft(view, viewport)
+	maxColumn := maxViewportColumn(view, viewport)
 	columns := max(-viewport.LeftColumn, min(
 		leftColumn,
 		maxColumn-viewport.LeftColumn,

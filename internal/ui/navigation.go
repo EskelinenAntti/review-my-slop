@@ -8,7 +8,7 @@ import (
 	patches "github.com/eskelinenantti/review-my-slop/internal/patch"
 )
 
-func viewportBottom(view *diffView, height int) int {
+func maxViewportTop(view *diffView, height int) int {
 	bottom := max(0, len(view.rows)-height)
 	if height > 1 && bottom < len(
 		view.rows,
@@ -18,7 +18,7 @@ func viewportBottom(view *diffView, height int) int {
 	return bottom
 }
 
-func viewportLeft(view *diffView,
+func maxViewportColumn(view *diffView,
 	viewport diffViewport) int {
 	contentWidth := max(1, viewport.Width-14)
 	extraWidth := 0
@@ -37,13 +37,13 @@ func viewportLeft(view *diffView,
 
 func clampViewport(view *diffView,
 	viewport diffViewport) diffViewport {
-	viewport.top = max(0, min(viewport.top, viewportBottom(
+	viewport.top = max(0, min(viewport.top, maxViewportTop(
 		view,
 		viewport.Height,
 	)))
 	viewport.LeftColumn = max(0, min(
 		viewport.LeftColumn,
-		viewportLeft(view, viewport),
+		maxViewportColumn(view, viewport),
 	))
 	return viewport
 }

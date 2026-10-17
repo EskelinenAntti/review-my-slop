@@ -238,7 +238,7 @@ func (v *Diff) Align(alignment Alignment) {
 // ScrollHorizontal shifts visible content by columns, clamping to its bounds.
 func (v *Diff) ScrollHorizontal(columns int) {
 	v.search.repeatMiss = false
-	maxColumn := viewportLeft(v.view, v.viewport)
+	maxColumn := maxViewportColumn(v.view, v.viewport)
 	columns = max(-v.viewport.LeftColumn, min(
 		columns,
 		maxColumn-v.viewport.LeftColumn,
@@ -251,7 +251,7 @@ func (v *Diff) ScrollHorizontal(columns int) {
 func (v *Diff) ScrollVertical(rows int) {
 	v.search.repeatMiss = false
 	initialViewport := v.viewport
-	maxTop := viewportBottom(v.view, v.viewport.Height)
+	maxTop := maxViewportTop(v.view, v.viewport.Height)
 	rows = max(-v.viewport.top, min(rows, maxTop-v.viewport.top))
 	v.viewport.top += rows
 	v.viewport = clampViewport(v.view, v.viewport)
