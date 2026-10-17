@@ -420,34 +420,33 @@ func (v *View) Render(err error) string {
 	return frame.Render(header, body, v.renderFooter(footer), v.height)
 }
 func (v *View) renderBody() []string {
-	var body []string
-	if len(v.view.patch.Files) == 0 {
-		empty := "No unstaged or untracked changes."
-		if v.view.patch.Kind == patch.Branch {
-			empty = "No branch or worktree changes."
-		}
-		body = make([]string, frame.BodyHeight(v.height))
-		body[min(1, len(body)-1)] = mutedStyle.Render(empty)
-	} else {
-		body = strings.Split(
+	if len(v.view.patch.Files) > 0 {
+		return strings.Split(
 			v.view.render(v.viewport, v.cursor, v.selection),
 			"\n",
 		)
 	}
+	empty := "No unstaged or untracked changes."
+	if v.view.patch.Kind == patch.Branch {
+		empty = "No branch or worktree changes."
+	}
+	body := make([]string, frame.BodyHeight(v.height))
+	body[min(1, len(body)-1)] = mutedStyle.Render(empty)
 	return body
 }
 
 func (v *View) renderStatus() string {
-	status := "j/k/h/l move  c comment  ? help  q quit"
 	if v.search.active {
-		status = "/" + v.search.query + cursorStyle.Render(" ")
+		status := "/" + v.search.query + cursorStyle.Render(" ")
 		if v.search.miss {
 			status += errorStyle.Render("  no matches")
 		}
-	} else if v.selection != nil {
-		status = "visual selection  j/k extend  c comment  Esc cancel"
+		return status
 	}
-	return status
+	if v.selection != nil {
+		return "visual selection  j/k extend  c comment  Esc cancel"
+	}
+	return "j/k/h/l move  c comment  ? help  q quit"
 }
 
 func (v *View) renderFooter(value string) string {
