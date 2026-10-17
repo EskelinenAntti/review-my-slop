@@ -9,6 +9,22 @@ import (
 	"github.com/eskelinenantti/review-my-slop/internal/testutil"
 )
 
+func TestWritePromptKeepsQuotedFencesInsideDiff(t *testing.T) {
+	comment := Comment{
+		Anchor: Anchor{
+			FilePath: "README.md", NewStart: 1,
+			QuotedLines: []string{" ```markdown", " text", " ```"},
+		},
+		Body: "Review the fenced example.",
+	}
+	var output bytes.Buffer
+	testutil.NoError(t, WritePrompt(&output, []Comment{comment}))
+	want := "````diff\n ```markdown\n text\n ```\n````\n" + comment.Body + "\n"
+	if !strings.Contains(output.String(), want) {
+		t.Fatalf("quoted block escaped its fence: %q", output.String())
+	}
+}
+
 func TestWritePendingAcknowledgesOnlyExportedComments(t *testing.T) {
 	store := Store{Path: filepath.Join(t.TempDir(), "comments.db")}
 	for _, comment := range []Comment{

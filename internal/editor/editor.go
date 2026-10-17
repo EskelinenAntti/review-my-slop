@@ -7,6 +7,8 @@ import (
 	"os/exec"
 	"strconv"
 	"strings"
+
+	"github.com/eskelinenantti/review-my-slop/internal/markdown"
 )
 
 func createCommentFile(body string, quotedLines []string) (string, error) {
@@ -67,7 +69,7 @@ func stripUnchangedSuggestion(body string, quoted []string) string {
 // output when the final newline was removed.
 func suggestionBlock(quoted []string) string {
 	lines := suggestionLines(quoted)
-	fence := contextFence(lines)
+	fence := markdown.CodeFence(lines)
 	var suggestion strings.Builder
 	_, _ = suggestion.WriteString(fence)
 	_, _ = suggestion.WriteString("suggestion\n")
@@ -104,22 +106,6 @@ func suggestionLines(quoted []string) []string {
 		}
 	}
 	return lines
-}
-
-func contextFence(lines []string) string {
-	longest := 0
-	for _, line := range lines {
-		run := 0
-		for _, char := range line {
-			if char == '`' {
-				run++
-				longest = max(longest, run)
-			} else {
-				run = 0
-			}
-		}
-	}
-	return strings.Repeat("`", max(3, longest+1))
 }
 
 func shellQuote(value string) string {
