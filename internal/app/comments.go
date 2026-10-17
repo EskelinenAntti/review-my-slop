@@ -172,12 +172,12 @@ func (m model) sourceLocation() (string, int, error) {
 }
 
 func (m model) openCommentEditor() (tea.Cmd, error) {
-	return editor.EditComment(m.ctx, m.edit.body, m.edit.anchor, func(
-		body string,
-		err error,
-	) tea.Msg {
-		return commentEditorFinishedMsg{body: body, err: err}
-	})
+	return editor.EditComment(
+		m.ctx, m.edit.body, m.edit.anchor.QuotedLines,
+		func(body string, err error) tea.Msg {
+			return commentEditorFinishedMsg{body: body, err: err}
+		},
+	)
 }
 
 func (m model) commentIndex(selected comments.Comment) int {

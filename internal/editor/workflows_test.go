@@ -10,7 +10,6 @@ import (
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
-	"github.com/eskelinenantti/review-my-slop/internal/comments"
 	"github.com/eskelinenantti/review-my-slop/internal/testutil"
 )
 
@@ -41,9 +40,7 @@ func TestCommentWorkflowLifecycle(t *testing.T) {
 				context.Background(),
 				"sh "+shellQuote(script),
 				tc.body,
-				comments.Anchor{
-					QuotedLines: []string{" context", "+added"},
-				},
+				[]string{" context", "+added"},
 				func(body string, err error) tea.Msg {
 					assertWorkflowResult(t, body, err, tc.want, tc.errorText)
 					return nil
@@ -88,7 +85,7 @@ func TestUnusedCommandCreatesNoDraft(t *testing.T) {
 	cmd, err := EditComment(
 		context.Background(),
 		"body",
-		comments.Anchor{},
+		nil,
 		func(string, error) tea.Msg { return nil },
 	)
 	testutil.RequireEqual(t, err, nil, "cmd=%v err=%v", cmd, err)
@@ -132,7 +129,7 @@ func TestCommentCancellationAndCreationFailure(t *testing.T) {
 				ctx,
 				"true",
 				"body",
-				comments.Anchor{},
+				nil,
 				func(
 					body string,
 					err error,
@@ -160,7 +157,7 @@ func TestTerminalFailureReachesCompletion(t *testing.T) {
 		context.Background(),
 		"true",
 		"body",
-		comments.Anchor{},
+		nil,
 		func(
 			body string,
 			err error,
@@ -180,7 +177,7 @@ func TestTerminalFailureReachesCompletion(t *testing.T) {
 
 func TestMissingEditor(t *testing.T) {
 	t.Setenv("EDITOR", " \t")
-	cmd, err := EditComment(context.Background(), "", comments.Anchor{}, nil)
+	cmd, err := EditComment(context.Background(), "", nil, nil)
 	testutil.RequireEqual(t, cmd == nil, true, "cmd=%v err=%v", cmd, err)
 	testutil.RequireEqual(t, err != nil, true, "cmd=%v err=%v", cmd, err)
 	cmd, err = OpenSource(context.Background(), "source", 2, nil)
@@ -232,7 +229,7 @@ func TestEditCommentThroughBubbleTea(t *testing.T) {
 	cmd, err := EditComment(
 		context.Background(),
 		"original",
-		comments.Anchor{},
+		nil,
 		func(
 			body string,
 			err error,
@@ -280,7 +277,7 @@ func TestRunningEditorCancellationCleansDraft(t *testing.T) {
 		ctx,
 		"printf started; exec sleep 30 #",
 		"body",
-		comments.Anchor{},
+		nil,
 		func(
 			body string,
 			err error,
