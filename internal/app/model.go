@@ -15,10 +15,10 @@ import (
 )
 
 type saveCommentFunc func(
-	comments.Comment,
-	patch.Patch,
+	comment comments.Comment,
+	repository string,
 ) (comments.Comment, error)
-type deleteCommentFunc func(comments.Comment, patch.Patch) error
+type deleteCommentFunc func(repository, id string) error
 type loadCommentsFunc func() ([]comments.Comment, error)
 type refreshDiffFunc func(patch.Kind) (patch.Patch, error)
 type saveSideBySideFunc func(bool) error
@@ -151,9 +151,9 @@ func newWithStore(
 	}
 	saveComment := func(
 		comment comments.Comment,
-		current patch.Patch,
+		repository string,
 	) (comments.Comment, error) {
-		comment.Repository = current.Root
+		comment.Repository = repository
 		if comment.ID == "" {
 			return store.Add(comment)
 		}
@@ -169,9 +169,7 @@ func newWithStore(
 		},
 		size: size,
 	})
-	m.delete = func(comment comments.Comment, current patch.Patch) error {
-		return store.Delete(current.Root, comment.ID)
-	}
+	m.delete = store.Delete
 	m.load = func() ([]comments.Comment, error) {
 		return store.List(p.Root)
 	}

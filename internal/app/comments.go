@@ -88,7 +88,7 @@ func (m *model) finishCommentEdit() {
 		comment = m.comments.items[m.edit.index]
 	}
 	comment.Body = body
-	saved, err := m.save(comment, m.currentPatch)
+	saved, err := m.save(comment, m.currentPatch.Root)
 	if err != nil {
 		m.err = err
 		return
@@ -115,7 +115,8 @@ func (m *model) deleteComment(index int) {
 		m.err = errors.New("comment storage is unavailable")
 		return
 	}
-	if err := m.delete(m.comments.items[index], m.currentPatch); err != nil {
+	id := m.comments.items[index].ID
+	if err := m.delete(m.currentPatch.Root, id); err != nil {
 		m.err = err
 		return
 	}
