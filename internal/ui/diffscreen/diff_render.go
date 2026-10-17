@@ -100,16 +100,8 @@ func (r rowRenderer) renderUnifiedLine(current displayRow, y int) string {
 		r.viewport.LeftColumn,
 		width-lipgloss.Width(gutter),
 	)
-	style := lineStyle(line.Kind, r.view.dark)
-	colors := preserveForeground
 	candidate := diffCursor{row: y, pane: r.cursor.pane}
-	if selected(r.selection, candidate) {
-		style, colors = selectionRowStyle(r.view.dark), discardForeground
-	}
-	if r.cursor.row == y {
-		style, colors = cursorStyle, discardForeground
-	}
-	return renderStyledRow(style, value, width, colors)
+	return r.renderCodeLine(line.Kind, value, width, candidate)
 }
 
 func renderFileRow(path string, width int) string {
@@ -150,13 +142,22 @@ func (r rowRenderer) renderPane(
 		r.viewport.LeftColumn,
 		width-lipgloss.Width(gutter),
 	)
-	style := lineStyle(line.Kind, r.view.dark)
-	colors := preserveForeground
 	candidate := diffCursor{row: y, pane: pane}
-	if selected(r.selection, candidate) {
+	return r.renderCodeLine(line.Kind, value, width, candidate)
+}
+
+func (r rowRenderer) renderCodeLine(
+	kind patch.LineKind,
+	value string,
+	width int,
+	position diffCursor,
+) string {
+	style := lineStyle(kind, r.view.dark)
+	colors := preserveForeground
+	if selected(r.selection, position) {
 		style, colors = selectionRowStyle(r.view.dark), discardForeground
 	}
-	if r.cursor == candidate {
+	if r.cursor == position {
 		style, colors = cursorStyle, discardForeground
 	}
 	return renderStyledRow(style, value, width, colors)
