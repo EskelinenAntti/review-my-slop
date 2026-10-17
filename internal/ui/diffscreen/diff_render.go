@@ -88,18 +88,11 @@ func (v *diffView) renderUnifiedLine(
 ) string {
 	hunk := v.patch.Files[current.file].Hunks[current.hunk]
 	line := hunk.Lines[current.rightLine]
-	prefix := " "
-	if line.Kind == patch.Addition {
-		prefix = addedStyle.Render("+")
-	}
-	if line.Kind == patch.Deletion {
-		prefix = removedStyle.Render("-")
-	}
 	gutter := fmt.Sprintf(
 		"%5s %5s %s ",
 		number(line.OldNumber),
 		number(line.NewNumber),
-		prefix,
+		changeMarker(line.Kind),
 	)
 	value := gutter + fitANSIWindow(
 		current.text,
@@ -174,16 +167,9 @@ func (v *diffView) renderPane(
 	if pane == left {
 		text, numberValue = current.left, line.OldNumber
 	}
-	prefix := "  "
-	if line.Kind == patch.Addition {
-		prefix = addedStyle.Render("+") + " "
-	}
-	if line.Kind == patch.Deletion {
-		prefix = removedStyle.Render("-") + " "
-	}
 	gutter := fmt.Sprintf("%5s ", number(numberValue))
 	value := gutter + fitANSIWindow(
-		prefix+text,
+		changeMarker(line.Kind)+" "+text,
 		offset,
 		width-lipgloss.Width(gutter),
 	)
@@ -197,6 +183,17 @@ func (v *diffView) renderPane(
 		style, colors = cursorStyle, discardForeground
 	}
 	return renderStyledRow(style, value, width, colors)
+}
+
+func changeMarker(kind patch.LineKind) string {
+	switch kind {
+	case patch.Addition:
+		return addedStyle.Render("+")
+	case patch.Deletion:
+		return removedStyle.Render("-")
+	default:
+		return " "
+	}
 }
 
 func selected(selection *diffSelection, cursor diffCursor) bool {
