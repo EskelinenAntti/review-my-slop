@@ -494,63 +494,9 @@ func appendDiffscreenHunkRows(
 		leftLine: -1, rightLine: -1, text: header,
 	})
 	for _, indices := range hunkLinePairs(hunk.Lines, Options{SideBySide: view.split}) {
-		row := entry{
-			kind: lineRow, file: fileIndex, hunk: hunkIndex,
-			leftLine: indices[0], rightLine: indices[1],
-		}
-		view.rows = append(view.rows, renderDiffscreenLine(
-			row,
-			hunk,
-			view,
-			highlighted,
+		view.rows = append(view.rows, projectedLineRow(
+			fileIndex, hunkIndex, hunk, indices,
+			Options{SideBySide: view.split}, highlighted,
 		))
 	}
-}
-
-func renderDiffscreenLine(
-	row entry,
-	hunk patches.Hunk,
-	view *diffView,
-	highlighted pair,
-) entry {
-	if !view.split {
-		row.text = highlightedDiffLine(highlighted, hunk, &row)
-		return row
-	}
-	if row.leftLine >= 0 {
-		row.left = highlightedDiffLineAt(highlighted, hunk, row.leftLine)
-	}
-	if row.rightLine >= 0 {
-		row.right = highlightedDiffLine(highlighted, hunk, &row)
-	}
-	return row
-}
-
-func highlightedDiffLineAt(
-	highlighted pair,
-	hunk patches.Hunk,
-	lineIndex int,
-) string {
-	return highlightedDiffLine(highlighted, hunk, &entry{
-		rightLine: lineIndex,
-	})
-}
-
-func highlightedDiffLine(
-	highlighted pair,
-	hunk patches.Hunk,
-	row *entry,
-
-) string {
-	var line = hunk.Lines[row.rightLine]
-	if line.Kind == patches.Deletion {
-		if line.OldNumber <= 0 || int(line.OldNumber) > len(highlighted.Old) {
-			return line.Text
-		}
-		return highlighted.Old[int(line.OldNumber)-1]
-	}
-	if line.NewNumber <= 0 || int(line.NewNumber) > len(highlighted.New) {
-		return line.Text
-	}
-	return highlighted.New[int(line.NewNumber)-1]
 }
