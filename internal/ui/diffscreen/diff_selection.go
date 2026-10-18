@@ -125,7 +125,7 @@ func (m *cursorMatch) consider(candidate cursorMatch) bool {
 
 func (v *diffView) matchRow(y int, target cursorIdentity) cursorMatch {
 	current := v.rows[y]
-	if !v.rowInFile(current, target.file) {
+	if !v.rowInFile(current, target) {
 		return cursorMatch{}
 	}
 	best := cursorMatch{}
@@ -150,8 +150,17 @@ func (v *diffView) matchRow(y int, target cursorIdentity) cursorMatch {
 	return best
 }
 
-func (v *diffView) rowInFile(current entry, file patch.File) bool {
-	return current.hunk >= 0 && sameFile(v.patch.Files[current.file], file)
+func (v *diffView) rowInFile(current entry, target cursorIdentity) bool {
+	if current.hunk < 0 {
+		return false
+	}
+	file := v.patch.Files[current.file]
+	return sameFilePaths(
+		file.OldPath,
+		file.NewPath,
+		target.oldPath,
+		target.newPath,
+	)
 }
 
 func lineMatchRank(line, target patch.Line) int {
@@ -187,11 +196,11 @@ func lineNumberDistance(first, second patch.LineNumber) (int, bool) {
 	return abs(int(first - second)), true
 }
 
-func sameFile(candidate, target patch.File) bool {
-	oldPathMatches := candidate.OldPath != "" &&
-		candidate.OldPath == target.OldPath
-	newPathMatches := candidate.NewPath != "" &&
-		candidate.NewPath == target.NewPath
+func sameFilePaths(
+	candidateOld, candidateNew, targetOld, targetNew string,
+) bool {
+	oldPathMatches := candidateOld != "" && candidateOld == targetOld
+	newPathMatches := candidateNew != "" && candidateNew == targetNew
 	return oldPathMatches || newPathMatches
 }
 
