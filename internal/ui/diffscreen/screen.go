@@ -265,11 +265,11 @@ func (v *View) ScrollVertical(rows int) {
 // ToggleSelection starts a range at the focused line or clears the current
 // range.
 func (v *View) ToggleSelection() {
-	v.search.repeatMiss = false
 	if v.selection != nil {
 		v.ClearSelection()
 		return
 	}
+	v.search.repeatMiss = false
 	if _, ok := v.view.line(v.cursor); ok {
 		selection := beginSelection(v.cursor)
 		v.selection = &selection
@@ -306,7 +306,7 @@ func (v *View) Current() (patch.File, patch.Line, bool) {
 func (v *View) BeginSearch() {
 	v.ClearSelection()
 	v.search.active = true
-	v.search.query, v.search.miss, v.search.repeatMiss = "", false, false
+	v.search.query, v.search.miss = "", false
 	v.search.from = v.cursor
 }
 
