@@ -45,14 +45,13 @@ func commentDraft(body string, anchor comments.Anchor) string {
 	if len(anchor.QuotedLines) == 0 {
 		return body
 	}
-	lines := suggestionLines(anchor.QuotedLines)
 	var draft strings.Builder
 	_, _ = draft.WriteString(body)
 	if body != "" && !strings.HasSuffix(body, "\n") {
 		_ = draft.WriteByte('\n')
 	}
 	_ = draft.WriteByte('\n')
-	_, _ = draft.WriteString(suggestionBlock(lines))
+	_, _ = draft.WriteString(suggestionBlock(anchor.QuotedLines))
 	_ = draft.WriteByte('\n')
 	return draft.String()
 }
@@ -61,7 +60,7 @@ func stripUnchangedSuggestion(body string, quoted []string) string {
 	if len(quoted) == 0 {
 		return body
 	}
-	suggestion := suggestionBlock(suggestionLines(quoted))
+	suggestion := suggestionBlock(quoted)
 	before, after, found := strings.Cut(body, suggestion)
 	if !found {
 		return body
@@ -73,7 +72,15 @@ func stripUnchangedSuggestion(body string, quoted []string) string {
 	return before + "\n" + strings.TrimLeft(after, "\n")
 }
 
-func suggestionBlock(lines []string) string {
+// suggestionBlock quotes only the new side of the diff, using a fence that
+// cannot be closed by backticks in the suggested source.
+func suggestionBlock(quoted []string) string {
+	lines := make([]string, 0, len(quoted))
+	for _, line := range quoted {
+		if line != "" && line[0] != '-' {
+			lines = append(lines, line[1:])
+		}
+	}
 	fence := contextFence(lines)
 	var block strings.Builder
 	_, _ = block.WriteString(fence)
@@ -84,16 +91,6 @@ func suggestionBlock(lines []string) string {
 	}
 	_, _ = block.WriteString(fence)
 	return block.String()
-}
-
-func suggestionLines(quoted []string) []string {
-	lines := make([]string, 0, len(quoted))
-	for _, line := range quoted {
-		if line != "" && line[0] != '-' {
-			lines = append(lines, line[1:])
-		}
-	}
-	return lines
 }
 
 func contextFence(lines []string) string {
