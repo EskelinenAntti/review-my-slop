@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -34,14 +35,33 @@ func readWorkingTree(root, path string) string {
 	}
 	full := filepath.Join(root, filepath.FromSlash(path))
 	info, err := os.Lstat(full)
-	if err != nil || !info.Mode().IsRegular() || info.Size() > maxFileBytes {
+	if err != nil || !info.Mode().IsRegular() {
 		return ""
 	}
-	out, err := os.ReadFile(full)
-	if err != nil {
+	out, oversized, err := readLimitedFile(full, info)
+	if err != nil || oversized {
 		return ""
 	}
 	return safeSource(out)
+}
+
+func readLimitedFile(path string, info os.FileInfo) ([]byte, bool, error) {
+	if info.Size() > maxFileBytes {
+		return nil, true, nil
+	}
+	file, err := os.Open(path)
+	if err != nil {
+		return nil, false, err
+	}
+	defer file.Close()
+	content, err := io.ReadAll(io.LimitReader(file, maxFileBytes+1))
+	if err != nil {
+		return nil, false, err
+	}
+	if len(content) > maxFileBytes {
+		return nil, true, nil
+	}
+	return content, false, nil
 }
 
 func safeSource(source []byte) string {

@@ -70,7 +70,11 @@ func readUntrackedFile(root, path string) (File, bool, error) {
 	if !info.Mode().IsRegular() {
 		return File{}, false, nil
 	}
-	if info.Size() > maxFileBytes {
+	content, oversized, err := readLimitedFile(full, info)
+	if err != nil {
+		return File{}, false, fmt.Errorf("read untracked %q: %w", path, err)
+	}
+	if oversized {
 		return untrackedFile(
 			path,
 			"untracked file",
@@ -79,10 +83,6 @@ func readUntrackedFile(root, path string) (File, bool, error) {
 				maxFileSizeMiB,
 			),
 		), true, nil
-	}
-	content, err := os.ReadFile(full)
-	if err != nil {
-		return File{}, false, fmt.Errorf("read untracked %q: %w", path, err)
 	}
 	if containsBinaryData(content) {
 		return untrackedFile(path, "untracked binary file"), true, nil
