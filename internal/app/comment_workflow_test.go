@@ -1,7 +1,9 @@
 package app
 
 import (
+	"context"
 	"errors"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
@@ -254,5 +256,97 @@ func TestCommentAfterRefreshUsesCurrentPatch(t *testing.T) {
 	testutil.RequireEqual(t,
 		slices.Equal(saved.Files[0].Metadata, []string{"refreshed"}), true,
 		"metadata=%q", saved.Files[0].Metadata,
+	)
+}
+
+func TestStoreBackedCommentLifecycle(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	store := comments.Store{Path: filepath.Join(t.TempDir(), "comments.db")}
+	m, err := newWithStore(
+		context.Background(),
+		store,
+		modelPatch(),
+		nil,
+		defaultDimensions,
+	)
+	testutil.NoError(t, err)
+
+	anchor := comments.Anchor{
+		FilePath:    "main.go",
+		NewStart:    2,
+		QuotedLines: []string{"+new()"},
+	}
+	m.edit.body = "check this"
+	m.edit.anchor = anchor
+	m.finishCommentEdit()
+	testutil.RequireEqual(t, m.err, nil, "%s", m.err)
+
+	loaded, err := m.load()
+	testutil.RequireEqual(t, err, nil, "loaded = %#v, error = %v", loaded, err)
+	testutil.RequireEqual(t, len(loaded), 1, "loaded = %#v, error = %v", loaded,
+		err,
+	)
+	testutil.RequireEqual(t, loaded[0].Repository, "/repo",
+		"loaded = %#v, error = %v", loaded, err,
+	)
+	testutil.RequireEqual(t, loaded[0].ID != "", true,
+		"loaded = %#v, error = %v", loaded, err,
+	)
+	testutil.RequireEqual(t,
+		slices.Equal(loaded[0].Anchor.QuotedLines, anchor.QuotedLines), true,
+		"loaded = %#v, error = %v", loaded, err,
+	)
+
+	id := loaded[0].ID
+	m.edit.index = 0
+	m.edit.body = "edited"
+	m.finishCommentEdit()
+	testutil.RequireEqual(t, m.err, nil, "%s", m.err)
+
+	loaded, err = m.load()
+	testutil.RequireEqual(t, err, nil, "edited = %#v, error = %v", loaded, err)
+	testutil.RequireEqual(t, len(loaded), 1, "edited = %#v, error = %v", loaded,
+		err,
+	)
+	testutil.RequireEqual(t, loaded[0].ID, id, "edited = %#v, error = %v",
+		loaded, err,
+	)
+	testutil.RequireEqual(t, loaded[0].Body, "edited",
+		"edited = %#v, error = %v", loaded, err,
+	)
+
+	m.deleteComment(0)
+	testutil.RequireEqual(t, m.err, nil, "%s", m.err)
+
+	loaded, err = m.load()
+	testutil.RequireEqual(t, err, nil, "remaining = %#v, error = %v", loaded,
+		err,
+	)
+	testutil.RequireEqual(t, len(loaded), 0, "remaining = %#v, error = %v",
+		loaded, err,
+	)
+}
+
+func TestCommentSaveUsesPatchAndPreservesAnchor(t *testing.T) {
+	var savedPatch patch.Patch
+	m := testModel(modelPatch(), nil, func(
+		stored comments.Comment,
+		p patch.Patch,
+	) (comments.Comment, error) {
+		savedPatch = p
+		stored.ID = "1"
+		return stored, nil
+	})
+	m.edit.body = "comment"
+	m.edit.anchor = comments.Anchor{FilePath: "main.go"}
+	m.finishCommentEdit()
+	testutil.RequireEqual(t, savedPatch.Root, "/repo",
+		"saved patch/comments = %#v %#v", savedPatch, m.comments.items,
+	)
+	testutil.RequireEqual(t, len(m.comments.items), 1,
+		"saved patch/comments = %#v %#v", savedPatch, m.comments.items,
+	)
+	testutil.RequireEqual(t, m.comments.items[0].Anchor.FilePath, "main.go",
+		"saved patch/comments = %#v %#v", savedPatch, m.comments.items,
 	)
 }
