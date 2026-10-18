@@ -286,13 +286,12 @@ func (v *View) ClearSelection() {
 // Selected returns the focused line when no explicit range is selected.
 // The bool is false when the patch has no selectable code.
 func (v *View) Selected() (patch.File, []patch.Line, bool) {
-	selection := v.selection
-	if selection == nil {
-		current := beginSelection(v.cursor)
-		selection = &current
+	selection := beginSelection(v.cursor)
+	if v.selection != nil {
+		selection = *v.selection
 	}
 	file, ok := v.view.file(selection.First)
-	lines := v.view.lines(*selection)
+	lines := v.view.lines(selection)
 	return file, lines, ok && len(lines) > 0
 }
 
