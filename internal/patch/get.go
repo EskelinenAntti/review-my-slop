@@ -492,10 +492,10 @@ func readGitSource(
 		source = revision + ":" + path
 	}
 	out, err := run.Run(ctx, root, "show", source)
-	if err != nil || len(out) > maxFileBytes || bytes.IndexByte(out, 0) >= 0 {
+	if err != nil {
 		return ""
 	}
-	return visibleSource(string(out))
+	return safeSource(out)
 }
 
 func readWorkingTree(root, path string) string {
@@ -508,10 +508,17 @@ func readWorkingTree(root, path string) string {
 		return ""
 	}
 	out, err := os.ReadFile(full)
-	if err != nil || bytes.IndexByte(out, 0) >= 0 {
+	if err != nil {
 		return ""
 	}
-	return visibleSource(string(out))
+	return safeSource(out)
+}
+
+func safeSource(source []byte) string {
+	if len(source) > maxFileBytes || bytes.IndexByte(source, 0) >= 0 {
+		return ""
+	}
+	return visibleSource(string(source))
 }
 
 func cleanDiffPath(path string) string {
