@@ -6,6 +6,7 @@ import (
 
 	"github.com/eskelinenantti/review-my-slop/internal/comments"
 	"github.com/eskelinenantti/review-my-slop/internal/settings"
+	"github.com/eskelinenantti/review-my-slop/internal/ui"
 	"github.com/eskelinenantti/review-my-slop/internal/ui/commentscreen"
 	"github.com/eskelinenantti/review-my-slop/internal/ui/diffscreen"
 	"github.com/eskelinenantti/review-my-slop/internal/ui/keymap"
@@ -72,7 +73,10 @@ const (
 const horizontalScrollStep = 4
 const verticalScrollStep = 3
 
-var defaultDimensions = terminalDimensions{width: 80, height: 30}
+var defaultDimensions = terminalDimensions{
+	width:  ui.DefaultScreenWidth,
+	height: ui.DefaultScreenHeight,
+}
 
 // commentState pairs stored comments with the revision used to reject stale
 // loads.

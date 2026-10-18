@@ -10,6 +10,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 	"github.com/eskelinenantti/review-my-slop/internal/appinfo"
 	"github.com/eskelinenantti/review-my-slop/internal/patch"
+	"github.com/eskelinenantti/review-my-slop/internal/ui"
 	"github.com/eskelinenantti/review-my-slop/internal/ui/internal/frame"
 )
 
@@ -77,9 +78,13 @@ type searchState struct {
 	miss, repeatMiss bool
 }
 
-// New creates a view with default dimensions of 80 columns and 30 rows.
+// New creates a view with the shared default screen dimensions.
 func New(p patch.Patch, options Options) *View {
-	v := &View{options: options, width: 80, height: 30}
+	v := &View{
+		options: options,
+		width:   ui.DefaultScreenWidth,
+		height:  ui.DefaultScreenHeight,
+	}
 	v.view = v.newReviewView(p)
 	v.viewport = v.view.newViewport(v.width, frame.BodyHeight(v.height))
 	v.cursor, _ = v.view.first()

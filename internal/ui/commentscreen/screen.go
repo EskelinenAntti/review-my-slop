@@ -9,6 +9,7 @@ import (
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/eskelinenantti/review-my-slop/internal/comments"
+	"github.com/eskelinenantti/review-my-slop/internal/ui"
 	"github.com/eskelinenantti/review-my-slop/internal/ui/internal/frame"
 )
 
@@ -23,7 +24,10 @@ type View struct {
 
 // New creates a comment list view with default terminal dimensions.
 func New(items []comments.Comment) *View {
-	v := &View{width: 80, height: 30}
+	v := &View{
+		width:  ui.DefaultScreenWidth,
+		height: ui.DefaultScreenHeight,
+	}
 	v.Update(items)
 	return v
 }
