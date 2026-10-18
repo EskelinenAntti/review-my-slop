@@ -95,7 +95,7 @@ func (v *diffView) appendHunkRows(
 		case patch.Deletion:
 			addedStart := changeBlockEnd(hunk.Lines, index, patch.Deletion)
 			end := changeBlockEnd(hunk.Lines, addedStart, patch.Addition)
-			appendPairedChangeRows(appendRow, index, addedStart, end)
+			appendRowPairs(appendRow, index, addedStart, end)
 			index = end
 		default:
 			appendRow(index, index)
@@ -179,18 +179,18 @@ func changeBlockEnd(lines []patch.Line, start int, kind patch.LineKind) int {
 	return start
 }
 
-func appendPairedChangeRows(
+func appendRowPairs(
 	appendRow func(leftLine, rightLine int),
-	removedStart, addedStart, end int,
+	deletionStart, additionStart, end int,
 ) {
-	count := max(addedStart-removedStart, end-addedStart)
-	for offset := 0; offset < count; offset++ {
+	count := max(additionStart-deletionStart, end-additionStart)
+	for offset := range count {
 		leftLine, rightLine := -1, -1
-		if removedStart+offset < addedStart {
-			leftLine = removedStart + offset
+		if deletionStart+offset < additionStart {
+			leftLine = deletionStart + offset
 		}
-		if addedStart+offset < end {
-			rightLine = addedStart + offset
+		if additionStart+offset < end {
+			rightLine = additionStart + offset
 		}
 		appendRow(leftLine, rightLine)
 	}
