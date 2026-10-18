@@ -36,7 +36,6 @@ func newDiffView(p patch.Patch, options Options) *diffView {
 	for fileIndex, file := range p.Files {
 		v.appendFileRows(fileIndex, file)
 	}
-	v.maxLineWidth = v.measureMaxLineWidth()
 	return v
 }
 
@@ -66,6 +65,7 @@ func (v *diffView) appendHunkRows(
 			rightLine: indices[1],
 		}
 		v.highlightRow(&row, hunk.Lines, highlighted)
+		v.maxLineWidth = max(v.maxLineWidth, renderedLineWidth(row))
 		v.rows = append(v.rows, row)
 	}
 }

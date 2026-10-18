@@ -212,18 +212,8 @@ func (v *diffView) maxHorizontalOffset(width int) int {
 	return max(0, v.maxLineWidth+extra-contentWidth)
 }
 
-func (v *diffView) measureMaxLineWidth() int {
-	longest := 0
-	for _, current := range v.rows {
-		if current.kind != lineRow {
-			continue
-		}
-		longest = max(
-			longest,
-			lipgloss.Width(
-				expandTabs(ansi.Strip(current.text+current.left+current.right)),
-			),
-		)
-	}
-	return longest
+func renderedLineWidth(current entry) int {
+	return lipgloss.Width(
+		expandTabs(ansi.Strip(current.text + current.left + current.right)),
+	)
 }
