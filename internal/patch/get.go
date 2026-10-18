@@ -28,6 +28,7 @@ func (execRunner) Run(
 	dir string,
 	args ...string,
 ) ([]byte, error) {
+	command := "git " + strings.Join(args, " ")
 	cmd := exec.CommandContext(ctx, "git", args...)
 	cmd.Dir = dir
 	cmd.Env = append(os.Environ(),
@@ -37,19 +38,19 @@ func (execRunner) Run(
 	)
 	out, err := cmd.Output()
 	if ctx.Err() != nil {
-		return nil, fmt.Errorf("git %s: %w", strings.Join(args, " "), ctx.Err())
+		return nil, fmt.Errorf("%s: %w", command, ctx.Err())
 	}
 	if err == nil {
 		return out, nil
 	}
 	if exitErr, ok := errors.AsType[*exec.ExitError](err); ok {
 		return nil, fmt.Errorf(
-			"git %s: %s",
-			strings.Join(args, " "),
+			"%s: %s",
+			command,
 			strings.TrimSpace(string(exitErr.Stderr)),
 		)
 	}
-	return nil, fmt.Errorf("git %s: %w", strings.Join(args, " "), err)
+	return nil, fmt.Errorf("%s: %w", command, err)
 }
 
 // Get retrieves a complete snapshot from the current working directory.
