@@ -117,7 +117,7 @@ func (v *diffView) lineRows(lines []patch.Line) [][2]int {
 		}
 		addedStart := changeBlockEnd(lines, index, patch.Deletion)
 		end := changeBlockEnd(lines, addedStart, patch.Addition)
-		rows = append(rows, pairedChangeRows(index, addedStart, end)...)
+		rows = appendPairedChangeRows(rows, index, addedStart, end)
 		index = end
 	}
 	return rows
@@ -130,9 +130,11 @@ func changeBlockEnd(lines []patch.Line, start int, kind patch.LineKind) int {
 	return start
 }
 
-func pairedChangeRows(removedStart, addedStart, end int) [][2]int {
+func appendPairedChangeRows(
+	rows [][2]int,
+	removedStart, addedStart, end int,
+) [][2]int {
 	count := max(addedStart-removedStart, end-addedStart)
-	rows := make([][2]int, 0, count)
 	for offset := 0; offset < count; offset++ {
 		pair := [2]int{-1, -1}
 		if removedStart+offset < addedStart {
