@@ -1,10 +1,8 @@
-package comments
+package appinfo
 
 import (
 	"path/filepath"
 	"testing"
-
-	"github.com/eskelinenantti/review-my-slop/internal/appinfo"
 )
 
 func TestDataDirectoryUsesXDGEnvironment(t *testing.T) {
@@ -15,7 +13,7 @@ func TestDataDirectoryUsesXDGEnvironment(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if want := filepath.Join(root, appinfo.Name); data != want {
+	if want := filepath.Join(root, Name); data != want {
 		t.Fatalf("data directory = %q, want %q", data, want)
 	}
 }
@@ -29,7 +27,7 @@ func TestDataDirectoryFallsBackToHome(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := filepath.Join(home, ".local", "share", appinfo.Name)
+	want := filepath.Join(home, ".local", "share", Name)
 	if data != want {
 		t.Fatalf("data directory = %q, want %q", data, want)
 	}
@@ -44,7 +42,7 @@ func TestRelativeXDGDataDirectoryIsIgnored(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := filepath.Join(home, ".local", "share", appinfo.Name)
+	want := filepath.Join(home, ".local", "share", Name)
 	if data != want {
 		t.Fatalf("data directory = %q, want %q", data, want)
 	}

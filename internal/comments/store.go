@@ -9,6 +9,8 @@ import (
 	"time"
 
 	bolt "go.etcd.io/bbolt"
+
+	"github.com/eskelinenantti/review-my-slop/internal/appinfo"
 )
 
 const (
@@ -32,7 +34,7 @@ type Store struct {
 
 // DefaultPath returns the database path in the application data directory.
 func DefaultPath() (string, error) {
-	data, err := DataDir()
+	data, err := appinfo.DataDir()
 	if err != nil {
 		return "", err
 	}
