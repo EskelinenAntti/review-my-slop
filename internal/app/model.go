@@ -32,7 +32,7 @@ type commentStore interface {
 	Delete(string, string) error
 }
 
-type size struct {
+type terminalDimensions struct {
 	width  int
 	height int
 }
@@ -40,7 +40,7 @@ type size struct {
 type initialLayout struct {
 	sideBySide     bool
 	saveSideBySide saveSideBySideFunc
-	size           size
+	dimensions     terminalDimensions
 }
 
 type refreshDiffMsg struct {
@@ -72,7 +72,7 @@ const (
 const horizontalScrollStep = 4
 const verticalScrollStep = 3
 
-var defaultSize = size{width: 80, height: 30}
+var defaultDimensions = terminalDimensions{width: 80, height: 30}
 
 // commentState pairs stored comments with the revision used to reject stale
 // loads.
@@ -119,9 +119,9 @@ func newModel(
 	save saveCommentFunc,
 	layout initialLayout,
 ) model {
-	size := layout.size
-	if size.width <= 0 || size.height <= 0 {
-		size = defaultSize
+	dimensions := layout.dimensions
+	if dimensions.width <= 0 || dimensions.height <= 0 {
+		dimensions = defaultDimensions
 	}
 	m := model{
 		ctx:          ctx,
@@ -129,8 +129,8 @@ func newModel(
 		comments:     commentState{items: pendingComments},
 		commentView:  commentscreen.New(pendingComments),
 		edit:         commentEdit{index: -1},
-		width:        size.width,
-		height:       size.height,
+		width:        dimensions.width,
+		height:       dimensions.height,
 		save:         save,
 		saveLayout:   layout.saveSideBySide,
 		diffOptions: diffscreen.Options{
@@ -163,7 +163,7 @@ func newWithStore(
 	store commentStore,
 	currentPatch patch.Patch,
 	pendingComments []comments.Comment,
-	dimensions size,
+	dimensions terminalDimensions,
 ) (model, error) {
 	preferences, err := settings.Load()
 	if err != nil {
@@ -186,7 +186,7 @@ func newWithStore(
 		saveSideBySide: func(enabled bool) error {
 			return settings.Save(settings.Preferences{SideBySide: enabled})
 		},
-		size: dimensions,
+		dimensions: dimensions,
 	})
 	m.delete = func(comment comments.Comment, current patch.Patch) error {
 		return store.Delete(current.Root, comment.ID)

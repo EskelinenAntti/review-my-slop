@@ -37,8 +37,8 @@ func TestRunLoadsCommentsAndWiresContext(t *testing.T) {
 		)
 
 		return p, nil
-	}, func() size {
-		return size{
+	}, func() terminalDimensions {
+		return terminalDimensions{
 			width:  120,
 			height: 40,
 		}
@@ -77,7 +77,7 @@ func TestRunStartupFailures(t *testing.T) {
 				modelPatch(),
 				store,
 				nil,
-				func() size { return defaultSize },
+				func() terminalDimensions { return defaultDimensions },
 				func(
 					model,
 					...tea.ProgramOption,
@@ -99,7 +99,7 @@ func TestRunContextCancellation(t *testing.T) {
 	cancel()
 	err := start(ctx, modelPatch(), comments.Store{
 		Path: filepath.Join(t.TempDir(), "comments.db"),
-	}, nil, func() size { return defaultSize }, func(
+	}, nil, func() terminalDimensions { return defaultDimensions }, func(
 		m model,
 		options ...tea.ProgramOption,
 	) error {
@@ -121,11 +121,11 @@ func TestTerminalSizeDiscoveryOrder(t *testing.T) {
 	for _, tc := range []struct {
 		name           string
 		success, calls int
-		want           size
+		want           terminalDimensions
 	}{
-		{"stdin", 0, 1, size{width: 120, height: 40}},
-		{"stdout", 1, 2, size{width: 120, height: 40}},
-		{"fallback", 2, 2, defaultSize},
+		{"stdin", 0, 1, terminalDimensions{width: 120, height: 40}},
+		{"stdout", 1, 2, terminalDimensions{width: 120, height: 40}},
+		{"fallback", 2, 2, defaultDimensions},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			probe := terminalSizeProbe{t: t, success: tc.success}

@@ -28,7 +28,7 @@ func testModel(
 		p,
 		items,
 		save,
-		initialLayout{size: size{width: 100, height: 30}},
+		initialLayout{dimensions: terminalDimensions{width: 100, height: 30}},
 	)
 }
 
@@ -40,7 +40,7 @@ func TestStoreBackedCommentLifecycle(t *testing.T) {
 		store,
 		modelPatch(),
 		nil,
-		defaultSize,
+		defaultDimensions,
 	)
 	testutil.NoError(t, err)
 
@@ -103,7 +103,7 @@ func TestStoreBackedCommentLifecycle(t *testing.T) {
 func TestNewUsesSavedSideBySideForWideInitialSize(t *testing.T) {
 	m := newModel(context.Background(), modelPatch(), nil, nil, initialLayout{
 		sideBySide: true,
-		size:       size{width: 120, height: 30},
+		dimensions: terminalDimensions{width: 120, height: 30},
 	})
 	testutil.RequireEqual(t, m.diffOptions.SideBySide, true,
 		"sideBySide=%v render=%q", m.diffOptions.SideBySide, m.render(),
@@ -116,7 +116,7 @@ func TestNewUsesSavedSideBySideForWideInitialSize(t *testing.T) {
 func TestNewKeepsSavedSideBySideInactiveForNarrowInitialSize(t *testing.T) {
 	m := newModel(context.Background(), modelPatch(), nil, nil, initialLayout{
 		sideBySide: true,
-		size:       size{width: 80, height: 30},
+		dimensions: terminalDimensions{width: 80, height: 30},
 	})
 	testutil.RequireEqual(t, m.diffOptions.SideBySide, true,
 		"sideBySide=%v render=%q", m.diffOptions.SideBySide, m.render(),
@@ -141,7 +141,7 @@ func TestSideBySideToggleStillSavesPreference(t *testing.T) {
 			saved = append(saved, enabled)
 			return nil
 		},
-		size: size{width: 120, height: 30},
+		dimensions: terminalDimensions{width: 120, height: 30},
 	})
 
 	m = updateModel(t, m, textKey("t"))
@@ -177,7 +177,7 @@ func TestUnchangedRefreshPreservesStateAndClearsError(t *testing.T) {
 		p,
 		nil,
 		nil,
-		initialLayout{size: size{width: 40, height: 8}},
+		initialLayout{dimensions: terminalDimensions{width: 40, height: 8}},
 	)
 	for range 8 {
 		m.diffView.Move(diffscreen.NextLine)
@@ -388,7 +388,7 @@ func TestNarrowLayoutToggleSavesPreferenceWithoutApplicationGeometryRules(
 ) {
 	var saved []bool
 	m := newModel(context.Background(), modelPatch(), nil, nil, initialLayout{
-		size: size{width: 80, height: 30},
+		dimensions: terminalDimensions{width: 80, height: 30},
 		saveSideBySide: func(enabled bool) error {
 			saved = append(saved, enabled)
 			return nil
