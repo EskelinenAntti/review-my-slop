@@ -2,6 +2,7 @@ package diffscreen
 
 import (
 	"fmt"
+	"image/color"
 	"regexp"
 	"strconv"
 	"strings"
@@ -232,15 +233,18 @@ func selected(selection *diffSelection, cursor diffCursor) bool {
 }
 
 func lineStyle(kind patch.LineKind, dark bool) lipgloss.Style {
-	lightDark := lipgloss.LightDark(dark)
 	switch kind {
 	case patch.Addition:
-		return lipgloss.NewStyle().Background(
-			lightDark(lipgloss.Color("#dafbe1"), lipgloss.Color("#1b3823")),
+		return backgroundStyle(
+			dark,
+			lipgloss.Color("#dafbe1"),
+			lipgloss.Color("#1b3823"),
 		)
 	case patch.Deletion:
-		return lipgloss.NewStyle().Background(
-			lightDark(lipgloss.Color("#ffebe9"), lipgloss.Color("#402222")),
+		return backgroundStyle(
+			dark,
+			lipgloss.Color("#ffebe9"),
+			lipgloss.Color("#402222"),
 		)
 	default:
 		return contextStyle
@@ -248,11 +252,19 @@ func lineStyle(kind patch.LineKind, dark bool) lipgloss.Style {
 }
 
 func selectionRowStyle(dark bool) lipgloss.Style {
+	return backgroundStyle(
+		dark,
+		lipgloss.Color("#dbeafe"),
+		lipgloss.Color("#1e3a5f"),
+	)
+}
+
+func backgroundStyle(
+	dark bool,
+	lightColor, darkColor color.Color,
+) lipgloss.Style {
 	return lipgloss.NewStyle().Background(
-		lipgloss.LightDark(dark)(
-			lipgloss.Color("#dbeafe"),
-			lipgloss.Color("#1e3a5f"),
-		),
+		lipgloss.LightDark(dark)(lightColor, darkColor),
 	)
 }
 
