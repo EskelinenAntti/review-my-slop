@@ -30,7 +30,7 @@ func TestPreserveTranslatesCursorSelectionAndViewport(t *testing.T) {
 	next := newSideBySideView(testPatch(), true)
 	screen.replaceView(next)
 	preserved := screen
-	testutil.RequireEqual(t, next.valid(preserved.cursor), true, "%s",
+	testutil.RequireEqual(t, next.validCursor(preserved.cursor), true, "%s",
 		"cursor was not preserved",
 	)
 
@@ -77,7 +77,10 @@ func TestPreserveReturnsEmptyStateForEmptyView(t *testing.T) {
 
 	screen.replaceView(newUnifiedView(patch.Patch{}, true))
 	preserved := screen
-	testutil.RequireEqual(t, !preserved.view.valid(preserved.cursor), true,
+	testutil.RequireEqual(
+		t,
+		!preserved.view.validCursor(preserved.cursor),
+		true,
 		"state = %#v", preserved,
 	)
 	testutil.RequireEqual(t, preserved.selection, nil, "state = %#v", preserved)

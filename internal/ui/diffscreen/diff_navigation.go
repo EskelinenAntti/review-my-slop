@@ -6,7 +6,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 )
 
-func (v *diffView) valid(cursor diffCursor) bool {
+func (v *diffView) validCursor(cursor diffCursor) bool {
 	return cursor.row >= 0 && cursor.row < len(v.rows) &&
 		v.lineIndex(v.rows[cursor.row], cursor.pane) >= 0
 }
@@ -23,7 +23,7 @@ func (v *diffView) lineIndex(current entry, pane diffPane) int {
 
 func (v *diffView) cursorAt(y int, pane diffPane) (diffCursor, bool) {
 	cursor := diffCursor{row: y, pane: pane}
-	return cursor, v.valid(cursor)
+	return cursor, v.validCursor(cursor)
 }
 
 func (v *diffView) first() (diffCursor, bool) {
@@ -63,7 +63,7 @@ func (v *diffView) move(
 	cursor diffCursor,
 	direction direction,
 ) (diffCursor, bool) {
-	if !v.valid(cursor) {
+	if !v.validCursor(cursor) {
 		return diffCursor{}, false
 	}
 	return v.scan(cursor.row, cursor.pane, direction)
@@ -74,7 +74,7 @@ func (v *diffView) search(
 	cursor diffCursor,
 	direction direction,
 ) (diffCursor, bool) {
-	if query == "" || !v.valid(cursor) {
+	if query == "" || !v.validCursor(cursor) {
 		return diffCursor{}, false
 	}
 	query = strings.ToLower(query)
@@ -174,7 +174,7 @@ func (v *diffView) jumpFile(
 	cursor diffCursor,
 	direction direction,
 ) (diffCursor, bool) {
-	if !v.valid(cursor) {
+	if !v.validCursor(cursor) {
 		return diffCursor{}, false
 	}
 	fileIndex := v.rows[cursor.row].file
@@ -195,7 +195,7 @@ func (v *diffView) switchPane(
 	cursor diffCursor,
 	pane diffPane,
 ) (diffCursor, bool) {
-	if !v.split || !v.valid(cursor) {
+	if !v.split || !v.validCursor(cursor) {
 		return diffCursor{}, false
 	}
 	if candidate, ok := v.cursorAt(cursor.row, pane); ok {

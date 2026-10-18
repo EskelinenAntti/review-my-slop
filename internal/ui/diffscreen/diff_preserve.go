@@ -160,7 +160,7 @@ func (v *View) replaceView(next *diffView) {
 	v.cursor = translated
 	v.selection = preserveSelection(old, v.selection, next)
 	v.view = next
-	if next.valid(v.cursor) {
+	if next.validCursor(v.cursor) {
 		v.viewport.top = max(0, v.cursor.row-rowsAbove)
 		v.viewport = next.keepVisible(v.viewport, v.cursor)
 	}
@@ -174,7 +174,7 @@ func (v *View) replaceView(next *diffView) {
 }
 
 func identify(v *diffView, cursor diffCursor) cursorIdentity {
-	if !v.valid(cursor) {
+	if !v.validCursor(cursor) {
 		return cursorIdentity{}
 	}
 	row := v.rows[cursor.row]

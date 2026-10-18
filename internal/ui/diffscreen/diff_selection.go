@@ -20,7 +20,7 @@ func (v *diffView) extendSelection(
 }
 
 func (v *diffView) sameFileHunk(first, last diffCursor) bool {
-	if !v.valid(first) || !v.valid(last) {
+	if !v.validCursor(first) || !v.validCursor(last) {
 		return false
 	}
 	firstRow, lastRow := v.rows[first.row], v.rows[last.row]
@@ -67,14 +67,14 @@ func (v *diffView) paneLines(selection diffSelection) []patch.Line {
 }
 
 func (v *diffView) file(cursor diffCursor) (patch.File, bool) {
-	if !v.valid(cursor) {
+	if !v.validCursor(cursor) {
 		return patch.File{}, false
 	}
 	return v.patch.Files[v.rows[cursor.row].file], true
 }
 
 func (v *diffView) line(cursor diffCursor) (patch.Line, bool) {
-	if !v.valid(cursor) {
+	if !v.validCursor(cursor) {
 		return patch.Line{}, false
 	}
 	current := v.rows[cursor.row]

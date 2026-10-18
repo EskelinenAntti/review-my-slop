@@ -51,7 +51,7 @@ func (v *diffView) keepVisible(
 	viewport diffViewport,
 	cursor diffCursor,
 ) diffViewport {
-	if !v.valid(cursor) {
+	if !v.validCursor(cursor) {
 		return v.clampViewport(viewport)
 	}
 	viewport = v.clampViewport(viewport)
@@ -116,7 +116,7 @@ func (v *diffView) scrollVertical(
 	rows = max(-viewport.top, min(rows, v.maxTop(viewport.height)-viewport.top))
 	viewport.top += rows
 	viewport = v.clampViewport(viewport)
-	if !v.valid(cursor) || v.cursorVisible(viewport, cursor) {
+	if !v.validCursor(cursor) || v.cursorVisible(viewport, cursor) {
 		return viewport, cursor
 	}
 	target := max(
@@ -141,7 +141,7 @@ func (v *diffView) cursorVisible(
 	viewport diffViewport,
 	cursor diffCursor,
 ) bool {
-	return v.valid(cursor) && v.rowVisible(viewport, cursor.row)
+	return v.validCursor(cursor) && v.rowVisible(viewport, cursor.row)
 }
 
 func (v *diffView) scrollHalfPage(
@@ -149,7 +149,7 @@ func (v *diffView) scrollHalfPage(
 	cursor diffCursor,
 	direction direction,
 ) (diffViewport, diffCursor) {
-	if !v.valid(cursor) {
+	if !v.validCursor(cursor) {
 		return viewport, cursor
 	}
 	distance := int(direction) * max(1, viewport.height/2)
