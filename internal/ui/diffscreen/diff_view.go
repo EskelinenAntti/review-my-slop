@@ -88,15 +88,19 @@ func (v *diffView) appendHunkRows(
 			index++
 			continue
 		}
-		if hunk.Lines[index].Kind == patch.Addition {
+		switch hunk.Lines[index].Kind {
+		case patch.Addition:
 			appendRow(-1, index)
 			index++
-			continue
+		case patch.Deletion:
+			addedStart := changeBlockEnd(hunk.Lines, index, patch.Deletion)
+			end := changeBlockEnd(hunk.Lines, addedStart, patch.Addition)
+			appendPairedChangeRows(appendRow, index, addedStart, end)
+			index = end
+		default:
+			appendRow(index, index)
+			index++
 		}
-		addedStart := changeBlockEnd(hunk.Lines, index, patch.Deletion)
-		end := changeBlockEnd(hunk.Lines, addedStart, patch.Addition)
-		appendPairedChangeRows(appendRow, index, addedStart, end)
-		index = end
 	}
 }
 
