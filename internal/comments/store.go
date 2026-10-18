@@ -72,11 +72,11 @@ func (s Store) Add(comment Comment) (Comment, error) {
 }
 
 func addComment(bucket *bolt.Bucket, id string, data []byte) error {
-	if pendingBytes(bucket)+len(data) > maxPendingBytes {
-		return fmt.Errorf("pending feedback exceeds %d bytes", maxPendingBytes)
-	}
 	if bucket.Get([]byte(id)) != nil {
 		return errors.New("comment ID already exists")
+	}
+	if err := checkPendingSize(bucket, 0, len(data)); err != nil {
+		return err
 	}
 	return bucket.Put([]byte(id), data)
 }
@@ -162,9 +162,23 @@ func pendingBytes(bucket *bolt.Bucket) int {
 	return total
 }
 
+func checkPendingSize(
+	bucket *bolt.Bucket,
+	replacedBytes, addedBytes int,
+) error {
+	if pendingBytes(bucket)-replacedBytes+addedBytes > maxPendingBytes {
+		return fmt.Errorf("pending feedback exceeds %d bytes", maxPendingBytes)
+	}
+	return nil
+}
+
 func replaceComment(bucket *bolt.Bucket, comment Comment, data []byte) error {
 	key, err := findCommentKey(bucket, comment.Repository, comment.ID)
 	if err != nil {
+		return err
+	}
+	oldSize := len(bucket.Get(key))
+	if err := checkPendingSize(bucket, oldSize, len(data)); err != nil {
 		return err
 	}
 	if !bytes.Equal(key, []byte(comment.ID)) {

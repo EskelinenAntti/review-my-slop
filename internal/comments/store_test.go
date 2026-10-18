@@ -161,6 +161,42 @@ func TestStoreRejectsEmptyAndOversizedComments(t *testing.T) {
 	}
 }
 
+func TestUpdateCannotExceedPendingSizeLimit(t *testing.T) {
+	store := Store{Path: filepath.Join(t.TempDir(), "comments.db")}
+	comment := testComment("/repo", "small")
+	if _, err := store.Add(comment); err != nil {
+		t.Fatal(err)
+	}
+	bulkComment := testComment("/other", "bulk")
+	bulkComment.ID = "bulk"
+	bulkData, err := encodeComment(bulkComment)
+	testutil.NoError(t, err)
+	existingData, err := encodeComment(comment)
+	testutil.NoError(t, err)
+	paddingSize := maxPendingBytes - len(bulkData) - len(existingData) - 1
+	err = store.transact(func(bucket *bolt.Bucket) error {
+		padding := bytes.Repeat([]byte(" "), paddingSize)
+		paddedData := append(padding, bulkData...)
+		return bucket.Put([]byte(bulkComment.ID), paddedData)
+	})
+	testutil.NoError(t, err)
+
+	comment.Body = strings.Repeat("x", maxCommentBytes)
+	err = store.Update(comment)
+	limitError := err != nil &&
+		strings.Contains(err.Error(), "pending feedback exceeds")
+	if !limitError {
+		t.Fatalf("Update error = %v, want pending size limit error", err)
+	}
+
+	comments, err := store.List("/repo")
+	testutil.NoError(t, err)
+	testutil.RequireEqual(t, len(comments), 1, "comments = %#v", comments)
+	testutil.RequireEqual(t, comments[0].Body, "small", "comments = %#v",
+		comments,
+	)
+}
+
 func TestListAndUpdateComments(t *testing.T) {
 	store := Store{Path: filepath.Join(t.TempDir(), "comments.db")}
 	if _, err := store.Add(testComment("/repo", "first")); err != nil {
