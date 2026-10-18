@@ -112,15 +112,14 @@ func (v *diffView) renderUnifiedLine(
 		viewport.leftColumn,
 		width-lipgloss.Width(gutter),
 	)
-	candidate := diffCursor{row: y, pane: cursor.pane}
-	style, colors := renderedLineStyle(
-		line.Kind,
-		candidate,
+	return v.renderCodeLine(
+		value,
+		width,
+		line,
+		diffCursor{row: y, pane: cursor.pane},
 		cursor,
 		selection,
-		v.styles,
 	)
-	return renderStyledRow(style, value, width, colors)
 }
 
 func renderFileRow(path string, width int) string {
@@ -186,7 +185,23 @@ func (v *diffView) renderPane(
 		offset,
 		width-lipgloss.Width(gutter),
 	)
-	candidate := diffCursor{row: y, pane: pane}
+	return v.renderCodeLine(
+		value,
+		width,
+		line,
+		diffCursor{row: y, pane: pane},
+		cursor,
+		selection,
+	)
+}
+
+func (v *diffView) renderCodeLine(
+	value string,
+	width int,
+	line patch.Line,
+	candidate, cursor diffCursor,
+	selection *diffSelection,
+) string {
 	style, colors := renderedLineStyle(
 		line.Kind,
 		candidate,
