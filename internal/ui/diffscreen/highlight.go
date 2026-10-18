@@ -17,7 +17,7 @@ const (
 	darkTheme  = "catppuccin-mocha"
 )
 
-func render(filename, source, theme string) []string {
+func highlightSource(filename, source, theme string) []string {
 	if source == "" {
 		return nil
 	}

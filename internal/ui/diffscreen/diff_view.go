@@ -197,8 +197,8 @@ func (v *diffView) highlight(file *patch.File) highlightedSources {
 		theme = darkTheme
 	}
 	return highlightedSources{
-		old: render(file.OldPath, file.OldSource, theme),
-		new: render(file.NewPath, file.NewSource, theme),
+		old: highlightSource(file.OldPath, file.OldSource, theme),
+		new: highlightSource(file.NewPath, file.NewSource, theme),
 	}
 }
 
