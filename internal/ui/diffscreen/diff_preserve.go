@@ -214,8 +214,7 @@ func preserveSelection(
 	) || first.hunkHeader != last.hunkHeader {
 		return nil
 	}
-	translated := beginSelection(translatedFirst)
-	translated, ok := next.extendSelection(translated, translatedLast)
+	translated, ok := next.selectRange(translatedFirst, translatedLast)
 	if !ok {
 		return nil
 	}

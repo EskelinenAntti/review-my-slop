@@ -14,8 +14,7 @@ func TestPreserveTranslatesCursorSelectionAndViewport(t *testing.T) {
 	cursor, ok := old.search("added one", first, forward)
 	testutil.RequireEqual(t, ok, true, "%s", "cursor not found")
 
-	selection := beginSelection(first)
-	selection, ok = old.extendSelection(selection, cursor)
+	selection, ok := old.selectRange(first, cursor)
 	testutil.RequireEqual(t, ok, true, "%s", "selection not created")
 
 	viewport := old.newViewport(100, 4)

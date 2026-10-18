@@ -8,15 +8,10 @@ func beginSelection(cursor diffCursor) diffSelection {
 	return diffSelection{First: cursor, Last: cursor}
 }
 
-func (v *diffView) extendSelection(
-	selection diffSelection,
-	cursor diffCursor,
+func (v *diffView) selectRange(
+	first, last diffCursor,
 ) (diffSelection, bool) {
-	if !v.sameFileHunk(selection.First, cursor) {
-		return selection, false
-	}
-	selection.Last = cursor
-	return selection, true
+	return diffSelection{First: first, Last: last}, v.sameFileHunk(first, last)
 }
 
 func (v *diffView) sameFileHunk(first, last diffCursor) bool {
