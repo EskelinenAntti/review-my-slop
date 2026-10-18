@@ -215,9 +215,14 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyPressMsg:
 		m.diffView.EndDrag()
 		return m.updateKey(msg)
-	case tea.MouseClickMsg, tea.MouseMotionMsg,
-		tea.MouseReleaseMsg, tea.MouseWheelMsg:
-		m.updateMouse(msg)
+	case tea.MouseClickMsg:
+		m.click(msg)
+	case tea.MouseMotionMsg:
+		m.drag(msg)
+	case tea.MouseReleaseMsg:
+		m.release(msg)
+	case tea.MouseWheelMsg:
+		m.wheel(msg)
 	default:
 		return m.updateWorkflow(msg)
 	}
