@@ -87,10 +87,10 @@ func addComment(bucket *bolt.Bucket, id string, data []byte) error {
 func (s Store) List(repository string) ([]Comment, error) {
 	var pendingComments []Comment
 	err := s.view(func(bucket *bolt.Bucket) error {
-		return forEachComment(bucket, func(_ []byte, comment Comment) bool {
-			if comment.Repository == repository {
-				pendingComments = append(pendingComments, comment)
-			}
+		return forEachComment(bucket, repository, func(
+			_ []byte, comment Comment,
+		) bool {
+			pendingComments = append(pendingComments, comment)
 			return true
 		})
 	})
@@ -196,8 +196,10 @@ func findCommentKey(
 	repository, id string,
 ) ([]byte, error) {
 	var found []byte
-	err := forEachComment(bucket, func(key []byte, comment Comment) bool {
-		if comment.Repository == repository && comment.ID == id {
+	err := forEachComment(bucket, repository, func(
+		key []byte, comment Comment,
+	) bool {
+		if comment.ID == id {
 			found = bytes.Clone(key)
 			return false
 		}
@@ -218,10 +220,9 @@ func findPendingKeys(
 	wantedIDs map[string]struct{},
 ) ([][]byte, error) {
 	var keys [][]byte
-	err := forEachComment(bucket, func(key []byte, comment Comment) bool {
-		if comment.Repository != repository {
-			return true
-		}
+	err := forEachComment(bucket, repository, func(
+		key []byte, comment Comment,
+	) bool {
 		if _, ok := wantedIDs[comment.ID]; ok {
 			keys = append(keys, bytes.Clone(key))
 		}
@@ -232,6 +233,7 @@ func findPendingKeys(
 
 func forEachComment(
 	bucket *bolt.Bucket,
+	repository string,
 	visit func(key []byte, comment Comment) bool,
 ) error {
 	cursor := bucket.Cursor()
@@ -240,7 +242,7 @@ func forEachComment(
 		if err != nil {
 			return err
 		}
-		if !visit(key, comment) {
+		if comment.Repository == repository && !visit(key, comment) {
 			return nil
 		}
 	}
