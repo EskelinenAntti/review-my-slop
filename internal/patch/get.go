@@ -57,20 +57,28 @@ func (execRunner) Run(
 // Unknown kinds and unavailable branch comparisons return a zero Patch and an
 // error.
 func Get(ctx context.Context, kind Kind) (Patch, error) {
-	directory, err := os.Getwd()
+	directory, err := currentWorkingDirectory()
 	if err != nil {
-		return Patch{}, fmt.Errorf("resolve working directory: %w", err)
+		return Patch{}, err
 	}
 	return load(ctx, directory, kind, execRunner{})
 }
 
 // RepositoryRoot resolves the current working directory's Git repository root.
 func RepositoryRoot(ctx context.Context) (string, error) {
+	directory, err := currentWorkingDirectory()
+	if err != nil {
+		return "", err
+	}
+	return discoverRepositoryRoot(ctx, execRunner{}, directory)
+}
+
+func currentWorkingDirectory() (string, error) {
 	directory, err := os.Getwd()
 	if err != nil {
 		return "", fmt.Errorf("resolve working directory: %w", err)
 	}
-	return discoverRepositoryRoot(ctx, execRunner{}, directory)
+	return directory, nil
 }
 
 func load(
