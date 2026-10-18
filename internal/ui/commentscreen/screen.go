@@ -84,7 +84,7 @@ func (v *View) Click(x, y int) bool {
 	if !ok {
 		return false
 	}
-	row += v.firstVisibleRow(height)
+	row += v.firstVisibleItem(height)
 	if row >= len(v.items) {
 		return false
 	}
@@ -92,7 +92,7 @@ func (v *View) Click(x, y int) bool {
 	return true
 }
 
-func (v *View) firstVisibleRow(height int) int {
+func (v *View) firstVisibleItem(height int) int {
 	return min(max(0, v.top), max(0, len(v.items)-height))
 }
 
@@ -100,7 +100,7 @@ func (v *View) keepVisible() {
 	height := frame.BodyHeight(v.height)
 	v.top = min(v.top, v.row)
 	v.top = max(v.top, v.row-height+1)
-	v.top = v.firstVisibleRow(height)
+	v.top = v.firstVisibleItem(height)
 }
 
 // Render composes the screen, showing a non-nil error in place of its hints.
@@ -116,7 +116,7 @@ func (v *View) Render(err error) string {
 		rowStyle := commentRowStyle.Width(width)
 		selectedRowStyle := selectedCommentRowStyle.Width(width)
 		body = make([]string, 0, height)
-		start := v.firstVisibleRow(height)
+		start := v.firstVisibleItem(height)
 		end := min(len(v.items), start+height)
 		for index := start; index < end; index++ {
 			body = append(
