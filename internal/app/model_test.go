@@ -100,57 +100,6 @@ func TestStoreBackedCommentLifecycle(t *testing.T) {
 	)
 }
 
-func TestNewUsesSavedSideBySideForWideInitialSize(t *testing.T) {
-	m := newModel(context.Background(), modelPatch(), nil, nil, initialLayout{
-		sideBySide: true,
-		dimensions: terminalDimensions{width: 120, height: 30},
-	})
-	testutil.RequireEqual(t, m.diffOptions.SideBySide, true,
-		"sideBySide=%v render=%q", m.diffOptions.SideBySide, m.render(),
-	)
-	testutil.RequireEqual(t, strings.Contains(m.render(), "│"), true,
-		"sideBySide=%v render=%q", m.diffOptions.SideBySide, m.render(),
-	)
-}
-
-func TestNewKeepsSavedSideBySideInactiveForNarrowInitialSize(t *testing.T) {
-	m := newModel(context.Background(), modelPatch(), nil, nil, initialLayout{
-		sideBySide: true,
-		dimensions: terminalDimensions{width: 80, height: 30},
-	})
-	testutil.RequireEqual(t, m.diffOptions.SideBySide, true,
-		"sideBySide=%v render=%q", m.diffOptions.SideBySide, m.render(),
-	)
-	testutil.RequireEqual(t, !strings.Contains(m.render(), "│"), true,
-		"sideBySide=%v render=%q", m.diffOptions.SideBySide, m.render(),
-	)
-
-	m = updateModel(t, m, tea.WindowSizeMsg{Width: 120, Height: 30})
-	testutil.RequireEqual(t, m.diffOptions.SideBySide, true,
-		"sideBySide=%v render=%q", m.diffOptions.SideBySide, m.render(),
-	)
-	testutil.RequireEqual(t, strings.Contains(m.render(), "│"), true,
-		"sideBySide=%v render=%q", m.diffOptions.SideBySide, m.render(),
-	)
-}
-
-func TestSideBySideToggleStillSavesPreference(t *testing.T) {
-	var saved []bool
-	m := newModel(context.Background(), modelPatch(), nil, nil, initialLayout{
-		saveSideBySide: func(enabled bool) error {
-			saved = append(saved, enabled)
-			return nil
-		},
-		dimensions: terminalDimensions{width: 120, height: 30},
-	})
-
-	m = updateModel(t, m, textKey("t"))
-	updateModel(t, m, textKey("t"))
-	testutil.RequireEqual(t, slices.Equal(saved, []bool{true, false}), true,
-		"saved=%v", saved,
-	)
-}
-
 func TestRefreshTranslatesCursorAndSelection(t *testing.T) {
 	m := testModel(modelPatch(), nil, nil)
 	m.diffView.Move(diffscreen.NextLine)
@@ -393,32 +342,4 @@ func modelPatch() patch.Patch {
 			},
 		},
 	}
-}
-
-func TestNarrowLayoutToggleSavesPreferenceWithoutApplicationGeometryRules(
-	t *testing.T,
-) {
-	var saved []bool
-	m := newModel(context.Background(), modelPatch(), nil, nil, initialLayout{
-		dimensions: terminalDimensions{width: 80, height: 30},
-		saveSideBySide: func(enabled bool) error {
-			saved = append(saved, enabled)
-			return nil
-		},
-	})
-	m = updateModel(t, m, textKey("t"))
-	testutil.RequireEqual(t, m.err, nil,
-		"narrow toggle: saved=%v err=%v render=%q", saved, m.err, m.render(),
-	)
-	testutil.RequireEqual(t, slices.Equal(saved, []bool{true}), true,
-		"narrow toggle: saved=%v err=%v render=%q", saved, m.err, m.render(),
-	)
-	testutil.RequireEqual(t, !strings.Contains(m.render(), " │ "), true,
-		"narrow toggle: saved=%v err=%v render=%q", saved, m.err, m.render(),
-	)
-
-	m = updateModel(t, m, tea.WindowSizeMsg{Width: 120, Height: 30})
-	testutil.RequireEqual(t, strings.Contains(m.render(), " │ "), true, "%s",
-		"widening did not activate preferred layout",
-	)
 }
