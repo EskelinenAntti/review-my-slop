@@ -113,8 +113,8 @@ type model struct {
 }
 
 func newModel(
-	p patch.Patch,
-	items []comments.Comment,
+	currentPatch patch.Patch,
+	pendingComments []comments.Comment,
 	save saveCommentFunc,
 	layout initialLayout,
 ) model {
@@ -124,9 +124,9 @@ func newModel(
 	}
 	m := model{
 		ctx:          context.Background(),
-		currentPatch: p,
-		comments:     commentState{items: items},
-		commentView:  commentscreen.New(items),
+		currentPatch: currentPatch,
+		comments:     commentState{items: pendingComments},
+		commentView:  commentscreen.New(pendingComments),
 		edit:         commentEdit{index: -1},
 		width:        size.width,
 		height:       size.height,
@@ -136,7 +136,7 @@ func newModel(
 			SideBySide: layout.sideBySide,
 			Dark:       true,
 		},
-		kind: p.Kind,
+		kind: currentPatch.Kind,
 		keys: keymap.New(
 			keymap.Sequence{
 				Prefix:         "g",
@@ -152,22 +152,22 @@ func newModel(
 			},
 		),
 	}
-	m.diffView = diffscreen.New(p, m.diffOptions)
+	m.diffView = diffscreen.New(currentPatch, m.diffOptions)
 	m.resizeScreens()
 	return m
 }
 
 func newWithStore(
 	store commentStore,
-	p patch.Patch,
-	items []comments.Comment,
-	size size,
+	currentPatch patch.Patch,
+	pendingComments []comments.Comment,
+	dimensions size,
 ) (model, error) {
 	preferences, err := settings.Load()
 	if err != nil {
 		return model{}, err
 	}
-	m := newModel(p, items, func(
+	m := newModel(currentPatch, pendingComments, func(
 		comment comments.Comment,
 		current patch.Patch,
 	) (comments.Comment, error) {
@@ -184,13 +184,13 @@ func newWithStore(
 		saveSideBySide: func(enabled bool) error {
 			return settings.Save(settings.Preferences{SideBySide: enabled})
 		},
-		size: size,
+		size: dimensions,
 	})
 	m.delete = func(comment comments.Comment, current patch.Patch) error {
 		return store.Delete(current.Root, comment.ID)
 	}
 	m.load = func() ([]comments.Comment, error) {
-		return store.List(p.Root)
+		return store.List(currentPatch.Root)
 	}
 	return m, nil
 }
