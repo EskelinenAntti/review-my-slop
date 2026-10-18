@@ -468,14 +468,7 @@ func parseHunkBody(oldLine, newLine int32, body []byte) ([]Line, error) {
 }
 
 func readIndex(ctx context.Context, run runner, root, path string) string {
-	if path == "" || path == "/dev/null" {
-		return ""
-	}
-	out, err := run.Run(ctx, root, "show", ":"+path)
-	if err != nil || len(out) > maxFileBytes || bytes.IndexByte(out, 0) >= 0 {
-		return ""
-	}
-	return visibleSource(string(out))
+	return readGitSource(ctx, run, root, "", path)
 }
 
 func readRevision(
@@ -483,10 +476,22 @@ func readRevision(
 	run runner,
 	root, revision, path string,
 ) string {
+	return readGitSource(ctx, run, root, revision, path)
+}
+
+func readGitSource(
+	ctx context.Context,
+	run runner,
+	root, revision, path string,
+) string {
 	if path == "" || path == "/dev/null" {
 		return ""
 	}
-	out, err := run.Run(ctx, root, "show", revision+":"+path)
+	source := ":" + path
+	if revision != "" {
+		source = revision + ":" + path
+	}
+	out, err := run.Run(ctx, root, "show", source)
 	if err != nil || len(out) > maxFileBytes || bytes.IndexByte(out, 0) >= 0 {
 		return ""
 	}
