@@ -84,7 +84,7 @@ func load(
 	if err != nil {
 		return Patch{}, fmt.Errorf("discover default branch: %w", err)
 	}
-	revisions, readOld, err := comparisonBase(ctx, run, root, kind, branch)
+	revisions, oldRevision, err := comparisonBase(ctx, run, root, kind, branch)
 	if err != nil {
 		return Patch{}, err
 	}
@@ -92,7 +92,7 @@ func load(
 	if err != nil {
 		return Patch{}, err
 	}
-	return build(ctx, run, root, kind, branch, raw, readOld)
+	return build(ctx, run, root, kind, branch, raw, oldRevision)
 }
 
 func comparisonBase(
@@ -101,26 +101,23 @@ func comparisonBase(
 	root string,
 	kind Kind,
 	branch string,
-) ([]string, sourceReader, error) {
+) ([]string, string, error) {
 	if kind != Branch {
-		return nil, readIndex, nil
+		return nil, "", nil
 	}
 	if branch == "" {
-		return nil, nil, errors.New("default branch is unavailable")
+		return nil, "", errors.New("default branch is unavailable")
 	}
 	baseBytes, err := run.Run(ctx, root, "merge-base", branch, "HEAD")
 	if err != nil {
-		return nil, nil, fmt.Errorf(
+		return nil, "", fmt.Errorf(
 			"find branch point with %s: %w",
 			branch,
 			err,
 		)
 	}
 	base := strings.TrimSpace(string(baseBytes))
-	readOld := func(ctx context.Context, run runner, root, path string) string {
-		return readRevision(ctx, run, root, base, path)
-	}
-	return []string{base}, readOld, nil
+	return []string{base}, base, nil
 }
 
 func repositoryRoot(
@@ -156,8 +153,6 @@ func gitDiff(
 	return run.Run(ctx, root, args...)
 }
 
-type sourceReader func(context.Context, runner, string, string) string
-
 func build(
 	ctx context.Context,
 	run runner,
@@ -165,9 +160,9 @@ func build(
 	kind Kind,
 	branch string,
 	raw []byte,
-	readOld sourceReader,
+	oldRevision string,
 ) (Patch, error) {
-	files, err := parseTracked(ctx, run, root, raw, readOld)
+	files, err := parseTracked(ctx, run, root, raw, oldRevision)
 	if err != nil {
 		return Patch{}, err
 	}
@@ -243,7 +238,7 @@ func parseTracked(
 	run runner,
 	root string,
 	raw []byte,
-	readOld sourceReader,
+	oldRevision string,
 ) ([]File, error) {
 	if len(bytes.TrimSpace(raw)) == 0 {
 		return nil, nil
@@ -257,7 +252,7 @@ func parseTracked(
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
-		file, err := parseTrackedFile(ctx, run, root, fd, readOld)
+		file, err := parseTrackedFile(ctx, run, root, fd, oldRevision)
 		if err != nil {
 			return nil, err
 		}
@@ -271,7 +266,7 @@ func parseTrackedFile(
 	run runner,
 	root string,
 	fd *diff.FileDiff,
-	readOld sourceReader,
+	oldRevision string,
 ) (File, error) {
 	oldPath := cleanDiffPath(fd.OrigName)
 	newPath := cleanDiffPath(fd.NewName)
@@ -285,7 +280,7 @@ func parseTrackedFile(
 		DisplayPath: visibleText(display),
 		Metadata:    visibleStrings(fd.Extended),
 	}
-	file.OldSource = readOld(ctx, run, root, oldPath)
+	file.OldSource = readGitSource(ctx, run, root, oldRevision, oldPath)
 	file.NewSource = readWorkingTree(root, newPath)
 	for _, h := range fd.Hunks {
 		lines, err := parseHunkBody(h.OrigStartLine, h.NewStartLine, h.Body)
@@ -464,18 +459,6 @@ func parseHunkBody(oldLine, newLine int32, body []byte) ([]Line, error) {
 		}
 	}
 	return lines, nil
-}
-
-func readIndex(ctx context.Context, run runner, root, path string) string {
-	return readGitSource(ctx, run, root, "", path)
-}
-
-func readRevision(
-	ctx context.Context,
-	run runner,
-	root, revision, path string,
-) string {
-	return readGitSource(ctx, run, root, revision, path)
 }
 
 func readGitSource(
