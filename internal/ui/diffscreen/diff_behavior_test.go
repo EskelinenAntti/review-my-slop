@@ -1,6 +1,7 @@
 package diffscreen
 
 import (
+	"math"
 	"regexp"
 	"strconv"
 	"strings"
@@ -447,12 +448,12 @@ func TestHorizontalScrollKeepsSplitGuttersAndDividerFixed(t *testing.T) {
 func TestHorizontalScrollStartAndEndClamp(t *testing.T) {
 	v := newUnifiedView(longLinePatch(), true)
 	viewport := v.newViewport(37, 1)
-	viewport = v.scrollHorizontal(viewport, int(^uint(0)>>1))
+	viewport = v.scrollHorizontal(viewport, math.MaxInt)
 	testutil.RequireEqual(t, viewport.LeftColumn != 0, true, "%s",
 		"end did not scroll",
 	)
 
-	viewport = v.scrollHorizontal(viewport, -int(^uint(0)>>1))
+	viewport = v.scrollHorizontal(viewport, -math.MaxInt)
 	testutil.RequireEqual(t, viewport.LeftColumn, 0, "start = %d",
 		viewport.LeftColumn,
 	)

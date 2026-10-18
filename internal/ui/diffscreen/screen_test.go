@@ -1,6 +1,7 @@
 package diffscreen
 
 import (
+	"math"
 	"strings"
 	"testing"
 
@@ -243,7 +244,7 @@ func TestEmptyAndMetadataOnlyPatches(t *testing.T) {
 func TestHorizontalScrollEdgesAreIdempotent(t *testing.T) {
 	v := New(longPatch(), Options{})
 	v.Resize(30, 10)
-	distance := int(^uint(0) >> 1)
+	distance := math.MaxInt
 	v.ScrollHorizontal(distance)
 	before := v.viewport.LeftColumn
 	testutil.RequireEqual(t, before != 0, true, "%s",
@@ -344,7 +345,7 @@ func TestVerticalScrollClampsAtContentEdges(t *testing.T) {
 		for _, height := range []int{1, 10, 100} {
 			v := New(p, Options{})
 			v.Resize(80, height)
-			distance := int(^uint(0) >> 1)
+			distance := math.MaxInt
 			v.ScrollVertical(distance)
 			end := v.viewport.top
 			testutil.RequireEqual(t,
