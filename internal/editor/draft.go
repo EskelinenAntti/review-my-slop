@@ -5,11 +5,12 @@ import (
 	"os"
 	"strings"
 
+	"github.com/eskelinenantti/review-my-slop/internal/appinfo"
 	"github.com/eskelinenantti/review-my-slop/internal/comments"
 )
 
 func createCommentFile(body string, anchor comments.Anchor) (string, error) {
-	file, err := os.CreateTemp("", "review-my-slop-comment-*.md")
+	file, err := os.CreateTemp("", appinfo.Name+"-comment-*.md")
 	if err != nil {
 		return "", fmt.Errorf("create comment file: %w", err)
 	}

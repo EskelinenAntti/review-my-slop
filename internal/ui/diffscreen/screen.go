@@ -8,6 +8,7 @@ import (
 
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
+	"github.com/eskelinenantti/review-my-slop/internal/appinfo"
 	"github.com/eskelinenantti/review-my-slop/internal/patch"
 	"github.com/eskelinenantti/review-my-slop/internal/ui/internal/frame"
 )
@@ -390,7 +391,7 @@ func (v *View) Find(d Direction) bool {
 // position label. Dimensions are configured through Resize.
 func (v *View) Render(err error) string {
 	counts := frame.Muted(v.view.countsLabel)
-	header := frame.Title("review-my-slop") + "  " + counts
+	header := frame.Title(appinfo.Name) + "  " + counts
 	body := v.renderBody()
 	status := v.renderStatus()
 	footer := frame.Muted(status)

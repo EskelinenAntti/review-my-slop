@@ -9,18 +9,19 @@ import (
 	"os"
 
 	"github.com/eskelinenantti/review-my-slop/internal/app"
+	"github.com/eskelinenantti/review-my-slop/internal/appinfo"
 	"github.com/eskelinenantti/review-my-slop/internal/comments"
 	"github.com/eskelinenantti/review-my-slop/internal/patch"
 )
 
 const (
 	errorExitCode = 1
-	usage         = "usage: review-my-slop [code|comments]"
+	usage         = "usage: " + appinfo.Name + " [code|comments]"
 )
 
 func main() {
 	if err := run(context.Background(), os.Args[1:], os.Stdout); err != nil {
-		_, _ = fmt.Fprintln(os.Stderr, "review-my-slop:", err)
+		_, _ = fmt.Fprintln(os.Stderr, appinfo.Name+":", err)
 		os.Exit(errorExitCode)
 	}
 }

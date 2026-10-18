@@ -6,6 +6,7 @@ import (
 
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
+	"github.com/eskelinenantti/review-my-slop/internal/appinfo"
 	"github.com/eskelinenantti/review-my-slop/internal/ui/internal/frame"
 )
 
@@ -31,7 +32,7 @@ func Render(bindings []Binding, width, height int) string {
 		body = append(body, ansi.Truncate(line, frame.ScreenWidth(width), ""))
 	}
 	return frame.Render(
-		frame.Title("review-my-slop help"),
+		frame.Title(appinfo.Name+" help"),
 		body,
 		frame.Muted("? or Esc closes help"),
 		height,

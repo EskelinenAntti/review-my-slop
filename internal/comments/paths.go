@@ -1,21 +1,10 @@
 package comments
 
 import (
-	"fmt"
-	"os"
-	"path/filepath"
+	"github.com/eskelinenantti/review-my-slop/internal/appinfo"
 )
-
-const appName = "review-my-slop"
 
 // DataDir returns the application data directory, respecting XDG_DATA_HOME.
 func DataDir() (string, error) {
-	if root := os.Getenv("XDG_DATA_HOME"); filepath.IsAbs(root) {
-		return filepath.Join(root, appName), nil
-	}
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return "", fmt.Errorf("resolve user home directory: %w", err)
-	}
-	return filepath.Join(home, ".local", "share", appName), nil
+	return appinfo.DataDir()
 }

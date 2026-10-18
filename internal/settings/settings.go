@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+
+	"github.com/eskelinenantti/review-my-slop/internal/appinfo"
 )
 
 // Preferences contains the persisted UI preferences.
@@ -79,9 +81,9 @@ func writePreferences(path string, preferences Preferences) error {
 }
 
 func settingsPath() (string, error) {
-	config, err := os.UserConfigDir()
+	config, err := appinfo.ConfigDir()
 	if err != nil {
 		return "", fmt.Errorf("resolve UI settings directory: %w", err)
 	}
-	return filepath.Join(config, "review-my-slop", "ui.json"), nil
+	return filepath.Join(config, "ui.json"), nil
 }
