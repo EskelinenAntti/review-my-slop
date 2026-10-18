@@ -234,11 +234,10 @@ func (m model) updateWorkflow(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case commentsLoadedMsg:
 		m.finishCommentsLoad(msg)
 	case sourceEditorFinishedMsg:
-		if msg.err != nil {
-			m.err = fmt.Errorf("editor: %w", msg.err)
-			break
+		if msg.err == nil {
+			return m, m.loadRefresh()
 		}
-		return m, m.loadRefresh()
+		m.err = fmt.Errorf("editor: %w", msg.err)
 	case tea.FocusMsg:
 		return m, m.loadRefresh()
 	case refreshDiffMsg:
