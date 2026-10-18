@@ -87,11 +87,11 @@ func load(
 	if err != nil {
 		return Patch{}, fmt.Errorf("discover default branch: %w", err)
 	}
-	revisions, oldRevision, err := comparisonBase(ctx, run, root, kind, branch)
+	oldRevision, err := comparisonBase(ctx, run, root, kind, branch)
 	if err != nil {
 		return Patch{}, err
 	}
-	raw, err := gitDiff(ctx, run, root, revisions...)
+	raw, err := gitDiff(ctx, run, root, oldRevision)
 	if err != nil {
 		return Patch{}, err
 	}
@@ -104,23 +104,22 @@ func comparisonBase(
 	root string,
 	kind Kind,
 	branch string,
-) ([]string, string, error) {
+) (string, error) {
 	if kind != Branch {
-		return nil, "", nil
+		return "", nil
 	}
 	if branch == "" {
-		return nil, "", errors.New("default branch is unavailable")
+		return "", errors.New("default branch is unavailable")
 	}
 	baseBytes, err := run.Run(ctx, root, "merge-base", branch, "HEAD")
 	if err != nil {
-		return nil, "", fmt.Errorf(
+		return "", fmt.Errorf(
 			"find branch point with %s: %w",
 			branch,
 			err,
 		)
 	}
-	base := strings.TrimSpace(string(baseBytes))
-	return []string{base}, base, nil
+	return strings.TrimSpace(string(baseBytes)), nil
 }
 
 func repositoryRoot(
@@ -143,7 +142,7 @@ func gitDiff(
 	ctx context.Context,
 	run runner,
 	root string,
-	revisions ...string,
+	base string,
 ) ([]byte, error) {
 	args := []string{
 		"-c", "core.quotepath=false",
@@ -151,7 +150,9 @@ func gitDiff(
 		"--no-pager", "diff", "--no-ext-diff", "--no-color", "--find-renames",
 		"--src-prefix=a/", "--dst-prefix=b/", "--unified=3",
 	}
-	args = append(args, revisions...)
+	if base != "" {
+		args = append(args, base)
+	}
 	args = append(args, "--")
 	return run.Run(ctx, root, args...)
 }
