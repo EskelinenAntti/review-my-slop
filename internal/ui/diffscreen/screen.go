@@ -455,27 +455,26 @@ func (v *View) renderFooter(value string) string {
 func patchLineCounts(p patch.Patch) (added, removed int) {
 	for _, file := range p.Files {
 		for _, hunk := range file.Hunks {
-			counts := hunkLineCounts(hunk)
-			added += counts[0]
-			removed += counts[1]
+			hunkAdded, hunkRemoved := hunkLineCounts(hunk)
+			added += hunkAdded
+			removed += hunkRemoved
 		}
 	}
 	return added, removed
 }
 
-func hunkLineCounts(hunk patch.Hunk) [2]int {
-	counts := [2]int{}
+func hunkLineCounts(hunk patch.Hunk) (added, removed int) {
 	for _, line := range hunk.Lines {
 		switch line.Kind {
 		case patch.Addition:
-			counts[0]++
+			added++
 		case patch.Deletion:
-			counts[1]++
+			removed++
 		default:
 			continue
 		}
 	}
-	return counts
+	return added, removed
 }
 
 var (
