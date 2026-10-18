@@ -41,9 +41,10 @@ func (m model) editSelectedComment() (tea.Model, tea.Cmd) {
 	if !ok {
 		return m, nil
 	}
+	comment := m.comments.items[index]
 	m.edit.index = index
-	m.edit.body = m.comments.items[m.edit.index].Body
-	m.edit.anchor = m.comments.items[m.edit.index].Anchor
+	m.edit.body = comment.Body
+	m.edit.anchor = comment.Anchor
 	cmd, err := m.openCommentEditor()
 	if err != nil {
 		m.err = err
