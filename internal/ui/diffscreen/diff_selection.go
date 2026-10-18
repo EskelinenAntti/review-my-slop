@@ -58,8 +58,12 @@ func (s diffSelection) paneAt(row int) diffPane {
 func (v *diffView) paneLines(selection diffSelection) []patch.Line {
 	first, _ := v.line(selection.First)
 	last, _ := v.line(selection.Last)
-	firstIndex := v.lineIndex(v.rows[selection.First.row], selection.First.pane)
-	lastIndex := v.lineIndex(v.rows[selection.Last.row], selection.Last.pane)
+	firstIndex := v.hunkLineIndex(
+		v.rows[selection.First.row], selection.First.pane,
+	)
+	lastIndex := v.hunkLineIndex(
+		v.rows[selection.Last.row], selection.Last.pane,
+	)
 	if firstIndex == lastIndex {
 		return []patch.Line{first}
 	}
@@ -78,8 +82,9 @@ func (v *diffView) line(cursor diffCursor) (patch.Line, bool) {
 		return patch.Line{}, false
 	}
 	current := v.rows[cursor.row]
-	return v.patch.Files[current.file].Hunks[current.hunk].Lines[v.lineIndex(
+	index := v.hunkLineIndex(
 		current,
 		cursor.pane,
-	)], true
+	)
+	return v.patch.Files[current.file].Hunks[current.hunk].Lines[index], true
 }

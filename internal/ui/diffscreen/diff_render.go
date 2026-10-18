@@ -165,7 +165,7 @@ func (v *diffView) renderPane(
 	cursor diffCursor,
 	selection *diffSelection,
 ) string {
-	index := v.lineIndex(current, pane)
+	index := v.hunkLineIndex(current, pane)
 	if index < 0 {
 		return strings.Repeat(" ", width)
 	}

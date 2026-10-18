@@ -180,7 +180,7 @@ func identify(v *diffView, cursor diffCursor) cursorIdentity {
 	row := v.rows[cursor.row]
 	file := v.patch.Files[row.file]
 	hunk := file.Hunks[row.hunk]
-	line := hunk.Lines[v.lineIndex(row, cursor.pane)]
+	line := hunk.Lines[v.hunkLineIndex(row, cursor.pane)]
 	return cursorIdentity{
 		oldPath:    file.OldPath,
 		newPath:    file.NewPath,

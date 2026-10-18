@@ -8,10 +8,10 @@ import (
 
 func (v *diffView) validCursor(cursor diffCursor) bool {
 	return cursor.row >= 0 && cursor.row < len(v.rows) &&
-		v.lineIndex(v.rows[cursor.row], cursor.pane) >= 0
+		v.hunkLineIndex(v.rows[cursor.row], cursor.pane) >= 0
 }
 
-func (v *diffView) lineIndex(current entry, pane diffPane) int {
+func (v *diffView) hunkLineIndex(current entry, pane diffPane) int {
 	if current.kind != lineRow {
 		return -1
 	}
