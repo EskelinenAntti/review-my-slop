@@ -54,7 +54,7 @@ func filterSGR(sequence string, colors foregroundPolicy) string {
 }
 
 func filterSGRParts(parts []string, colors foregroundPolicy) []string {
-	filtered := make([]string, 0, len(parts))
+	filtered := parts[:0]
 	for index := 0; index < len(parts); index++ {
 		code, err := strconv.Atoi(parts[index])
 		if err != nil {
