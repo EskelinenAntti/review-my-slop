@@ -59,7 +59,7 @@ func start(
 	return launch(
 		m,
 		tea.WithContext(ctx),
-		tea.WithWindowSize(dimensions.Width, dimensions.Height),
+		tea.WithWindowSize(dimensions.width, dimensions.height),
 	)
 }
 
@@ -70,7 +70,7 @@ func initialTerminalSize() size {
 func discoverTerminalSize(getSize func(uintptr) (int, int, error)) size {
 	for _, descriptor := range [...]uintptr{os.Stdin.Fd(), os.Stdout.Fd()} {
 		if width, height, err := getSize(descriptor); err == nil {
-			return size{Width: width, Height: height}
+			return size{width: width, height: height}
 		}
 	}
 	return defaultSize

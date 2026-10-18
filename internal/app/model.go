@@ -33,8 +33,8 @@ type commentStore interface {
 }
 
 type size struct {
-	Width  int
-	Height int
+	width  int
+	height int
 }
 
 type initialLayout struct {
@@ -72,7 +72,7 @@ const (
 const horizontalScrollStep = 4
 const verticalScrollStep = 3
 
-var defaultSize = size{Width: 80, Height: 30}
+var defaultSize = size{width: 80, height: 30}
 
 // commentState pairs stored comments with the revision used to reject stale
 // loads.
@@ -119,7 +119,7 @@ func newModel(
 	layout initialLayout,
 ) model {
 	size := layout.size
-	if size.Width <= 0 || size.Height <= 0 {
+	if size.width <= 0 || size.height <= 0 {
 		size = defaultSize
 	}
 	m := model{
@@ -128,8 +128,8 @@ func newModel(
 		comments:     commentState{items: items},
 		commentView:  commentscreen.New(items),
 		edit:         commentEdit{index: -1},
-		width:        size.Width,
-		height:       size.Height,
+		width:        size.width,
+		height:       size.height,
 		save:         save,
 		saveLayout:   layout.SaveSideBySide,
 		diffOptions: diffscreen.Options{

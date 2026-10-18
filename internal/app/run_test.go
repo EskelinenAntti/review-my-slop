@@ -39,8 +39,8 @@ func TestRunLoadsCommentsAndWiresContext(t *testing.T) {
 		return p, nil
 	}, func() size {
 		return size{
-			Width:  120,
-			Height: 40,
+			width:  120,
+			height: 40,
 		}
 	}, func(m model, _ ...tea.ProgramOption) error {
 		testutil.RequireEqual(t, m.ctx, ctx, "model=%#v", m)
@@ -123,8 +123,8 @@ func TestTerminalSizeDiscoveryOrder(t *testing.T) {
 		success, calls int
 		want           size
 	}{
-		{"stdin", 0, 1, size{Width: 120, Height: 40}},
-		{"stdout", 1, 2, size{Width: 120, Height: 40}},
+		{"stdin", 0, 1, size{width: 120, height: 40}},
+		{"stdout", 1, 2, size{width: 120, height: 40}},
 		{"fallback", 2, 2, defaultSize},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
