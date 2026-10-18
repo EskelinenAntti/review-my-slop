@@ -94,7 +94,7 @@ func TestStoreBackedCommentLifecycle(t *testing.T) {
 
 func TestNewUsesSavedSideBySideForWideInitialSize(t *testing.T) {
 	m := newModel(modelPatch(), nil, nil, initialLayout{
-		SideBySide: true,
+		sideBySide: true,
 		size:       size{width: 120, height: 30},
 	})
 	testutil.RequireEqual(t, m.diffOptions.SideBySide, true,
@@ -107,7 +107,7 @@ func TestNewUsesSavedSideBySideForWideInitialSize(t *testing.T) {
 
 func TestNewKeepsSavedSideBySideInactiveForNarrowInitialSize(t *testing.T) {
 	m := newModel(modelPatch(), nil, nil, initialLayout{
-		SideBySide: true,
+		sideBySide: true,
 		size:       size{width: 80, height: 30},
 	})
 	testutil.RequireEqual(t, m.diffOptions.SideBySide, true,
@@ -129,7 +129,7 @@ func TestNewKeepsSavedSideBySideInactiveForNarrowInitialSize(t *testing.T) {
 func TestSideBySideToggleStillSavesPreference(t *testing.T) {
 	var saved []bool
 	m := newModel(modelPatch(), nil, nil, initialLayout{
-		SaveSideBySide: func(enabled bool) error {
+		saveSideBySide: func(enabled bool) error {
 			saved = append(saved, enabled)
 			return nil
 		},
@@ -375,7 +375,7 @@ func TestNarrowLayoutToggleSavesPreferenceWithoutApplicationGeometryRules(
 	var saved []bool
 	m := newModel(modelPatch(), nil, nil, initialLayout{
 		size: size{width: 80, height: 30},
-		SaveSideBySide: func(enabled bool) error {
+		saveSideBySide: func(enabled bool) error {
 			saved = append(saved, enabled)
 			return nil
 		},

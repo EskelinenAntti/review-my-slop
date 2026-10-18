@@ -38,8 +38,8 @@ type size struct {
 }
 
 type initialLayout struct {
-	SideBySide     bool
-	SaveSideBySide saveSideBySideFunc
+	sideBySide     bool
+	saveSideBySide saveSideBySideFunc
 	size           size
 }
 
@@ -131,9 +131,9 @@ func newModel(
 		width:        size.width,
 		height:       size.height,
 		save:         save,
-		saveLayout:   layout.SaveSideBySide,
+		saveLayout:   layout.saveSideBySide,
 		diffOptions: diffscreen.Options{
-			SideBySide: layout.SideBySide,
+			SideBySide: layout.sideBySide,
 			Dark:       true,
 		},
 		kind: p.Kind,
@@ -180,8 +180,8 @@ func newWithStore(
 		}
 		return store.Add(comment)
 	}, initialLayout{
-		SideBySide: preferences.SideBySide,
-		SaveSideBySide: func(enabled bool) error {
+		sideBySide: preferences.SideBySide,
+		saveSideBySide: func(enabled bool) error {
 			return settings.Save(settings.Preferences{SideBySide: enabled})
 		},
 		size: size,
