@@ -12,22 +12,22 @@ import (
 )
 
 func navigationMatcher() keymap.Matcher {
-	keysByPrefix := make(map[string][]string)
+	continuationsByPrefix := make(map[string][]string)
 	for binding := range navigationMotions {
-		addSequenceKey(keysByPrefix, binding)
+		addContinuationForBinding(continuationsByPrefix, binding)
 	}
 	for binding := range navigationAlignments {
-		addSequenceKey(keysByPrefix, binding)
+		addContinuationForBinding(continuationsByPrefix, binding)
 	}
-	prefixes := make([]string, 0, len(keysByPrefix))
-	for prefix := range keysByPrefix {
+	prefixes := make([]string, 0, len(continuationsByPrefix))
+	for prefix := range continuationsByPrefix {
 		prefixes = append(prefixes, prefix)
 	}
 	slices.Sort(prefixes)
 
 	sequences := make([]keymap.Sequence, 0, len(prefixes))
 	for _, prefix := range prefixes {
-		keys := keysByPrefix[prefix]
+		keys := continuationsByPrefix[prefix]
 		slices.Sort(keys)
 		// Vim's g prefix retries an unmatched continuation as a fresh key.
 		sequences = append(sequences, keymap.Sequence{
@@ -39,10 +39,17 @@ func navigationMatcher() keymap.Matcher {
 	return keymap.New(sequences...)
 }
 
-func addSequenceKey(keysByPrefix map[string][]string, binding string) {
+func addContinuationForBinding(
+	continuationsByPrefix map[string][]string,
+	binding string,
+) {
 	keys := strings.Fields(binding)
 	if len(keys) == 2 {
-		keysByPrefix[keys[0]] = append(keysByPrefix[keys[0]], keys[1])
+		prefix := keys[0]
+		continuationsByPrefix[prefix] = append(
+			continuationsByPrefix[prefix],
+			keys[1],
+		)
 	}
 }
 
