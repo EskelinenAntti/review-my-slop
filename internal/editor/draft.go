@@ -6,10 +6,9 @@ import (
 	"strings"
 
 	"github.com/eskelinenantti/review-my-slop/internal/appinfo"
-	"github.com/eskelinenantti/review-my-slop/internal/comments"
 )
 
-func createCommentFile(body string, anchor comments.Anchor) (string, error) {
+func createCommentFile(body string, quoted []string) (string, error) {
 	file, err := os.CreateTemp("", appinfo.Name+"-comment-*.md")
 	if err != nil {
 		return "", fmt.Errorf("create comment file: %w", err)
@@ -23,7 +22,7 @@ func createCommentFile(body string, anchor comments.Anchor) (string, error) {
 		_ = file.Close()
 		_ = os.Remove(path)
 	}()
-	if _, err := file.WriteString(commentDraft(body, anchor)); err != nil {
+	if _, err := file.WriteString(commentDraft(body, quoted)); err != nil {
 		return "", fmt.Errorf("write comment file: %w", err)
 	}
 	if err := file.Close(); err != nil {
@@ -33,22 +32,22 @@ func createCommentFile(body string, anchor comments.Anchor) (string, error) {
 	return path, nil
 }
 
-func readCommentFile(path string, anchor comments.Anchor) (string, error) {
+func readCommentFile(path string, quoted []string) (string, error) {
 	body, err := os.ReadFile(path)
 	if err != nil {
 		return "", fmt.Errorf("read comment file: %w", err)
 	}
-	return stripUnchangedSuggestion(string(body), anchor.QuotedLines), nil
+	return stripUnchangedSuggestion(string(body), quoted), nil
 }
 
-func commentDraft(body string, anchor comments.Anchor) string {
-	if len(anchor.QuotedLines) == 0 {
+func commentDraft(body string, quoted []string) string {
+	if len(quoted) == 0 {
 		return body
 	}
 	if body != "" && !strings.HasSuffix(body, "\n") {
 		body += "\n"
 	}
-	suggestion := suggestionBlock(suggestionLines(anchor.QuotedLines))
+	suggestion := suggestionBlock(suggestionLines(quoted))
 	return body + "\n" + suggestion + "\n"
 }
 

@@ -163,12 +163,12 @@ func (m model) sourceLocation() (string, int, error) {
 }
 
 func (m *model) openCommentEditor() (tea.Cmd, error) {
-	cmd, err := editor.EditComment(m.ctx, m.edit.body, m.edit.anchor, func(
-		body string,
-		err error,
-	) tea.Msg {
-		return commentEditorFinishedMsg{body: body, err: err}
-	})
+	cmd, err := editor.EditComment(
+		m.ctx, m.edit.body, m.edit.anchor.QuotedLines,
+		func(body string, err error) tea.Msg {
+			return commentEditorFinishedMsg{body: body, err: err}
+		},
+	)
 	if err != nil {
 		m.clearCommentEdit()
 	}
