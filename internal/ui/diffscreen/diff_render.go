@@ -328,7 +328,7 @@ func filterSGRParts(parts []string, colors foregroundPolicy) []string {
 }
 
 func extendedColorRemoved(code int, colors foregroundPolicy) bool {
-	return code == 48 || colors == discardForeground && code == 38
+	return code == 48 || (colors == discardForeground && code == 38)
 }
 
 func simpleColorRemoved(code int, colors foregroundPolicy) bool {
@@ -351,11 +351,11 @@ func colorParameterEnd(parts []string, index int) int {
 }
 
 func backgroundColor(code int) bool {
-	return code >= 40 && code <= 49 || code >= 100 && code <= 107
+	return (code >= 40 && code <= 49) || (code >= 100 && code <= 107)
 }
 
 func foregroundColor(code int) bool {
-	return code >= 30 && code <= 39 || code >= 90 && code <= 97
+	return (code >= 30 && code <= 39) || (code >= 90 && code <= 97)
 }
 
 func fitANSIWindow(value string, offset, width int) string {
