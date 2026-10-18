@@ -105,7 +105,7 @@ func (v *diffView) renderUnifiedLine(
 		candidate,
 		cursor,
 		selection,
-		v.dark,
+		v.styles,
 	)
 	return renderStyledRow(style, value, width, colors)
 }
@@ -179,7 +179,7 @@ func (v *diffView) renderPane(
 		candidate,
 		cursor,
 		selection,
-		v.dark,
+		v.styles,
 	)
 	return renderStyledRow(style, value, width, colors)
 }
@@ -200,11 +200,11 @@ func renderedLineStyle(
 	candidate diffCursor,
 	cursor diffCursor,
 	selection *diffSelection,
-	dark bool,
+	styles lineStyles,
 ) (lipgloss.Style, foregroundPolicy) {
-	style, colors := lineStyle(kind, dark), preserveForeground
+	style, colors := lineStyle(kind, styles), preserveForeground
 	if selected(selection, candidate) {
-		style, colors = selectionRowStyle(dark), discardForeground
+		style, colors = styles.selection, discardForeground
 	}
 	if cursor == candidate {
 		style, colors = cursorStyle, discardForeground
@@ -230,31 +230,39 @@ func selected(selection *diffSelection, cursor diffCursor) bool {
 	) && cursor.row <= max(first.row, last.row)
 }
 
-func lineStyle(kind patch.LineKind, dark bool) lipgloss.Style {
+func lineStyle(kind patch.LineKind, styles lineStyles) lipgloss.Style {
 	switch kind {
 	case patch.Addition:
-		return backgroundStyle(
-			dark,
-			lipgloss.Color("#dafbe1"),
-			lipgloss.Color("#1b3823"),
-		)
+		return styles.added
 	case patch.Deletion:
-		return backgroundStyle(
-			dark,
-			lipgloss.Color("#ffebe9"),
-			lipgloss.Color("#402222"),
-		)
+		return styles.removed
 	default:
 		return contextStyle
 	}
 }
 
-func selectionRowStyle(dark bool) lipgloss.Style {
-	return backgroundStyle(
-		dark,
-		lipgloss.Color("#dbeafe"),
-		lipgloss.Color("#1e3a5f"),
-	)
+type lineStyles struct {
+	added, removed, selection lipgloss.Style
+}
+
+func newLineStyles(dark bool) lineStyles {
+	return lineStyles{
+		added: backgroundStyle(
+			dark,
+			lipgloss.Color("#dafbe1"),
+			lipgloss.Color("#1b3823"),
+		),
+		removed: backgroundStyle(
+			dark,
+			lipgloss.Color("#ffebe9"),
+			lipgloss.Color("#402222"),
+		),
+		selection: backgroundStyle(
+			dark,
+			lipgloss.Color("#dbeafe"),
+			lipgloss.Color("#1e3a5f"),
+		),
+	}
 }
 
 func backgroundStyle(

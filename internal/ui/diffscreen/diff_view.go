@@ -31,10 +31,16 @@ type diffView struct {
 	removedLines int
 	split        bool
 	dark         bool
+	styles       lineStyles
 }
 
 func newDiffView(p patch.Patch, options Options) *diffView {
-	v := &diffView{patch: p, split: options.SideBySide, dark: options.Dark}
+	v := &diffView{
+		patch:  p,
+		split:  options.SideBySide,
+		dark:   options.Dark,
+		styles: newLineStyles(options.Dark),
+	}
 	for fileIndex, file := range p.Files {
 		v.appendFileRows(fileIndex, file)
 	}
