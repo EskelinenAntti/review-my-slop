@@ -13,16 +13,23 @@ type Sequence struct {
 
 // Matcher retains pending input. Copies have independent pending state.
 type Matcher struct {
-	sequences map[string]Sequence
+	sequences map[string]continuation
 	pending   string
+}
+
+type continuation struct {
+	keys           []string
+	retryUnmatched bool
 }
 
 // New builds a matcher from the supplied prefix rules.
 func New(sequences ...Sequence) Matcher {
-	m := Matcher{sequences: make(map[string]Sequence, len(sequences))}
-	for _, sequence := range sequences {
-		sequence.Keys = append([]string(nil), sequence.Keys...)
-		m.sequences[sequence.Prefix] = sequence
+	m := Matcher{sequences: make(map[string]continuation, len(sequences))}
+	for _, binding := range sequences {
+		m.sequences[binding.Prefix] = continuation{
+			keys:           append([]string(nil), binding.Keys...),
+			retryUnmatched: binding.RetryUnmatched,
+		}
 	}
 	return m
 }
@@ -34,10 +41,10 @@ func (m *Matcher) Feed(key string) string {
 		prefix := m.pending
 		m.pending = ""
 		sequence := m.sequences[prefix]
-		if slices.Contains(sequence.Keys, key) {
+		if slices.Contains(sequence.keys, key) {
 			return prefix + " " + key
 		}
-		if !sequence.RetryUnmatched {
+		if !sequence.retryUnmatched {
 			return ""
 		}
 	}

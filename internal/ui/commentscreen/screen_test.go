@@ -63,6 +63,26 @@ func TestMovementKeepsSelectedCommentVisible(t *testing.T) {
 	testutil.RequireEqual(t, selected.ID, "0", "first selection=%#v", selected)
 }
 
+func TestSelectedIndexTracksFocusedComment(t *testing.T) {
+	items := []comments.Comment{
+		{ID: "first"},
+		{ID: "second"},
+	}
+	v := New(items)
+	index, ok := v.SelectedIndex()
+	testutil.RequireEqual(t, ok, true, "selected index=%d", index)
+	testutil.RequireEqual(t, index, 0, "selected index=%d", index)
+
+	v.Move(1)
+	index, ok = v.SelectedIndex()
+	testutil.RequireEqual(t, ok, true, "selected index=%d", index)
+	testutil.RequireEqual(t, index, 1, "selected index=%d", index)
+
+	v.Update(nil)
+	_, ok = v.SelectedIndex()
+	testutil.RequireEqual(t, ok, false, "%s", "empty view has a selected index")
+}
+
 func TestEmptyListAndInputOwnership(t *testing.T) {
 	v := New(nil)
 	v.Move(100)

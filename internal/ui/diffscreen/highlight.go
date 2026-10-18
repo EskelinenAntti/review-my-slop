@@ -2,15 +2,14 @@ package diffscreen
 
 import (
 	"bytes"
-	"io"
 	"strings"
 
 	"github.com/alecthomas/chroma/v2/quick"
 )
 
-type pair struct {
-	Old []string
-	New []string
+type highlightedSources struct {
+	old []string
+	new []string
 }
 
 const (
@@ -31,11 +30,11 @@ func render(filename, source, theme string) []string {
 		theme,
 	)
 	if highlightErr != nil {
-		return strings.Split(strings.TrimSuffix(source, "\n"), "\n")
+		return splitLines(source)
 	}
-	rendered, err := io.ReadAll(&buf)
-	if err != nil {
-		return strings.Split(strings.TrimSuffix(source, "\n"), "\n")
-	}
-	return strings.Split(strings.TrimSuffix(string(rendered), "\n"), "\n")
+	return splitLines(buf.String())
+}
+
+func splitLines(source string) []string {
+	return strings.Split(strings.TrimSuffix(source, "\n"), "\n")
 }

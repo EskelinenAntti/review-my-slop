@@ -286,13 +286,12 @@ func (v *View) ClearSelection() {
 // Selected returns the focused line when no explicit range is selected.
 // The bool is false when the patch has no selectable code.
 func (v *View) Selected() (patch.File, []patch.Line, bool) {
-	selection := v.selection
-	if selection == nil {
-		current := beginSelection(v.cursor)
-		selection = &current
+	selection := beginSelection(v.cursor)
+	if v.selection != nil {
+		selection = *v.selection
 	}
 	file, ok := v.view.file(selection.First)
-	lines := v.view.lines(*selection)
+	lines := v.view.lines(selection)
 	return file, lines, ok && len(lines) > 0
 }
 
@@ -390,18 +389,21 @@ func (v *View) Find(d Direction) bool {
 // final blank line. A non-nil error replaces the status while retaining the
 // position label. Dimensions are configured through Resize.
 func (v *View) Render(err error) string {
-	added, removed := patchLineCounts(v.view.patch)
-	counts := mutedStyle.Render(fmt.Sprintf("+%d-%d", added, removed))
-	header := titleStyle.Render("review-my-slop") + "  " + counts
+	counts := frame.Muted(fmt.Sprintf(
+		"+%d-%d",
+		v.view.addedLines,
+		v.view.removedLines,
+	))
+	header := frame.Title("review-my-slop") + "  " + counts
 	body := v.renderBody()
 	status := v.renderStatus()
-	footer := mutedStyle.Render(status)
+	footer := frame.Muted(status)
 	if v.search.repeatMiss {
 		message := fmt.Sprintf("no matches for %q", v.search.term)
-		footer = errorStyle.Render(message)
+		footer = frame.Error(message)
 	}
 	if err != nil {
-		footer = errorStyle.Render(strings.ReplaceAll(err.Error(), "\n", " "))
+		footer = frame.Error(frame.SingleLine(err.Error()))
 	}
 	return frame.Render(header, body, v.renderFooter(footer), v.height)
 }
@@ -413,7 +415,7 @@ func (v *View) renderBody() []string {
 			empty = "No branch or worktree changes."
 		}
 		body = make([]string, frame.BodyHeight(v.height))
-		body[min(1, len(body)-1)] = mutedStyle.Render(empty)
+		body[min(1, len(body)-1)] = frame.Muted(empty)
 	} else {
 		body = strings.Split(
 			v.view.render(v.viewport, v.cursor, v.selection),
@@ -428,7 +430,7 @@ func (v *View) renderStatus() string {
 	if v.search.active {
 		status = "/" + v.search.query + cursorStyle.Render(" ")
 		if v.search.miss {
-			status += errorStyle.Render("  no matches")
+			status += frame.Error("  no matches")
 		}
 	} else if v.selection != nil {
 		status = "visual selection  j/k extend  c comment  Esc cancel"
@@ -444,7 +446,7 @@ func (v *View) renderFooter(value string) string {
 	if v.viewport.top > 0 {
 		label += fmt.Sprintf(" (%d%%)", v.view.viewportProgress(v.viewport))
 	}
-	right := mutedStyle.Render(label)
+	right := frame.Muted(label)
 	width := max(20, v.width)
 	value = ansi.Truncate(value, max(0, width-lipgloss.Width(right)-1), "")
 	return value + strings.Repeat(
@@ -452,34 +454,3 @@ func (v *View) renderFooter(value string) string {
 		max(1, width-lipgloss.Width(value)-lipgloss.Width(right)),
 	) + right
 }
-func patchLineCounts(p patch.Patch) (added, removed int) {
-	for _, file := range p.Files {
-		for _, hunk := range file.Hunks {
-			counts := hunkLineCounts(hunk)
-			added += counts[0]
-			removed += counts[1]
-		}
-	}
-	return added, removed
-}
-
-func hunkLineCounts(hunk patch.Hunk) [2]int {
-	counts := [2]int{}
-	for _, line := range hunk.Lines {
-		switch line.Kind {
-		case patch.Addition:
-			counts[0]++
-		case patch.Deletion:
-			counts[1]++
-		default:
-			continue
-		}
-	}
-	return counts
-}
-
-var (
-	titleStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Cyan)
-	mutedStyle = lipgloss.NewStyle().Faint(true)
-	errorStyle = lipgloss.NewStyle().Foreground(lipgloss.Red).Bold(true)
-)

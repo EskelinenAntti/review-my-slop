@@ -21,9 +21,9 @@ type diffCursor struct {
 
 type diffViewport struct {
 	top        int
-	LeftColumn int
-	Width      int
-	Height     int
+	leftColumn int
+	width      int
+	height     int
 }
 
 type diffSelection struct {

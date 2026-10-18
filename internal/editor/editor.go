@@ -48,14 +48,7 @@ func commentDraft(body string, anchor comments.Anchor) string {
 		_ = draft.WriteByte('\n')
 	}
 	_ = draft.WriteByte('\n')
-	fence := contextFence(lines)
-	_, _ = draft.WriteString(fence)
-	_, _ = draft.WriteString("suggestion\n")
-	for _, line := range lines {
-		_, _ = draft.WriteString(line)
-		_ = draft.WriteByte('\n')
-	}
-	_, _ = draft.WriteString(fence)
+	_, _ = draft.WriteString(suggestionBlock(lines))
 	_ = draft.WriteByte('\n')
 	return draft.String()
 }
@@ -64,21 +57,12 @@ func stripUnchangedSuggestion(body string, quoted []string) string {
 	if len(quoted) == 0 {
 		return body
 	}
-	lines := suggestionLines(quoted)
-	fence := contextFence(lines)
-	var suggestion strings.Builder
-	_, _ = suggestion.WriteString(fence)
-	_, _ = suggestion.WriteString("suggestion\n")
-	for _, line := range lines {
-		_, _ = suggestion.WriteString(line)
-		_ = suggestion.WriteByte('\n')
-	}
-	_, _ = suggestion.WriteString(fence)
-	start := strings.Index(body, suggestion.String())
+	suggestion := suggestionBlock(suggestionLines(quoted))
+	start := strings.Index(body, suggestion)
 	if start < 0 {
 		return body
 	}
-	end := start + suggestion.Len()
+	end := start + len(suggestion)
 	before := strings.TrimRight(body[:start], "\n")
 	after := body[end:]
 	if strings.TrimSpace(after) == "" {
@@ -87,8 +71,21 @@ func stripUnchangedSuggestion(body string, quoted []string) string {
 	return before + "\n" + strings.TrimLeft(after, "\n")
 }
 
+func suggestionBlock(lines []string) string {
+	fence := contextFence(lines)
+	var block strings.Builder
+	_, _ = block.WriteString(fence)
+	_, _ = block.WriteString("suggestion\n")
+	for _, line := range lines {
+		_, _ = block.WriteString(line)
+		_ = block.WriteByte('\n')
+	}
+	_, _ = block.WriteString(fence)
+	return block.String()
+}
+
 func commentCommand(ctx context.Context, editor, path string) *exec.Cmd {
-	return exec.CommandContext(ctx, "sh", "-c", editor+" "+shellQuote(path))
+	return shellCommand(ctx, editor, shellQuote(path))
 }
 
 func sourceCommand(
@@ -96,12 +93,12 @@ func sourceCommand(
 	editor, path string,
 	line int,
 ) *exec.Cmd {
-	return exec.CommandContext(
-		ctx,
-		"sh",
-		"-c",
-		editor+" +"+strconv.Itoa(line)+" "+shellQuote(path),
-	)
+	arguments := "+" + strconv.Itoa(line) + " " + shellQuote(path)
+	return shellCommand(ctx, editor, arguments)
+}
+
+func shellCommand(ctx context.Context, editor, arguments string) *exec.Cmd {
+	return exec.CommandContext(ctx, "sh", "-c", editor+" "+arguments)
 }
 
 func suggestionLines(quoted []string) []string {

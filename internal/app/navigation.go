@@ -2,6 +2,7 @@ package app
 
 import (
 	"fmt"
+	"math"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/eskelinenantti/review-my-slop/internal/ui/diffscreen"
@@ -11,7 +12,7 @@ func (m *model) toggleSideBySide() {
 	enabled := !m.diffOptions.SideBySide
 	m.setSideBySide(enabled)
 	if m.saveLayout != nil {
-		if err := m.saveLayout(m.diffOptions.SideBySide); err != nil {
+		if err := m.saveLayout(enabled); err != nil {
 			m.err = fmt.Errorf("save side-by-side preference: %w", err)
 		}
 	}
@@ -64,9 +65,9 @@ func (m *model) navigate(name string) bool {
 	case "l", "right":
 		m.diffView.ScrollHorizontal(horizontalScrollStep)
 	case "0":
-		m.diffView.ScrollHorizontal(-int(^uint(0) >> 1))
+		m.diffView.ScrollHorizontal(-math.MaxInt)
 	case "$":
-		m.diffView.ScrollHorizontal(int(^uint(0) >> 1))
+		m.diffView.ScrollHorizontal(math.MaxInt)
 	default:
 		return false
 	}

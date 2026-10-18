@@ -28,6 +28,7 @@ func (execRunner) Run(
 	dir string,
 	args ...string,
 ) ([]byte, error) {
+	command := "git " + strings.Join(args, " ")
 	cmd := exec.CommandContext(ctx, "git", args...)
 	cmd.Dir = dir
 	cmd.Env = append(os.Environ(),
@@ -37,19 +38,19 @@ func (execRunner) Run(
 	)
 	out, err := cmd.Output()
 	if ctx.Err() != nil {
-		return nil, fmt.Errorf("git %s: %w", strings.Join(args, " "), ctx.Err())
+		return nil, fmt.Errorf("%s: %w", command, ctx.Err())
 	}
 	if err == nil {
 		return out, nil
 	}
 	if exitErr, ok := errors.AsType[*exec.ExitError](err); ok {
 		return nil, fmt.Errorf(
-			"git %s: %s",
-			strings.Join(args, " "),
+			"%s: %s",
+			command,
 			strings.TrimSpace(string(exitErr.Stderr)),
 		)
 	}
-	return nil, fmt.Errorf("git %s: %w", strings.Join(args, " "), err)
+	return nil, fmt.Errorf("%s: %w", command, err)
 }
 
 // Get retrieves a complete snapshot from the current working directory.
@@ -83,7 +84,7 @@ func load(
 	if err != nil {
 		return Patch{}, fmt.Errorf("discover default branch: %w", err)
 	}
-	revisions, readOld, err := comparisonBase(ctx, run, root, kind, branch)
+	revisions, oldRevision, err := comparisonBase(ctx, run, root, kind, branch)
 	if err != nil {
 		return Patch{}, err
 	}
@@ -91,7 +92,7 @@ func load(
 	if err != nil {
 		return Patch{}, err
 	}
-	return build(ctx, run, root, kind, branch, raw, readOld)
+	return build(ctx, run, root, kind, branch, raw, oldRevision)
 }
 
 func comparisonBase(
@@ -100,26 +101,23 @@ func comparisonBase(
 	root string,
 	kind Kind,
 	branch string,
-) ([]string, sourceReader, error) {
+) ([]string, string, error) {
 	if kind != Branch {
-		return nil, readIndex, nil
+		return nil, "", nil
 	}
 	if branch == "" {
-		return nil, nil, errors.New("default branch is unavailable")
+		return nil, "", errors.New("default branch is unavailable")
 	}
 	baseBytes, err := run.Run(ctx, root, "merge-base", branch, "HEAD")
 	if err != nil {
-		return nil, nil, fmt.Errorf(
+		return nil, "", fmt.Errorf(
 			"find branch point with %s: %w",
 			branch,
 			err,
 		)
 	}
 	base := strings.TrimSpace(string(baseBytes))
-	readOld := func(ctx context.Context, run runner, root, path string) string {
-		return readRevision(ctx, run, root, base, path)
-	}
-	return []string{base}, readOld, nil
+	return []string{base}, base, nil
 }
 
 func repositoryRoot(
@@ -155,8 +153,6 @@ func gitDiff(
 	return run.Run(ctx, root, args...)
 }
 
-type sourceReader func(context.Context, runner, string, string) string
-
 func build(
 	ctx context.Context,
 	run runner,
@@ -164,9 +160,9 @@ func build(
 	kind Kind,
 	branch string,
 	raw []byte,
-	readOld sourceReader,
+	oldRevision string,
 ) (Patch, error) {
-	files, err := parseTracked(ctx, run, root, raw, readOld)
+	files, err := parseTracked(ctx, run, root, raw, oldRevision)
 	if err != nil {
 		return Patch{}, err
 	}
@@ -242,7 +238,7 @@ func parseTracked(
 	run runner,
 	root string,
 	raw []byte,
-	readOld sourceReader,
+	oldRevision string,
 ) ([]File, error) {
 	if len(bytes.TrimSpace(raw)) == 0 {
 		return nil, nil
@@ -256,7 +252,7 @@ func parseTracked(
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
-		file, err := parseTrackedFile(ctx, run, root, fd, readOld)
+		file, err := parseTrackedFile(ctx, run, root, fd, oldRevision)
 		if err != nil {
 			return nil, err
 		}
@@ -270,7 +266,7 @@ func parseTrackedFile(
 	run runner,
 	root string,
 	fd *diff.FileDiff,
-	readOld sourceReader,
+	oldRevision string,
 ) (File, error) {
 	oldPath := cleanDiffPath(fd.OrigName)
 	newPath := cleanDiffPath(fd.NewName)
@@ -284,7 +280,7 @@ func parseTrackedFile(
 		DisplayPath: visibleText(display),
 		Metadata:    visibleStrings(fd.Extended),
 	}
-	file.OldSource = readOld(ctx, run, root, oldPath)
+	file.OldSource = readGitSource(ctx, run, root, oldRevision, oldPath)
 	file.NewSource = readWorkingTree(root, newPath)
 	for _, h := range fd.Hunks {
 		lines, err := parseHunkBody(h.OrigStartLine, h.NewStartLine, h.Body)
@@ -362,25 +358,18 @@ func readUntrackedFile(root, path string) (File, bool, error) {
 		return File{}, false, nil
 	}
 	if info.Size() > maxFileBytes {
-		return File{
-			NewPath:     path,
-			DisplayPath: visibleText(path),
-			Metadata: []string{
-				"untracked file",
-				"content omitted: file exceeds 2 MiB",
-			},
-		}, true, nil
+		return untrackedFile(
+			path,
+			"untracked file",
+			"content omitted: file exceeds 2 MiB",
+		), true, nil
 	}
 	content, err := os.ReadFile(full)
 	if err != nil {
 		return File{}, false, fmt.Errorf("read untracked %q: %w", path, err)
 	}
-	if bytes.IndexByte(content, 0) >= 0 {
-		return File{
-			NewPath:     path,
-			DisplayPath: visibleText(path),
-			Metadata:    []string{"untracked binary file"},
-		}, true, nil
+	if containsBinaryData(content) {
+		return untrackedFile(path, "untracked binary file"), true, nil
 	}
 	return addedFile(path, visibleSource(string(content))), true, nil
 }
@@ -402,25 +391,32 @@ func addedFile(path, content string) File {
 			Line{Kind: Addition, Text: line, NewNumber: LineNumber(i + 1)},
 		)
 	}
+	file := untrackedFile(path, "untracked file")
+	file.NewSource = content
+	file.Hunks = []Hunk{{
+		Header: fmt.Sprintf("@@ -0,0 +1,%d @@", len(lines)),
+		Lines:  lines,
+	}}
+	return file
+}
+
+func untrackedFile(path string, metadata ...string) File {
 	return File{
 		NewPath:     path,
 		DisplayPath: visibleText(path),
-		NewSource:   content,
-		Metadata:    []string{"untracked file"},
-		Hunks: []Hunk{{
-			Header: fmt.Sprintf("@@ -0,0 +1,%d @@", len(lines)),
-			Lines:  lines,
-		}},
+		Metadata:    metadata,
 	}
 }
 
 func parseHunkBody(oldLine, newLine int32, body []byte) ([]Line, error) {
-	rawLines := bytes.Split(bytes.TrimSuffix(body, []byte("\n")), []byte("\n"))
 	if len(body) == 0 {
 		return []Line{}, nil
 	}
-	lines := make([]Line, 0, len(rawLines))
-	for _, raw := range rawLines {
+	lines := make([]Line, 0)
+	for raw := range bytes.SplitSeq(
+		bytes.TrimSuffix(body, []byte("\n")),
+		[]byte("\n"),
+	) {
 		if len(raw) == 0 {
 			return nil, errors.New("malformed empty diff line")
 		}
@@ -467,18 +463,7 @@ func parseHunkBody(oldLine, newLine int32, body []byte) ([]Line, error) {
 	return lines, nil
 }
 
-func readIndex(ctx context.Context, run runner, root, path string) string {
-	if path == "" || path == "/dev/null" {
-		return ""
-	}
-	out, err := run.Run(ctx, root, "show", ":"+path)
-	if err != nil || len(out) > maxFileBytes || bytes.IndexByte(out, 0) >= 0 {
-		return ""
-	}
-	return visibleSource(string(out))
-}
-
-func readRevision(
+func readGitSource(
 	ctx context.Context,
 	run runner,
 	root, revision, path string,
@@ -486,11 +471,15 @@ func readRevision(
 	if path == "" || path == "/dev/null" {
 		return ""
 	}
-	out, err := run.Run(ctx, root, "show", revision+":"+path)
-	if err != nil || len(out) > maxFileBytes || bytes.IndexByte(out, 0) >= 0 {
+	source := ":" + path
+	if revision != "" {
+		source = revision + ":" + path
+	}
+	out, err := run.Run(ctx, root, "show", source)
+	if err != nil {
 		return ""
 	}
-	return visibleSource(string(out))
+	return safeSource(out)
 }
 
 func readWorkingTree(root, path string) string {
@@ -503,16 +492,30 @@ func readWorkingTree(root, path string) string {
 		return ""
 	}
 	out, err := os.ReadFile(full)
-	if err != nil || bytes.IndexByte(out, 0) >= 0 {
+	if err != nil {
 		return ""
 	}
-	return visibleSource(string(out))
+	return safeSource(out)
+}
+
+func safeSource(source []byte) string {
+	if len(source) > maxFileBytes || containsBinaryData(source) {
+		return ""
+	}
+	return visibleSource(string(source))
+}
+
+func containsBinaryData(source []byte) bool {
+	return bytes.IndexByte(source, 0) >= 0
 }
 
 func cleanDiffPath(path string) string {
 	path = strings.TrimSpace(path)
-	path = strings.TrimPrefix(path, "a/")
-	path = strings.TrimPrefix(path, "b/")
+	if strings.HasPrefix(path, "a/") {
+		path = path[2:]
+	} else {
+		path = strings.TrimPrefix(path, "b/")
+	}
 	if path == "/dev/null" {
 		return ""
 	}

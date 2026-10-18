@@ -33,13 +33,13 @@ type commentStore interface {
 }
 
 type size struct {
-	Width  int
-	Height int
+	width  int
+	height int
 }
 
 type initialLayout struct {
-	SideBySide     bool
-	SaveSideBySide saveSideBySideFunc
+	sideBySide     bool
+	saveSideBySide saveSideBySideFunc
 	size           size
 }
 
@@ -72,7 +72,7 @@ const (
 const horizontalScrollStep = 4
 const verticalScrollStep = 3
 
-var defaultSize = size{Width: 80, Height: 30}
+var defaultSize = size{width: 80, height: 30}
 
 // commentState pairs stored comments with the revision used to reject stale
 // loads.
@@ -119,7 +119,7 @@ func newModel(
 	layout initialLayout,
 ) model {
 	size := layout.size
-	if size.Width <= 0 || size.Height <= 0 {
+	if size.width <= 0 || size.height <= 0 {
 		size = defaultSize
 	}
 	m := model{
@@ -128,12 +128,12 @@ func newModel(
 		comments:     commentState{items: items},
 		commentView:  commentscreen.New(items),
 		edit:         commentEdit{index: -1},
-		width:        size.Width,
-		height:       size.Height,
+		width:        size.width,
+		height:       size.height,
 		save:         save,
-		saveLayout:   layout.SaveSideBySide,
+		saveLayout:   layout.saveSideBySide,
 		diffOptions: diffscreen.Options{
-			SideBySide: layout.SideBySide,
+			SideBySide: layout.sideBySide,
 			Dark:       true,
 		},
 		kind: p.Kind,
@@ -180,24 +180,21 @@ func newWithStore(
 		}
 		return store.Add(comment)
 	}, initialLayout{
-		SideBySide: preferences.SideBySide,
-		SaveSideBySide: func(enabled bool) error {
+		sideBySide: preferences.SideBySide,
+		saveSideBySide: func(enabled bool) error {
 			return settings.Save(settings.Preferences{SideBySide: enabled})
 		},
 		size: size,
 	})
-	m.setDelete(func(comment comments.Comment, current patch.Patch) error {
+	m.delete = func(comment comments.Comment, current patch.Patch) error {
 		return store.Delete(current.Root, comment.ID)
-	})
-	m.setLoadComments(func() ([]comments.Comment, error) {
+	}
+	m.load = func() ([]comments.Comment, error) {
 		return store.List(p.Root)
-	})
+	}
 	return m, nil
 }
 
-func (m *model) setRefresh(refresh refreshDiffFunc)    { m.refresh = refresh }
-func (m *model) setDelete(remove deleteCommentFunc)    { m.delete = remove }
-func (m *model) setLoadComments(load loadCommentsFunc) { m.load = load }
 func (m *model) configureSideBySide(enabled bool, save saveSideBySideFunc) {
 	m.saveLayout = save
 	m.setSideBySide(enabled)
@@ -324,19 +321,19 @@ func (m *model) resizeScreens() {
 
 func (m model) updateKey(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	name := key.String()
-	if m.mode == modeComments {
+	switch m.mode {
+	case modeComments:
 		return m.updateComments(name)
-	}
-	if m.mode == modeHelp {
+	case modeHelp:
 		if name == "esc" || name == "?" || name == "q" {
 			m.mode = modeBrowse
 		}
 		return m, nil
-	}
-	if m.mode == modeSearch {
+	case modeSearch:
 		return m.updateSearch(name, key)
+	default:
+		return m.updateBrowseKey(name)
 	}
-	return m.updateBrowseKey(name)
 }
 
 func (m model) updateBrowseKey(name string) (tea.Model, tea.Cmd) {
@@ -350,9 +347,9 @@ func (m model) updateBrowseKey(name string) (tea.Model, tea.Cmd) {
 		m.quitting = true
 		return m, tea.Quit
 	case "c":
-		return m.startCommentEditor()
+		return m.startEditor((*model).beginComment)
 	case "e":
-		return m.startSourceEditor()
+		return m.startEditor((*model).openCurrentLine)
 	case "R":
 		return m, m.loadRefresh()
 	case "tab":
@@ -384,17 +381,10 @@ func (m model) updateBrowseView(name string) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m model) startCommentEditor() (tea.Model, tea.Cmd) {
-	cmd, err := m.beginComment()
-	if err != nil {
-		m.err = err
-		return m, nil
-	}
-	return m, cmd
-}
-
-func (m model) startSourceEditor() (tea.Model, tea.Cmd) {
-	cmd, err := m.openCurrentLine()
+func (m model) startEditor(
+	start func(*model) (tea.Cmd, error),
+) (tea.Model, tea.Cmd) {
+	cmd, err := start(&m)
 	if err != nil {
 		m.err = err
 		return m, nil

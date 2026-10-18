@@ -31,11 +31,9 @@ func Render(bindings []Binding, width, height int) string {
 		body = append(body, ansi.Truncate(line, max(20, width), ""))
 	}
 	return frame.Render(
-		lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Cyan).Render(
-			"review-my-slop help",
-		),
+		frame.Title("review-my-slop help"),
 		body,
-		lipgloss.NewStyle().Faint(true).Render("? or Esc closes help"),
+		frame.Muted("? or Esc closes help"),
 		height,
 	)
 }

@@ -123,27 +123,27 @@ func TestViewportAlignmentResizeAndScrolling(t *testing.T) {
 	testutil.RequireEqual(t, cursor.row >= viewport.top, true,
 		"cursor not visible: %#v %#v", cursor, viewport,
 	)
-	testutil.RequireEqual(t, cursor.row < viewport.top+viewport.Height, true,
+	testutil.RequireEqual(t, cursor.row < viewport.top+viewport.height, true,
 		"cursor not visible: %#v %#v", cursor, viewport,
 	)
 
 	viewport = v.align(viewport, cursor, middle)
 	headerHeight := 0
-	if v.hasStickyHeader(viewport.top, viewport.Height) {
+	if v.hasStickyHeader(viewport.top, viewport.height) {
 		headerHeight = 1
 	}
 	testutil.RequireEqual(t, headerHeight+cursor.row-viewport.top,
-		viewport.Height/2, "middle alignment = %#v", viewport,
+		viewport.height/2, "middle alignment = %#v", viewport,
 	)
 
 	viewport = v.scrollHorizontal(viewport, 4)
-	testutil.RequireEqual(t, viewport.LeftColumn != 0, true, "%s",
+	testutil.RequireEqual(t, viewport.leftColumn != 0, true, "%s",
 		"horizontal scroll did not move",
 	)
 
 	viewport = v.resize(viewport, 20, 3)
-	testutil.RequireEqual(t, viewport.Width, 20, "resize = %#v", viewport)
-	testutil.RequireEqual(t, viewport.Height, 3, "resize = %#v", viewport)
+	testutil.RequireEqual(t, viewport.width, 20, "resize = %#v", viewport)
+	testutil.RequireEqual(t, viewport.height, 3, "resize = %#v", viewport)
 
 	before := cursor
 	viewport, cursor = v.scrollHalfPage(viewport, cursor, forward)

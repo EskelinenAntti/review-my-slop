@@ -20,3 +20,15 @@ const (
 	Addition
 	Deletion
 )
+
+// DiffPrefix returns the marker used to represent this kind in diff text.
+func (kind LineKind) DiffPrefix() string {
+	switch kind {
+	case Addition:
+		return "+"
+	case Deletion:
+		return "-"
+	default:
+		return " "
+	}
+}

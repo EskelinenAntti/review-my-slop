@@ -26,7 +26,7 @@ func testModel(
 		p,
 		items,
 		save,
-		initialLayout{size: size{Width: 100, Height: 30}},
+		initialLayout{size: size{width: 100, height: 30}},
 	)
 }
 
@@ -94,8 +94,8 @@ func TestStoreBackedCommentLifecycle(t *testing.T) {
 
 func TestNewUsesSavedSideBySideForWideInitialSize(t *testing.T) {
 	m := newModel(modelPatch(), nil, nil, initialLayout{
-		SideBySide: true,
-		size:       size{Width: 120, Height: 30},
+		sideBySide: true,
+		size:       size{width: 120, height: 30},
 	})
 	testutil.RequireEqual(t, m.diffOptions.SideBySide, true,
 		"sideBySide=%v render=%q", m.diffOptions.SideBySide, m.render(),
@@ -107,8 +107,8 @@ func TestNewUsesSavedSideBySideForWideInitialSize(t *testing.T) {
 
 func TestNewKeepsSavedSideBySideInactiveForNarrowInitialSize(t *testing.T) {
 	m := newModel(modelPatch(), nil, nil, initialLayout{
-		SideBySide: true,
-		size:       size{Width: 80, Height: 30},
+		sideBySide: true,
+		size:       size{width: 80, height: 30},
 	})
 	testutil.RequireEqual(t, m.diffOptions.SideBySide, true,
 		"sideBySide=%v render=%q", m.diffOptions.SideBySide, m.render(),
@@ -129,11 +129,11 @@ func TestNewKeepsSavedSideBySideInactiveForNarrowInitialSize(t *testing.T) {
 func TestSideBySideToggleStillSavesPreference(t *testing.T) {
 	var saved []bool
 	m := newModel(modelPatch(), nil, nil, initialLayout{
-		SaveSideBySide: func(enabled bool) error {
+		saveSideBySide: func(enabled bool) error {
 			saved = append(saved, enabled)
 			return nil
 		},
-		size: size{Width: 120, Height: 30},
+		size: size{width: 120, height: 30},
 	})
 
 	m = updateModel(t, m, textKey("t"))
@@ -164,7 +164,7 @@ func TestRefreshTranslatesCursorAndSelection(t *testing.T) {
 func TestUnchangedRefreshPreservesStateAndClearsError(t *testing.T) {
 	p := longModelPatch()
 	p.Files[0].OldPath, p.Files[0].NewPath = "long.go", "long.go"
-	m := newModel(p, nil, nil, initialLayout{size: size{Width: 40, Height: 8}})
+	m := newModel(p, nil, nil, initialLayout{size: size{width: 40, height: 8}})
 	for range 8 {
 		m.diffView.Move(diffscreen.NextLine)
 	}
@@ -374,8 +374,8 @@ func TestNarrowLayoutToggleSavesPreferenceWithoutApplicationGeometryRules(
 ) {
 	var saved []bool
 	m := newModel(modelPatch(), nil, nil, initialLayout{
-		size: size{Width: 80, Height: 30},
-		SaveSideBySide: func(enabled bool) error {
+		size: size{width: 80, height: 30},
+		saveSideBySide: func(enabled bool) error {
 			saved = append(saved, enabled)
 			return nil
 		},

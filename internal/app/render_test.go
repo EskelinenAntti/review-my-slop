@@ -20,7 +20,7 @@ func TestWorkflowErrorKeepsDiffLabelWithinFooter(t *testing.T) {
 				p,
 				nil,
 				nil,
-				initialLayout{size: size{Width: width, Height: 8}},
+				initialLayout{size: size{width: width, height: 8}},
 			)
 			m.err = errors.New(
 				"a very long storage failure\n" +

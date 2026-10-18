@@ -52,16 +52,14 @@ func start(
 	}
 	m.ctx = ctx
 	if refresh != nil {
-		m.setRefresh(
-			func(kind patch.Kind) (patch.Patch, error) {
-				return refresh(ctx, kind)
-			},
-		)
+		m.refresh = func(kind patch.Kind) (patch.Patch, error) {
+			return refresh(ctx, kind)
+		}
 	}
 	return launch(
 		m,
 		tea.WithContext(ctx),
-		tea.WithWindowSize(dimensions.Width, dimensions.Height),
+		tea.WithWindowSize(dimensions.width, dimensions.height),
 	)
 }
 
@@ -70,11 +68,10 @@ func initialTerminalSize() size {
 }
 
 func discoverTerminalSize(getSize func(uintptr) (int, int, error)) size {
-	if width, height, err := getSize(os.Stdin.Fd()); err == nil {
-		return size{Width: width, Height: height}
-	}
-	if width, height, err := getSize(os.Stdout.Fd()); err == nil {
-		return size{Width: width, Height: height}
+	for _, descriptor := range [...]uintptr{os.Stdin.Fd(), os.Stdout.Fd()} {
+		if width, height, err := getSize(descriptor); err == nil {
+			return size{width: width, height: height}
+		}
 	}
 	return defaultSize
 }

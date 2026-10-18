@@ -1,6 +1,7 @@
 package diffscreen
 
 import (
+	"math"
 	"regexp"
 	"strconv"
 	"strings"
@@ -272,7 +273,7 @@ func TestFileHeaderSticksWithoutCoveringDiffRows(t *testing.T) {
 		ansi.Strip(v.render(viewport, diffCursor{}, nil)),
 		"\n",
 	)
-	testutil.RequireEqual(t, len(rendered), viewport.Height,
+	testutil.RequireEqual(t, len(rendered), viewport.height,
 		"sticky render = %#v", rendered,
 	)
 	testutil.RequireEqual(t, strings.Contains(rendered[0], "first.go"), true,
@@ -415,7 +416,7 @@ func TestHorizontalScrollKeepsUnifiedGutterFixed(t *testing.T) {
 	testutil.RequireEqual(t, strings.Contains(after[14:], "efghij"), true,
 		"before=%q after=%q viewport=%#v", before, after, viewport,
 	)
-	testutil.RequireEqual(t, viewport.LeftColumn, 4,
+	testutil.RequireEqual(t, viewport.leftColumn, 4,
 		"before=%q after=%q viewport=%#v", before, after, viewport,
 	)
 }
@@ -447,14 +448,14 @@ func TestHorizontalScrollKeepsSplitGuttersAndDividerFixed(t *testing.T) {
 func TestHorizontalScrollStartAndEndClamp(t *testing.T) {
 	v := newUnifiedView(longLinePatch(), true)
 	viewport := v.newViewport(37, 1)
-	viewport = v.scrollHorizontal(viewport, int(^uint(0)>>1))
-	testutil.RequireEqual(t, viewport.LeftColumn != 0, true, "%s",
+	viewport = v.scrollHorizontal(viewport, math.MaxInt)
+	testutil.RequireEqual(t, viewport.leftColumn != 0, true, "%s",
 		"end did not scroll",
 	)
 
-	viewport = v.scrollHorizontal(viewport, -int(^uint(0)>>1))
-	testutil.RequireEqual(t, viewport.LeftColumn, 0, "start = %d",
-		viewport.LeftColumn,
+	viewport = v.scrollHorizontal(viewport, -math.MaxInt)
+	testutil.RequireEqual(t, viewport.leftColumn, 0, "start = %d",
+		viewport.leftColumn,
 	)
 }
 
