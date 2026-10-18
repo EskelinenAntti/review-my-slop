@@ -3,6 +3,7 @@ package app
 import (
 	"errors"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
@@ -121,10 +122,7 @@ func (m *model) deleteComment(index int) {
 		m.err = err
 		return
 	}
-	m.comments.items = append(
-		m.comments.items[:index],
-		m.comments.items[index+1:]...,
-	)
+	m.comments.items = slices.Delete(m.comments.items, index, index+1)
 	m.commentsChanged()
 }
 
