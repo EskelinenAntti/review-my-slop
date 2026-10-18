@@ -55,6 +55,7 @@ func (v *diffView) keepVisible(
 		return v.clampViewport(viewport)
 	}
 	viewport = v.clampViewport(viewport)
+	// The top row may toggle the sticky header, changing usable height.
 	for range 2 {
 		height := v.contentHeight(viewport)
 		if cursor.row < viewport.top {
