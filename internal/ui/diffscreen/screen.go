@@ -105,13 +105,13 @@ func (v *View) Configure(options Options) {
 
 // Resize accepts full screen dimensions, reserving space for the header/footer.
 func (v *View) Resize(width, height int) {
-	v.EndDrag()
 	active := v.sideBySideActive()
 	v.width, v.height = width, height
 	v.viewport = v.view.resize(v.viewport, width, frame.BodyHeight(height))
 	if active != v.sideBySideActive() {
 		v.Update(v.view.patch)
 	} else {
+		v.EndDrag()
 		v.viewport = v.view.keepVisible(v.viewport, v.cursor)
 	}
 }
