@@ -93,8 +93,9 @@ func (v *diffView) findCursor(target cursorIdentity) (diffCursor, bool) {
 	best := cursorMatch{}
 	for y := range v.rows {
 		candidate := v.matchRow(y, target)
-		if best.consider(candidate) {
-			return best.cursor, true
+		best.consider(candidate)
+		if candidate.rank == cursorMatchByLineNumbers {
+			return candidate.cursor, true
 		}
 	}
 	return best.cursor, best.rank > noCursorMatch
@@ -117,15 +118,10 @@ func (m cursorMatch) betterThan(other cursorMatch) bool {
 		m.rank == other.rank && m.distance < other.distance
 }
 
-func (m *cursorMatch) consider(candidate cursorMatch) bool {
-	if candidate.rank == cursorMatchByLineNumbers {
-		*m = candidate
-		return true
-	}
+func (m *cursorMatch) consider(candidate cursorMatch) {
 	if candidate.betterThan(*m) {
 		*m = candidate
 	}
-	return false
 }
 
 func (v *diffView) matchRow(y int, target cursorIdentity) cursorMatch {
@@ -148,8 +144,9 @@ func (v *diffView) matchRow(y int, target cursorIdentity) cursorMatch {
 			rank:     lineMatchRank(line, target.line),
 			distance: lineDistance(line, target.line, y-target.cursor.row),
 		}
-		if best.consider(match) {
-			return best
+		best.consider(match)
+		if match.rank == cursorMatchByLineNumbers {
+			return match
 		}
 	}
 	return best
