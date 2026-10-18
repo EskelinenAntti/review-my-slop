@@ -13,6 +13,8 @@ import (
 	"github.com/eskelinenantti/review-my-slop/internal/patch"
 )
 
+var errCommentStorageUnavailable = errors.New("comment storage is unavailable")
+
 func (m model) updateComments(name string) (tea.Model, tea.Cmd) {
 	m.err = nil
 	switch name {
@@ -81,7 +83,7 @@ func (m *model) finishCommentEdit() {
 		return
 	}
 	if m.save == nil {
-		m.err = errors.New("comment storage is unavailable")
+		m.err = errCommentStorageUnavailable
 		return
 	}
 	var comment comments.Comment
@@ -117,7 +119,7 @@ func (m *model) deleteComment(index int) {
 		return
 	}
 	if m.delete == nil {
-		m.err = errors.New("comment storage is unavailable")
+		m.err = errCommentStorageUnavailable
 		return
 	}
 	if err := m.delete(m.comments.items[index], m.currentPatch); err != nil {
