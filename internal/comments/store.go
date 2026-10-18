@@ -156,7 +156,7 @@ func deleteKeys(bucket *bolt.Bucket, keys [][]byte) error {
 func pendingBytes(bucket *bolt.Bucket) int {
 	var total int
 	cursor := bucket.Cursor()
-	for _, value := cursor.First(); value != nil; _, value = cursor.Next() {
+	for key, value := cursor.First(); key != nil; key, value = cursor.Next() {
 		total += len(value)
 	}
 	return total
