@@ -63,15 +63,7 @@ func writeQuotedLines(w io.Writer, lines []string) error {
 	if len(lines) == 0 {
 		return nil
 	}
-	if _, err := fmt.Fprintln(w, "```diff"); err != nil {
-		return err
-	}
-	for _, line := range lines {
-		if _, err := fmt.Fprintln(w, line); err != nil {
-			return err
-		}
-	}
-	_, err := fmt.Fprintln(w, "```")
+	_, err := fmt.Fprintf(w, "```diff\n%s\n```\n", strings.Join(lines, "\n"))
 	return err
 }
 

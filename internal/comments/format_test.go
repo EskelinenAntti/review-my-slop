@@ -2,12 +2,73 @@ package comments
 
 import (
 	"bytes"
+	"errors"
+	"io"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/eskelinenantti/review-my-slop/internal/testutil"
 )
+
+func TestWriteQuotedLines(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		lines []string
+		want  string
+	}{
+		{name: "no lines"},
+		{
+			name: "empty line", lines: []string{""},
+			want: "```diff\n\n```\n",
+		},
+		{
+			name: "diff lines", lines: []string{" context", "-old", "+new"},
+			want: "```diff\n context\n-old\n+new\n```\n",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var output bytes.Buffer
+			testutil.NoError(t, writeQuotedLines(&output, tc.lines))
+			testutil.RequireEqual(t, output.String(), tc.want,
+				"quoted output = %q, want %q", output.String(), tc.want)
+		})
+	}
+}
+
+func TestWritePendingPreservesCommentsOnOutputFailure(t *testing.T) {
+	store := Store{Path: filepath.Join(t.TempDir(), "comments.db")}
+	comment := testComment("/repo", "feedback")
+	comment.Anchor.QuotedLines = []string{"-old", "+new"}
+	comment, err := store.Add(comment)
+	testutil.NoError(t, err)
+	var complete bytes.Buffer
+	testutil.NoError(t, WritePrompt(&complete, []Comment{comment}))
+	for limit := 0; limit < complete.Len(); limit++ {
+		writer := &limitedWriter{remaining: limit}
+		err := store.WritePending(writer, "/repo")
+		testutil.RequireEqual(t, errors.Is(err, io.ErrClosedPipe), true,
+			"output limit %d: error = %v", limit, err)
+		pending, err := store.List("/repo")
+		testutil.NoError(t, err)
+		testutil.RequireEqual(t, len(pending), 1,
+			"output limit %d: pending = %#v", limit, pending)
+	}
+}
+
+type limitedWriter struct {
+	remaining int
+}
+
+func (w *limitedWriter) Write(data []byte) (int, error) {
+	if len(data) > w.remaining {
+		written := w.remaining
+		w.remaining = 0
+		return written, io.ErrClosedPipe
+	}
+	w.remaining -= len(data)
+	return len(data), nil
+}
 
 func TestWritePendingAcknowledgesOnlyExportedComments(t *testing.T) {
 	store := Store{Path: filepath.Join(t.TempDir(), "comments.db")}
