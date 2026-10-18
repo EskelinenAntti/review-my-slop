@@ -26,12 +26,16 @@ func renderStyledRow(
 	fitted := fitANSIWindow(value, 0, width)
 	prefix := stylePrefix(style)
 	if prefix != "" {
+		// Syntax resets also clear the row's diff background or cursor style.
+		// Restore that style before rendering the next syntax span or padding.
 		fitted = strings.ReplaceAll(fitted, "\x1b[0m", "\x1b[0m"+prefix)
 		fitted = strings.ReplaceAll(fitted, "\x1b[m", "\x1b[m"+prefix)
 	}
 	return style.Render(fitted)
 }
 
+// Syntax backgrounds must not cover diff or selection backgrounds. Selected
+// and focused rows also discard syntax foregrounds to keep emphasis readable.
 func filterANSIColors(value string, colors foregroundPolicy) string {
 	return ansiSGRPattern.ReplaceAllStringFunc(
 		value, func(sequence string) string {
@@ -88,8 +92,10 @@ func colorParameterEnd(parts []string, index int) int {
 	}
 	switch parts[index+1] {
 	case "2":
+		// Truecolor: 38/48;2;red;green;blue.
 		return min(index+4, len(parts)-1)
 	case "5":
+		// Indexed color: 38/48;5;palette-index.
 		return min(index+2, len(parts)-1)
 	default:
 		return index
