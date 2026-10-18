@@ -21,16 +21,16 @@ func (v *diffView) cursorAt(y int, pane diffPane) (diffCursor, bool) {
 }
 
 func (v *diffView) first() (diffCursor, bool) {
-	return v.edge(forward)
+	return v.edge(Forward)
 }
 
 func (v *diffView) last() (diffCursor, bool) {
-	return v.edge(backward)
+	return v.edge(Backward)
 }
 
-func (v *diffView) edge(direction direction) (diffCursor, bool) {
+func (v *diffView) edge(direction Direction) (diffCursor, bool) {
 	start := -1
-	if direction == backward {
+	if direction == Backward {
 		start = len(v.rows)
 	}
 	if cursor, ok := v.scan(start, right, direction); ok {
@@ -42,7 +42,7 @@ func (v *diffView) edge(direction direction) (diffCursor, bool) {
 func (v *diffView) scan(
 	start int,
 	pane diffPane,
-	direction direction,
+	direction Direction,
 ) (diffCursor, bool) {
 	step := int(direction)
 	for y := start + step; y >= 0 && y < len(v.rows); y += step {
@@ -55,7 +55,7 @@ func (v *diffView) scan(
 
 func (v *diffView) move(
 	cursor diffCursor,
-	direction direction,
+	direction Direction,
 ) (diffCursor, bool) {
 	if !v.valid(cursor) {
 		return diffCursor{}, false
@@ -65,7 +65,7 @@ func (v *diffView) move(
 
 func (v *diffView) jumpFile(
 	cursor diffCursor,
-	direction direction,
+	direction Direction,
 ) (diffCursor, bool) {
 	if !v.valid(cursor) {
 		return diffCursor{}, false
@@ -97,7 +97,7 @@ func (v *diffView) switchPane(
 	if candidate, ok := v.previousInFile(cursor, pane); ok {
 		return candidate, true
 	}
-	return v.scan(cursor.row, pane, forward)
+	return v.scan(cursor.row, pane, Forward)
 }
 
 func (v *diffView) previousInFile(

@@ -51,7 +51,7 @@ func (v *View) previewSearch(query string) {
 		v.search.miss = false
 		return
 	}
-	cursor, ok := v.view.search(query, v.search.from, forward)
+	cursor, ok := v.view.search(query, v.search.from, Forward)
 	v.search.miss = !ok
 	if ok {
 		v.setCursor(cursor)
@@ -88,7 +88,7 @@ func (v *View) Find(d Direction) bool {
 	if d != Forward && d != Backward {
 		return false
 	}
-	cursor, ok := v.view.search(v.search.term, v.cursor, direction(d))
+	cursor, ok := v.view.search(v.search.term, v.cursor, d)
 	v.search.repeatMiss = !ok
 	if ok {
 		v.setCursor(cursor)
@@ -99,7 +99,7 @@ func (v *View) Find(d Direction) bool {
 func (v *diffView) search(
 	query string,
 	cursor diffCursor,
-	direction direction,
+	direction Direction,
 ) (diffCursor, bool) {
 	if query == "" || !v.valid(cursor) {
 		return diffCursor{}, false
@@ -119,7 +119,7 @@ func (v *diffView) searchRow(
 	query string,
 	y int,
 	pane diffPane,
-	direction direction,
+	direction Direction,
 ) (diffCursor, bool) {
 	if v.rows[y].kind != lineRow {
 		return v.searchMetadata(query, y, pane, direction)
@@ -153,7 +153,7 @@ func (v *diffView) searchMetadata(
 	query string,
 	y int,
 	pane diffPane,
-	direction direction,
+	direction Direction,
 ) (diffCursor, bool) {
 	if strings.Contains(strings.ToLower(ansi.Strip(v.rows[y].text)), query) {
 		return v.cursorNearMetadata(y, pane, direction)
@@ -164,7 +164,7 @@ func (v *diffView) searchMetadata(
 func (v *diffView) cursorNearMetadata(
 	y int,
 	pane diffPane,
-	direction direction,
+	direction Direction,
 ) (diffCursor, bool) {
 	for distance := 1; distance <= len(v.rows); distance++ {
 		for _, candidateY := range neighborRows(y, distance, direction) {
@@ -176,7 +176,7 @@ func (v *diffView) cursorNearMetadata(
 	return diffCursor{}, false
 }
 
-func neighborRows(row, distance int, direction direction) [2]int {
+func neighborRows(row, distance int, direction Direction) [2]int {
 	offset := int(direction) * distance
 	return [2]int{row + offset, row - offset}
 }
