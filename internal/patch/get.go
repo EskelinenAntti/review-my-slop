@@ -105,7 +105,16 @@ func load(
 	if err != nil {
 		return Patch{}, err
 	}
-	return build(ctx, run, root, kind, branch, raw, oldRevision)
+	files, err := loadFiles(ctx, run, root, raw, oldRevision)
+	if err != nil {
+		return Patch{}, err
+	}
+	return Patch{
+		Root:   root,
+		Kind:   kind,
+		Branch: branch,
+		Files:  files,
+	}, nil
 }
 
 func comparison(
@@ -171,22 +180,20 @@ func gitDiff(
 	return run.Run(ctx, root, args...)
 }
 
-func build(
+func loadFiles(
 	ctx context.Context,
 	run runner,
 	root string,
-	kind Kind,
-	branch string,
 	raw []byte,
 	oldRevision string,
-) (Patch, error) {
+) ([]File, error) {
 	files, err := parseTracked(ctx, run, root, raw, oldRevision)
 	if err != nil {
-		return Patch{}, err
+		return nil, err
 	}
 	untracked, err := loadUntracked(ctx, run, root)
 	if err != nil {
-		return Patch{}, err
+		return nil, err
 	}
 	files = append(files, untracked...)
 	slices.SortStableFunc(
@@ -197,15 +204,10 @@ func build(
 	)
 
 	if err := ctx.Err(); err != nil {
-		return Patch{}, err
+		return nil, err
 	}
 
-	return Patch{
-		Root:   root,
-		Kind:   kind,
-		Branch: branch,
-		Files:  files,
-	}, nil
+	return files, nil
 }
 
 func defaultBranch(
