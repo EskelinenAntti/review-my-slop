@@ -108,21 +108,6 @@ func TestStoreQueuesByRepositoryAndDeletesExactPeek(t *testing.T) {
 	)
 }
 
-func TestWritePromptNumbersMessages(t *testing.T) {
-	var out bytes.Buffer
-	comments := []Comment{
-		testComment("/repo", "First."),
-		testComment("/repo", "Second."),
-	}
-	testutil.NoError(t, WritePrompt(&out, comments))
-
-	for _, expected := range []string{"### 1.", "### 2."} {
-		testutil.RequireEqual(t, strings.Contains(out.String(), expected), true,
-			"output lacks %q:\n%s", expected, out.String(),
-		)
-	}
-}
-
 func TestStoreRejectsEmptyAndOversizedComments(t *testing.T) {
 	store := Store{Path: filepath.Join(t.TempDir(), "comments.db")}
 	empty := testComment("/repo", "")

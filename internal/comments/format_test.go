@@ -83,6 +83,24 @@ func TestWritePrompt(t *testing.T) {
 	)
 }
 
+func TestWritePromptNumbersComments(t *testing.T) {
+	var output bytes.Buffer
+	comments := []Comment{
+		testComment("/repo", "First."),
+		testComment("/repo", "Second."),
+	}
+	testutil.NoError(t, WritePrompt(&output, comments))
+
+	for _, expected := range []string{"### 1.", "### 2."} {
+		testutil.RequireEqual(
+			t,
+			strings.Contains(output.String(), expected),
+			true,
+			"output lacks %q:\n%s", expected, output.String(),
+		)
+	}
+}
+
 func TestWritePromptNamesPatchWhenRangeIsUnavailable(t *testing.T) {
 	var output bytes.Buffer
 	err := WritePrompt(&output, []Comment{{
