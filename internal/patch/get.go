@@ -274,22 +274,18 @@ func parseTrackedFile(
 ) (File, error) {
 	oldPath := cleanDiffPath(fd.OrigName)
 	newPath := cleanDiffPath(fd.NewName)
-	display := newPath
-	if display == "" || display == "/dev/null" {
-		display = oldPath
-	}
 	file := File{
-		OldPath:     oldPath,
-		NewPath:     newPath,
-		DisplayPath: visibleText(display),
-		Metadata:    visibleStrings(fd.Extended),
+		OldPath:  oldPath,
+		NewPath:  newPath,
+		Metadata: visibleStrings(fd.Extended),
 	}
+	file.DisplayPath = visibleText(file.PreferredPath())
 	file.OldSource = readGitSource(ctx, run, root, oldRevision, oldPath)
 	file.NewSource = readWorkingTree(root, newPath)
 	for _, h := range fd.Hunks {
 		lines, err := parseHunkBody(h.OrigStartLine, h.NewStartLine, h.Body)
 		if err != nil {
-			return File{}, fmt.Errorf("%s: %w", display, err)
+			return File{}, fmt.Errorf("%s: %w", file.DisplayPath, err)
 		}
 		file.Hunks = append(
 			file.Hunks,

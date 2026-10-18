@@ -155,7 +155,7 @@ func (m model) sourceLocation() (string, int, error) {
 	if !ok {
 		return "", 0, errors.New("select a code line to open in $EDITOR")
 	}
-	path, number := preferredFilePath(file), line.NewNumber
+	path, number := file.PreferredPath(), line.NewNumber
 	if number == 0 {
 		number = line.OldNumber
 	}
@@ -184,7 +184,7 @@ func (m *model) openCommentEditor() (tea.Cmd, error) {
 }
 
 func commentAnchor(file patch.File, lines []patch.Line) comments.Anchor {
-	anchor := comments.Anchor{FilePath: preferredFilePath(file)}
+	anchor := comments.Anchor{FilePath: file.PreferredPath()}
 	for _, line := range lines {
 		anchor.QuotedLines = append(
 			anchor.QuotedLines,
@@ -194,13 +194,6 @@ func commentAnchor(file patch.File, lines []patch.Line) comments.Anchor {
 		accumulateRange(&anchor.NewStart, &anchor.NewEnd, int(line.NewNumber))
 	}
 	return anchor
-}
-
-func preferredFilePath(file patch.File) string {
-	if file.NewPath != "" && file.NewPath != "/dev/null" {
-		return file.NewPath
-	}
-	return file.OldPath
 }
 
 func accumulateRange(start, end *int, value int) {
