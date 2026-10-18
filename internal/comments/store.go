@@ -259,12 +259,12 @@ type legacyComment struct {
 }
 
 type commentRecord struct {
-	ID         string         `json:"id"`
-	Repository string         `json:"repository"`
-	CreatedAt  time.Time      `json:"created_at"`
-	Anchor     Anchor         `json:"anchor"`
-	Body       string         `json:"body"`
-	Comment    *legacyComment `json:"comment"`
+	ID            string         `json:"id"`
+	Repository    string         `json:"repository"`
+	CreatedAt     time.Time      `json:"created_at"`
+	Anchor        Anchor         `json:"anchor"`
+	Body          string         `json:"body"`
+	LegacyComment *legacyComment `json:"comment"`
 }
 
 func decodeComment(data []byte) (Comment, error) {
@@ -279,9 +279,9 @@ func decodeComment(data []byte) (Comment, error) {
 		Anchor:     record.Anchor,
 		Body:       record.Body,
 	}
-	if record.Comment != nil {
-		comment.Anchor = record.Comment.Anchor
-		comment.Body = record.Comment.Body
+	if record.LegacyComment != nil {
+		comment.Anchor = record.LegacyComment.Anchor
+		comment.Body = record.LegacyComment.Body
 	}
 	return comment, nil
 }
