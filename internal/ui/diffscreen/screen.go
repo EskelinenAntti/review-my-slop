@@ -414,8 +414,7 @@ func (v *View) renderBody() []string {
 		if v.view.patch.Kind == patch.Branch {
 			empty = "No branch or worktree changes."
 		}
-		body = make([]string, frame.BodyHeight(v.height))
-		body[min(1, len(body)-1)] = frame.Muted(empty)
+		body = frame.EmptyBody(v.height, empty)
 	} else {
 		body = strings.Split(
 			v.view.render(v.viewport, v.cursor, v.selection),

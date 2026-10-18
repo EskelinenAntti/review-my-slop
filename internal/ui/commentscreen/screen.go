@@ -104,11 +104,11 @@ func (v *View) Render(err error) string {
 	pending := frame.Muted(fmt.Sprintf("%d pending", len(v.items)))
 	header := frame.Title("comments") + "  " + pending
 	height := frame.BodyHeight(v.height)
-	body := make([]string, 0, height)
+	var body []string
 	if len(v.items) == 0 {
-		body = make([]string, height)
-		body[min(1, height-1)] = frame.Muted("No pending comments.")
+		body = frame.EmptyBody(v.height, "No pending comments.")
 	} else {
+		body = make([]string, 0, height)
 		start := v.firstVisibleRow(height)
 		end := min(len(v.items), start+height)
 		for index := start; index < end; index++ {

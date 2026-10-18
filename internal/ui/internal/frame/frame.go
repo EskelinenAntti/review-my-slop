@@ -12,6 +12,13 @@ func SingleLine(value string) string {
 // footer.
 func BodyHeight(height int) int { return max(1, height-3) }
 
+// EmptyBody creates body rows with a muted message near the top.
+func EmptyBody(height int, message string) []string {
+	rows := make([]string, BodyHeight(height))
+	rows[min(1, len(rows)-1)] = Muted(message)
+	return rows
+}
+
 // BodyRow maps a terminal cell to a body row, excluding header and footer cells
 // and any part of the frame that falls outside the terminal dimensions.
 func BodyRow(x, y, width, height int) (int, bool) {
