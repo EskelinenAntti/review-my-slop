@@ -186,18 +186,15 @@ func newWithStore(
 		},
 		size: size,
 	})
-	m.setDelete(func(comment comments.Comment, current patch.Patch) error {
+	m.delete = func(comment comments.Comment, current patch.Patch) error {
 		return store.Delete(current.Root, comment.ID)
-	})
-	m.setLoadComments(func() ([]comments.Comment, error) {
+	}
+	m.load = func() ([]comments.Comment, error) {
 		return store.List(p.Root)
-	})
+	}
 	return m, nil
 }
 
-func (m *model) setRefresh(refresh refreshDiffFunc)    { m.refresh = refresh }
-func (m *model) setDelete(remove deleteCommentFunc)    { m.delete = remove }
-func (m *model) setLoadComments(load loadCommentsFunc) { m.load = load }
 func (m *model) configureSideBySide(enabled bool, save saveSideBySideFunc) {
 	m.saveLayout = save
 	m.setSideBySide(enabled)
