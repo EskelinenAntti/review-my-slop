@@ -43,9 +43,11 @@ func (m model) editSelectedComment() (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	comment := m.comments.items[index]
-	m.edit.index = index
-	m.edit.body = comment.Body
-	m.edit.anchor = comment.Anchor
+	m.edit = commentEdit{
+		body:   comment.Body,
+		index:  index,
+		anchor: comment.Anchor,
+	}
 	cmd, err := m.openCommentEditor()
 	if err != nil {
 		m.err = err
@@ -60,7 +62,7 @@ func (m *model) beginComment() (tea.Cmd, error) {
 		return nil, errors.New("select code lines before commenting")
 	}
 	anchor := commentAnchor(file, lines)
-	m.edit.body, m.edit.index, m.edit.anchor = "", -1, anchor
+	m.edit = commentEdit{index: -1, anchor: anchor}
 	cmd, err := m.openCommentEditor()
 	if err != nil {
 		return nil, err
