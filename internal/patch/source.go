@@ -26,7 +26,7 @@ func readGitSource(
 	if err != nil {
 		return ""
 	}
-	return safeSource(out)
+	return displayableSource(out)
 }
 
 func readWorkingTree(root, path string) string {
@@ -42,7 +42,7 @@ func readWorkingTree(root, path string) string {
 	if err != nil || oversized {
 		return ""
 	}
-	return safeSource(out)
+	return displayableSource(out)
 }
 
 func readLimitedFile(path string, info os.FileInfo) ([]byte, bool, error) {
@@ -64,7 +64,7 @@ func readLimitedFile(path string, info os.FileInfo) ([]byte, bool, error) {
 	return content, false, nil
 }
 
-func safeSource(source []byte) string {
+func displayableSource(source []byte) string {
 	if len(source) > maxFileBytes || containsBinaryData(source) {
 		return ""
 	}
