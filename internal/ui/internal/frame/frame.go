@@ -33,12 +33,9 @@ func BodyRow(x, y, width, height int) (int, bool) {
 // Render composes a header, padded body, footer, and final blank line.
 func Render(header string, body []string, footer string, height int) string {
 	bodyHeight := BodyHeight(height)
-	lines := make([]string, 0, bodyHeight+3)
-	lines = append(lines, header)
-	lines = append(lines, body[:min(len(body), bodyHeight)]...)
-	for len(lines) < bodyHeight+1 {
-		lines = append(lines, "")
-	}
-	lines = append(lines, footer, "")
+	lines := make([]string, bodyHeight+3)
+	lines[0] = header
+	copy(lines[1:bodyHeight+1], body)
+	lines[bodyHeight+1] = footer
 	return strings.Join(lines, "\n")
 }
