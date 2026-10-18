@@ -125,12 +125,12 @@ func (s Store) Acknowledge(repository string, ids []string) error {
 	if len(ids) == 0 {
 		return nil
 	}
-	wanted := make(map[string]struct{}, len(ids))
+	wantedIDs := make(map[string]struct{}, len(ids))
 	for _, id := range ids {
-		wanted[id] = struct{}{}
+		wantedIDs[id] = struct{}{}
 	}
 	return s.transact(func(bucket *bolt.Bucket) error {
-		keys, err := findPendingKeys(bucket, repository, wanted)
+		keys, err := findPendingKeys(bucket, repository, wantedIDs)
 		if err != nil {
 			return err
 		}
@@ -193,14 +193,14 @@ func findCommentKey(
 func findPendingKeys(
 	bucket *bolt.Bucket,
 	repository string,
-	wanted map[string]struct{},
+	wantedIDs map[string]struct{},
 ) ([][]byte, error) {
 	var keys [][]byte
 	err := forEachComment(bucket, func(key []byte, comment Comment) bool {
 		if comment.Repository != repository {
 			return true
 		}
-		if _, ok := wanted[comment.ID]; ok {
+		if _, ok := wantedIDs[comment.ID]; ok {
 			keys = append(keys, bytes.Clone(key))
 		}
 		return true
