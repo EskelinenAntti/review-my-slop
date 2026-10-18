@@ -48,14 +48,7 @@ func commentDraft(body string, anchor comments.Anchor) string {
 		_ = draft.WriteByte('\n')
 	}
 	_ = draft.WriteByte('\n')
-	fence := contextFence(lines)
-	_, _ = draft.WriteString(fence)
-	_, _ = draft.WriteString("suggestion\n")
-	for _, line := range lines {
-		_, _ = draft.WriteString(line)
-		_ = draft.WriteByte('\n')
-	}
-	_, _ = draft.WriteString(fence)
+	_, _ = draft.WriteString(suggestionBlock(lines))
 	_ = draft.WriteByte('\n')
 	return draft.String()
 }
@@ -65,6 +58,21 @@ func stripUnchangedSuggestion(body string, quoted []string) string {
 		return body
 	}
 	lines := suggestionLines(quoted)
+	suggestion := suggestionBlock(lines)
+	start := strings.Index(body, suggestion)
+	if start < 0 {
+		return body
+	}
+	end := start + len(suggestion)
+	before := strings.TrimRight(body[:start], "\n")
+	after := body[end:]
+	if strings.TrimSpace(after) == "" {
+		return before
+	}
+	return before + "\n" + strings.TrimLeft(after, "\n")
+}
+
+func suggestionBlock(lines []string) string {
 	fence := contextFence(lines)
 	var suggestion strings.Builder
 	_, _ = suggestion.WriteString(fence)
@@ -74,17 +82,7 @@ func stripUnchangedSuggestion(body string, quoted []string) string {
 		_ = suggestion.WriteByte('\n')
 	}
 	_, _ = suggestion.WriteString(fence)
-	start := strings.Index(body, suggestion.String())
-	if start < 0 {
-		return body
-	}
-	end := start + suggestion.Len()
-	before := strings.TrimRight(body[:start], "\n")
-	after := body[end:]
-	if strings.TrimSpace(after) == "" {
-		return before
-	}
-	return before + "\n" + strings.TrimLeft(after, "\n")
+	return suggestion.String()
 }
 
 func commentCommand(ctx context.Context, editor, path string) *exec.Cmd {
