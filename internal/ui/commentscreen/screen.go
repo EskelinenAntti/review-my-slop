@@ -113,11 +113,16 @@ func (v *View) Render(err error) string {
 	if len(v.items) == 0 {
 		body = frame.EmptyBody(v.height, "No pending comments.")
 	} else {
+		rowStyle := commentRowStyle.Width(width)
+		selectedRowStyle := selectedCommentRowStyle.Width(width)
 		body = make([]string, 0, height)
 		start := v.firstVisibleRow(height)
 		end := min(len(v.items), start+height)
 		for index := start; index < end; index++ {
-			body = append(body, v.renderRow(index, width))
+			body = append(
+				body,
+				v.renderRow(index, width, rowStyle, selectedRowStyle),
+			)
 		}
 	}
 	footer := frame.Muted(
@@ -130,11 +135,14 @@ func (v *View) Render(err error) string {
 	return frame.Render(header, body, footer, v.height)
 }
 
-func (v *View) renderRow(index, width int) string {
+func (v *View) renderRow(
+	index, width int,
+	rowStyle, selectedRowStyle lipgloss.Style,
+) string {
 	comment := v.items[index]
-	prefix, style := "  ", commentRowStyle
+	prefix, style := "  ", rowStyle
 	if index == v.row {
-		prefix, style = "> ", selectedCommentRowStyle
+		prefix, style = "> ", selectedRowStyle
 	}
 	location := comment.Anchor.FilePath
 	if comment.Anchor.NewStart > 0 {
@@ -148,7 +156,7 @@ func (v *View) renderRow(index, width int) string {
 		width,
 		"",
 	)
-	return style.Width(width).Render(line)
+	return style.Render(line)
 }
 
 var (
