@@ -33,6 +33,23 @@ func TestListMissingStoreDoesNotCreateDatabase(t *testing.T) {
 	}
 }
 
+func TestStoreViewsCanShareDatabase(t *testing.T) {
+	store := Store{Path: filepath.Join(t.TempDir(), "comments.db")}
+	if _, err := store.Add(testComment("/repo", "feedback")); err != nil {
+		t.Fatal(err)
+	}
+
+	err := store.view(func(_ *bolt.Bucket) error {
+		comments, err := store.List("/repo")
+		if err != nil {
+			return err
+		}
+		testutil.RequireEqual(t, len(comments), 1, "comments = %#v", comments)
+		return nil
+	})
+	testutil.NoError(t, err)
+}
+
 func TestStoreQueuesByRepositoryAndDeletesExactPeek(t *testing.T) {
 	store := Store{Path: filepath.Join(t.TempDir(), "state", "comments.db")}
 	first := testComment("/repo/a", "first")

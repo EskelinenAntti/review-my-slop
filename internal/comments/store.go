@@ -18,6 +18,13 @@ const (
 
 var commentsBucket = []byte("messages")
 
+type databaseMode uint8
+
+const (
+	writeDatabase databaseMode = iota
+	readDatabase
+)
+
 // Store persists pending review comments in a database at Path.
 type Store struct {
 	Path string
@@ -225,7 +232,7 @@ func forEachComment(
 }
 
 func (s Store) transact(fn func(*bolt.Bucket) error) error {
-	db, err := s.open()
+	db, err := s.openForWrite()
 	if err != nil {
 		return err
 	}
@@ -240,17 +247,11 @@ func (s Store) transact(fn func(*bolt.Bucket) error) error {
 }
 
 func (s Store) view(fn func(*bolt.Bucket) error) error {
-	if err := s.validatePath(); err != nil {
-		return err
-	}
-	if _, err := os.Stat(s.Path); err != nil {
+	db, err := s.openForRead()
+	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			return nil
 		}
-		return fmt.Errorf("inspect comments: %w", err)
-	}
-	db, err := s.open()
-	if err != nil {
 		return err
 	}
 	defer db.Close()
@@ -263,17 +264,22 @@ func (s Store) view(fn func(*bolt.Bucket) error) error {
 	})
 }
 
-func (s Store) open() (*bolt.DB, error) {
-	if err := s.validatePath(); err != nil {
+func (s Store) openForWrite() (*bolt.DB, error) {
+	return s.openDatabase(writeDatabase)
+}
+
+func (s Store) openForRead() (*bolt.DB, error) {
+	return s.openDatabase(readDatabase)
+}
+
+func (s Store) openDatabase(mode databaseMode) (*bolt.DB, error) {
+	if err := s.preparePath(mode); err != nil {
 		return nil, err
 	}
-	if err := os.MkdirAll(filepath.Dir(s.Path), 0o700); err != nil {
-		return nil, fmt.Errorf("create comments directory: %w", err)
-	}
-	if err := os.Chmod(filepath.Dir(s.Path), 0o700); err != nil {
-		return nil, fmt.Errorf("secure comments directory: %w", err)
-	}
-	db, err := bolt.Open(s.Path, 0o600, &bolt.Options{Timeout: 2 * time.Second})
+	db, err := bolt.Open(s.Path, 0o600, &bolt.Options{
+		Timeout:  2 * time.Second,
+		ReadOnly: mode == readDatabase,
+	})
 	if err != nil {
 		return nil, fmt.Errorf("open comments: %w", err)
 	}
@@ -282,6 +288,23 @@ func (s Store) open() (*bolt.DB, error) {
 		return nil, fmt.Errorf("secure comments database: %w", err)
 	}
 	return db, nil
+}
+
+func (s Store) preparePath(mode databaseMode) error {
+	if err := s.validatePath(); err != nil {
+		return err
+	}
+	if mode == readDatabase {
+		if _, err := os.Stat(s.Path); err != nil {
+			return fmt.Errorf("open comments: %w", err)
+		}
+	} else if err := os.MkdirAll(filepath.Dir(s.Path), 0o700); err != nil {
+		return fmt.Errorf("create comments directory: %w", err)
+	}
+	if err := os.Chmod(filepath.Dir(s.Path), 0o700); err != nil {
+		return fmt.Errorf("secure comments directory: %w", err)
+	}
+	return nil
 }
 
 func (s Store) validatePath() error {
