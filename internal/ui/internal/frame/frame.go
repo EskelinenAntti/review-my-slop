@@ -12,7 +12,7 @@ func BodyHeight(height int) int { return max(1, height-3) }
 func BodyRow(x, y, width, height int) (int, bool) {
 	row := y - 1
 	return row, x >= 0 && x < width && row >= 0 &&
-		row < BodyHeight(height) && y < height-2
+		row < BodyHeight(height)
 }
 
 // Render composes a header, padded body, footer, and final blank line.
