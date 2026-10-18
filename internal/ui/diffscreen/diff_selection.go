@@ -198,14 +198,6 @@ func lineNumberDistance(first, second patch.LineNumber) (int, bool) {
 	return abs(int(first - second)), true
 }
 
-func sameFilePaths(
-	candidateOld, candidateNew, targetOld, targetNew string,
-) bool {
-	oldPathMatches := candidateOld != "" && candidateOld == targetOld
-	newPathMatches := candidateNew != "" && candidateNew == targetNew
-	return oldPathMatches || newPathMatches
-}
-
 func abs(value int) int {
 	if value < 0 {
 		return -value

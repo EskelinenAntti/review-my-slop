@@ -2,6 +2,14 @@ package diffscreen
 
 import "github.com/eskelinenantti/review-my-slop/internal/patch"
 
+func sameFilePaths(
+	candidateOld, candidateNew, targetOld, targetNew string,
+) bool {
+	oldPathMatches := candidateOld != "" && candidateOld == targetOld
+	newPathMatches := candidateNew != "" && candidateNew == targetNew
+	return oldPathMatches || newPathMatches
+}
+
 type cursorIdentity struct {
 	oldPath, newPath string
 	hunkHeader       string
