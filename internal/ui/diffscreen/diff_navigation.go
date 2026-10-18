@@ -5,7 +5,7 @@ func (v *diffView) valid(cursor diffCursor) bool {
 		v.lineIndex(v.rows[cursor.row], cursor.pane) >= 0
 }
 
-func (v *diffView) lineIndex(current entry, pane diffPane) int {
+func (v *diffView) lineIndex(current diffRow, pane diffPane) int {
 	if current.kind != lineRow {
 		return -1
 	}

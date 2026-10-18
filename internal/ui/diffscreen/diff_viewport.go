@@ -216,7 +216,7 @@ func (v *diffView) maxHorizontalOffset(width int) int {
 	return max(0, v.maxLineWidth+extra-contentWidth)
 }
 
-func renderedLineWidth(current entry) int {
+func renderedLineWidth(current diffRow) int {
 	return lipgloss.Width(
 		expandTabs(ansi.Strip(current.text + current.left + current.right)),
 	)

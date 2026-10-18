@@ -89,7 +89,7 @@ func (v *diffView) matchRow(y int, target cursorIdentity) cursorMatch {
 	return best
 }
 
-func (v *diffView) rowInFile(current entry, target cursorIdentity) bool {
+func (v *diffView) rowInFile(current diffRow, target cursorIdentity) bool {
 	if current.hunk < 0 {
 		return false
 	}

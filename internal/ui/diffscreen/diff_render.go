@@ -57,7 +57,7 @@ func (v *diffView) render(
 }
 
 func (v *diffView) renderUnifiedRow(
-	current entry,
+	current diffRow,
 	y int,
 	viewport diffViewport,
 	cursor diffCursor,
@@ -84,7 +84,7 @@ func (v *diffView) renderUnifiedRow(
 }
 
 func (v *diffView) renderUnifiedLine(
-	current entry,
+	current diffRow,
 	y int,
 	viewport diffViewport,
 	cursor diffCursor,
@@ -120,7 +120,7 @@ func renderFileRow(path string, width int) string {
 }
 
 func (v *diffView) renderSplitRow(
-	current entry,
+	current diffRow,
 	y int,
 	viewport diffViewport,
 	cursor diffCursor,
@@ -154,7 +154,7 @@ func splitPaneWidths(width int) (left, right int) {
 }
 
 func (v *diffView) renderPane(
-	current entry,
+	current diffRow,
 	y int,
 	pane diffPane,
 	width, offset int,

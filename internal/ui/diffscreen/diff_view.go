@@ -16,7 +16,9 @@ const (
 	lineRow
 )
 
-type entry struct {
+// diffRow maps a display row to source indices within a file and hunk.
+// Negative line indices denote empty panes or non-code rows.
+type diffRow struct {
 	kind              rowKind
 	file, hunk        int
 	leftLine          int
@@ -26,7 +28,7 @@ type entry struct {
 
 type diffView struct {
 	patch        patch.Patch
-	rows         []entry
+	rows         []diffRow
 	maxLineWidth int
 	addedLines   int
 	removedLines int
@@ -111,7 +113,7 @@ func (v *diffView) appendLineRow(
 	highlighted highlightedSources,
 	leftLine, rightLine int,
 ) {
-	row := entry{
+	row := diffRow{
 		kind:      lineRow,
 		file:      fileIndex,
 		hunk:      hunkIndex,
@@ -141,7 +143,7 @@ func (v *diffView) appendNonLineRow(
 	fileIndex, hunkIndex int,
 	text string,
 ) {
-	v.rows = append(v.rows, entry{
+	v.rows = append(v.rows, diffRow{
 		kind:      kind,
 		file:      fileIndex,
 		hunk:      hunkIndex,
@@ -152,7 +154,7 @@ func (v *diffView) appendNonLineRow(
 }
 
 func (v *diffView) highlightRow(
-	row *entry,
+	row *diffRow,
 	lines []patch.Line,
 	highlighted highlightedSources,
 ) {
