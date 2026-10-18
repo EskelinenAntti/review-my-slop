@@ -347,9 +347,9 @@ func (m model) updateBrowseKey(name string) (tea.Model, tea.Cmd) {
 		m.quitting = true
 		return m, tea.Quit
 	case "c":
-		return m.startCommentEditor()
+		return m.startEditor((*model).beginComment)
 	case "e":
-		return m.startSourceEditor()
+		return m.startEditor((*model).openCurrentLine)
 	case "R":
 		return m, m.loadRefresh()
 	case "tab":
@@ -381,17 +381,10 @@ func (m model) updateBrowseView(name string) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m model) startCommentEditor() (tea.Model, tea.Cmd) {
-	cmd, err := m.beginComment()
-	if err != nil {
-		m.err = err
-		return m, nil
-	}
-	return m, cmd
-}
-
-func (m model) startSourceEditor() (tea.Model, tea.Cmd) {
-	cmd, err := m.openCurrentLine()
+func (m model) startEditor(
+	start func(*model) (tea.Cmd, error),
+) (tea.Model, tea.Cmd) {
+	cmd, err := start(&m)
 	if err != nil {
 		m.err = err
 		return m, nil

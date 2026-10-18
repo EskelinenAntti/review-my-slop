@@ -143,7 +143,7 @@ func (m *model) clearCommentEdit() {
 	m.edit = commentEdit{index: -1}
 }
 
-func (m model) openCurrentLine() (tea.Cmd, error) {
+func (m *model) openCurrentLine() (tea.Cmd, error) {
 	path, number, err := m.sourceLocation()
 	if err != nil {
 		return nil, err
