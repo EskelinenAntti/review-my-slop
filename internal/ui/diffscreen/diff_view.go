@@ -66,6 +66,7 @@ func (v *diffView) appendHunkRows(
 	hunk patch.Hunk,
 	highlighted highlightedSources,
 ) {
+	v.countSourceLines(hunk.Lines)
 	v.appendNonLineRow(
 		hunkRow,
 		fileIndex,
@@ -110,10 +111,6 @@ func (v *diffView) appendLineRow(
 	highlighted highlightedSources,
 	leftLine, rightLine int,
 ) {
-	v.countSourceLine(lines, leftLine)
-	if rightLine != leftLine {
-		v.countSourceLine(lines, rightLine)
-	}
 	row := entry{
 		kind:      lineRow,
 		file:      fileIndex,
@@ -126,17 +123,16 @@ func (v *diffView) appendLineRow(
 	v.rows = append(v.rows, row)
 }
 
-func (v *diffView) countSourceLine(lines []patch.Line, index int) {
-	if index < 0 {
-		return
-	}
-	switch lines[index].Kind {
-	case patch.Addition:
-		v.addedLines++
-	case patch.Deletion:
-		v.removedLines++
-	default:
-		return
+func (v *diffView) countSourceLines(lines []patch.Line) {
+	for _, line := range lines {
+		switch line.Kind {
+		case patch.Addition:
+			v.addedLines++
+		case patch.Deletion:
+			v.removedLines++
+		default:
+			continue
+		}
 	}
 }
 
