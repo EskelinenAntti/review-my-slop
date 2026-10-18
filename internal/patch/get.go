@@ -391,12 +391,13 @@ func readUntrackedSymlink(full, path string) (File, bool, error) {
 
 func addedFile(path, content string) File {
 	sourceLines := splitSourceLines(content)
-	lines := make([]Line, 0, len(sourceLines))
+	lines := make([]Line, len(sourceLines))
 	for i, line := range sourceLines {
-		lines = append(
-			lines,
-			Line{Kind: Addition, Text: line, NewNumber: LineNumber(i + 1)},
-		)
+		lines[i] = Line{
+			Kind:      Addition,
+			Text:      line,
+			NewNumber: LineNumber(i + 1),
+		}
 	}
 	file := untrackedFile(path, "untracked file")
 	file.NewSource = content
