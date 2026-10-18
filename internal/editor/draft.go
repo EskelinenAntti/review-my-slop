@@ -1,11 +1,8 @@
 package editor
 
 import (
-	"context"
 	"fmt"
 	"os"
-	"os/exec"
-	"strconv"
 	"strings"
 
 	"github.com/eskelinenantti/review-my-slop/internal/comments"
@@ -88,23 +85,6 @@ func suggestionBlock(lines []string) string {
 	return block.String()
 }
 
-func commentCommand(ctx context.Context, editor, path string) *exec.Cmd {
-	return shellCommand(ctx, editor, shellQuote(path))
-}
-
-func sourceCommand(
-	ctx context.Context,
-	editor, path string,
-	line int,
-) *exec.Cmd {
-	arguments := "+" + strconv.Itoa(line) + " " + shellQuote(path)
-	return shellCommand(ctx, editor, arguments)
-}
-
-func shellCommand(ctx context.Context, editor, arguments string) *exec.Cmd {
-	return exec.CommandContext(ctx, "sh", "-c", editor+" "+arguments)
-}
-
 func suggestionLines(quoted []string) []string {
 	lines := make([]string, 0, len(quoted))
 	for _, line := range quoted {
@@ -129,8 +109,4 @@ func contextFence(lines []string) string {
 		}
 	}
 	return strings.Repeat("`", max(3, longest+1))
-}
-
-func shellQuote(value string) string {
-	return "'" + strings.ReplaceAll(value, "'", "'\"'\"'") + "'"
 }
