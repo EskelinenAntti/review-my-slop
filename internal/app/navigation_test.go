@@ -1,8 +1,12 @@
 package app
 
 import (
+	tea "charm.land/bubbletea/v2"
 	"strings"
 	"testing"
+
+	"github.com/eskelinenantti/review-my-slop/internal/testutil"
+	"github.com/eskelinenantti/review-my-slop/internal/ui/diffscreen"
 )
 
 func TestNavigationMatcherDerivesMultiKeyBindings(t *testing.T) {
@@ -51,4 +55,78 @@ func TestNavigationMatcherKeepsPrefixFallbackBehavior(t *testing.T) {
 	if got := matcher.Feed("j"); got != "j" {
 		t.Fatalf("key after consumed prefix: got %q, want j", got)
 	}
+}
+
+func TestZSequencesPositionCurrentLineInViewport(t *testing.T) {
+	for _, test := range []struct {
+		key       string
+		alignment diffscreen.Alignment
+	}{
+		{
+			"z",
+			diffscreen.Center,
+		}, {"t", diffscreen.Top}, {"b", diffscreen.Bottom},
+	} {
+		m := testModel(longModelPatch(), nil, nil)
+		m = updateModel(t, m, tea.WindowSizeMsg{Width: 100, Height: 9})
+		want := diffscreen.New(longModelPatch(), diffscreen.Options{Dark: true})
+		want.Resize(100, 9)
+		for range 10 {
+			m.diffView.Move(diffscreen.NextLine)
+			want.Move(diffscreen.NextLine)
+		}
+		want.Align(test.alignment)
+		m = updateModel(t, m, textKey("z"))
+		m = updateModel(t, m, textKey(test.key))
+		testutil.RequireEqual(t, m.diffView.Render(nil), want.Render(nil),
+			"z%s did not align view", test.key,
+		)
+	}
+}
+
+func TestPendingKeyIsConsumedByNextKey(t *testing.T) {
+	m := testModel(coveragePatch(), nil, nil)
+	m = updateModel(t, m, textKey("G"))
+	last := lineText(m)
+	m = updateModel(t, m, textKey("g"))
+	m = updateModel(t, m, textKey("h"))
+	m = updateModel(t, m, textKey("g"))
+	testutil.RequireEqual(t, lineText(m), last, "%s",
+		"pending prefix moved focus",
+	)
+
+	m = updateModel(t, m, textKey("g"))
+	testutil.RequireEqual(t, lineText(m), "package main", "gg line=%q",
+		lineText(m),
+	)
+}
+
+func TestHorizontalScrollKeysMoveByStepAndReset(t *testing.T) {
+	m := testModel(longModelPatch(), nil, nil)
+	m = updateModel(t, m, tea.WindowSizeMsg{Width: 37, Height: 30})
+	initial := m.diffView.Render(nil)
+	want := diffscreen.New(longModelPatch(), diffscreen.Options{Dark: true})
+	want.Resize(37, 30)
+	want.ScrollHorizontal(2 * horizontalScrollStep)
+	m = updateModel(t, m, textKey("l"))
+	m = updateModel(t, m, tea.KeyPressMsg(tea.Key{Code: tea.KeyRight}))
+	testutil.RequireEqual(t, m.diffView.Render(nil), want.Render(nil), "%s",
+		"right keys did not scroll by two steps",
+	)
+
+	m = updateModel(t, m, textKey("h"))
+	m = updateModel(t, m, tea.KeyPressMsg(tea.Key{Code: tea.KeyLeft}))
+	testutil.RequireEqual(t, m.diffView.Render(nil), initial, "%s",
+		"left keys did not restore initial offset",
+	)
+
+	m = updateModel(t, m, textKey("$"))
+	testutil.RequireEqual(t, m.diffView.Render(nil) != initial, true, "%s",
+		"$ did not scroll",
+	)
+
+	m = updateModel(t, m, textKey("0"))
+	testutil.RequireEqual(t, m.diffView.Render(nil), initial, "%s",
+		"0 did not restore initial offset",
+	)
 }
