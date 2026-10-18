@@ -106,15 +106,14 @@ func (v *diffView) renderUnifiedLine(
 		viewport.LeftColumn,
 		width-lipgloss.Width(gutter),
 	)
-	style := lineStyle(line.Kind, v.dark)
-	colors := preserveForeground
 	candidate := diffCursor{row: y, pane: cursor.pane}
-	if selected(selection, candidate) {
-		style, colors = selectionRowStyle(v.dark), discardForeground
-	}
-	if cursor.row == y {
-		style, colors = cursorStyle, discardForeground
-	}
+	style, colors := renderedLineStyle(
+		line.Kind,
+		candidate,
+		cursor,
+		selection,
+		v.dark,
+	)
 	return renderStyledRow(style, value, width, colors)
 }
 
@@ -187,16 +186,32 @@ func (v *diffView) renderPane(
 		offset,
 		width-lipgloss.Width(gutter),
 	)
-	style := lineStyle(line.Kind, v.dark)
-	colors := preserveForeground
 	candidate := diffCursor{row: y, pane: pane}
+	style, colors := renderedLineStyle(
+		line.Kind,
+		candidate,
+		cursor,
+		selection,
+		v.dark,
+	)
+	return renderStyledRow(style, value, width, colors)
+}
+
+func renderedLineStyle(
+	kind patch.LineKind,
+	candidate diffCursor,
+	cursor diffCursor,
+	selection *diffSelection,
+	dark bool,
+) (lipgloss.Style, foregroundPolicy) {
+	style, colors := lineStyle(kind, dark), preserveForeground
 	if selected(selection, candidate) {
-		style, colors = selectionRowStyle(v.dark), discardForeground
+		style, colors = selectionRowStyle(dark), discardForeground
 	}
 	if cursor == candidate {
 		style, colors = cursorStyle, discardForeground
 	}
-	return renderStyledRow(style, value, width, colors)
+	return style, colors
 }
 
 func selected(selection *diffSelection, cursor diffCursor) bool {
