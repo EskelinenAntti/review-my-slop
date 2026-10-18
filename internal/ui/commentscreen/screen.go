@@ -110,7 +110,7 @@ func (v *View) Render(err error) string {
 		"j/k move  Enter/e edit  D delete  Esc/q return",
 	)
 	if err != nil {
-		message := strings.ReplaceAll(err.Error(), "\n", " ")
+		message := frame.SingleLine(err.Error())
 		footer = frame.Error(ansi.Truncate(message, max(20, v.width), ""))
 	}
 	return frame.Render(header, body, footer, v.height)

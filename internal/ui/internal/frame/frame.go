@@ -3,6 +3,11 @@ package frame
 
 import "strings"
 
+// SingleLine replaces embedded line breaks in screen text with spaces.
+func SingleLine(value string) string {
+	return strings.ReplaceAll(value, "\n", " ")
+}
+
 // BodyHeight returns the available body rows after reserving the header and
 // footer.
 func BodyHeight(height int) int { return max(1, height-3) }
