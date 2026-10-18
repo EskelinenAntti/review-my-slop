@@ -72,18 +72,17 @@ func (m *model) beginComment() (tea.Cmd, error) {
 }
 
 func (m *model) finishCommentEdit() {
+	defer m.clearCommentEdit()
 	body := strings.TrimSpace(m.edit.body)
 	if body == "" {
 		if m.edit.index >= 0 {
 			m.deleteComment(m.edit.index)
 		}
-		m.clearCommentEdit()
 		m.diffView.ClearSelection()
 		return
 	}
 	if m.save == nil {
 		m.err = errors.New("comment storage is unavailable")
-		m.clearCommentEdit()
 		return
 	}
 	var comment comments.Comment
@@ -96,12 +95,10 @@ func (m *model) finishCommentEdit() {
 	saved, err := m.save(comment, m.currentPatch)
 	if err != nil {
 		m.err = err
-		m.clearCommentEdit()
 		return
 	}
 	m.updateSavedComment(saved, m.edit.index)
 	m.comments.revision++
-	m.clearCommentEdit()
 	m.err = nil
 	m.diffView.ClearSelection()
 }
