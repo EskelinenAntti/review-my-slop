@@ -31,11 +31,11 @@ func readPreferences(path string) (Preferences, error) {
 	if err != nil {
 		return Preferences{}, fmt.Errorf("read UI settings: %w", err)
 	}
-	var settings Preferences
-	if err := json.Unmarshal(data, &settings); err != nil {
+	var preferences Preferences
+	if err := json.Unmarshal(data, &preferences); err != nil {
 		return Preferences{}, fmt.Errorf("decode UI settings: %w", err)
 	}
-	return settings, nil
+	return preferences, nil
 }
 
 // Save atomically replaces the user preferences file.
