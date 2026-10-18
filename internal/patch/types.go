@@ -36,7 +36,7 @@ type File struct {
 // PreferredPath returns the new path when present, falling back to the old
 // path for deleted files.
 func (f File) PreferredPath() string {
-	if f.NewPath != "" && f.NewPath != "/dev/null" {
+	if f.NewPath != "" {
 		return f.NewPath
 	}
 	return f.OldPath
