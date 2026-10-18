@@ -447,9 +447,10 @@ func (v *View) renderFooter(value string) string {
 	}
 	right := frame.Muted(label)
 	width := max(20, v.width)
-	value = ansi.Truncate(value, max(0, width-lipgloss.Width(right)-1), "")
+	rightWidth := lipgloss.Width(right)
+	value = ansi.Truncate(value, max(0, width-rightWidth-1), "")
 	return value + strings.Repeat(
 		" ",
-		max(1, width-lipgloss.Width(value)-lipgloss.Width(right)),
+		max(1, width-lipgloss.Width(value)-rightWidth),
 	) + right
 }
