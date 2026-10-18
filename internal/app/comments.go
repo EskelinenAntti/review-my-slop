@@ -103,11 +103,12 @@ func (m *model) finishCommentEdit() {
 		m.comments.items[m.edit.index] = saved
 	} else {
 		m.comments.items = append(m.comments.items, saved)
-		m.commentView.Update(m.comments.items)
-		m.commentView.Move(len(m.comments.items))
 	}
 	m.comments.revision++
 	m.commentView.Update(m.comments.items)
+	if m.edit.index < 0 {
+		m.commentView.Move(len(m.comments.items))
+	}
 	m.clearCommentEdit()
 	m.err = nil
 	m.diffView.ClearSelection()
