@@ -8,34 +8,33 @@ import (
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
-	"github.com/eskelinenantti/review-my-slop/internal/comments"
 )
 
 // EditComment edits a private Markdown draft and returns the resulting body.
 func EditComment(
 	ctx context.Context,
 	body string,
-	anchor comments.Anchor,
+	quoted []string,
 	onComplete func(string, error) tea.Msg,
 ) (tea.Cmd, error) {
 	command, err := editorCommand()
 	if err != nil {
 		return nil, err
 	}
-	adapter, complete := commentWorkflow(ctx, command, body, anchor, onComplete)
+	adapter, complete := commentWorkflow(ctx, command, body, quoted, onComplete)
 	return tea.Exec(adapter, complete), nil
 }
 
 func commentWorkflow(
 	ctx context.Context,
 	command, body string,
-	anchor comments.Anchor,
+	quoted []string,
 	onComplete func(string, error) tea.Msg,
 ) (*commandAdapter, tea.ExecCallback) {
 	var editedBody string
 	adapter := &commandAdapter{}
 	adapter.run = func() error {
-		path, err := createCommentFile(body, anchor)
+		path, err := createCommentFile(body, quoted)
 		if err != nil {
 			return err
 		}
@@ -44,7 +43,7 @@ func commentWorkflow(
 		if err := adapter.execute(editorCommand); err != nil {
 			return fmt.Errorf("editor: %w", err)
 		}
-		editedBody, err = readCommentFile(path, anchor)
+		editedBody, err = readCommentFile(path, quoted)
 		return err
 	}
 	return adapter, func(err error) tea.Msg {

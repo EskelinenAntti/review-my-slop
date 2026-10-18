@@ -2,7 +2,6 @@ package editor
 
 import (
 	"context"
-	"github.com/eskelinenantti/review-my-slop/internal/comments"
 	"os"
 	"path/filepath"
 	"strings"
@@ -10,8 +9,8 @@ import (
 )
 
 func TestCommentOpensMarkdownFileInEditor(t *testing.T) {
-	anchor := comments.Anchor{QuotedLines: []string{"-old()```x", "+new()"}}
-	path, err := createCommentFile("existing comment", anchor)
+	quoted := []string{"-old()```x", "+new()"}
+	path, err := createCommentFile("existing comment", quoted)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -33,26 +32,22 @@ func TestCommentOpensMarkdownFileInEditor(t *testing.T) {
 
 func TestCommentEditorSuggestionBehaviors(t *testing.T) {
 	t.Run("escapes fence", func(t *testing.T) {
-		anchor := comments.Anchor{
-			QuotedLines: []string{"+````go", `+fmt.Println("hello")`, "+````"},
-		}
-		draft := commentDraft("explain this", anchor)
+		quoted := []string{"+````go", `+fmt.Println("hello")`, "+````"}
+		draft := commentDraft("explain this", quoted)
 		if !strings.Contains(
 			draft,
 			"`````suggestion",
 		) || stripUnchangedSuggestion(
 			draft,
-			anchor.QuotedLines,
+			quoted,
 		) != "explain this" {
 			t.Fatalf("draft = %q", draft)
 		}
 	})
 	t.Run("only new version", func(t *testing.T) {
-		anchor := comments.Anchor{
-			QuotedLines: []string{" unchanged()", "-old()", "+new()"},
-		}
+		quoted := []string{" unchanged()", "-old()", "+new()"}
 		want := "comment\n\n```suggestion\nunchanged()\nnew()\n```\n"
-		if got := commentDraft("comment", anchor); got != want {
+		if got := commentDraft("comment", quoted); got != want {
 			t.Fatalf("draft = %q", got)
 		}
 	})
@@ -81,16 +76,16 @@ func TestExternalEditorCommandReadsEditedDraft(t *testing.T) {
 	if err := command.Run(); err != nil {
 		t.Fatal(err)
 	}
-	body, err := readCommentFile(path, comments.Anchor{})
+	body, err := readCommentFile(path, nil)
 	if err != nil || body != "edited externally" {
 		t.Fatalf("body = %q, err = %v", body, err)
 	}
 }
 
 func TestCommentDraftRoundTrip(t *testing.T) {
-	anchor := comments.Anchor{QuotedLines: []string{" old", "-gone", "+new"}}
-	draft := commentDraft("body", anchor)
-	got := stripUnchangedSuggestion(draft, anchor.QuotedLines)
+	quoted := []string{" old", "-gone", "+new"}
+	draft := commentDraft("body", quoted)
+	got := stripUnchangedSuggestion(draft, quoted)
 	if got != "body" {
 		t.Fatalf("unchanged suggestion result = %q", got)
 	}
