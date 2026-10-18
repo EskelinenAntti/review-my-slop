@@ -94,8 +94,12 @@ func (s Store) List(repository string) ([]Comment, error) {
 
 // Update replaces an existing comment in the repository.
 func (s Store) Update(comment Comment) error {
-	if comment.Repository == "" || comment.ID == "" {
-		return errors.New("repository and comment ID are required")
+	identityErr := validateCommentIdentity(
+		comment.Repository,
+		comment.ID,
+	)
+	if identityErr != nil {
+		return identityErr
 	}
 	data, err := encodeComment(comment)
 	if err != nil {
@@ -110,8 +114,8 @@ func (s Store) Update(comment Comment) error {
 
 // Delete removes the identified comment from the repository.
 func (s Store) Delete(repository, id string) error {
-	if repository == "" || id == "" {
-		return errors.New("repository and comment ID are required")
+	if err := validateCommentIdentity(repository, id); err != nil {
+		return err
 	}
 	return s.transact(func(bucket *bolt.Bucket) error {
 		key, err := findCommentKey(bucket, repository, id)
@@ -222,6 +226,13 @@ func validateComment(comment Comment) error {
 	}
 	if len(comment.Body) > maxCommentBytes {
 		return fmt.Errorf("comment exceeds %d bytes", maxCommentBytes)
+	}
+	return nil
+}
+
+func validateCommentIdentity(repository, id string) error {
+	if repository == "" || id == "" {
+		return errors.New("repository and comment ID are required")
 	}
 	return nil
 }
