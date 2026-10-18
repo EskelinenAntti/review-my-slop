@@ -42,19 +42,15 @@ func WritePrompt(w io.Writer, comments []Comment) error {
 
 func writePromptComment(w io.Writer, number int, comment Comment) error {
 	anchor := comment.Anchor
-	if _, err := fmt.Fprintf(
-		w,
-		"\n### %d. `%s` (%s)\n\n",
-		number,
-		anchor.FilePath,
-		describeRange(anchor),
-	); err != nil {
+	_, err := fmt.Fprintf(w, "\n### %d. `%s` (%s)\n\n", number,
+		anchor.FilePath, describeRange(anchor))
+	if err != nil {
 		return err
 	}
 	if err := writeQuotedLines(w, anchor.QuotedLines); err != nil {
 		return err
 	}
-	_, err := fmt.Fprintln(w, strings.TrimSpace(comment.Body))
+	_, err = fmt.Fprintln(w, strings.TrimSpace(comment.Body))
 	return err
 }
 
