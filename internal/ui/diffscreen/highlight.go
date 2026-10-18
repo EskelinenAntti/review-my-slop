@@ -30,7 +30,11 @@ func render(filename, source, theme string) []string {
 		theme,
 	)
 	if highlightErr != nil {
-		return strings.Split(strings.TrimSuffix(source, "\n"), "\n")
+		return splitLines(source)
 	}
-	return strings.Split(strings.TrimSuffix(buf.String(), "\n"), "\n")
+	return splitLines(buf.String())
+}
+
+func splitLines(source string) []string {
+	return strings.Split(strings.TrimSuffix(source, "\n"), "\n")
 }
