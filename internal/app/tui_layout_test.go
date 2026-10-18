@@ -9,6 +9,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/eskelinenantti/review-my-slop/internal/testutil"
+	"github.com/eskelinenantti/review-my-slop/internal/ui/diffscreen"
 )
 
 func TestNewUsesSavedSideBySideForWideInitialSize(t *testing.T) {
@@ -173,4 +174,16 @@ func TestSideBySidePaneSwitchingUsesCtrlWSequences(t *testing.T) {
 	testutil.RequireEqual(t, lineText(m), "new()", "new pane line=%q",
 		lineText(m),
 	)
+}
+
+func TestViewSwitchPreservesSemanticCursor(t *testing.T) {
+	m := testModel(modelPatch(), nil, nil)
+	m = updateModel(t, m, tea.WindowSizeMsg{Width: 120, Height: 30})
+	m.diffView.Move(diffscreen.NextLine)
+	m.diffView.Move(diffscreen.NextLine)
+	_, want, _ := m.diffView.Current()
+	m.setSideBySide(true)
+	_, got, ok := m.diffView.Current()
+	testutil.RequireEqual(t, ok, true, "focused line=%#v, want %#v", got, want)
+	testutil.RequireEqual(t, got, want, "focused line=%#v, want %#v", got, want)
 }
