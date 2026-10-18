@@ -42,36 +42,20 @@ func WritePrompt(w io.Writer, comments []Comment) error {
 
 func writePromptComment(w io.Writer, number int, comment Comment) error {
 	anchor := comment.Anchor
-	_, headingErr := fmt.Fprintf(
+	quoted := ""
+	if len(anchor.QuotedLines) > 0 {
+		quoted = "```diff\n" +
+			strings.Join(anchor.QuotedLines, "\n") + "\n```\n"
+	}
+	_, err := fmt.Fprintf(
 		w,
-		"\n### %d. `%s` (%s)\n\n",
+		"\n### %d. `%s` (%s)\n\n%s%s\n",
 		number,
 		anchor.FilePath,
 		describeRange(anchor),
+		quoted,
+		strings.TrimSpace(comment.Body),
 	)
-	if headingErr != nil {
-		return headingErr
-	}
-	if err := writeQuotedLines(w, anchor.QuotedLines); err != nil {
-		return err
-	}
-	_, err := fmt.Fprintln(w, strings.TrimSpace(comment.Body))
-	return err
-}
-
-func writeQuotedLines(w io.Writer, lines []string) error {
-	if len(lines) == 0 {
-		return nil
-	}
-	if _, err := fmt.Fprintln(w, "```diff"); err != nil {
-		return err
-	}
-	for _, line := range lines {
-		if _, err := fmt.Fprintln(w, line); err != nil {
-			return err
-		}
-	}
-	_, err := fmt.Fprintln(w, "```")
 	return err
 }
 
