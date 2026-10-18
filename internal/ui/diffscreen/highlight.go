@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/alecthomas/chroma/v2/quick"
+	"github.com/eskelinenantti/review-my-slop/internal/patch"
 )
 
 type highlightedSources struct {
@@ -37,4 +38,15 @@ func highlightSource(filename, source, theme string) []string {
 
 func splitLines(source string) []string {
 	return strings.Split(strings.TrimSuffix(source, "\n"), "\n")
+}
+
+func highlightedLine(
+	lines []string,
+	number patch.LineNumber,
+	fallback string,
+) string {
+	if number <= 0 || int(number) > len(lines) {
+		return fallback
+	}
+	return lines[int(number)-1]
 }
