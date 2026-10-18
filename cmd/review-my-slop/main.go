@@ -43,11 +43,7 @@ func run(ctx context.Context, args []string, output io.Writer) error {
 }
 
 func runCode(ctx context.Context) error {
-	commentStore, err := comments.OpenDefault()
-	if err != nil {
-		return err
-	}
-	currentPatch, err := patch.Get(ctx, patch.Unstaged)
+	commentStore, currentPatch, err := loadCurrentReview(ctx)
 	if err != nil {
 		return err
 	}
@@ -55,13 +51,23 @@ func runCode(ctx context.Context) error {
 }
 
 func runComments(ctx context.Context, output io.Writer) error {
-	commentStore, err := comments.OpenDefault()
-	if err != nil {
-		return err
-	}
-	currentPatch, err := patch.Get(ctx, patch.Unstaged)
+	commentStore, currentPatch, err := loadCurrentReview(ctx)
 	if err != nil {
 		return err
 	}
 	return commentStore.WritePending(output, currentPatch.Root)
+}
+
+func loadCurrentReview(
+	ctx context.Context,
+) (comments.Store, patch.Patch, error) {
+	commentStore, err := comments.OpenDefault()
+	if err != nil {
+		return comments.Store{}, patch.Patch{}, err
+	}
+	currentPatch, err := patch.Get(ctx, patch.Unstaged)
+	if err != nil {
+		return comments.Store{}, patch.Patch{}, err
+	}
+	return commentStore, currentPatch, nil
 }
