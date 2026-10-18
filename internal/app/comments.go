@@ -212,8 +212,7 @@ func commentAnchor(file patch.File, lines []patch.Line) comments.Anchor {
 		prefix := " "
 		if line.Kind == patch.Addition {
 			prefix = "+"
-		}
-		if line.Kind == patch.Deletion {
+		} else if line.Kind == patch.Deletion {
 			prefix = "-"
 		}
 		anchor.QuotedLines = append(anchor.QuotedLines, prefix+line.Text)
