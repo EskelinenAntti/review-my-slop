@@ -141,7 +141,7 @@ func (v *View) renderRow(index int) string {
 	} else if comment.Anchor.OldStart > 0 {
 		location += fmt.Sprintf(":%d", comment.Anchor.OldStart)
 	}
-	text := strings.ReplaceAll(strings.TrimSpace(comment.Body), "\n", " ")
+	text := frame.SingleLine(strings.TrimSpace(comment.Body))
 	line := ansi.Truncate(
 		fmt.Sprintf("%s%s  %s", prefix, location, text),
 		max(20, v.width),
