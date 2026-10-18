@@ -376,7 +376,7 @@ func readUntrackedFile(root, path string) (File, bool, error) {
 	if err != nil {
 		return File{}, false, fmt.Errorf("read untracked %q: %w", path, err)
 	}
-	if bytes.IndexByte(content, 0) >= 0 {
+	if containsBinaryData(content) {
 		return File{
 			NewPath:     path,
 			DisplayPath: visibleText(path),
@@ -516,10 +516,14 @@ func readWorkingTree(root, path string) string {
 }
 
 func safeSource(source []byte) string {
-	if len(source) > maxFileBytes || bytes.IndexByte(source, 0) >= 0 {
+	if len(source) > maxFileBytes || containsBinaryData(source) {
 		return ""
 	}
 	return visibleSource(string(source))
+}
+
+func containsBinaryData(source []byte) bool {
+	return bytes.IndexByte(source, 0) >= 0
 }
 
 func cleanDiffPath(path string) string {
