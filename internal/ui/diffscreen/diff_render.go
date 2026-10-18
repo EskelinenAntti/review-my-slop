@@ -18,10 +18,6 @@ func (v *diffView) render(
 	selection *diffSelection,
 ) string {
 	viewport = v.clampViewport(viewport)
-	leftWidth, rightWidth := 0, 0
-	if v.split {
-		leftWidth, rightWidth = splitPaneWidths(viewport.width)
-	}
 	lines := make([]string, 0, viewport.height)
 	if v.hasStickyHeader(viewport.top, viewport.height) {
 		current := v.rows[viewport.top]
@@ -43,8 +39,6 @@ func (v *diffView) render(
 					current,
 					y,
 					viewport,
-					leftWidth,
-					rightWidth,
 					cursor,
 					selection,
 				),
@@ -84,7 +78,6 @@ func (v *diffView) renderUnifiedRow(
 			viewport,
 			cursor,
 			selection,
-			width,
 		)
 	}
 	return ""
@@ -96,8 +89,8 @@ func (v *diffView) renderUnifiedLine(
 	viewport diffViewport,
 	cursor diffCursor,
 	selection *diffSelection,
-	width int,
 ) string {
+	width := frame.ScreenWidth(viewport.width)
 	hunk := v.patch.Files[current.file].Hunks[current.hunk]
 	line := hunk.Lines[current.rightLine]
 	prefix := lineMarker(line.Kind)
@@ -130,10 +123,10 @@ func (v *diffView) renderSplitRow(
 	current entry,
 	y int,
 	viewport diffViewport,
-	leftWidth, rightWidth int,
 	cursor diffCursor,
 	selection *diffSelection,
 ) string {
+	leftWidth, rightWidth := splitPaneWidths(viewport.width)
 	left := v.renderPane(
 		current,
 		y,
