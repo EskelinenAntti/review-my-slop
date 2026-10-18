@@ -247,30 +247,30 @@ type legacyComment struct {
 	Body   string `json:"body"`
 }
 
-type legacyRecord struct {
+type commentRecord struct {
 	ID         string         `json:"id"`
 	Repository string         `json:"repository"`
 	CreatedAt  time.Time      `json:"created_at"`
+	Anchor     Anchor         `json:"anchor"`
+	Body       string         `json:"body"`
 	Comment    *legacyComment `json:"comment"`
 }
 
 func decodeComment(data []byte) (Comment, error) {
-	var legacy legacyRecord
-	if err := json.Unmarshal(data, &legacy); err != nil {
+	var record commentRecord
+	if err := json.Unmarshal(data, &record); err != nil {
 		return Comment{}, fmt.Errorf("decode comment: %w", err)
 	}
-	if legacy.Comment != nil {
-		return Comment{
-			ID:         legacy.ID,
-			Repository: legacy.Repository,
-			CreatedAt:  legacy.CreatedAt,
-			Anchor:     legacy.Comment.Anchor,
-			Body:       legacy.Comment.Body,
-		}, nil
+	comment := Comment{
+		ID:         record.ID,
+		Repository: record.Repository,
+		CreatedAt:  record.CreatedAt,
+		Anchor:     record.Anchor,
+		Body:       record.Body,
 	}
-	var comment Comment
-	if err := json.Unmarshal(data, &comment); err != nil {
-		return Comment{}, fmt.Errorf("decode comment: %w", err)
+	if record.Comment != nil {
+		comment.Anchor = record.Comment.Anchor
+		comment.Body = record.Comment.Body
 	}
 	return comment, nil
 }
