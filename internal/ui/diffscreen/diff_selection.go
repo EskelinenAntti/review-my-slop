@@ -162,13 +162,22 @@ func lineMatchRank(line, target patch.Line) int {
 }
 
 func lineDistance(line, target patch.Line, rowDistance int) int {
-	if line.NewNumber > 0 && target.NewNumber > 0 {
-		return abs(int(line.NewNumber - target.NewNumber))
+	distance, ok := lineNumberDistance(line.NewNumber, target.NewNumber)
+	if ok {
+		return distance
 	}
-	if line.OldNumber > 0 && target.OldNumber > 0 {
-		return abs(int(line.OldNumber - target.OldNumber))
+	distance, ok = lineNumberDistance(line.OldNumber, target.OldNumber)
+	if ok {
+		return distance
 	}
 	return abs(rowDistance)
+}
+
+func lineNumberDistance(first, second patch.LineNumber) (int, bool) {
+	if first <= 0 || second <= 0 {
+		return 0, false
+	}
+	return abs(int(first - second)), true
 }
 
 func sameFile(candidate, target patch.File) bool {
