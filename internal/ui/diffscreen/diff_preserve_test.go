@@ -19,7 +19,7 @@ func TestPreserveTranslatesCursorSelectionAndViewport(t *testing.T) {
 	testutil.RequireEqual(t, ok, true, "%s", "selection not created")
 
 	viewport := old.newViewport(100, 4)
-	viewport = old.align(viewport, cursor, middle)
+	viewport = old.align(viewport, cursor, Center)
 	screen := &View{
 		view:      old,
 		cursor:    cursor,

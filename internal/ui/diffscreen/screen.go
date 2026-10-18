@@ -240,7 +240,7 @@ func (v *View) Align(alignment Alignment) {
 	v.viewport = v.view.align(
 		v.viewport,
 		v.cursor,
-		verticalAlignment(alignment),
+		alignment,
 	)
 }
 

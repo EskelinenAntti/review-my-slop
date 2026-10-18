@@ -72,7 +72,7 @@ func (v *diffView) keepVisible(
 func (v *diffView) align(
 	viewport diffViewport,
 	cursor diffCursor,
-	alignment verticalAlignment,
+	alignment Alignment,
 ) diffViewport {
 	headerHeight := 0
 	if viewport.height > 1 {
@@ -86,11 +86,11 @@ func (v *diffView) align(
 	return v.clampViewport(viewport)
 }
 
-func alignmentOffset(height int, alignment verticalAlignment) int {
-	if alignment == middle {
+func alignmentOffset(height int, alignment Alignment) int {
+	if alignment == Center {
 		return height / 2
 	}
-	if alignment == bottom {
+	if alignment == Bottom {
 		return height - 1
 	}
 	return 0
