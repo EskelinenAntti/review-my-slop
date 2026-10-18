@@ -187,13 +187,19 @@ func (m model) openCommentEditor() (tea.Cmd, error) {
 
 func (m model) commentIndex(selected comments.Comment) int {
 	for index, item := range m.comments.items {
-		if selected.ID != "" && item.ID == selected.ID ||
-			selected.ID == "" && item.Body == selected.Body &&
-				item.Anchor.FilePath == selected.Anchor.FilePath {
+		if matchesComment(selected, item) {
 			return index
 		}
 	}
 	return -1
+}
+
+func matchesComment(selected, candidate comments.Comment) bool {
+	if selected.ID != "" {
+		return candidate.ID == selected.ID
+	}
+	return candidate.Body == selected.Body &&
+		candidate.Anchor.FilePath == selected.Anchor.FilePath
 }
 
 func commentAnchor(file patch.File, lines []patch.Line) comments.Anchor {
