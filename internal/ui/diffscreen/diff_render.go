@@ -19,14 +19,14 @@ func (v *diffView) render(
 	selection *diffSelection,
 ) string {
 	viewport = v.clampViewport(viewport)
-	lines := make([]string, 0, viewport.Height)
-	if v.hasStickyHeader(viewport.top, viewport.Height) {
+	lines := make([]string, 0, viewport.height)
+	if v.hasStickyHeader(viewport.top, viewport.height) {
 		current := v.rows[viewport.top]
 		lines = append(
 			lines,
 			renderFileRow(
 				v.patch.Files[current.file].DisplayPath,
-				viewport.Width,
+				viewport.width,
 			),
 		)
 	}
@@ -45,7 +45,7 @@ func (v *diffView) render(
 			)
 		}
 	}
-	for len(lines) < viewport.Height {
+	for len(lines) < viewport.height {
 		lines = append(lines, "")
 	}
 	return strings.Join(lines, "\n")
@@ -58,7 +58,7 @@ func (v *diffView) renderUnifiedRow(
 	cursor diffCursor,
 	selection *diffSelection,
 ) string {
-	width := max(20, viewport.Width)
+	width := max(20, viewport.width)
 	switch current.kind {
 	case fileRow:
 		return renderFileRow(current.text, width)
@@ -98,7 +98,7 @@ func (v *diffView) renderUnifiedLine(
 	)
 	value := gutter + fitANSIWindow(
 		current.text,
-		viewport.LeftColumn,
+		viewport.leftColumn,
 		width-lipgloss.Width(gutter),
 	)
 	candidate := diffCursor{row: y, pane: cursor.pane}
@@ -123,13 +123,13 @@ func (v *diffView) renderSplitRow(
 	cursor diffCursor,
 	selection *diffSelection,
 ) string {
-	leftWidth, rightWidth := splitPaneWidths(viewport.Width)
+	leftWidth, rightWidth := splitPaneWidths(viewport.width)
 	left := v.renderPane(
 		current,
 		y,
 		left,
 		leftWidth,
-		viewport.LeftColumn,
+		viewport.leftColumn,
 		cursor,
 		selection,
 	)
@@ -138,7 +138,7 @@ func (v *diffView) renderSplitRow(
 		y,
 		right,
 		rightWidth,
-		viewport.LeftColumn,
+		viewport.leftColumn,
 		cursor,
 		selection,
 	)

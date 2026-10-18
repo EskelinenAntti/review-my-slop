@@ -13,7 +13,7 @@ func (v *diffView) resize(
 	viewport diffViewport,
 	width, height int,
 ) diffViewport {
-	viewport.Width, viewport.Height = max(1, width), max(1, height)
+	viewport.width, viewport.height = max(1, width), max(1, height)
 	return v.clampViewport(viewport)
 }
 
@@ -26,10 +26,10 @@ func (v *diffView) maxTop(height int) int {
 }
 
 func (v *diffView) clampViewport(viewport diffViewport) diffViewport {
-	viewport.top = max(0, min(viewport.top, v.maxTop(viewport.Height)))
-	viewport.LeftColumn = max(
+	viewport.top = max(0, min(viewport.top, v.maxTop(viewport.height)))
+	viewport.leftColumn = max(
 		0,
-		min(viewport.LeftColumn, v.maxHorizontalOffset(viewport.Width)),
+		min(viewport.leftColumn, v.maxHorizontalOffset(viewport.width)),
 	)
 	return viewport
 }
@@ -40,8 +40,8 @@ func (v *diffView) hasStickyHeader(top int, viewportHeight int) bool {
 }
 
 func (v *diffView) contentHeight(viewport diffViewport) int {
-	height := viewport.Height
-	if v.hasStickyHeader(viewport.top, viewport.Height) {
+	height := viewport.height
+	if v.hasStickyHeader(viewport.top, viewport.height) {
 		height--
 	}
 	return max(1, height)
@@ -74,13 +74,13 @@ func (v *diffView) align(
 	alignment verticalAlignment,
 ) diffViewport {
 	headerHeight := 0
-	if viewport.Height > 1 {
+	if viewport.height > 1 {
 		headerHeight = 1
 	}
-	offset := max(0, alignmentOffset(viewport.Height, alignment)-headerHeight)
+	offset := max(0, alignmentOffset(viewport.height, alignment)-headerHeight)
 	viewport.top = cursor.row - offset
-	if !v.hasStickyHeader(viewport.top, viewport.Height) {
-		viewport.top = cursor.row - alignmentOffset(viewport.Height, alignment)
+	if !v.hasStickyHeader(viewport.top, viewport.height) {
+		viewport.top = cursor.row - alignmentOffset(viewport.height, alignment)
 	}
 	return v.clampViewport(viewport)
 }
@@ -100,10 +100,10 @@ func (v *diffView) scrollHorizontal(
 	columns int,
 ) diffViewport {
 	columns = max(
-		-viewport.LeftColumn,
-		min(columns, v.maxHorizontalOffset(viewport.Width)-viewport.LeftColumn),
+		-viewport.leftColumn,
+		min(columns, v.maxHorizontalOffset(viewport.width)-viewport.leftColumn),
 	)
-	viewport.LeftColumn += columns
+	viewport.leftColumn += columns
 	return v.clampViewport(viewport)
 }
 
@@ -112,7 +112,7 @@ func (v *diffView) scrollVertical(
 	cursor diffCursor,
 	rows int,
 ) (diffViewport, diffCursor) {
-	rows = max(-viewport.top, min(rows, v.maxTop(viewport.Height)-viewport.top))
+	rows = max(-viewport.top, min(rows, v.maxTop(viewport.height)-viewport.top))
 	viewport.top += rows
 	viewport = v.clampViewport(viewport)
 	if !v.valid(cursor) || v.cursorVisible(viewport, cursor) {
@@ -151,7 +151,7 @@ func (v *diffView) scrollHalfPage(
 	if !v.valid(cursor) {
 		return viewport, cursor
 	}
-	distance := int(direction) * max(1, viewport.Height/2)
+	distance := int(direction) * max(1, viewport.height/2)
 	viewport.top += distance
 	viewport = v.clampViewport(viewport)
 	target := min(len(v.rows)-1, max(0, cursor.row+distance))

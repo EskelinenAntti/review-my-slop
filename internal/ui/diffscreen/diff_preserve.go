@@ -15,11 +15,11 @@ type cursorIdentity struct {
 // origin.
 func (v *View) replaceView(next *diffView) {
 	old := v.view
-	leftColumn := v.viewport.LeftColumn
+	leftColumn := v.viewport.leftColumn
 	rowsAbove := v.cursor.row - v.viewport.top
 	cursor := identify(old, v.cursor)
 	origin := identify(old, v.search.from)
-	v.viewport = next.newViewport(v.viewport.Width, v.viewport.Height)
+	v.viewport = next.newViewport(v.viewport.width, v.viewport.height)
 	v.viewport = next.scrollHorizontal(v.viewport, leftColumn)
 	translated, ok := next.findCursor(cursor)
 	if !ok {

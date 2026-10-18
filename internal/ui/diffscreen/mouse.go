@@ -45,7 +45,7 @@ func (v *View) cursorAtPoint(x, y int) (diffCursor, bool) {
 	if !ok {
 		return diffCursor{}, false
 	}
-	if v.view.hasStickyHeader(v.viewport.top, v.viewport.Height) {
+	if v.view.hasStickyHeader(v.viewport.top, v.viewport.height) {
 		row--
 	}
 	if row < 0 || row >= v.view.contentHeight(v.viewport) {
@@ -53,7 +53,7 @@ func (v *View) cursorAtPoint(x, y int) (diffCursor, bool) {
 	}
 	pane := right
 	if v.view.split {
-		leftWidth, _ := splitPaneWidths(v.viewport.Width)
+		leftWidth, _ := splitPaneWidths(v.viewport.width)
 		switch {
 		case x < leftWidth:
 			pane = left

@@ -246,18 +246,18 @@ func TestHorizontalScrollEdgesAreIdempotent(t *testing.T) {
 	v.Resize(30, 10)
 	distance := math.MaxInt
 	v.ScrollHorizontal(distance)
-	before := v.viewport.LeftColumn
+	before := v.viewport.leftColumn
 	testutil.RequireEqual(t, before != 0, true, "%s",
 		"fixture has no horizontal overflow",
 	)
 
 	v.ScrollHorizontal(distance)
-	testutil.RequireEqual(t, v.viewport.LeftColumn, before, "%s",
+	testutil.RequireEqual(t, v.viewport.leftColumn, before, "%s",
 		"scroll end overflowed",
 	)
 
 	v.ScrollHorizontal(-distance)
-	testutil.RequireEqual(t, v.viewport.LeftColumn, 0, "%s",
+	testutil.RequireEqual(t, v.viewport.leftColumn, 0, "%s",
 		"scroll start not clamped",
 	)
 }
@@ -349,7 +349,7 @@ func TestVerticalScrollClampsAtContentEdges(t *testing.T) {
 			v.ScrollVertical(distance)
 			end := v.viewport.top
 			testutil.RequireEqual(t,
-				len(v.view.rows) <= v.viewport.Height || end != 0, true, "%s",
+				len(v.view.rows) <= v.viewport.height || end != 0, true, "%s",
 				"overflowing content did not scroll",
 			)
 			testutil.RequireEqual(

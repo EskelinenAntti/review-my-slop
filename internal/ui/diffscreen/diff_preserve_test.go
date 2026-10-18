@@ -89,15 +89,15 @@ func TestPreserveClampsHorizontalOffsetForShorterLines(t *testing.T) {
 	old := newUnifiedView(p, true)
 	cursor := mustFirst(t, old)
 	viewport := old.scrollHorizontal(old.newViewport(40, 10), 30)
-	testutil.RequireEqual(t, viewport.LeftColumn != 0, true, "%s",
+	testutil.RequireEqual(t, viewport.leftColumn != 0, true, "%s",
 		"fixture does not scroll horizontally",
 	)
 
 	short := testPatch()
 	preserved := &View{view: old, cursor: cursor, viewport: viewport}
 	preserved.replaceView(newUnifiedView(short, true))
-	testutil.RequireEqual(t, preserved.viewport.LeftColumn, 0,
-		"horizontal offset = %d", preserved.viewport.LeftColumn,
+	testutil.RequireEqual(t, preserved.viewport.leftColumn, 0,
+		"horizontal offset = %d", preserved.viewport.leftColumn,
 	)
 }
 
