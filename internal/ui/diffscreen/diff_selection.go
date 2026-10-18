@@ -55,7 +55,9 @@ func (s diffSelection) paneAt(row int) diffPane {
 func (v *diffView) paneLines(selection diffSelection) []patch.Line {
 	first, _ := v.line(selection.First)
 	last, _ := v.line(selection.Last)
-	if first == last {
+	firstIndex := v.lineIndex(v.rows[selection.First.row], selection.First.pane)
+	lastIndex := v.lineIndex(v.rows[selection.Last.row], selection.Last.pane)
+	if firstIndex == lastIndex {
 		return []patch.Line{first}
 	}
 	return []patch.Line{first, last}
