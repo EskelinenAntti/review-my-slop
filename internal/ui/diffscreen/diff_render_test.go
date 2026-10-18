@@ -339,3 +339,38 @@ func assertSGRState(
 		"column %d state=%#v want=%#v", column, state, expected,
 	)
 }
+
+func TestSplitTabsDoNotShiftLineNumbersOrDivider(t *testing.T) {
+	p := patch.Patch{
+		Files: []patch.File{
+			{
+				DisplayPath: "file",
+				Hunks: []patch.Hunk{
+					{
+						Header: "@@",
+						Lines: []patch.Line{
+							{
+								Kind:      patch.Context,
+								Text:      "\t\tlong line",
+								OldNumber: 1,
+								NewNumber: 1,
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+	v := newSideBySideView(p, true)
+	cursor := mustFirst(t, v)
+	rendered := ansi.Strip(renderOne(v, cursor, 120, nil))
+	testutil.RequireEqual(t, !strings.ContainsRune(rendered, '\t'), true,
+		"rendered = %q width=%d", rendered, lipgloss.Width(rendered),
+	)
+	testutil.RequireEqual(t, strings.Index(rendered, "│"), 59,
+		"rendered = %q width=%d", rendered, lipgloss.Width(rendered),
+	)
+	testutil.RequireEqual(t, lipgloss.Width(rendered), 120,
+		"rendered = %q width=%d", rendered, lipgloss.Width(rendered),
+	)
+}
