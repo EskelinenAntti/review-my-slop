@@ -180,17 +180,21 @@ func findCommentKey(
 	bucket *bolt.Bucket,
 	repository, id string,
 ) ([]byte, error) {
-	cursor := bucket.Cursor()
-	for key, value := cursor.First(); key != nil; key, value = cursor.Next() {
-		comment, err := decodeComment(value)
-		if err != nil {
-			return nil, err
-		}
+	var found []byte
+	err := forEachComment(bucket, func(key []byte, comment Comment) bool {
 		if comment.Repository == repository && comment.ID == id {
-			return append([]byte(nil), key...), nil
+			found = append([]byte(nil), key...)
+			return false
 		}
+		return true
+	})
+	if err != nil {
+		return nil, err
 	}
-	return nil, errors.New("comment is no longer in the comments")
+	if found == nil {
+		return nil, errors.New("comment is no longer in the comments")
+	}
+	return found, nil
 }
 
 func findPendingKeys(
@@ -199,20 +203,33 @@ func findPendingKeys(
 	wanted map[string]struct{},
 ) ([][]byte, error) {
 	var keys [][]byte
-	err := bucket.ForEach(func(key, value []byte) error {
-		comment, err := decodeComment(value)
-		if err != nil {
-			return err
-		}
+	err := forEachComment(bucket, func(key []byte, comment Comment) bool {
 		if comment.Repository != repository {
-			return nil
+			return true
 		}
 		if _, ok := wanted[comment.ID]; ok {
 			keys = append(keys, append([]byte(nil), key...))
 		}
-		return nil
+		return true
 	})
 	return keys, err
+}
+
+func forEachComment(
+	bucket *bolt.Bucket,
+	visit func(key []byte, comment Comment) bool,
+) error {
+	cursor := bucket.Cursor()
+	for key, value := cursor.First(); key != nil; key, value = cursor.Next() {
+		comment, err := decodeComment(value)
+		if err != nil {
+			return err
+		}
+		if !visit(key, comment) {
+			return nil
+		}
+	}
+	return nil
 }
 
 func validateComment(comment Comment) error {
