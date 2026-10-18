@@ -1,6 +1,7 @@
 package diffscreen
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/eskelinenantti/review-my-slop/internal/patch"
@@ -29,6 +30,7 @@ type diffView struct {
 	maxLineWidth int
 	addedLines   int
 	removedLines int
+	countsLabel  string
 	split        bool
 	dark         bool
 	styles       lineStyles
@@ -44,6 +46,7 @@ func newDiffView(p patch.Patch, options Options) *diffView {
 	for fileIndex, file := range p.Files {
 		v.appendFileRows(fileIndex, file)
 	}
+	v.countsLabel = fmt.Sprintf("+%d-%d", v.addedLines, v.removedLines)
 	return v
 }
 

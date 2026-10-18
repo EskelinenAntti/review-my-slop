@@ -389,11 +389,7 @@ func (v *View) Find(d Direction) bool {
 // final blank line. A non-nil error replaces the status while retaining the
 // position label. Dimensions are configured through Resize.
 func (v *View) Render(err error) string {
-	counts := frame.Muted(fmt.Sprintf(
-		"+%d-%d",
-		v.view.addedLines,
-		v.view.removedLines,
-	))
+	counts := frame.Muted(v.view.countsLabel)
 	header := frame.Title("review-my-slop") + "  " + counts
 	body := v.renderBody()
 	status := v.renderStatus()
