@@ -363,7 +363,7 @@ func readUntrackedFile(root, path string) (File, bool, error) {
 		return File{}, false, nil
 	}
 	if info.Size() > maxFileBytes {
-		return untrackedMetadataFile(
+		return untrackedFile(
 			path,
 			"untracked file",
 			"content omitted: file exceeds 2 MiB",
@@ -374,7 +374,7 @@ func readUntrackedFile(root, path string) (File, bool, error) {
 		return File{}, false, fmt.Errorf("read untracked %q: %w", path, err)
 	}
 	if containsBinaryData(content) {
-		return untrackedMetadataFile(path, "untracked binary file"), true, nil
+		return untrackedFile(path, "untracked binary file"), true, nil
 	}
 	return addedFile(path, visibleSource(string(content))), true, nil
 }
@@ -396,19 +396,16 @@ func addedFile(path, content string) File {
 			Line{Kind: Addition, Text: line, NewNumber: LineNumber(i + 1)},
 		)
 	}
-	return File{
-		NewPath:     path,
-		DisplayPath: visibleText(path),
-		NewSource:   content,
-		Metadata:    []string{"untracked file"},
-		Hunks: []Hunk{{
-			Header: fmt.Sprintf("@@ -0,0 +1,%d @@", len(lines)),
-			Lines:  lines,
-		}},
-	}
+	file := untrackedFile(path, "untracked file")
+	file.NewSource = content
+	file.Hunks = []Hunk{{
+		Header: fmt.Sprintf("@@ -0,0 +1,%d @@", len(lines)),
+		Lines:  lines,
+	}}
+	return file
 }
 
-func untrackedMetadataFile(path string, metadata ...string) File {
+func untrackedFile(path string, metadata ...string) File {
 	return File{
 		NewPath:     path,
 		DisplayPath: visibleText(path),
