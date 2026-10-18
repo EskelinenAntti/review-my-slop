@@ -151,17 +151,6 @@ func TestTabDoesNothingWithoutDefaultBranch(t *testing.T) {
 	)
 }
 
-func TestViewPreservesTerminalColors(t *testing.T) {
-	result := testModel(coveragePatch(), nil, nil).View()
-	testutil.RequireEqual(t, result.BackgroundColor, nil, "view=%#v", result)
-	testutil.RequireEqual(t, result.ForegroundColor, nil, "view=%#v", result)
-	testutil.RequireEqual(t, result.AltScreen, true, "view=%#v", result)
-	testutil.RequireEqual(t, result.ReportFocus, true, "view=%#v", result)
-	testutil.RequireEqual(t, result.MouseMode, tea.MouseModeCellMotion, "%s",
-		"view does not capture terminal wheel events",
-	)
-}
-
 func updateModel(t *testing.T, m model, msg tea.Msg) model {
 	t.Helper()
 	next, _ := m.Update(msg)

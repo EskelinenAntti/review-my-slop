@@ -1,6 +1,7 @@
 package app
 
 import (
+	tea "charm.land/bubbletea/v2"
 	"context"
 	"errors"
 	"fmt"
@@ -171,5 +172,16 @@ func TestCommentsMenuScrollsWithinScreenBody(t *testing.T) {
 		t,
 		strings.Contains(rendered[m.dimensions.height-2], "j/k move"),
 		true, "footer line = %q", rendered[m.dimensions.height-2],
+	)
+}
+
+func TestViewPreservesTerminalColors(t *testing.T) {
+	result := testModel(coveragePatch(), nil, nil).View()
+	testutil.RequireEqual(t, result.BackgroundColor, nil, "view=%#v", result)
+	testutil.RequireEqual(t, result.ForegroundColor, nil, "view=%#v", result)
+	testutil.RequireEqual(t, result.AltScreen, true, "view=%#v", result)
+	testutil.RequireEqual(t, result.ReportFocus, true, "view=%#v", result)
+	testutil.RequireEqual(t, result.MouseMode, tea.MouseModeCellMotion, "%s",
+		"view does not capture terminal wheel events",
 	)
 }
