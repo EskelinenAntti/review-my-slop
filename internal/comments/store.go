@@ -77,16 +77,16 @@ func addComment(bucket *bolt.Bucket, id string, data []byte) error {
 
 // List returns pending comments for the repository.
 func (s Store) List(repository string) ([]Comment, error) {
-	var comments []Comment
+	var pendingComments []Comment
 	err := s.view(func(bucket *bolt.Bucket) error {
 		return forEachComment(bucket, func(_ []byte, comment Comment) bool {
 			if comment.Repository == repository {
-				comments = append(comments, comment)
+				pendingComments = append(pendingComments, comment)
 			}
 			return true
 		})
 	})
-	return comments, err
+	return pendingComments, err
 }
 
 // Update replaces an existing comment in the repository.
