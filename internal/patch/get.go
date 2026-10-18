@@ -8,11 +8,6 @@ import (
 	"slices"
 )
 
-const (
-	maxFileSizeMiB = 2
-	maxFileBytes   = maxFileSizeMiB << 20
-)
-
 // Get retrieves a complete snapshot from the current working directory.
 // Unknown kinds and unavailable branch comparisons return a zero Patch and an
 // error.

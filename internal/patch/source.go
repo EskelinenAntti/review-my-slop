@@ -10,6 +10,11 @@ import (
 	"strings"
 )
 
+const (
+	maxFileSizeMiB = 2
+	maxFileBytes   = maxFileSizeMiB << 20
+)
+
 func readGitSource(
 	ctx context.Context,
 	run runner,
@@ -18,10 +23,7 @@ func readGitSource(
 	if path == "" {
 		return ""
 	}
-	source := ":" + path
-	if revision != "" {
-		source = revision + ":" + path
-	}
+	source := revision + ":" + path
 	out, err := run.Run(ctx, root, "show", source)
 	if err != nil {
 		return ""
