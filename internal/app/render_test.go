@@ -1,6 +1,7 @@
 package app
 
 import (
+	"context"
 	"errors"
 	"strings"
 	"testing"
@@ -17,6 +18,7 @@ func TestWorkflowErrorKeepsDiffLabelWithinFooter(t *testing.T) {
 			p := modelPatch()
 			p.Kind, p.Branch = kind, "main"
 			m := newModel(
+				context.Background(),
 				p,
 				nil,
 				nil,

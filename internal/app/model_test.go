@@ -24,6 +24,7 @@ func testModel(
 	save saveCommentFunc,
 ) model {
 	return newModel(
+		context.Background(),
 		p,
 		items,
 		save,
@@ -100,7 +101,7 @@ func TestStoreBackedCommentLifecycle(t *testing.T) {
 }
 
 func TestNewUsesSavedSideBySideForWideInitialSize(t *testing.T) {
-	m := newModel(modelPatch(), nil, nil, initialLayout{
+	m := newModel(context.Background(), modelPatch(), nil, nil, initialLayout{
 		sideBySide: true,
 		size:       size{width: 120, height: 30},
 	})
@@ -113,7 +114,7 @@ func TestNewUsesSavedSideBySideForWideInitialSize(t *testing.T) {
 }
 
 func TestNewKeepsSavedSideBySideInactiveForNarrowInitialSize(t *testing.T) {
-	m := newModel(modelPatch(), nil, nil, initialLayout{
+	m := newModel(context.Background(), modelPatch(), nil, nil, initialLayout{
 		sideBySide: true,
 		size:       size{width: 80, height: 30},
 	})
@@ -135,7 +136,7 @@ func TestNewKeepsSavedSideBySideInactiveForNarrowInitialSize(t *testing.T) {
 
 func TestSideBySideToggleStillSavesPreference(t *testing.T) {
 	var saved []bool
-	m := newModel(modelPatch(), nil, nil, initialLayout{
+	m := newModel(context.Background(), modelPatch(), nil, nil, initialLayout{
 		saveSideBySide: func(enabled bool) error {
 			saved = append(saved, enabled)
 			return nil
@@ -171,7 +172,13 @@ func TestRefreshTranslatesCursorAndSelection(t *testing.T) {
 func TestUnchangedRefreshPreservesStateAndClearsError(t *testing.T) {
 	p := longModelPatch()
 	p.Files[0].OldPath, p.Files[0].NewPath = "long.go", "long.go"
-	m := newModel(p, nil, nil, initialLayout{size: size{width: 40, height: 8}})
+	m := newModel(
+		context.Background(),
+		p,
+		nil,
+		nil,
+		initialLayout{size: size{width: 40, height: 8}},
+	)
 	for range 8 {
 		m.diffView.Move(diffscreen.NextLine)
 	}
@@ -380,7 +387,7 @@ func TestNarrowLayoutToggleSavesPreferenceWithoutApplicationGeometryRules(
 	t *testing.T,
 ) {
 	var saved []bool
-	m := newModel(modelPatch(), nil, nil, initialLayout{
+	m := newModel(context.Background(), modelPatch(), nil, nil, initialLayout{
 		size: size{width: 80, height: 30},
 		saveSideBySide: func(enabled bool) error {
 			saved = append(saved, enabled)

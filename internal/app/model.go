@@ -113,6 +113,7 @@ type model struct {
 }
 
 func newModel(
+	ctx context.Context,
 	currentPatch patch.Patch,
 	pendingComments []comments.Comment,
 	save saveCommentFunc,
@@ -123,7 +124,7 @@ func newModel(
 		size = defaultSize
 	}
 	m := model{
-		ctx:          context.Background(),
+		ctx:          ctx,
 		currentPatch: currentPatch,
 		comments:     commentState{items: pendingComments},
 		commentView:  commentscreen.New(pendingComments),
@@ -168,7 +169,7 @@ func newWithStore(
 	if err != nil {
 		return model{}, err
 	}
-	m := newModel(currentPatch, pendingComments, func(
+	m := newModel(ctx, currentPatch, pendingComments, func(
 		comment comments.Comment,
 		current patch.Patch,
 	) (comments.Comment, error) {
@@ -187,7 +188,6 @@ func newWithStore(
 		},
 		size: dimensions,
 	})
-	m.ctx = ctx
 	m.delete = func(comment comments.Comment, current patch.Patch) error {
 		return store.Delete(current.Root, comment.ID)
 	}
