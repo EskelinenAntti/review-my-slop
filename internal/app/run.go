@@ -76,7 +76,8 @@ func discoverTerminalSize(
 	getSize func(uintptr) (int, int, error),
 ) terminalDimensions {
 	for _, descriptor := range [...]uintptr{os.Stdin.Fd(), os.Stdout.Fd()} {
-		if width, height, err := getSize(descriptor); err == nil {
+		if width, height, err := getSize(descriptor); err == nil &&
+			width > 0 && height > 0 {
 			return terminalDimensions{width: width, height: height}
 		}
 	}

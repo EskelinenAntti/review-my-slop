@@ -140,6 +140,21 @@ func TestTerminalSizeDiscoveryOrder(t *testing.T) {
 	}
 }
 
+func TestTerminalSizeDiscoverySkipsEmptySizes(t *testing.T) {
+	calls := 0
+	got := discoverTerminalSize(func(fd uintptr) (int, int, error) {
+		calls++
+		if fd == os.Stdin.Fd() {
+			return 0, 0, nil
+		}
+		return 100, 30, nil
+	})
+	testutil.RequireEqual(t, got, terminalDimensions{width: 100, height: 30},
+		"size=%v", got,
+	)
+	testutil.RequireEqual(t, calls, 2, "calls=%d, want both descriptors", calls)
+}
+
 func prepareStartupFailure(t *testing.T, failure, config, database string) {
 	t.Helper()
 	if failure == "comments" {
