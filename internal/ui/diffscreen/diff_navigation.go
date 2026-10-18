@@ -177,16 +177,14 @@ func (v *diffView) jumpFile(
 	if !v.valid(cursor) {
 		return diffCursor{}, false
 	}
-	file, _ := v.file(cursor)
+	fileIndex := v.rows[cursor.row].file
 	y := cursor.row
 	for {
 		next, ok := v.scan(y, cursor.pane, direction)
 		if !ok {
 			return diffCursor{}, false
 		}
-		nextFile, _ := v.file(next)
-		if nextFile.OldPath != file.OldPath ||
-			nextFile.NewPath != file.NewPath {
+		if v.rows[next.row].file != fileIndex {
 			return next, true
 		}
 		y = next.row
