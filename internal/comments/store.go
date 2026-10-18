@@ -122,9 +122,6 @@ func (s Store) Delete(repository, id string) error {
 		if err != nil {
 			return err
 		}
-		if key == nil {
-			return errors.New("comment is no longer in the comments")
-		}
 		return bucket.Delete(key)
 	})
 }
@@ -170,9 +167,6 @@ func replaceComment(bucket *bolt.Bucket, comment Comment, data []byte) error {
 	if err != nil {
 		return err
 	}
-	if key == nil {
-		return errors.New("comment is no longer in the comments")
-	}
 	if !bytes.Equal(key, []byte(comment.ID)) {
 		if err := bucket.Delete(key); err != nil {
 			return err
@@ -195,7 +189,7 @@ func findCommentKey(
 			return append([]byte(nil), key...), nil
 		}
 	}
-	return nil, nil
+	return nil, errors.New("comment is no longer in the comments")
 }
 
 func findPendingKeys(
