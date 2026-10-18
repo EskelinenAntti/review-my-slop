@@ -2,7 +2,7 @@ package diffscreen
 
 import "github.com/eskelinenantti/review-my-slop/internal/patch"
 
-func sameFilePaths(
+func sharesFilePath(
 	candidateOld, candidateNew, targetOld, targetNew string,
 ) bool {
 	oldPathMatches := candidateOld != "" && candidateOld == targetOld
@@ -94,7 +94,7 @@ func (v *diffView) rowInFile(current entry, target cursorIdentity) bool {
 		return false
 	}
 	file := v.patch.Files[current.file]
-	return sameFilePaths(
+	return sharesFilePath(
 		file.OldPath,
 		file.NewPath,
 		target.oldPath,
@@ -206,7 +206,7 @@ func preserveSelection(
 	}
 	translatedFirst, firstOK := next.findCursor(first)
 	translatedLast, lastOK := next.findCursor(last)
-	if !firstOK || !lastOK || !sameFilePaths(
+	if !firstOK || !lastOK || !sharesFilePath(
 		first.oldPath,
 		first.newPath,
 		last.oldPath,
