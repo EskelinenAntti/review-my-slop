@@ -158,6 +158,7 @@ func newModel(
 }
 
 func newWithStore(
+	ctx context.Context,
 	store commentStore,
 	currentPatch patch.Patch,
 	pendingComments []comments.Comment,
@@ -186,6 +187,7 @@ func newWithStore(
 		},
 		size: dimensions,
 	})
+	m.ctx = ctx
 	m.delete = func(comment comments.Comment, current patch.Patch) error {
 		return store.Delete(current.Root, comment.ID)
 	}

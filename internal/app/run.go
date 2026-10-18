@@ -46,11 +46,16 @@ func start(
 		return err
 	}
 	dimensions := terminalSize()
-	m, err := newWithStore(store, currentPatch, pendingComments, dimensions)
+	m, err := newWithStore(
+		ctx,
+		store,
+		currentPatch,
+		pendingComments,
+		dimensions,
+	)
 	if err != nil {
 		return err
 	}
-	m.ctx = ctx
 	if refresh != nil {
 		m.refresh = func(kind patch.Kind) (patch.Patch, error) {
 			return refresh(ctx, kind)

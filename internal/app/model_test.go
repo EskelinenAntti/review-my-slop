@@ -1,6 +1,7 @@
 package app
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"path/filepath"
@@ -33,7 +34,13 @@ func testModel(
 func TestStoreBackedCommentLifecycle(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	store := comments.Store{Path: filepath.Join(t.TempDir(), "comments.db")}
-	m, err := newWithStore(store, modelPatch(), nil, defaultSize)
+	m, err := newWithStore(
+		context.Background(),
+		store,
+		modelPatch(),
+		nil,
+		defaultSize,
+	)
 	testutil.NoError(t, err)
 
 	anchor := comments.Anchor{
