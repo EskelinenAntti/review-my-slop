@@ -39,29 +39,9 @@ func newDiffView(p patch.Patch, options Options) *diffView {
 }
 
 func (v *diffView) appendFileRows(fileIndex int, file patch.File) {
-	v.rows = append(
-		v.rows,
-		entry{
-			kind:      fileRow,
-			file:      fileIndex,
-			hunk:      -1,
-			leftLine:  -1,
-			rightLine: -1,
-			text:      file.DisplayPath,
-		},
-	)
+	v.appendNonLineRow(fileRow, fileIndex, -1, file.DisplayPath)
 	for _, metadata := range file.Metadata {
-		v.rows = append(
-			v.rows,
-			entry{
-				kind:      metadataRow,
-				file:      fileIndex,
-				hunk:      -1,
-				leftLine:  -1,
-				rightLine: -1,
-				text:      metadata,
-			},
-		)
+		v.appendNonLineRow(metadataRow, fileIndex, -1, metadata)
 	}
 	highlighted := v.highlight(&file)
 	for hunkIndex, hunk := range file.Hunks {
@@ -74,17 +54,7 @@ func (v *diffView) appendHunkRows(
 	hunk patch.Hunk,
 	highlighted pair,
 ) {
-	v.rows = append(
-		v.rows,
-		entry{
-			kind:      hunkRow,
-			file:      fileIndex,
-			hunk:      hunkIndex,
-			leftLine:  -1,
-			rightLine: -1,
-			text:      hunkHeader(hunk.Header),
-		},
-	)
+	v.appendNonLineRow(hunkRow, fileIndex, hunkIndex, hunkHeader(hunk.Header))
 	for _, indices := range v.lineRows(hunk.Lines) {
 		row := entry{
 			kind:      lineRow,
@@ -96,6 +66,21 @@ func (v *diffView) appendHunkRows(
 		v.highlightRow(&row, hunk.Lines, highlighted)
 		v.rows = append(v.rows, row)
 	}
+}
+
+func (v *diffView) appendNonLineRow(
+	kind rowKind,
+	fileIndex, hunkIndex int,
+	text string,
+) {
+	v.rows = append(v.rows, entry{
+		kind:      kind,
+		file:      fileIndex,
+		hunk:      hunkIndex,
+		leftLine:  -1,
+		rightLine: -1,
+		text:      text,
+	})
 }
 
 func (v *diffView) highlightRow(
