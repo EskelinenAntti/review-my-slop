@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 func loadUntracked(
@@ -56,6 +57,14 @@ func untrackedPaths(out []byte) []string {
 		}
 	}
 	return paths
+}
+
+func splitSourceLines(content string) []string {
+	content = strings.TrimSuffix(content, "\n")
+	if content == "" {
+		return nil
+	}
+	return strings.Split(content, "\n")
 }
 
 func readUntrackedFile(root, path string) (File, bool, error) {
