@@ -24,10 +24,11 @@ type entry struct {
 }
 
 type diffView struct {
-	patch patch.Patch
-	rows  []entry
-	split bool
-	dark  bool
+	patch        patch.Patch
+	rows         []entry
+	maxLineWidth int
+	split        bool
+	dark         bool
 }
 
 func newDiffView(p patch.Patch, options Options) *diffView {
@@ -35,6 +36,7 @@ func newDiffView(p patch.Patch, options Options) *diffView {
 	for fileIndex, file := range p.Files {
 		v.appendFileRows(fileIndex, file)
 	}
+	v.maxLineWidth = v.measureMaxLineWidth()
 	return v
 }
 
