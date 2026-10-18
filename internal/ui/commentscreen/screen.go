@@ -15,6 +15,7 @@ import (
 // View owns list focus, scrolling, and comment presentation.
 type View struct {
 	items         []comments.Comment
+	pendingLabel  string
 	row           int
 	top           int
 	width, height int
@@ -35,6 +36,7 @@ func (v *View) Update(items []comments.Comment) {
 		selectedID = v.items[index].ID
 	}
 	v.items = slices.Clone(items)
+	v.pendingLabel = fmt.Sprintf("%d pending", len(v.items))
 	v.row = min(v.row, max(0, len(v.items)-1))
 	if selectedID != "" {
 		for index, item := range v.items {
@@ -106,7 +108,7 @@ func (v *View) keepVisible() {
 // Render composes the screen, showing a non-nil error in place of its hints.
 func (v *View) Render(err error) string {
 	width := max(20, v.width)
-	pending := frame.Muted(fmt.Sprintf("%d pending", len(v.items)))
+	pending := frame.Muted(v.pendingLabel)
 	header := frame.Title("comments") + "  " + pending
 	height := frame.BodyHeight(v.height)
 	var body []string
