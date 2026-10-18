@@ -153,10 +153,7 @@ func (m model) sourceLocation() (string, int, error) {
 	if !ok {
 		return "", 0, errors.New("select a code line to open in $EDITOR")
 	}
-	path, number := file.NewPath, line.NewNumber
-	if path == "" || path == "/dev/null" {
-		path = file.OldPath
-	}
+	path, number := preferredFilePath(file), line.NewNumber
 	if number == 0 {
 		number = line.OldNumber
 	}
@@ -202,11 +199,7 @@ func matchesComment(selected, candidate comments.Comment) bool {
 }
 
 func commentAnchor(file patch.File, lines []patch.Line) comments.Anchor {
-	path := file.NewPath
-	if path == "" {
-		path = file.OldPath
-	}
-	anchor := comments.Anchor{FilePath: path}
+	anchor := comments.Anchor{FilePath: preferredFilePath(file)}
 	for _, line := range lines {
 		prefix := " "
 		if line.Kind == patch.Addition {
@@ -220,6 +213,14 @@ func commentAnchor(file patch.File, lines []patch.Line) comments.Anchor {
 	}
 	return anchor
 }
+
+func preferredFilePath(file patch.File) string {
+	if file.NewPath != "" && file.NewPath != "/dev/null" {
+		return file.NewPath
+	}
+	return file.OldPath
+}
+
 func accumulateRange(start, end *int, value int) {
 	if value == 0 {
 		return
