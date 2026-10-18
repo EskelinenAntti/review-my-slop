@@ -97,19 +97,27 @@ func (v *diffView) searchRow(
 	if v.rows[y].kind != lineRow {
 		return v.searchMetadata(query, y, pane, direction)
 	}
-	panes := []diffPane{pane}
-	if v.split {
-		panes = append(panes, pane.other())
+	if candidate, ok := v.searchPane(query, y, pane); ok {
+		return candidate, true
 	}
-	for _, candidatePane := range panes {
-		candidate, ok := v.cursorAt(y, candidatePane)
-		if !ok {
-			continue
-		}
-		line, _ := v.line(candidate)
-		if strings.Contains(strings.ToLower(line.Text), query) {
-			return candidate, true
-		}
+	if v.split {
+		return v.searchPane(query, y, pane.other())
+	}
+	return diffCursor{}, false
+}
+
+func (v *diffView) searchPane(
+	query string,
+	y int,
+	pane diffPane,
+) (diffCursor, bool) {
+	candidate, ok := v.cursorAt(y, pane)
+	if !ok {
+		return diffCursor{}, false
+	}
+	line, _ := v.line(candidate)
+	if strings.Contains(strings.ToLower(line.Text), query) {
+		return candidate, true
 	}
 	return diffCursor{}, false
 }
