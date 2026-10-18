@@ -14,6 +14,22 @@ import (
 	"github.com/eskelinenantti/review-my-slop/internal/testutil"
 )
 
+func TestStoreRejectsEmptyPath(t *testing.T) {
+	store := Store{}
+	t.Run("read", func(t *testing.T) {
+		_, err := store.List("/repo")
+		if err == nil || err.Error() != "comments path is empty" {
+			t.Fatalf("List error = %v, want empty path error", err)
+		}
+	})
+	t.Run("write", func(t *testing.T) {
+		_, err := store.Add(testComment("/repo", "feedback"))
+		if err == nil || err.Error() != "comments path is empty" {
+			t.Fatalf("Add error = %v, want empty path error", err)
+		}
+	})
+}
+
 func TestListMissingStoreDoesNotCreateDatabase(t *testing.T) {
 	directory := filepath.Join(t.TempDir(), "state")
 	path := filepath.Join(directory, "comments.db")
