@@ -28,7 +28,6 @@ func (execRunner) Run(
 	dir string,
 	args ...string,
 ) ([]byte, error) {
-	command := "git " + strings.Join(args, " ")
 	cmd := exec.CommandContext(ctx, "git", args...)
 	cmd.Dir = dir
 	cmd.Env = append(os.Environ(),
@@ -37,12 +36,13 @@ func (execRunner) Run(
 		"GIT_CONFIG_NOSYSTEM=1",
 	)
 	out, err := cmd.Output()
-	if ctx.Err() != nil {
-		return nil, fmt.Errorf("%s: %w", command, ctx.Err())
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		err = ctxErr
 	}
 	if err == nil {
 		return out, nil
 	}
+	command := "git " + strings.Join(args, " ")
 	if exitErr, ok := errors.AsType[*exec.ExitError](err); ok {
 		return nil, fmt.Errorf(
 			"%s: %s",
