@@ -3,6 +3,7 @@ package commentscreen
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 
 	"charm.land/lipgloss/v2"
@@ -29,12 +30,15 @@ func New(items []comments.Comment) *View {
 // Update preserves focus by comment ID, falling back to the nearest list index
 // when the selected comment disappears. Empty lists are valid.
 func (v *View) Update(items []comments.Comment) {
-	selected, ok := v.Selected()
-	v.items = append([]comments.Comment(nil), items...)
-	v.row = min(v.row, max(0, len(items)-1))
-	if ok && selected.ID != "" {
-		for index, item := range items {
-			if item.ID == selected.ID {
+	selectedID := ""
+	if index, ok := v.SelectedIndex(); ok {
+		selectedID = v.items[index].ID
+	}
+	v.items = slices.Clone(items)
+	v.row = min(v.row, max(0, len(v.items)-1))
+	if selectedID != "" {
+		for index, item := range v.items {
+			if item.ID == selectedID {
 				v.row = index
 				break
 			}
