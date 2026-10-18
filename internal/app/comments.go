@@ -96,8 +96,6 @@ func (m *model) finishCommentEdit() {
 		return
 	}
 	m.updateSavedComment(saved, m.edit.index)
-	m.comments.revision++
-	m.err = nil
 	m.diffView.ClearSelection()
 }
 
@@ -107,7 +105,7 @@ func (m *model) updateSavedComment(saved comments.Comment, index int) {
 	} else {
 		m.comments.items = append(m.comments.items, saved)
 	}
-	m.commentView.Update(m.comments.items)
+	m.commentsChanged()
 	if index < 0 {
 		m.commentView.Move(len(m.comments.items))
 	}
@@ -129,6 +127,10 @@ func (m *model) deleteComment(index int) {
 		m.comments.items[:index],
 		m.comments.items[index+1:]...,
 	)
+	m.commentsChanged()
+}
+
+func (m *model) commentsChanged() {
 	m.commentView.Update(m.comments.items)
 	m.comments.revision++
 	m.err = nil
