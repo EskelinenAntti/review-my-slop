@@ -140,8 +140,7 @@ func (v *diffView) cursorVisible(
 	viewport diffViewport,
 	cursor diffCursor,
 ) bool {
-	return v.valid(cursor) && cursor.row >= viewport.top &&
-		cursor.row < viewport.top+v.contentHeight(viewport)
+	return v.valid(cursor) && v.rowVisible(viewport, cursor.row)
 }
 
 func (v *diffView) scrollHalfPage(
@@ -196,10 +195,15 @@ func (v *diffView) cursorInViewport(
 	pane diffPane,
 	viewport diffViewport,
 ) (diffCursor, bool) {
-	if y < viewport.top || y >= viewport.top+v.contentHeight(viewport) {
+	if !v.rowVisible(viewport, y) {
 		return diffCursor{}, false
 	}
 	return v.cursorAt(y, pane)
+}
+
+func (v *diffView) rowVisible(viewport diffViewport, row int) bool {
+	return row >= viewport.top &&
+		row < viewport.top+v.contentHeight(viewport)
 }
 
 func (v *diffView) maxHorizontalOffset(width int) int {
