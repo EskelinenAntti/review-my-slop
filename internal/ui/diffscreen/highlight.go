@@ -7,9 +7,9 @@ import (
 	"github.com/alecthomas/chroma/v2/quick"
 )
 
-type pair struct {
-	Old []string
-	New []string
+type highlightedSources struct {
+	old []string
+	new []string
 }
 
 const (
