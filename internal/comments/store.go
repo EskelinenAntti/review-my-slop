@@ -48,18 +48,15 @@ func (s Store) Add(comment Comment) (Comment, error) {
 	if comment.Repository == "" {
 		return Comment{}, errors.New("comment requires a repository")
 	}
-	if err := validateComment(comment); err != nil {
-		return Comment{}, err
-	}
 	if comment.ID == "" {
 		comment.ID = fmt.Sprintf("%d", time.Now().UnixNano())
 	}
 	if comment.CreatedAt.IsZero() {
 		comment.CreatedAt = time.Now().UTC()
 	}
-	data, err := json.Marshal(comment)
+	data, err := encodeComment(comment)
 	if err != nil {
-		return Comment{}, fmt.Errorf("encode comment: %w", err)
+		return Comment{}, err
 	}
 	err = s.transact(func(bucket *bolt.Bucket) error {
 		return addComment(bucket, comment.ID, data)
@@ -100,12 +97,9 @@ func (s Store) Update(comment Comment) error {
 	if comment.Repository == "" || comment.ID == "" {
 		return errors.New("repository and comment ID are required")
 	}
-	if err := validateComment(comment); err != nil {
-		return err
-	}
-	data, err := json.Marshal(comment)
+	data, err := encodeComment(comment)
 	if err != nil {
-		return fmt.Errorf("encode comment: %w", err)
+		return err
 	}
 	return s.transact(
 		func(bucket *bolt.Bucket) error {
@@ -230,6 +224,17 @@ func validateComment(comment Comment) error {
 		return fmt.Errorf("comment exceeds %d bytes", maxCommentBytes)
 	}
 	return nil
+}
+
+func encodeComment(comment Comment) ([]byte, error) {
+	if err := validateComment(comment); err != nil {
+		return nil, err
+	}
+	data, err := json.Marshal(comment)
+	if err != nil {
+		return nil, fmt.Errorf("encode comment: %w", err)
+	}
+	return data, nil
 }
 
 type legacyComment struct {
