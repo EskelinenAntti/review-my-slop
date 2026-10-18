@@ -132,16 +132,18 @@ func (v *diffView) cursorNearRow(
 	direction direction,
 ) (diffCursor, bool) {
 	for distance := 1; distance <= len(v.rows); distance++ {
-		for _, candidateY := range []int{
-			y + int(direction)*distance,
-			y - int(direction)*distance,
-		} {
+		for _, candidateY := range neighborRows(y, distance, direction) {
 			if candidate, ok := v.cursorInFile(candidateY, y, pane); ok {
 				return candidate, true
 			}
 		}
 	}
 	return diffCursor{}, false
+}
+
+func neighborRows(row, distance int, direction direction) [2]int {
+	offset := int(direction) * distance
+	return [2]int{row + offset, row - offset}
 }
 
 func (v *diffView) cursorInFile(

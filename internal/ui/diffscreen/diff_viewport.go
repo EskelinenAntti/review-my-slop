@@ -178,10 +178,7 @@ func (v *diffView) nearest(
 ) (diffCursor, bool) {
 	height := v.contentHeight(viewport)
 	for distance := 0; distance < height; distance++ {
-		for _, y := range []int{
-			target + int(direction)*distance,
-			target - int(direction)*distance,
-		} {
+		for _, y := range neighborRows(target, distance, direction) {
 			if cursor, ok := v.cursorInViewport(y, pane, viewport); ok {
 				return cursor, true
 			}
