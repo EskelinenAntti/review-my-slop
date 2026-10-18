@@ -90,6 +90,51 @@ func TestGetIncludesUnstagedAndUntrackedButNotStagedOnly(t *testing.T) {
 	}
 }
 
+func TestGetPreservesTrackedPathStartingWithDiffPrefix(t *testing.T) {
+	repo := newRepository(t)
+	path := "b/nested.go"
+	writeFile(
+		t,
+		repo,
+		path,
+		"package nested\n\nfunc value() int { return 1 }\n",
+	)
+	git(t, repo, "add", path)
+	git(t, repo, "commit", "-m", "base")
+	writeFile(
+		t,
+		repo,
+		path,
+		"package nested\n\nfunc value() int { return 2 }\n",
+	)
+	t.Chdir(repo)
+
+	got, err := Get(context.Background(), Unstaged)
+	testutil.NoError(t, err)
+	testutil.RequireEqual(t, len(got.Files), 1, "files = %#v", got.Files)
+	testutil.RequireEqual(
+		t,
+		got.Files[0].OldPath,
+		path,
+		"file = %#v",
+		got.Files[0],
+	)
+	testutil.RequireEqual(
+		t,
+		got.Files[0].NewPath,
+		path,
+		"file = %#v",
+		got.Files[0],
+	)
+	testutil.RequireEqual(
+		t,
+		got.Files[0].DisplayPath,
+		path,
+		"file = %#v",
+		got.Files[0],
+	)
+}
+
 func TestAddedFileKeepsRawAndDisplayPathsSeparate(t *testing.T) {
 	file := addedFile("odd\nname.go", "package main\n")
 	testutil.RequireEqual(t, file.NewPath, "odd\nname.go", "raw path = %q",

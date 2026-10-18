@@ -524,8 +524,11 @@ func safeSource(source []byte) string {
 
 func cleanDiffPath(path string) string {
 	path = strings.TrimSpace(path)
-	path = strings.TrimPrefix(path, "a/")
-	path = strings.TrimPrefix(path, "b/")
+	if strings.HasPrefix(path, "a/") {
+		path = path[2:]
+	} else {
+		path = strings.TrimPrefix(path, "b/")
+	}
 	if path == "/dev/null" {
 		return ""
 	}
