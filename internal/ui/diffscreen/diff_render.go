@@ -9,6 +9,7 @@ import (
 	"charm.land/lipgloss/v2"
 
 	"github.com/eskelinenantti/review-my-slop/internal/patch"
+	"github.com/eskelinenantti/review-my-slop/internal/ui/internal/frame"
 )
 
 func (v *diffView) render(
@@ -68,7 +69,7 @@ func (v *diffView) renderUnifiedRow(
 	cursor diffCursor,
 	selection *diffSelection,
 ) string {
-	width := max(20, viewport.width)
+	width := frame.ScreenWidth(viewport.width)
 	switch current.kind {
 	case fileRow:
 		return renderFileRow(current.text, width)
@@ -123,7 +124,7 @@ func (v *diffView) renderUnifiedLine(
 }
 
 func renderFileRow(path string, width int) string {
-	return fileStyle.Width(max(20, width)).Render(path)
+	return fileStyle.Width(frame.ScreenWidth(width)).Render(path)
 }
 
 func (v *diffView) renderSplitRow(

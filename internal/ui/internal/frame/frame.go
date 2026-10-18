@@ -3,6 +3,9 @@ package frame
 
 import "strings"
 
+// ScreenWidth returns the minimum width used when rendering screen content.
+func ScreenWidth(width int) int { return max(20, width) }
+
 // SingleLine replaces embedded line breaks in screen text with spaces.
 func SingleLine(value string) string {
 	return strings.ReplaceAll(value, "\n", " ")

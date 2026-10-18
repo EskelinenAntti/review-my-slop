@@ -107,7 +107,7 @@ func (v *View) keepVisible() {
 
 // Render composes the screen, showing a non-nil error in place of its hints.
 func (v *View) Render(err error) string {
-	width := max(20, v.width)
+	width := frame.ScreenWidth(v.width)
 	pending := frame.Muted(v.pendingLabel)
 	header := frame.Title("comments") + "  " + pending
 	height := frame.BodyHeight(v.height)

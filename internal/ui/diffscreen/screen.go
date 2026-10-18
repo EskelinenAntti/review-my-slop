@@ -442,7 +442,7 @@ func (v *View) renderFooter(value string) string {
 		label += fmt.Sprintf(" (%d%%)", v.view.viewportProgress(v.viewport))
 	}
 	right := frame.Muted(label)
-	width := max(20, v.width)
+	width := frame.ScreenWidth(v.width)
 	rightWidth := lipgloss.Width(right)
 	value = ansi.Truncate(value, max(0, width-rightWidth-1), "")
 	return value + strings.Repeat(

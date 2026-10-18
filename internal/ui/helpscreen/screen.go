@@ -28,7 +28,7 @@ func Render(bindings []Binding, width, height int) string {
 			" ",
 			column-lipgloss.Width(binding.Keys),
 		) + "  " + binding.Description
-		body = append(body, ansi.Truncate(line, max(20, width), ""))
+		body = append(body, ansi.Truncate(line, frame.ScreenWidth(width), ""))
 	}
 	return frame.Render(
 		frame.Title("review-my-slop help"),
