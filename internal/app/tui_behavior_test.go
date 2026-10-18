@@ -471,11 +471,11 @@ func TestStatusShowsProgressOnlyAfterViewportMoves(t *testing.T) {
 	)
 }
 
-func TestStatusHidesProgressWhenDiffFitsViewport(t *testing.T) {
+func TestStatusHidesProgressWhenPatchFitsViewport(t *testing.T) {
 	m := testModel(coveragePatch(), nil, nil)
 	m = updateModel(t, m, tea.WindowSizeMsg{Width: 100, Height: 100})
 	testutil.RequireEqual(t, !strings.Contains(m.render(), "%)"), true, "%s",
-		"fitting diff shows progress",
+		"fitting patch shows progress",
 	)
 }
 
@@ -532,7 +532,7 @@ func TestFocusAndManualRefreshLoadCurrentView(t *testing.T) {
 	m.currentPatch.Branch = "main"
 	m.kind = patch.Branch
 	var requested []patch.Kind
-	m.refresh = func(kind patch.Kind) (patch.Patch, error) {
+	m.refreshPatch = func(kind patch.Kind) (patch.Patch, error) {
 		requested = append(requested, kind)
 		p := coveragePatch()
 		p.Kind, p.Branch = kind, "main"
@@ -564,11 +564,13 @@ func TestFocusAndManualRefreshLoadCurrentView(t *testing.T) {
 	)
 }
 
-func TestSourceEditorCompletionRefreshesDiff(t *testing.T) {
+func TestSourceEditorCompletionRefreshesPatch(t *testing.T) {
 	m := testModel(coveragePatch(), nil, nil)
 	refreshed := coveragePatch()
 	refreshed.Files[0].Metadata = []string{"after-editor"}
-	m.refresh = func(patch.Kind) (patch.Patch, error) { return refreshed, nil }
+	m.refreshPatch = func(patch.Kind) (patch.Patch, error) {
+		return refreshed, nil
+	}
 
 	next, cmd := m.Update(sourceEditorFinishedMsg{})
 	m = requireModel(t, next)
@@ -674,7 +676,7 @@ func TestSideBySideSearchActivatesPaneAndCancelRestoresIt(t *testing.T) {
 func TestTabTogglesDefaultBranchAndIgnoresStaleRefresh(t *testing.T) {
 	m := testModel(coveragePatch(), nil, nil)
 	m.currentPatch.Branch = "main"
-	m.refresh = func(kind patch.Kind) (patch.Patch, error) {
+	m.refreshPatch = func(kind patch.Kind) (patch.Patch, error) {
 		p := coveragePatch()
 		p.Kind, p.Branch = kind, "main"
 		return p, nil
@@ -685,7 +687,7 @@ func TestTabTogglesDefaultBranchAndIgnoresStaleRefresh(t *testing.T) {
 
 	stale := coveragePatch()
 	stale.Files[0].Metadata = []string{"stale"}
-	m = updateModel(t, m, refreshDiffMsg{patch: stale})
+	m = updateModel(t, m, patchRefreshFinishedMsg{patch: stale})
 	testutil.RequireEqual(t,
 		!slices.Equal(
 			m.currentPatch.Files[0].Metadata,
@@ -703,7 +705,7 @@ func TestTabTogglesDefaultBranchAndIgnoresStaleRefresh(t *testing.T) {
 func TestTabDoesNothingWithoutDefaultBranch(t *testing.T) {
 	m := testModel(coveragePatch(), nil, nil)
 	refreshed := false
-	m.refresh = func(patch.Kind) (patch.Patch, error) {
+	m.refreshPatch = func(patch.Kind) (patch.Patch, error) {
 		refreshed = true
 		return coveragePatch(), nil
 	}
@@ -723,9 +725,9 @@ func TestTabDoesNothingWithoutDefaultBranch(t *testing.T) {
 	)
 }
 
-func TestDiffRefreshFallbackAndEmptyDiff(t *testing.T) {
+func TestPatchRefreshFallbackAndEmptyPatch(t *testing.T) {
 	m := testModel(patch.Patch{}, nil, nil)
-	m = updateModel(t, m, refreshDiffMsg{patch: coveragePatch()})
+	m = updateModel(t, m, patchRefreshFinishedMsg{patch: coveragePatch()})
 	testutil.RequireEqual(t, lineText(m), "package main", "initial focus=%q",
 		lineText(m),
 	)
@@ -733,7 +735,7 @@ func TestDiffRefreshFallbackAndEmptyDiff(t *testing.T) {
 	focusLine(t, &m, "new()")
 	changed := coveragePatch()
 	changed.Files[0].Hunks[0].Lines[2].Text = "different()"
-	m = updateModel(t, m, refreshDiffMsg{patch: changed})
+	m = updateModel(t, m, patchRefreshFinishedMsg{patch: changed})
 	if _, _, ok := m.diffView.Current(); !ok {
 		t.Fatal("refresh lost focus")
 	}
@@ -751,7 +753,7 @@ func TestCommentAfterRefreshUsesCurrentPatch(t *testing.T) {
 	})
 	refreshed := coveragePatch()
 	refreshed.Files[0].Metadata = []string{"refreshed"}
-	m = updateModel(t, m, refreshDiffMsg{patch: refreshed})
+	m = updateModel(t, m, patchRefreshFinishedMsg{patch: refreshed})
 	m = updateModel(t, m, textKey("c"))
 	_ = updateModel(t, m, commentEditorFinishedMsg{body: "comment"})
 	testutil.RequireEqual(t,
@@ -816,7 +818,7 @@ func TestMouseWheelScrollsContentWithoutMovingFocus(t *testing.T) {
 		before := m.diffView.Render(nil)
 		m = updateModel(t, m, tea.MouseWheelMsg{Button: tea.MouseWheelDown})
 		testutil.RequireEqual(t, m.diffView.Render(nil), before, "%s",
-			"wheel scrolled diff behind another screen",
+			"wheel scrolled patch behind another screen",
 		)
 	}
 }

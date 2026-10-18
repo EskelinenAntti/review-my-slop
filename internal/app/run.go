@@ -57,7 +57,7 @@ func start(
 		return err
 	}
 	if refresh != nil {
-		m.refresh = func(kind patch.Kind) (patch.Patch, error) {
+		m.refreshPatch = func(kind patch.Kind) (patch.Patch, error) {
 			return refresh(ctx, kind)
 		}
 	}

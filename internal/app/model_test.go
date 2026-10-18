@@ -187,7 +187,7 @@ func TestUnchangedRefreshPreservesStateAndClearsError(t *testing.T) {
 	m.diffView.ScrollHorizontal(12)
 	before := m.diffView.Render(nil)
 	m.err = errors.New("previous refresh failed")
-	m = updateModel(t, m, refreshDiffMsg{patch: p})
+	m = updateModel(t, m, patchRefreshFinishedMsg{patch: p})
 	if got := m.diffView.Render(nil); got != before {
 		t.Fatal("refresh changed presentation state")
 	}
@@ -199,7 +199,11 @@ func TestUnchangedRefreshPreservesStateAndClearsError(t *testing.T) {
 func TestRefreshFailureRetainsView(t *testing.T) {
 	m := testModel(modelPatch(), nil, nil)
 	before := m.diffView.Render(nil)
-	m = updateModel(t, m, refreshDiffMsg{err: errors.New("git failed")})
+	m = updateModel(
+		t,
+		m,
+		patchRefreshFinishedMsg{err: errors.New("git failed")},
+	)
 	testutil.RequireEqual(t, m.err != nil, true, "patch=%#v error=%v",
 		m.currentPatch, m.err,
 	)
@@ -266,7 +270,7 @@ func TestRenderingAndKeyBindingsRemainAvailable(t *testing.T) {
 	}
 	m.mode = modeHelp
 	testutil.RequireEqual(t, strings.Contains(m.render(), "Ctrl-w h/l/w"), true,
-		"%s", "help lost diffPane binding",
+		"%s", "help lost patch pane binding",
 	)
 }
 

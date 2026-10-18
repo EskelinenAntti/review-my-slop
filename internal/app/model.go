@@ -22,7 +22,7 @@ type saveCommentFunc func(
 ) (comments.Comment, error)
 type deleteCommentFunc func(comments.Comment, patch.Patch) error
 type loadCommentsFunc func() ([]comments.Comment, error)
-type refreshDiffFunc func(patch.Kind) (patch.Patch, error)
+type refreshPatchFunc func(patch.Kind) (patch.Patch, error)
 type saveSideBySideFunc func(bool) error
 
 // commentStore supplies the persistence operations used by the terminal client.
@@ -44,7 +44,7 @@ type initialLayout struct {
 	dimensions     terminalDimensions
 }
 
-type refreshDiffMsg struct {
+type patchRefreshFinishedMsg struct {
 	patch patch.Patch
 	kind  patch.Kind
 	err   error
@@ -106,13 +106,13 @@ type model struct {
 	comments     commentState
 	edit         commentEdit
 
-	save       saveCommentFunc
-	delete     deleteCommentFunc
-	load       loadCommentsFunc
-	refresh    refreshDiffFunc
-	saveLayout saveSideBySideFunc
-	err        error
-	quitting   bool
+	save         saveCommentFunc
+	delete       deleteCommentFunc
+	load         loadCommentsFunc
+	refreshPatch refreshPatchFunc
+	saveLayout   saveSideBySideFunc
+	err          error
+	quitting     bool
 }
 
 func newModel(
@@ -226,13 +226,13 @@ func (m model) updateWorkflow(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.finishCommentsLoad(msg)
 	case sourceEditorFinishedMsg:
 		if msg.err == nil {
-			return m, m.loadRefresh()
+			return m, m.loadPatchRefresh()
 		}
 		m.err = fmt.Errorf("editor: %w", msg.err)
 	case tea.FocusMsg:
-		return m, m.loadRefresh()
-	case refreshDiffMsg:
-		m.finishDiffRefresh(msg)
+		return m, m.loadPatchRefresh()
+	case patchRefreshFinishedMsg:
+		m.finishPatchRefresh(msg)
 	default:
 		return m, nil
 	}
@@ -262,26 +262,26 @@ func (m *model) finishCommentsLoad(msg commentsLoadedMsg) {
 	m.err = nil
 }
 
-func (m *model) finishDiffRefresh(msg refreshDiffMsg) {
+func (m *model) finishPatchRefresh(msg patchRefreshFinishedMsg) {
 	if msg.kind != m.kind {
 		return
 	}
 	if msg.err != nil {
-		m.err = fmt.Errorf("refresh diff: %w", msg.err)
+		m.err = fmt.Errorf("refresh patch: %w", msg.err)
 		return
 	}
 	m.updatePatch(msg.patch)
 	m.err = nil
 }
 
-func (m model) loadRefresh() tea.Cmd {
-	if m.refresh == nil {
+func (m model) loadPatchRefresh() tea.Cmd {
+	if m.refreshPatch == nil {
 		return nil
 	}
 	kind := m.kind
 	return func() tea.Msg {
-		p, err := m.refresh(kind)
-		return refreshDiffMsg{patch: p, kind: kind, err: err}
+		p, err := m.refreshPatch(kind)
+		return patchRefreshFinishedMsg{patch: p, kind: kind, err: err}
 	}
 }
 
@@ -341,7 +341,7 @@ func (m model) updateBrowseKey(name string) (tea.Model, tea.Cmd) {
 	case "e":
 		return m.startEditor(m.openCurrentLine)
 	case "R":
-		return m, m.loadRefresh()
+		return m, m.loadPatchRefresh()
 	case "tab":
 		return m.switchPatchKind()
 	default:
@@ -392,5 +392,5 @@ func (m model) switchPatchKind() (tea.Model, tea.Cmd) {
 		m.kind = patch.Unstaged
 	}
 	m.diffView.ClearSelection()
-	return m, m.loadRefresh()
+	return m, m.loadPatchRefresh()
 }

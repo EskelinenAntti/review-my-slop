@@ -82,8 +82,8 @@ func (m model) updateSearch(
 	return m, nil
 }
 
-// navigate applies a diff navigation binding and reports whether it handled the
-// key.
+// navigate applies a patch navigation binding and reports whether it handled
+// the key.
 func (m *model) navigate(name string) bool {
 	if motion, ok := navigationMotions[name]; ok {
 		m.diffView.Move(motion)

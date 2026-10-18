@@ -48,8 +48,8 @@ func TestRunLoadsCommentsAndWiresContext(t *testing.T) {
 		testutil.RequireEqual(t, m.dimensions.height, 40, "model=%#v", m)
 		testutil.RequireEqual(t, len(m.comments.items), 1, "model=%#v", m)
 
-		result := m.loadRefresh()()
-		msg, ok := result.(refreshDiffMsg)
+		result := m.loadPatchRefresh()()
+		msg, ok := result.(patchRefreshFinishedMsg)
 		testutil.RequireEqual(t, ok, true, "refresh message=%T", result)
 		testutil.RequireEqual(t, msg.err, nil, "%s", msg.err)
 
