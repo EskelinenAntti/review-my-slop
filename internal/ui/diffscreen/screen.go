@@ -389,8 +389,11 @@ func (v *View) Find(d Direction) bool {
 // final blank line. A non-nil error replaces the status while retaining the
 // position label. Dimensions are configured through Resize.
 func (v *View) Render(err error) string {
-	added, removed := patchLineCounts(v.view.patch)
-	counts := frame.Muted(fmt.Sprintf("+%d-%d", added, removed))
+	counts := frame.Muted(fmt.Sprintf(
+		"+%d-%d",
+		v.view.addedLines,
+		v.view.removedLines,
+	))
 	header := frame.Title("review-my-slop") + "  " + counts
 	body := v.renderBody()
 	status := v.renderStatus()
@@ -450,28 +453,4 @@ func (v *View) renderFooter(value string) string {
 		" ",
 		max(1, width-lipgloss.Width(value)-lipgloss.Width(right)),
 	) + right
-}
-func patchLineCounts(p patch.Patch) (added, removed int) {
-	for _, file := range p.Files {
-		for _, hunk := range file.Hunks {
-			hunkAdded, hunkRemoved := hunkLineCounts(hunk)
-			added += hunkAdded
-			removed += hunkRemoved
-		}
-	}
-	return added, removed
-}
-
-func hunkLineCounts(hunk patch.Hunk) (added, removed int) {
-	for _, line := range hunk.Lines {
-		switch line.Kind {
-		case patch.Addition:
-			added++
-		case patch.Deletion:
-			removed++
-		default:
-			continue
-		}
-	}
-	return added, removed
 }

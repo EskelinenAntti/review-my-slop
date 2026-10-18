@@ -27,6 +27,8 @@ type diffView struct {
 	patch        patch.Patch
 	rows         []entry
 	maxLineWidth int
+	addedLines   int
+	removedLines int
 	split        bool
 	dark         bool
 }
@@ -90,6 +92,10 @@ func (v *diffView) appendLineRow(
 	highlighted highlightedSources,
 	leftLine, rightLine int,
 ) {
+	v.countSourceLine(lines, leftLine)
+	if rightLine != leftLine {
+		v.countSourceLine(lines, rightLine)
+	}
 	row := entry{
 		kind:      lineRow,
 		file:      fileIndex,
@@ -100,6 +106,20 @@ func (v *diffView) appendLineRow(
 	v.highlightRow(&row, lines, highlighted)
 	v.maxLineWidth = max(v.maxLineWidth, renderedLineWidth(row))
 	v.rows = append(v.rows, row)
+}
+
+func (v *diffView) countSourceLine(lines []patch.Line, index int) {
+	if index < 0 {
+		return
+	}
+	switch lines[index].Kind {
+	case patch.Addition:
+		v.addedLines++
+	case patch.Deletion:
+		v.removedLines++
+	default:
+		return
+	}
 }
 
 func (v *diffView) appendNonLineRow(
