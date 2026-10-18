@@ -2,6 +2,7 @@ package comments
 
 import (
 	"bytes"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -12,6 +13,25 @@ import (
 
 	"github.com/eskelinenantti/review-my-slop/internal/testutil"
 )
+
+func TestListMissingStoreDoesNotCreateDatabase(t *testing.T) {
+	directory := filepath.Join(t.TempDir(), "state")
+	path := filepath.Join(directory, "comments.db")
+	store := Store{Path: path}
+
+	comments, err := store.List("/repo")
+	testutil.NoError(t, err)
+	testutil.RequireEqual(
+		t, len(comments), 0, "unexpected comments: %#v", comments,
+	)
+
+	if _, err := os.Stat(path); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("database stat error = %v, want not exist", err)
+	}
+	if _, err := os.Stat(directory); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("directory stat error = %v, want not exist", err)
+	}
+}
 
 func TestStoreQueuesByRepositoryAndDeletesExactPeek(t *testing.T) {
 	store := Store{Path: filepath.Join(t.TempDir(), "state", "comments.db")}
