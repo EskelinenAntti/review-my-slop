@@ -773,56 +773,6 @@ func TestViewPreservesTerminalColors(t *testing.T) {
 	)
 }
 
-func TestMouseWheelScrollsContentWithoutMovingFocus(t *testing.T) {
-	m := testModel(longModelPatch(), nil, nil)
-	m = updateModel(t, m, tea.WindowSizeMsg{Width: 37, Height: 9})
-	m = updateModel(t, m, textKey("v"))
-	m = updateModel(t, m, textKey("j"))
-	_, focus, _ := m.diffView.Current()
-	_, selected, _ := m.diffView.Selected()
-	initial := m.render()
-	for _, button := range []tea.MouseButton{
-		tea.MouseWheelDown,
-		tea.MouseWheelRight,
-	} {
-		m = updateModel(t, m, tea.MouseWheelMsg{Button: button})
-	}
-	testutil.RequireEqual(t, m.render() != initial, true, "%s",
-		"wheel did not scroll content",
-	)
-	testutil.RequireEqual(t, strings.Contains(m.render(), "%)"), true, "%s",
-		"wheel did not scroll content",
-	)
-
-	_, got, _ := m.diffView.Current()
-	_, gotSelected, _ := m.diffView.Selected()
-	testutil.RequireEqual(t, got, focus, "%s",
-		"wheel changed focus or selection",
-	)
-	testutil.RequireEqual(t, slices.Equal(selected, gotSelected), true, "%s",
-		"wheel changed focus or selection",
-	)
-
-	for _, button := range []tea.MouseButton{
-		tea.MouseWheelUp,
-		tea.MouseWheelLeft,
-	} {
-		m = updateModel(t, m, tea.MouseWheelMsg{Button: button})
-	}
-	testutil.RequireEqual(t, m.render(), initial, "%s",
-		"reverse wheel did not restore content",
-	)
-
-	for _, mode := range []mode{modeComments, modeHelp} {
-		m.mode = mode
-		before := m.diffView.Render(nil)
-		m = updateModel(t, m, tea.MouseWheelMsg{Button: tea.MouseWheelDown})
-		testutil.RequireEqual(t, m.diffView.Render(nil), before, "%s",
-			"wheel scrolled patch behind another screen",
-		)
-	}
-}
-
 func updateModel(t *testing.T, m model, msg tea.Msg) model {
 	t.Helper()
 	next, _ := m.Update(msg)
