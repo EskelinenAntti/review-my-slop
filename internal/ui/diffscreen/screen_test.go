@@ -9,6 +9,39 @@ import (
 	"github.com/eskelinenantti/review-my-slop/internal/testutil"
 )
 
+func TestRenderedChangeCountsSurviveLayoutChangesAndRefresh(t *testing.T) {
+	p := patch.Patch{Files: []patch.File{
+		{Hunks: []patch.Hunk{
+			{Lines: []patch.Line{
+				{Kind: patch.Deletion, Text: "old one"},
+				{Kind: patch.Deletion, Text: "old two"},
+				{Kind: patch.Addition, Text: "replacement"},
+				{Kind: patch.Context, Text: "unchanged"},
+			}},
+			{Lines: []patch.Line{{Kind: patch.Addition, Text: "new hunk"}}},
+		}},
+		{Hunks: []patch.Hunk{{Lines: []patch.Line{
+			{Kind: patch.Addition, Text: "new file"},
+		}}}},
+	}}
+	v := New(p, Options{})
+	for _, split := range []bool{false, true} {
+		v.Configure(Options{SideBySide: split})
+		for _, width := range []int{120, 60} {
+			v.Resize(width, 10)
+			header := strings.SplitN(v.Render(nil), "\n", 2)[0]
+			testutil.RequireEqual(t, strings.Contains(header, "+3-2"), true,
+				"split=%v width=%d: header=%q", split, width, header,
+			)
+		}
+	}
+	v.Update(patch.Patch{})
+	header := strings.SplitN(v.Render(nil), "\n", 2)[0]
+	testutil.RequireEqual(t, strings.Contains(header, "+0-0"), true,
+		"empty patch header=%q", header,
+	)
+}
+
 func TestSelectedDefaultsToCurrentAndMovementExtendsRange(t *testing.T) {
 	v := New(testPatch(), Options{Dark: true})
 	file, lines, ok := v.Selected()
