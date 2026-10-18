@@ -12,20 +12,23 @@ func (v *diffView) extendSelection(
 	selection diffSelection,
 	cursor diffCursor,
 ) (diffSelection, bool) {
-	if !v.valid(selection.First) || !v.valid(cursor) {
-		return selection, false
-	}
-	first := v.rows[selection.First.row]
-	last := v.rows[cursor.row]
-	if first.file != last.file || first.hunk != last.hunk {
+	if !v.sameSection(selection.First, cursor) {
 		return selection, false
 	}
 	selection.Last = cursor
 	return selection, true
 }
 
+func (v *diffView) sameSection(first, last diffCursor) bool {
+	if !v.valid(first) || !v.valid(last) {
+		return false
+	}
+	firstRow, lastRow := v.rows[first.row], v.rows[last.row]
+	return firstRow.file == lastRow.file && firstRow.hunk == lastRow.hunk
+}
+
 func (v *diffView) lines(selection diffSelection) []patch.Line {
-	if _, ok := v.extendSelection(selection, selection.Last); !ok {
+	if !v.sameSection(selection.First, selection.Last) {
 		return nil
 	}
 	first, last := min(
