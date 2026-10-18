@@ -395,7 +395,8 @@ func TestStatusShowsBasicBindingsAndHelpShowsCompleteKeyMap(t *testing.T) {
 		"status=%q", status,
 	)
 
-	help := ansi.Strip(m.renderHelp())
+	m.mode = modeHelp
+	help := ansi.Strip(m.render())
 	for _, binding := range []string{
 		"Ctrl-w h/l/w",
 		"zz/zt/zb",
