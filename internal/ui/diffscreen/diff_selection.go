@@ -108,11 +108,15 @@ func (m cursorMatch) betterThan(other cursorMatch) bool {
 		m.rank == other.rank && m.distance < other.distance
 }
 
-func (m cursorMatch) preferredTo(other cursorMatch) cursorMatch {
-	if m.betterThan(other) {
-		return m
+func (m *cursorMatch) consider(candidate cursorMatch) bool {
+	if candidate.rank == 3 {
+		*m = candidate
+		return true
 	}
-	return other
+	if candidate.betterThan(*m) {
+		*m = candidate
+	}
+	return false
 }
 
 func (v *diffView) matchRow(y int, target cursorIdentity) cursorMatch {
@@ -135,10 +139,9 @@ func (v *diffView) matchRow(y int, target cursorIdentity) cursorMatch {
 			rank:     lineMatchRank(line, target.line),
 			distance: lineDistance(line, target.line, y-target.cursor.row),
 		}
-		if match.rank == 3 {
-			return match
+		if best.consider(match) {
+			return best
 		}
-		best = match.preferredTo(best)
 	}
 	return best
 }
