@@ -15,7 +15,10 @@ import (
 	"github.com/sourcegraph/go-diff/diff"
 )
 
-const maxFileBytes = 2 << 20
+const (
+	maxFileSizeMiB = 2
+	maxFileBytes   = maxFileSizeMiB << 20
+)
 
 type runner interface {
 	Run(ctx context.Context, dir string, args ...string) ([]byte, error)
@@ -361,7 +364,10 @@ func readUntrackedFile(root, path string) (File, bool, error) {
 		return untrackedFile(
 			path,
 			"untracked file",
-			"content omitted: file exceeds 2 MiB",
+			fmt.Sprintf(
+				"content omitted: file exceeds %d MiB",
+				maxFileSizeMiB,
+			),
 		), true, nil
 	}
 	content, err := os.ReadFile(full)
