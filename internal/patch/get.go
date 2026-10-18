@@ -97,11 +97,7 @@ func load(
 	if err != nil {
 		return Patch{}, err
 	}
-	branch, err := defaultBranch(ctx, run, root)
-	if err != nil {
-		return Patch{}, fmt.Errorf("discover default branch: %w", err)
-	}
-	oldRevision, err := comparisonBase(ctx, run, root, kind, branch)
+	branch, oldRevision, err := comparison(ctx, run, root, kind)
 	if err != nil {
 		return Patch{}, err
 	}
@@ -112,28 +108,32 @@ func load(
 	return build(ctx, run, root, kind, branch, raw, oldRevision)
 }
 
-func comparisonBase(
+func comparison(
 	ctx context.Context,
 	run runner,
 	root string,
 	kind Kind,
-	branch string,
-) (string, error) {
+) (branch, revision string, err error) {
 	if kind != Branch {
-		return "", nil
+		return "", "", nil
+	}
+	branch, err = defaultBranch(ctx, run, root)
+	if err != nil {
+		return "", "", fmt.Errorf("discover default branch: %w", err)
 	}
 	if branch == "" {
-		return "", errors.New("default branch is unavailable")
+		return "", "", errors.New("default branch is unavailable")
 	}
 	baseBytes, err := run.Run(ctx, root, "merge-base", branch, "HEAD")
 	if err != nil {
-		return "", fmt.Errorf(
+		return "", "", fmt.Errorf(
 			"find branch point with %s: %w",
 			branch,
 			err,
 		)
 	}
-	return strings.TrimSpace(string(baseBytes)), nil
+	revision = strings.TrimSpace(string(baseBytes))
+	return branch, revision, nil
 }
 
 func discoverRepositoryRoot(

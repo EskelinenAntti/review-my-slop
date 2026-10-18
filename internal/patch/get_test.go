@@ -195,6 +195,21 @@ func TestGetReportsUnavailableBranchAndInvalidKind(t *testing.T) {
 	}
 }
 
+func TestUnstagedPatchDoesNotIncludeDefaultBranchMetadata(t *testing.T) {
+	repo := newRepository(t)
+	writeFile(t, repo, "tracked.txt", "base\n")
+	git(t, repo, "add", "tracked.txt")
+	git(t, repo, "commit", "-m", "base")
+	git(t, repo, "update-ref", "refs/remotes/origin/main", "HEAD")
+	git(t, repo, "symbolic-ref", "refs/remotes/origin/HEAD",
+		"refs/remotes/origin/main")
+	t.Chdir(repo)
+
+	got, err := Get(context.Background(), Unstaged)
+	testutil.NoError(t, err)
+	testutil.RequireEqual(t, got.Branch, "", "patch metadata = %#v", got)
+}
+
 func TestGetOutsideRepositoryReturnsZeroPatch(t *testing.T) {
 	t.Chdir(t.TempDir())
 	got, err := Get(context.Background(), Unstaged)
