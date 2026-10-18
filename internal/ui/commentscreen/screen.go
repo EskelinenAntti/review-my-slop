@@ -131,9 +131,9 @@ func (v *View) Render(err error) string {
 
 func (v *View) renderRow(index int) string {
 	comment := v.items[index]
-	prefix, style := "  ", lipgloss.NewStyle()
+	prefix, style := "  ", commentRowStyle
 	if index == v.row {
-		prefix, style = "> ", lipgloss.NewStyle().Reverse(true)
+		prefix, style = "> ", selectedCommentRowStyle
 	}
 	location := comment.Anchor.FilePath
 	if comment.Anchor.NewStart > 0 {
@@ -149,3 +149,8 @@ func (v *View) renderRow(index int) string {
 	)
 	return style.Width(max(20, v.width)).Render(line)
 }
+
+var (
+	commentRowStyle         = lipgloss.NewStyle()
+	selectedCommentRowStyle = lipgloss.NewStyle().Reverse(true)
+)
