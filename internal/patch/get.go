@@ -546,6 +546,7 @@ func visibleStrings(values []string) []string {
 
 func visibleSource(value string) string {
 	var result strings.Builder
+	result.Grow(len(value))
 	for _, r := range value {
 		switch {
 		case r == '\n' || r == '\t':
