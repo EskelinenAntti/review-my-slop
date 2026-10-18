@@ -472,7 +472,7 @@ func readGitSource(
 	run runner,
 	root, revision, path string,
 ) string {
-	if path == "" || path == "/dev/null" {
+	if path == "" {
 		return ""
 	}
 	source := ":" + path
@@ -487,7 +487,7 @@ func readGitSource(
 }
 
 func readWorkingTree(root, path string) string {
-	if path == "" || path == "/dev/null" {
+	if path == "" {
 		return ""
 	}
 	full := filepath.Join(root, filepath.FromSlash(path))
