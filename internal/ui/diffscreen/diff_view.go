@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"strings"
 
+	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/eskelinenantti/review-my-slop/internal/patch"
 )
 
@@ -194,22 +196,10 @@ func appendPairedChangeRows(
 	}
 }
 
-func sourceText(highlighted highlightedSources, line patch.Line) string {
-	if line.Kind == patch.Deletion {
-		return highlightedLine(highlighted.old, line.OldNumber, line.Text)
-	}
-	return highlightedLine(highlighted.new, line.NewNumber, line.Text)
-}
-
-func (v *diffView) highlight(file *patch.File) highlightedSources {
-	theme := lightTheme
-	if v.dark {
-		theme = darkTheme
-	}
-	return highlightedSources{
-		old: highlightSource(file.OldPath, file.OldSource, theme),
-		new: highlightSource(file.NewPath, file.NewSource, theme),
-	}
+func renderedLineWidth(current diffRow) int {
+	return lipgloss.Width(
+		expandTabs(ansi.Strip(current.text + current.left + current.right)),
+	)
 }
 
 func normalizeHunkHeader(header string) string {

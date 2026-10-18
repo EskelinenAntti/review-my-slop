@@ -1,10 +1,5 @@
 package diffscreen
 
-import (
-	"charm.land/lipgloss/v2"
-	"github.com/charmbracelet/x/ansi"
-)
-
 func (v *diffView) newViewport(width, height int) diffViewport {
 	return v.resize(diffViewport{}, width, height)
 }
@@ -214,10 +209,4 @@ func (v *diffView) maxHorizontalOffset(width int) int {
 		contentWidth, extra = max(1, (width-3)/2-6), 2
 	}
 	return max(0, v.maxLineWidth+extra-contentWidth)
-}
-
-func renderedLineWidth(current diffRow) int {
-	return lipgloss.Width(
-		expandTabs(ansi.Strip(current.text + current.left + current.right)),
-	)
 }

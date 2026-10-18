@@ -176,11 +176,6 @@ func (v *diffView) cursorNearMetadata(
 	return diffCursor{}, false
 }
 
-func neighborRows(row, distance int, direction Direction) [2]int {
-	offset := int(direction) * distance
-	return [2]int{row + offset, row - offset}
-}
-
 func (v *diffView) cursorInFile(
 	y, origin int,
 	pane diffPane,

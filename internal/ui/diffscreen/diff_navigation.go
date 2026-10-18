@@ -1,5 +1,10 @@
 package diffscreen
 
+func neighborRows(row, distance int, direction Direction) [2]int {
+	offset := int(direction) * distance
+	return [2]int{row + offset, row - offset}
+}
+
 func (v *diffView) valid(cursor diffCursor) bool {
 	return cursor.row >= 0 && cursor.row < len(v.rows) &&
 		v.lineIndex(v.rows[cursor.row], cursor.pane) >= 0
