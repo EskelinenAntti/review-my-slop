@@ -50,7 +50,6 @@ func (m model) editSelectedComment() (tea.Model, tea.Cmd) {
 	cmd, err := m.openCommentEditor()
 	if err != nil {
 		m.err = err
-		m.clearCommentEdit()
 		return m, nil
 	}
 	return m, cmd
@@ -65,7 +64,6 @@ func (m *model) beginComment() (tea.Cmd, error) {
 	m.edit.body, m.edit.index, m.edit.anchor = "", -1, anchor
 	cmd, err := m.openCommentEditor()
 	if err != nil {
-		m.clearCommentEdit()
 		return nil, err
 	}
 	return cmd, nil
@@ -173,13 +171,17 @@ func (m model) sourceLocation() (string, int, error) {
 	return path, int(number), nil
 }
 
-func (m model) openCommentEditor() (tea.Cmd, error) {
-	return editor.EditComment(m.ctx, m.edit.body, m.edit.anchor, func(
+func (m *model) openCommentEditor() (tea.Cmd, error) {
+	cmd, err := editor.EditComment(m.ctx, m.edit.body, m.edit.anchor, func(
 		body string,
 		err error,
 	) tea.Msg {
 		return commentEditorFinishedMsg{body: body, err: err}
 	})
+	if err != nil {
+		m.clearCommentEdit()
+	}
+	return cmd, err
 }
 
 func (m model) commentIndex(selected comments.Comment) int {
