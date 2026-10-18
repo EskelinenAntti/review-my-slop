@@ -41,12 +41,12 @@ func start(
 	terminalSize func() size,
 	launch func(model, ...tea.ProgramOption) error,
 ) error {
-	pending, err := store.List(currentPatch.Root)
+	pendingComments, err := store.List(currentPatch.Root)
 	if err != nil {
 		return err
 	}
 	dimensions := terminalSize()
-	m, err := newWithStore(store, currentPatch, pending, dimensions)
+	m, err := newWithStore(store, currentPatch, pendingComments, dimensions)
 	if err != nil {
 		return err
 	}
