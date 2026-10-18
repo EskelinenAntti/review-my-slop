@@ -17,6 +17,10 @@ func (v *diffView) render(
 	selection *diffSelection,
 ) string {
 	viewport = v.clampViewport(viewport)
+	leftWidth, rightWidth := 0, 0
+	if v.split {
+		leftWidth, rightWidth = splitPaneWidths(viewport.width)
+	}
 	lines := make([]string, 0, viewport.height)
 	if v.hasStickyHeader(viewport.top, viewport.height) {
 		current := v.rows[viewport.top]
@@ -34,7 +38,15 @@ func (v *diffView) render(
 		if v.split && current.kind == lineRow {
 			lines = append(
 				lines,
-				v.renderSplitRow(current, y, viewport, cursor, selection),
+				v.renderSplitRow(
+					current,
+					y,
+					viewport,
+					leftWidth,
+					rightWidth,
+					cursor,
+					selection,
+				),
 			)
 		} else {
 			lines = append(
@@ -118,10 +130,10 @@ func (v *diffView) renderSplitRow(
 	current entry,
 	y int,
 	viewport diffViewport,
+	leftWidth, rightWidth int,
 	cursor diffCursor,
 	selection *diffSelection,
 ) string {
-	leftWidth, rightWidth := splitPaneWidths(viewport.width)
 	left := v.renderPane(
 		current,
 		y,
