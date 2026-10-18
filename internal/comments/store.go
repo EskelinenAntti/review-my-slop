@@ -48,11 +48,12 @@ func (s Store) Add(comment Comment) (Comment, error) {
 	if comment.Repository == "" {
 		return Comment{}, errors.New("comment requires a repository")
 	}
+	now := time.Now()
 	if comment.ID == "" {
-		comment.ID = fmt.Sprintf("%d", time.Now().UnixNano())
+		comment.ID = fmt.Sprintf("%d", now.UnixNano())
 	}
 	if comment.CreatedAt.IsZero() {
-		comment.CreatedAt = time.Now().UTC()
+		comment.CreatedAt = now.UTC()
 	}
 	data, err := encodeComment(comment)
 	if err != nil {
