@@ -79,7 +79,7 @@ func describeRange(anchor Anchor) string {
 		sides = append(sides, lineRange("new", anchor.NewStart, anchor.NewEnd))
 	}
 	if len(sides) == 0 {
-		return "diff lines"
+		return "Patch lines"
 	}
 	return strings.Join(sides, ", ")
 }

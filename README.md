@@ -1,6 +1,6 @@
 # review-my-slop
 
-![review-my-slop terminal diff review](docs/assets/review-my-slop.png)
+![review-my-slop terminal Patch review](docs/assets/review-my-slop.png)
 
 Coding has moved from the editor to the chat window. Agents can produce code at
 a pace that makes reading the code a bottleneck.
@@ -15,15 +15,15 @@ developer and the agent requires a shared understanding of the codebase. The
 mission of `review-my-slop` is to keep developers in the loop throughout their
 coding projects, from start to finish.
 
-`review-my-slop` is a keyboard-driven terminal diff viewer for reviewing local
-changes, attaching comments to exact lines or ranges, and handing that feedback
-back to the agent with one command.
+`review-my-slop` is a keyboard-driven terminal Patch viewer for reviewing local
+changes, attaching comments to exact lines or Patch ranges, and handing that
+feedback back to the agent with one command.
 
 ## The review loop
 
 1. Prompt the agent to make the initial change.
 2. Review that slop by running `review-my-slop code` in the repository.
-3. Read the diff and attach comments to individual lines or ranges.
+3. Read the Patch and attach comments to individual lines or Patch ranges.
 4. Let the agent review your slop comments by asking it to run
    `review-my-slop comments` and act on them.
 5. Repeat from step 2 until the code is no longer slop.

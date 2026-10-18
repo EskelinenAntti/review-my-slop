@@ -57,6 +57,19 @@ func TestWritePendingAcknowledgesOnlyExportedComments(t *testing.T) {
 	}
 }
 
+func TestWritePromptNamesPatchWhenRangeIsUnavailable(t *testing.T) {
+	var output bytes.Buffer
+	err := WritePrompt(&output, []Comment{{
+		Anchor: Anchor{FilePath: "main.go"},
+		Body:   "check this",
+	}})
+	testutil.NoError(t, err)
+	testutil.RequireEqual(t,
+		strings.Contains(output.String(), "`main.go` (Patch lines)"), true,
+		"output = %q", output.String(),
+	)
+}
+
 type addingWriter struct {
 	*bytes.Buffer
 	add func()
