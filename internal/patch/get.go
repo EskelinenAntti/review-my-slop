@@ -409,12 +409,14 @@ func untrackedFile(path string, metadata ...string) File {
 }
 
 func parseHunkBody(oldLine, newLine int32, body []byte) ([]Line, error) {
-	rawLines := bytes.Split(bytes.TrimSuffix(body, []byte("\n")), []byte("\n"))
 	if len(body) == 0 {
 		return []Line{}, nil
 	}
-	lines := make([]Line, 0, len(rawLines))
-	for _, raw := range rawLines {
+	lines := make([]Line, 0)
+	for raw := range bytes.SplitSeq(
+		bytes.TrimSuffix(body, []byte("\n")),
+		[]byte("\n"),
+	) {
 		if len(raw) == 0 {
 			return nil, errors.New("malformed empty diff line")
 		}
