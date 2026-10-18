@@ -27,8 +27,8 @@ func (m model) updateComments(name string) (tea.Model, tea.Cmd) {
 	case "enter", "e":
 		return m.editSelectedComment()
 	case "D":
-		if selected, ok := m.commentView.Selected(); ok {
-			m.deleteComment(m.commentIndex(selected))
+		if index, ok := m.commentView.SelectedIndex(); ok {
+			m.deleteComment(index)
 		}
 	default:
 		return m, nil
@@ -37,14 +37,11 @@ func (m model) updateComments(name string) (tea.Model, tea.Cmd) {
 }
 
 func (m model) editSelectedComment() (tea.Model, tea.Cmd) {
-	selected, ok := m.commentView.Selected()
+	index, ok := m.commentView.SelectedIndex()
 	if !ok {
 		return m, nil
 	}
-	m.edit.index = m.commentIndex(selected)
-	if m.edit.index < 0 {
-		return m, nil
-	}
+	m.edit.index = index
 	m.edit.body = m.comments.items[m.edit.index].Body
 	m.edit.anchor = m.comments.items[m.edit.index].Anchor
 	cmd, err := m.openCommentEditor()
@@ -181,23 +178,6 @@ func (m *model) openCommentEditor() (tea.Cmd, error) {
 		m.clearCommentEdit()
 	}
 	return cmd, err
-}
-
-func (m model) commentIndex(selected comments.Comment) int {
-	for index, item := range m.comments.items {
-		if matchesComment(selected, item) {
-			return index
-		}
-	}
-	return -1
-}
-
-func matchesComment(selected, candidate comments.Comment) bool {
-	if selected.ID != "" {
-		return candidate.ID == selected.ID
-	}
-	return candidate.Body == selected.Body &&
-		candidate.Anchor.FilePath == selected.Anchor.FilePath
 }
 
 func commentAnchor(file patch.File, lines []patch.Line) comments.Anchor {

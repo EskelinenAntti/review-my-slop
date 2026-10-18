@@ -58,10 +58,19 @@ func (v *View) Move(delta int) {
 
 // Selected returns the focused comment, or false when the list is empty.
 func (v *View) Selected() (comments.Comment, bool) {
-	if len(v.items) == 0 {
+	index, ok := v.SelectedIndex()
+	if !ok {
 		return comments.Comment{}, false
 	}
-	return v.items[v.row], true
+	return v.items[index], true
+}
+
+// SelectedIndex returns the focused comment's list index.
+func (v *View) SelectedIndex() (int, bool) {
+	if len(v.items) == 0 {
+		return 0, false
+	}
+	return v.row, true
 }
 
 // Click focuses a visible comment at zero-based terminal coordinates.
