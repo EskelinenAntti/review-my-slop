@@ -56,18 +56,50 @@ func (v *diffView) appendHunkRows(
 	highlighted highlightedSources,
 ) {
 	v.appendNonLineRow(hunkRow, fileIndex, hunkIndex, hunkHeader(hunk.Header))
-	for _, indices := range v.lineRows(hunk.Lines) {
-		row := entry{
-			kind:      lineRow,
-			file:      fileIndex,
-			hunk:      hunkIndex,
-			leftLine:  indices[0],
-			rightLine: indices[1],
-		}
-		v.highlightRow(&row, hunk.Lines, highlighted)
-		v.maxLineWidth = max(v.maxLineWidth, renderedLineWidth(row))
-		v.rows = append(v.rows, row)
+	appendRow := func(leftLine, rightLine int) {
+		v.appendLineRow(
+			fileIndex,
+			hunkIndex,
+			hunk.Lines,
+			highlighted,
+			leftLine,
+			rightLine,
+		)
 	}
+	for index := 0; index < len(hunk.Lines); {
+		if !v.split || hunk.Lines[index].Kind == patch.Context {
+			appendRow(index, index)
+			index++
+			continue
+		}
+		if hunk.Lines[index].Kind == patch.Addition {
+			appendRow(-1, index)
+			index++
+			continue
+		}
+		addedStart := changeBlockEnd(hunk.Lines, index, patch.Deletion)
+		end := changeBlockEnd(hunk.Lines, addedStart, patch.Addition)
+		appendPairedChangeRows(appendRow, index, addedStart, end)
+		index = end
+	}
+}
+
+func (v *diffView) appendLineRow(
+	fileIndex, hunkIndex int,
+	lines []patch.Line,
+	highlighted highlightedSources,
+	leftLine, rightLine int,
+) {
+	row := entry{
+		kind:      lineRow,
+		file:      fileIndex,
+		hunk:      hunkIndex,
+		leftLine:  leftLine,
+		rightLine: rightLine,
+	}
+	v.highlightRow(&row, lines, highlighted)
+	v.maxLineWidth = max(v.maxLineWidth, renderedLineWidth(row))
+	v.rows = append(v.rows, row)
 }
 
 func (v *diffView) appendNonLineRow(
@@ -102,29 +134,6 @@ func (v *diffView) highlightRow(
 	}
 }
 
-// lineRows maps source lines to display rows. Split mode pairs each deletion
-// block with the immediately following additions; unmatched panes use -1.
-func (v *diffView) lineRows(lines []patch.Line) [][2]int {
-	rows := make([][2]int, 0, len(lines))
-	for index := 0; index < len(lines); {
-		if !v.split || lines[index].Kind == patch.Context {
-			rows = append(rows, [2]int{index, index})
-			index++
-			continue
-		}
-		if lines[index].Kind == patch.Addition {
-			rows = append(rows, [2]int{-1, index})
-			index++
-			continue
-		}
-		addedStart := changeBlockEnd(lines, index, patch.Deletion)
-		end := changeBlockEnd(lines, addedStart, patch.Addition)
-		rows = appendPairedChangeRows(rows, index, addedStart, end)
-		index = end
-	}
-	return rows
-}
-
 func changeBlockEnd(lines []patch.Line, start int, kind patch.LineKind) int {
 	for start < len(lines) && lines[start].Kind == kind {
 		start++
@@ -133,21 +142,20 @@ func changeBlockEnd(lines []patch.Line, start int, kind patch.LineKind) int {
 }
 
 func appendPairedChangeRows(
-	rows [][2]int,
+	appendRow func(leftLine, rightLine int),
 	removedStart, addedStart, end int,
-) [][2]int {
+) {
 	count := max(addedStart-removedStart, end-addedStart)
 	for offset := 0; offset < count; offset++ {
-		pair := [2]int{-1, -1}
+		leftLine, rightLine := -1, -1
 		if removedStart+offset < addedStart {
-			pair[0] = removedStart + offset
+			leftLine = removedStart + offset
 		}
 		if addedStart+offset < end {
-			pair[1] = addedStart + offset
+			rightLine = addedStart + offset
 		}
-		rows = append(rows, pair)
+		appendRow(leftLine, rightLine)
 	}
-	return rows
 }
 
 func sourceText(highlighted highlightedSources, line patch.Line) string {
