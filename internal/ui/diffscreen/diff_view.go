@@ -63,7 +63,12 @@ func (v *diffView) appendHunkRows(
 	hunk patch.Hunk,
 	highlighted highlightedSources,
 ) {
-	v.appendNonLineRow(hunkRow, fileIndex, hunkIndex, hunkHeader(hunk.Header))
+	v.appendNonLineRow(
+		hunkRow,
+		fileIndex,
+		hunkIndex,
+		normalizeHunkHeader(hunk.Header),
+	)
 	appendRow := func(leftLine, rightLine int) {
 		v.appendLineRow(
 			fileIndex,
@@ -202,7 +207,7 @@ func (v *diffView) highlight(file *patch.File) highlightedSources {
 	}
 }
 
-func hunkHeader(header string) string {
+func normalizeHunkHeader(header string) string {
 	if strings.HasPrefix(header, "@@") {
 		return header
 	}
