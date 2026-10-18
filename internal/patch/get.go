@@ -64,6 +64,15 @@ func Get(ctx context.Context, kind Kind) (Patch, error) {
 	return load(ctx, directory, kind, execRunner{})
 }
 
+// RepositoryRoot resolves the current working directory's Git repository root.
+func RepositoryRoot(ctx context.Context) (string, error) {
+	directory, err := os.Getwd()
+	if err != nil {
+		return "", fmt.Errorf("resolve working directory: %w", err)
+	}
+	return discoverRepositoryRoot(ctx, execRunner{}, directory)
+}
+
 func load(
 	ctx context.Context,
 	directory string,
@@ -76,7 +85,7 @@ func load(
 	if err := ctx.Err(); err != nil {
 		return Patch{}, err
 	}
-	root, err := repositoryRoot(ctx, run, directory)
+	root, err := discoverRepositoryRoot(ctx, run, directory)
 	if err != nil {
 		return Patch{}, err
 	}
@@ -119,7 +128,7 @@ func comparisonBase(
 	return strings.TrimSpace(string(baseBytes)), nil
 }
 
-func repositoryRoot(
+func discoverRepositoryRoot(
 	ctx context.Context,
 	run runner,
 	directory string,

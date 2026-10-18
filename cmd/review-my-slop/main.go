@@ -51,11 +51,15 @@ func runCode(ctx context.Context) error {
 }
 
 func runComments(ctx context.Context, output io.Writer) error {
-	commentStore, currentPatch, err := loadCurrentReview(ctx)
+	commentStore, err := comments.OpenDefault()
 	if err != nil {
 		return err
 	}
-	return commentStore.WritePending(output, currentPatch.Root)
+	root, err := patch.RepositoryRoot(ctx)
+	if err != nil {
+		return err
+	}
+	return commentStore.WritePending(output, root)
 }
 
 func loadCurrentReview(
