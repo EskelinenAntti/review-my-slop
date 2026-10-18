@@ -1,6 +1,7 @@
 package app
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"path/filepath"
@@ -23,17 +24,24 @@ func testModel(
 	save saveCommentFunc,
 ) model {
 	return newModel(
+		context.Background(),
 		p,
 		items,
 		save,
-		initialLayout{size: size{width: 100, height: 30}},
+		initialLayout{dimensions: terminalDimensions{width: 100, height: 30}},
 	)
 }
 
 func TestStoreBackedCommentLifecycle(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	store := comments.Store{Path: filepath.Join(t.TempDir(), "comments.db")}
-	m, err := newWithStore(store, modelPatch(), nil, defaultSize)
+	m, err := newWithStore(
+		context.Background(),
+		store,
+		modelPatch(),
+		nil,
+		defaultDimensions,
+	)
 	testutil.NoError(t, err)
 
 	anchor := comments.Anchor{
@@ -93,9 +101,9 @@ func TestStoreBackedCommentLifecycle(t *testing.T) {
 }
 
 func TestNewUsesSavedSideBySideForWideInitialSize(t *testing.T) {
-	m := newModel(modelPatch(), nil, nil, initialLayout{
+	m := newModel(context.Background(), modelPatch(), nil, nil, initialLayout{
 		sideBySide: true,
-		size:       size{width: 120, height: 30},
+		dimensions: terminalDimensions{width: 120, height: 30},
 	})
 	testutil.RequireEqual(t, m.diffOptions.SideBySide, true,
 		"sideBySide=%v render=%q", m.diffOptions.SideBySide, m.render(),
@@ -106,9 +114,9 @@ func TestNewUsesSavedSideBySideForWideInitialSize(t *testing.T) {
 }
 
 func TestNewKeepsSavedSideBySideInactiveForNarrowInitialSize(t *testing.T) {
-	m := newModel(modelPatch(), nil, nil, initialLayout{
+	m := newModel(context.Background(), modelPatch(), nil, nil, initialLayout{
 		sideBySide: true,
-		size:       size{width: 80, height: 30},
+		dimensions: terminalDimensions{width: 80, height: 30},
 	})
 	testutil.RequireEqual(t, m.diffOptions.SideBySide, true,
 		"sideBySide=%v render=%q", m.diffOptions.SideBySide, m.render(),
@@ -128,12 +136,12 @@ func TestNewKeepsSavedSideBySideInactiveForNarrowInitialSize(t *testing.T) {
 
 func TestSideBySideToggleStillSavesPreference(t *testing.T) {
 	var saved []bool
-	m := newModel(modelPatch(), nil, nil, initialLayout{
+	m := newModel(context.Background(), modelPatch(), nil, nil, initialLayout{
 		saveSideBySide: func(enabled bool) error {
 			saved = append(saved, enabled)
 			return nil
 		},
-		size: size{width: 120, height: 30},
+		dimensions: terminalDimensions{width: 120, height: 30},
 	})
 
 	m = updateModel(t, m, textKey("t"))
@@ -164,7 +172,13 @@ func TestRefreshTranslatesCursorAndSelection(t *testing.T) {
 func TestUnchangedRefreshPreservesStateAndClearsError(t *testing.T) {
 	p := longModelPatch()
 	p.Files[0].OldPath, p.Files[0].NewPath = "long.go", "long.go"
-	m := newModel(p, nil, nil, initialLayout{size: size{width: 40, height: 8}})
+	m := newModel(
+		context.Background(),
+		p,
+		nil,
+		nil,
+		initialLayout{dimensions: terminalDimensions{width: 40, height: 8}},
+	)
 	for range 8 {
 		m.diffView.Move(diffscreen.NextLine)
 	}
@@ -235,7 +249,7 @@ func TestCommentSaveUsesPatchAndPreservesAnchor(t *testing.T) {
 
 func TestRenderingAndKeyBindingsRemainAvailable(t *testing.T) {
 	m := testModel(modelPatch(), nil, nil)
-	m.width, m.height = 80, 10
+	m.dimensions = terminalDimensions{width: 80, height: 10}
 	m.resizeScreens()
 	m.resizeScreens()
 	rendered := m.render()
@@ -258,15 +272,18 @@ func TestRenderingAndKeyBindingsRemainAvailable(t *testing.T) {
 
 func TestEmptyViewKeepsKeyboardHintAtBottom(t *testing.T) {
 	m := testModel(patch.Patch{}, nil, nil)
-	m.width, m.height = 80, 10
+	m.dimensions = terminalDimensions{width: 80, height: 10}
 	m.resizeScreens()
 
 	lines := strings.Split(m.render(), "\n")
-	if got, want := lines[m.height-2], "j/k/h/l move"; !strings.Contains(
-		got,
-		want,
-	) {
-		t.Fatalf("line %d = %q, want it to contain %q", m.height-1, got, want)
+	got, want := lines[m.dimensions.height-2], "j/k/h/l move"
+	if !strings.Contains(got, want) {
+		t.Fatalf(
+			"line %d = %q, want it to contain %q",
+			m.dimensions.height-1,
+			got,
+			want,
+		)
 	}
 	if got := lines[2]; !strings.Contains(
 		got,
@@ -287,7 +304,7 @@ func TestMenuKeyboardHintsStayAtBottom(t *testing.T) {
 		},
 		nil,
 	)
-	m.width, m.height = 80, 10
+	m.dimensions = terminalDimensions{width: 80, height: 10}
 	m.resizeScreens()
 
 	tests := []struct {
@@ -302,10 +319,13 @@ func TestMenuKeyboardHintsStayAtBottom(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			m.mode = test.mode
 			lines := strings.Split(m.render(), "\n")
-			if got := lines[m.height-2]; !strings.Contains(got, test.hint) {
+			if got := lines[m.dimensions.height-2]; !strings.Contains(
+				got,
+				test.hint,
+			) {
 				t.Fatalf(
 					"line %d = %q, want it to contain %q",
-					m.height-1,
+					m.dimensions.height-1,
 					got,
 					test.hint,
 				)
@@ -323,7 +343,7 @@ func TestCommentsMenuScrollsWithinScreenBody(t *testing.T) {
 		}
 	}
 	m := testModel(modelPatch(), items, nil)
-	m.width, m.height = 80, 7
+	m.dimensions = terminalDimensions{width: 80, height: 7}
 	m.mode = modeComments
 	m.resizeScreens()
 	m.commentView.Move(len(items))
@@ -331,13 +351,15 @@ func TestCommentsMenuScrollsWithinScreenBody(t *testing.T) {
 	rendered := strings.Split(ansi.Strip(m.render()), "\n")
 	testutil.RequireEqual(t,
 		strings.Contains(
-			strings.Join(rendered[1:m.height-2], "\n"),
+			strings.Join(rendered[1:m.dimensions.height-2], "\n"),
 			"comment 9",
 		),
 		true, "selected comment is outside the screen body: %q", rendered,
 	)
-	testutil.RequireEqual(t, strings.Contains(rendered[m.height-2], "j/k move"),
-		true, "footer line = %q", rendered[m.height-2],
+	testutil.RequireEqual(
+		t,
+		strings.Contains(rendered[m.dimensions.height-2], "j/k move"),
+		true, "footer line = %q", rendered[m.dimensions.height-2],
 	)
 }
 
@@ -373,8 +395,8 @@ func TestNarrowLayoutToggleSavesPreferenceWithoutApplicationGeometryRules(
 	t *testing.T,
 ) {
 	var saved []bool
-	m := newModel(modelPatch(), nil, nil, initialLayout{
-		size: size{width: 80, height: 30},
+	m := newModel(context.Background(), modelPatch(), nil, nil, initialLayout{
+		dimensions: terminalDimensions{width: 80, height: 30},
 		saveSideBySide: func(enabled bool) error {
 			saved = append(saved, enabled)
 			return nil

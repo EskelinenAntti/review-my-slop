@@ -27,7 +27,7 @@ func New(sequences ...Sequence) Matcher {
 	m := Matcher{sequences: make(map[string]continuation, len(sequences))}
 	for _, binding := range sequences {
 		m.sequences[binding.Prefix] = continuation{
-			keys:           append([]string(nil), binding.Keys...),
+			keys:           slices.Clone(binding.Keys),
 			retryUnmatched: binding.RetryUnmatched,
 		}
 	}

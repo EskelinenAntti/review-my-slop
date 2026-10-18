@@ -6,9 +6,9 @@ import "github.com/eskelinenantti/review-my-slop/internal/ui/internal/frame"
 // selection. Coordinates are zero-based terminal cells, including the header.
 // Headers, metadata, empty panes, and cells outside the body are ignored.
 func (v *View) BeginDrag(x, y int) bool {
-	v.EndDrag()
 	cursor, ok := v.cursorAtPoint(x, y)
 	if !ok {
+		v.EndDrag()
 		return false
 	}
 	v.ClearSelection()

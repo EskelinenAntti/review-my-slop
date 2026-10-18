@@ -2,21 +2,6 @@ package app
 
 import tea "charm.land/bubbletea/v2"
 
-func (m *model) updateMouse(msg tea.Msg) {
-	switch msg := msg.(type) {
-	case tea.MouseClickMsg:
-		m.click(msg)
-	case tea.MouseMotionMsg:
-		m.drag(msg)
-	case tea.MouseReleaseMsg:
-		m.release(msg)
-	case tea.MouseWheelMsg:
-		m.wheel(msg)
-	default:
-		return
-	}
-}
-
 func (m *model) click(msg tea.MouseClickMsg) {
 	if msg.Button != tea.MouseLeft {
 		return

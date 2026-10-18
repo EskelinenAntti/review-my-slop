@@ -38,19 +38,24 @@ func start(
 	currentPatch patch.Patch,
 	store commentStore,
 	refresh func(context.Context, patch.Kind) (patch.Patch, error),
-	terminalSize func() size,
+	terminalSize func() terminalDimensions,
 	launch func(model, ...tea.ProgramOption) error,
 ) error {
-	pending, err := store.List(currentPatch.Root)
+	pendingComments, err := store.List(currentPatch.Root)
 	if err != nil {
 		return err
 	}
 	dimensions := terminalSize()
-	m, err := newWithStore(store, currentPatch, pending, dimensions)
+	m, err := newWithStore(
+		ctx,
+		store,
+		currentPatch,
+		pendingComments,
+		dimensions,
+	)
 	if err != nil {
 		return err
 	}
-	m.ctx = ctx
 	if refresh != nil {
 		m.refresh = func(kind patch.Kind) (patch.Patch, error) {
 			return refresh(ctx, kind)
@@ -63,15 +68,18 @@ func start(
 	)
 }
 
-func initialTerminalSize() size {
+func initialTerminalSize() terminalDimensions {
 	return discoverTerminalSize(term.GetSize)
 }
 
-func discoverTerminalSize(getSize func(uintptr) (int, int, error)) size {
+func discoverTerminalSize(
+	getSize func(uintptr) (int, int, error),
+) terminalDimensions {
 	for _, descriptor := range [...]uintptr{os.Stdin.Fd(), os.Stdout.Fd()} {
-		if width, height, err := getSize(descriptor); err == nil {
-			return size{width: width, height: height}
+		if width, height, err := getSize(descriptor); err == nil &&
+			width > 0 && height > 0 {
+			return terminalDimensions{width: width, height: height}
 		}
 	}
-	return defaultSize
+	return defaultDimensions
 }

@@ -1,31 +1,35 @@
 package editor
 
 import (
-	"context"
 	"fmt"
 	"os"
-	"os/exec"
-	"strconv"
 	"strings"
 
+	"github.com/eskelinenantti/review-my-slop/internal/appinfo"
 	"github.com/eskelinenantti/review-my-slop/internal/comments"
 )
 
 func createCommentFile(body string, anchor comments.Anchor) (string, error) {
-	file, err := os.CreateTemp("", "review-my-slop-comment-*.md")
+	file, err := os.CreateTemp("", appinfo.Name+"-comment-*.md")
 	if err != nil {
 		return "", fmt.Errorf("create comment file: %w", err)
 	}
 	path := file.Name()
-	if _, err := file.WriteString(commentDraft(body, anchor)); err != nil {
+	succeeded := false
+	defer func() {
+		if succeeded {
+			return
+		}
 		_ = file.Close()
 		_ = os.Remove(path)
+	}()
+	if _, err := file.WriteString(commentDraft(body, anchor)); err != nil {
 		return "", fmt.Errorf("write comment file: %w", err)
 	}
 	if err := file.Close(); err != nil {
-		_ = os.Remove(path)
 		return "", fmt.Errorf("close comment file: %w", err)
 	}
+	succeeded = true
 	return path, nil
 }
 
@@ -58,13 +62,11 @@ func stripUnchangedSuggestion(body string, quoted []string) string {
 		return body
 	}
 	suggestion := suggestionBlock(suggestionLines(quoted))
-	start := strings.Index(body, suggestion)
-	if start < 0 {
+	before, after, found := strings.Cut(body, suggestion)
+	if !found {
 		return body
 	}
-	end := start + len(suggestion)
-	before := strings.TrimRight(body[:start], "\n")
-	after := body[end:]
+	before = strings.TrimRight(before, "\n")
 	if strings.TrimSpace(after) == "" {
 		return before
 	}
@@ -82,23 +84,6 @@ func suggestionBlock(lines []string) string {
 	}
 	_, _ = block.WriteString(fence)
 	return block.String()
-}
-
-func commentCommand(ctx context.Context, editor, path string) *exec.Cmd {
-	return shellCommand(ctx, editor, shellQuote(path))
-}
-
-func sourceCommand(
-	ctx context.Context,
-	editor, path string,
-	line int,
-) *exec.Cmd {
-	arguments := "+" + strconv.Itoa(line) + " " + shellQuote(path)
-	return shellCommand(ctx, editor, arguments)
-}
-
-func shellCommand(ctx context.Context, editor, arguments string) *exec.Cmd {
-	return exec.CommandContext(ctx, "sh", "-c", editor+" "+arguments)
 }
 
 func suggestionLines(quoted []string) []string {
@@ -125,8 +110,4 @@ func contextFence(lines []string) string {
 		}
 	}
 	return strings.Repeat("`", max(3, longest+1))
-}
-
-func shellQuote(value string) string {
-	return "'" + strings.ReplaceAll(value, "'", "'\"'\"'") + "'"
 }

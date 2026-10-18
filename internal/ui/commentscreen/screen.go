@@ -3,17 +3,20 @@ package commentscreen
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/eskelinenantti/review-my-slop/internal/comments"
+	"github.com/eskelinenantti/review-my-slop/internal/ui"
 	"github.com/eskelinenantti/review-my-slop/internal/ui/internal/frame"
 )
 
 // View owns list focus, scrolling, and comment presentation.
 type View struct {
 	items         []comments.Comment
+	pendingLabel  string
 	row           int
 	top           int
 	width, height int
@@ -21,7 +24,10 @@ type View struct {
 
 // New creates a comment list view with default terminal dimensions.
 func New(items []comments.Comment) *View {
-	v := &View{width: 80, height: 30}
+	v := &View{
+		width:  ui.DefaultScreenWidth,
+		height: ui.DefaultScreenHeight,
+	}
 	v.Update(items)
 	return v
 }
@@ -29,12 +35,16 @@ func New(items []comments.Comment) *View {
 // Update preserves focus by comment ID, falling back to the nearest list index
 // when the selected comment disappears. Empty lists are valid.
 func (v *View) Update(items []comments.Comment) {
-	selected, ok := v.Selected()
-	v.items = append([]comments.Comment(nil), items...)
-	v.row = min(v.row, max(0, len(items)-1))
-	if ok && selected.ID != "" {
-		for index, item := range items {
-			if item.ID == selected.ID {
+	selectedID := ""
+	if index, ok := v.SelectedIndex(); ok {
+		selectedID = v.items[index].ID
+	}
+	v.items = slices.Clone(items)
+	v.pendingLabel = fmt.Sprintf("%d pending", len(v.items))
+	v.row = min(v.row, max(0, len(v.items)-1))
+	if selectedID != "" {
+		for index, item := range v.items {
+			if item.ID == selectedID {
 				v.row = index
 				break
 			}
@@ -80,7 +90,7 @@ func (v *View) Click(x, y int) bool {
 	if !ok {
 		return false
 	}
-	row += v.firstVisibleRow(height)
+	row += v.firstVisibleItem(height)
 	if row >= len(v.items) {
 		return false
 	}
@@ -88,7 +98,7 @@ func (v *View) Click(x, y int) bool {
 	return true
 }
 
-func (v *View) firstVisibleRow(height int) int {
+func (v *View) firstVisibleItem(height int) int {
 	return min(max(0, v.top), max(0, len(v.items)-height))
 }
 
@@ -96,23 +106,29 @@ func (v *View) keepVisible() {
 	height := frame.BodyHeight(v.height)
 	v.top = min(v.top, v.row)
 	v.top = max(v.top, v.row-height+1)
-	v.top = v.firstVisibleRow(height)
+	v.top = v.firstVisibleItem(height)
 }
 
 // Render composes the screen, showing a non-nil error in place of its hints.
 func (v *View) Render(err error) string {
-	pending := frame.Muted(fmt.Sprintf("%d pending", len(v.items)))
+	width := frame.ScreenWidth(v.width)
+	pending := frame.Muted(v.pendingLabel)
 	header := frame.Title("comments") + "  " + pending
 	height := frame.BodyHeight(v.height)
-	body := make([]string, 0, height)
+	var body []string
 	if len(v.items) == 0 {
-		body = make([]string, height)
-		body[min(1, height-1)] = frame.Muted("No pending comments.")
+		body = frame.EmptyBody(v.height, "No pending comments.")
 	} else {
-		start := v.firstVisibleRow(height)
+		rowStyle := commentRowStyle.Width(width)
+		selectedRowStyle := selectedCommentRowStyle.Width(width)
+		body = make([]string, 0, height)
+		start := v.firstVisibleItem(height)
 		end := min(len(v.items), start+height)
 		for index := start; index < end; index++ {
-			body = append(body, v.renderRow(index))
+			body = append(
+				body,
+				v.renderRow(index, width, rowStyle, selectedRowStyle),
+			)
 		}
 	}
 	footer := frame.Muted(
@@ -120,16 +136,19 @@ func (v *View) Render(err error) string {
 	)
 	if err != nil {
 		message := frame.SingleLine(err.Error())
-		footer = frame.Error(ansi.Truncate(message, max(20, v.width), ""))
+		footer = frame.Error(ansi.Truncate(message, width, ""))
 	}
 	return frame.Render(header, body, footer, v.height)
 }
 
-func (v *View) renderRow(index int) string {
+func (v *View) renderRow(
+	index, width int,
+	rowStyle, selectedRowStyle lipgloss.Style,
+) string {
 	comment := v.items[index]
-	prefix, style := "  ", lipgloss.NewStyle()
+	prefix, style := "  ", rowStyle
 	if index == v.row {
-		prefix, style = "> ", lipgloss.NewStyle().Reverse(true)
+		prefix, style = "> ", selectedRowStyle
 	}
 	location := comment.Anchor.FilePath
 	if comment.Anchor.NewStart > 0 {
@@ -137,11 +156,16 @@ func (v *View) renderRow(index int) string {
 	} else if comment.Anchor.OldStart > 0 {
 		location += fmt.Sprintf(":%d", comment.Anchor.OldStart)
 	}
-	text := strings.ReplaceAll(strings.TrimSpace(comment.Body), "\n", " ")
+	text := frame.SingleLine(strings.TrimSpace(comment.Body))
 	line := ansi.Truncate(
 		fmt.Sprintf("%s%s  %s", prefix, location, text),
-		max(20, v.width),
+		width,
 		"",
 	)
-	return style.Width(max(20, v.width)).Render(line)
+	return style.Render(line)
 }
+
+var (
+	commentRowStyle         = lipgloss.NewStyle()
+	selectedCommentRowStyle = lipgloss.NewStyle().Reverse(true)
+)

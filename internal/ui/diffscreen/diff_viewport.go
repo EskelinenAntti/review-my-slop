@@ -55,6 +55,7 @@ func (v *diffView) keepVisible(
 		return v.clampViewport(viewport)
 	}
 	viewport = v.clampViewport(viewport)
+	// The top row may toggle the sticky header, changing usable height.
 	for range 2 {
 		height := v.contentHeight(viewport)
 		if cursor.row < viewport.top {
@@ -177,7 +178,10 @@ func (v *diffView) nearest(
 	viewport diffViewport,
 ) (diffCursor, bool) {
 	height := v.contentHeight(viewport)
-	for distance := 0; distance < height; distance++ {
+	if cursor, ok := v.cursorInViewport(target, pane, viewport); ok {
+		return cursor, true
+	}
+	for distance := 1; distance < height; distance++ {
 		for _, y := range neighborRows(target, distance, direction) {
 			if cursor, ok := v.cursorInViewport(y, pane, viewport); ok {
 				return cursor, true

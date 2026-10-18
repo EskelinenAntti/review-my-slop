@@ -2,7 +2,6 @@ package comments
 
 import (
 	"bytes"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -10,6 +9,8 @@ import (
 	"time"
 
 	bolt "go.etcd.io/bbolt"
+
+	"github.com/eskelinenantti/review-my-slop/internal/appinfo"
 )
 
 const (
@@ -17,7 +18,14 @@ const (
 	maxPendingBytes = 16 << 20
 )
 
-var messagesBucket = []byte("messages")
+var commentsBucket = []byte("messages")
+
+type databaseMode uint8
+
+const (
+	writeDatabase databaseMode = iota
+	readDatabase
+)
 
 // Store persists pending review comments in a database at Path.
 type Store struct {
@@ -26,7 +34,7 @@ type Store struct {
 
 // DefaultPath returns the database path in the application data directory.
 func DefaultPath() (string, error) {
-	data, err := DataDir()
+	data, err := appinfo.DataDir()
 	if err != nil {
 		return "", err
 	}
@@ -66,37 +74,34 @@ func (s Store) Add(comment Comment) (Comment, error) {
 }
 
 func addComment(bucket *bolt.Bucket, id string, data []byte) error {
-	if pendingBytes(bucket)+len(data) > maxPendingBytes {
-		return fmt.Errorf("pending feedback exceeds %d bytes", maxPendingBytes)
-	}
 	if bucket.Get([]byte(id)) != nil {
 		return errors.New("comment ID already exists")
+	}
+	if err := checkPendingSize(bucket, 0, len(data)); err != nil {
+		return err
 	}
 	return bucket.Put([]byte(id), data)
 }
 
 // List returns pending comments for the repository.
 func (s Store) List(repository string) ([]Comment, error) {
-	var comments []Comment
+	var pendingComments []Comment
 	err := s.view(func(bucket *bolt.Bucket) error {
 		return forEachComment(bucket, func(_ []byte, comment Comment) bool {
 			if comment.Repository == repository {
-				comments = append(comments, comment)
+				pendingComments = append(pendingComments, comment)
 			}
 			return true
 		})
 	})
-	return comments, err
+	return pendingComments, err
 }
 
 // Update replaces an existing comment in the repository.
 func (s Store) Update(comment Comment) error {
-	identityErr := validateCommentIdentity(
-		comment.Repository,
-		comment.ID,
-	)
-	if identityErr != nil {
-		return identityErr
+	err := validateCommentIdentity(comment.Repository, comment.ID)
+	if err != nil {
+		return err
 	}
 	data, err := encodeComment(comment)
 	if err != nil {
@@ -128,12 +133,12 @@ func (s Store) Acknowledge(repository string, ids []string) error {
 	if len(ids) == 0 {
 		return nil
 	}
-	wanted := make(map[string]struct{}, len(ids))
+	wantedIDs := make(map[string]struct{}, len(ids))
 	for _, id := range ids {
-		wanted[id] = struct{}{}
+		wantedIDs[id] = struct{}{}
 	}
 	return s.transact(func(bucket *bolt.Bucket) error {
-		keys, err := findPendingKeys(bucket, repository, wanted)
+		keys, err := findPendingKeys(bucket, repository, wantedIDs)
 		if err != nil {
 			return err
 		}
@@ -159,9 +164,23 @@ func pendingBytes(bucket *bolt.Bucket) int {
 	return total
 }
 
+func checkPendingSize(
+	bucket *bolt.Bucket,
+	replacedBytes, addedBytes int,
+) error {
+	if pendingBytes(bucket)-replacedBytes+addedBytes > maxPendingBytes {
+		return fmt.Errorf("pending feedback exceeds %d bytes", maxPendingBytes)
+	}
+	return nil
+}
+
 func replaceComment(bucket *bolt.Bucket, comment Comment, data []byte) error {
 	key, err := findCommentKey(bucket, comment.Repository, comment.ID)
 	if err != nil {
+		return err
+	}
+	oldSize := len(bucket.Get(key))
+	if err := checkPendingSize(bucket, oldSize, len(data)); err != nil {
 		return err
 	}
 	if !bytes.Equal(key, []byte(comment.ID)) {
@@ -179,7 +198,7 @@ func findCommentKey(
 	var found []byte
 	err := forEachComment(bucket, func(key []byte, comment Comment) bool {
 		if comment.Repository == repository && comment.ID == id {
-			found = append([]byte(nil), key...)
+			found = bytes.Clone(key)
 			return false
 		}
 		return true
@@ -196,15 +215,15 @@ func findCommentKey(
 func findPendingKeys(
 	bucket *bolt.Bucket,
 	repository string,
-	wanted map[string]struct{},
+	wantedIDs map[string]struct{},
 ) ([][]byte, error) {
 	var keys [][]byte
 	err := forEachComment(bucket, func(key []byte, comment Comment) bool {
 		if comment.Repository != repository {
 			return true
 		}
-		if _, ok := wanted[comment.ID]; ok {
-			keys = append(keys, append([]byte(nil), key...))
+		if _, ok := wantedIDs[comment.ID]; ok {
+			keys = append(keys, bytes.Clone(key))
 		}
 		return true
 	})
@@ -228,75 +247,14 @@ func forEachComment(
 	return nil
 }
 
-func validateComment(comment Comment) error {
-	if len(comment.Body) == 0 {
-		return errors.New("comment body is empty")
-	}
-	if len(comment.Body) > maxCommentBytes {
-		return fmt.Errorf("comment exceeds %d bytes", maxCommentBytes)
-	}
-	return nil
-}
-
-func validateCommentIdentity(repository, id string) error {
-	if repository == "" || id == "" {
-		return errors.New("repository and comment ID are required")
-	}
-	return nil
-}
-
-func encodeComment(comment Comment) ([]byte, error) {
-	if err := validateComment(comment); err != nil {
-		return nil, err
-	}
-	data, err := json.Marshal(comment)
-	if err != nil {
-		return nil, fmt.Errorf("encode comment: %w", err)
-	}
-	return data, nil
-}
-
-type legacyComment struct {
-	Anchor Anchor `json:"anchor"`
-	Body   string `json:"body"`
-}
-
-type commentRecord struct {
-	ID         string         `json:"id"`
-	Repository string         `json:"repository"`
-	CreatedAt  time.Time      `json:"created_at"`
-	Anchor     Anchor         `json:"anchor"`
-	Body       string         `json:"body"`
-	Comment    *legacyComment `json:"comment"`
-}
-
-func decodeComment(data []byte) (Comment, error) {
-	var record commentRecord
-	if err := json.Unmarshal(data, &record); err != nil {
-		return Comment{}, fmt.Errorf("decode comment: %w", err)
-	}
-	comment := Comment{
-		ID:         record.ID,
-		Repository: record.Repository,
-		CreatedAt:  record.CreatedAt,
-		Anchor:     record.Anchor,
-		Body:       record.Body,
-	}
-	if record.Comment != nil {
-		comment.Anchor = record.Comment.Anchor
-		comment.Body = record.Comment.Body
-	}
-	return comment, nil
-}
-
 func (s Store) transact(fn func(*bolt.Bucket) error) error {
-	db, err := s.open()
+	db, err := s.openForWrite()
 	if err != nil {
 		return err
 	}
 	defer db.Close()
 	return db.Update(func(tx *bolt.Tx) error {
-		bucket, err := tx.CreateBucketIfNotExists(messagesBucket)
+		bucket, err := tx.CreateBucketIfNotExists(commentsBucket)
 		if err != nil {
 			return err
 		}
@@ -305,7 +263,7 @@ func (s Store) transact(fn func(*bolt.Bucket) error) error {
 }
 
 func (s Store) view(fn func(*bolt.Bucket) error) error {
-	db, err := s.open()
+	db, err := s.openForRead()
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			return nil
@@ -314,7 +272,7 @@ func (s Store) view(fn func(*bolt.Bucket) error) error {
 	}
 	defer db.Close()
 	return db.View(func(tx *bolt.Tx) error {
-		bucket := tx.Bucket(messagesBucket)
+		bucket := tx.Bucket(commentsBucket)
 		if bucket == nil {
 			return nil
 		}
@@ -322,17 +280,22 @@ func (s Store) view(fn func(*bolt.Bucket) error) error {
 	})
 }
 
-func (s Store) open() (*bolt.DB, error) {
-	if s.Path == "" {
-		return nil, errors.New("comments path is empty")
+func (s Store) openForWrite() (*bolt.DB, error) {
+	return s.openDatabase(writeDatabase)
+}
+
+func (s Store) openForRead() (*bolt.DB, error) {
+	return s.openDatabase(readDatabase)
+}
+
+func (s Store) openDatabase(mode databaseMode) (*bolt.DB, error) {
+	if err := s.preparePath(mode); err != nil {
+		return nil, err
 	}
-	if err := os.MkdirAll(filepath.Dir(s.Path), 0o700); err != nil {
-		return nil, fmt.Errorf("create comments directory: %w", err)
-	}
-	if err := os.Chmod(filepath.Dir(s.Path), 0o700); err != nil {
-		return nil, fmt.Errorf("secure comments directory: %w", err)
-	}
-	db, err := bolt.Open(s.Path, 0o600, &bolt.Options{Timeout: 2 * time.Second})
+	db, err := bolt.Open(s.Path, 0o600, &bolt.Options{
+		Timeout:  2 * time.Second,
+		ReadOnly: mode == readDatabase,
+	})
 	if err != nil {
 		return nil, fmt.Errorf("open comments: %w", err)
 	}
@@ -341,4 +304,28 @@ func (s Store) open() (*bolt.DB, error) {
 		return nil, fmt.Errorf("secure comments database: %w", err)
 	}
 	return db, nil
+}
+
+func (s Store) preparePath(mode databaseMode) error {
+	if err := s.validatePath(); err != nil {
+		return err
+	}
+	if mode == readDatabase {
+		if _, err := os.Stat(s.Path); err != nil {
+			return fmt.Errorf("open comments: %w", err)
+		}
+	} else if err := os.MkdirAll(filepath.Dir(s.Path), 0o700); err != nil {
+		return fmt.Errorf("create comments directory: %w", err)
+	}
+	if err := os.Chmod(filepath.Dir(s.Path), 0o700); err != nil {
+		return fmt.Errorf("secure comments directory: %w", err)
+	}
+	return nil
+}
+
+func (s Store) validatePath() error {
+	if s.Path == "" {
+		return errors.New("comments path is empty")
+	}
+	return nil
 }

@@ -129,12 +129,12 @@ func (v *diffView) searchMetadata(
 	direction direction,
 ) (diffCursor, bool) {
 	if strings.Contains(strings.ToLower(ansi.Strip(v.rows[y].text)), query) {
-		return v.cursorNearRow(y, pane, direction)
+		return v.cursorNearMetadata(y, pane, direction)
 	}
 	return diffCursor{}, false
 }
 
-func (v *diffView) cursorNearRow(
+func (v *diffView) cursorNearMetadata(
 	y int,
 	pane diffPane,
 	direction direction,

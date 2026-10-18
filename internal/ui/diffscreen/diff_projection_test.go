@@ -50,6 +50,11 @@ func TestSplitRowsPairOnlyAdjacentChangeBlocks(t *testing.T) {
 			},
 		},
 		{
+			"unknown line kind advances as a context row",
+			[]patch.Line{code(patch.LineKind(255), "unknown")},
+			[][2]string{{"unknown", "unknown"}},
+		},
+		{
 			"addition before deletion",
 			[]patch.Line{a1, d1, a2},
 			[][2]string{{"", "new-a"}, {"old-a", "new-b"}},

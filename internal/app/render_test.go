@@ -1,6 +1,7 @@
 package app
 
 import (
+	"context"
 	"errors"
 	"strings"
 	"testing"
@@ -17,10 +18,13 @@ func TestWorkflowErrorKeepsDiffLabelWithinFooter(t *testing.T) {
 			p := modelPatch()
 			p.Kind, p.Branch = kind, "main"
 			m := newModel(
+				context.Background(),
 				p,
 				nil,
 				nil,
-				initialLayout{size: size{width: width, height: 8}},
+				initialLayout{
+					dimensions: terminalDimensions{width: width, height: 8},
+				},
 			)
 			m.err = errors.New(
 				"a very long storage failure\n" +

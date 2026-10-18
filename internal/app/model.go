@@ -6,6 +6,7 @@ import (
 
 	"github.com/eskelinenantti/review-my-slop/internal/comments"
 	"github.com/eskelinenantti/review-my-slop/internal/settings"
+	"github.com/eskelinenantti/review-my-slop/internal/ui"
 	"github.com/eskelinenantti/review-my-slop/internal/ui/commentscreen"
 	"github.com/eskelinenantti/review-my-slop/internal/ui/diffscreen"
 	"github.com/eskelinenantti/review-my-slop/internal/ui/keymap"
@@ -32,7 +33,7 @@ type commentStore interface {
 	Delete(string, string) error
 }
 
-type size struct {
+type terminalDimensions struct {
 	width  int
 	height int
 }
@@ -40,7 +41,7 @@ type size struct {
 type initialLayout struct {
 	sideBySide     bool
 	saveSideBySide saveSideBySideFunc
-	size           size
+	dimensions     terminalDimensions
 }
 
 type refreshDiffMsg struct {
@@ -72,7 +73,10 @@ const (
 const horizontalScrollStep = 4
 const verticalScrollStep = 3
 
-var defaultSize = size{width: 80, height: 30}
+var defaultDimensions = terminalDimensions{
+	width:  ui.DefaultScreenWidth,
+	height: ui.DefaultScreenHeight,
+}
 
 // commentState pairs stored comments with the revision used to reject stale
 // loads.
@@ -92,8 +96,7 @@ type model struct {
 
 	diffView    *diffscreen.View
 	commentView *commentscreen.View
-	width       int
-	height      int
+	dimensions  terminalDimensions
 	mode        mode
 	keys        keymap.Matcher
 
@@ -113,30 +116,30 @@ type model struct {
 }
 
 func newModel(
-	p patch.Patch,
-	items []comments.Comment,
+	ctx context.Context,
+	currentPatch patch.Patch,
+	pendingComments []comments.Comment,
 	save saveCommentFunc,
 	layout initialLayout,
 ) model {
-	size := layout.size
-	if size.width <= 0 || size.height <= 0 {
-		size = defaultSize
+	dimensions := layout.dimensions
+	if dimensions.width <= 0 || dimensions.height <= 0 {
+		dimensions = defaultDimensions
 	}
 	m := model{
-		ctx:          context.Background(),
-		currentPatch: p,
-		comments:     commentState{items: items},
-		commentView:  commentscreen.New(items),
+		ctx:          ctx,
+		currentPatch: currentPatch,
+		comments:     commentState{items: pendingComments},
+		commentView:  commentscreen.New(pendingComments),
 		edit:         commentEdit{index: -1},
-		width:        size.width,
-		height:       size.height,
+		dimensions:   dimensions,
 		save:         save,
 		saveLayout:   layout.saveSideBySide,
 		diffOptions: diffscreen.Options{
 			SideBySide: layout.sideBySide,
 			Dark:       true,
 		},
-		kind: p.Kind,
+		kind: currentPatch.Kind,
 		keys: keymap.New(
 			keymap.Sequence{
 				Prefix:         "g",
@@ -152,22 +155,23 @@ func newModel(
 			},
 		),
 	}
-	m.diffView = diffscreen.New(p, m.diffOptions)
+	m.diffView = diffscreen.New(currentPatch, m.diffOptions)
 	m.resizeScreens()
 	return m
 }
 
 func newWithStore(
+	ctx context.Context,
 	store commentStore,
-	p patch.Patch,
-	items []comments.Comment,
-	size size,
+	currentPatch patch.Patch,
+	pendingComments []comments.Comment,
+	dimensions terminalDimensions,
 ) (model, error) {
 	preferences, err := settings.Load()
 	if err != nil {
 		return model{}, err
 	}
-	m := newModel(p, items, func(
+	m := newModel(ctx, currentPatch, pendingComments, func(
 		comment comments.Comment,
 		current patch.Patch,
 	) (comments.Comment, error) {
@@ -184,20 +188,15 @@ func newWithStore(
 		saveSideBySide: func(enabled bool) error {
 			return settings.Save(settings.Preferences{SideBySide: enabled})
 		},
-		size: size,
+		dimensions: dimensions,
 	})
 	m.delete = func(comment comments.Comment, current patch.Patch) error {
 		return store.Delete(current.Root, comment.ID)
 	}
 	m.load = func() ([]comments.Comment, error) {
-		return store.List(p.Root)
+		return store.List(currentPatch.Root)
 	}
 	return m, nil
-}
-
-func (m *model) configureSideBySide(enabled bool, save saveSideBySideFunc) {
-	m.saveLayout = save
-	m.setSideBySide(enabled)
 }
 
 func (model) Init() tea.Cmd {
@@ -212,15 +211,20 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.diffView.Configure(m.diffOptions)
 		}
 	case tea.WindowSizeMsg:
-		m.width, m.height = msg.Width, msg.Height
+		m.dimensions = terminalDimensions{width: msg.Width, height: msg.Height}
 		m.resizeScreens()
 
 	case tea.KeyPressMsg:
 		m.diffView.EndDrag()
 		return m.updateKey(msg)
-	case tea.MouseClickMsg, tea.MouseMotionMsg,
-		tea.MouseReleaseMsg, tea.MouseWheelMsg:
-		m.updateMouse(msg)
+	case tea.MouseClickMsg:
+		m.click(msg)
+	case tea.MouseMotionMsg:
+		m.drag(msg)
+	case tea.MouseReleaseMsg:
+		m.release(msg)
+	case tea.MouseWheelMsg:
+		m.wheel(msg)
 	default:
 		return m.updateWorkflow(msg)
 	}
@@ -234,11 +238,10 @@ func (m model) updateWorkflow(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case commentsLoadedMsg:
 		m.finishCommentsLoad(msg)
 	case sourceEditorFinishedMsg:
-		if msg.err != nil {
-			m.err = fmt.Errorf("editor: %w", msg.err)
-			break
+		if msg.err == nil {
+			return m, m.loadRefresh()
 		}
-		return m, m.loadRefresh()
+		m.err = fmt.Errorf("editor: %w", msg.err)
 	case tea.FocusMsg:
 		return m, m.loadRefresh()
 	case refreshDiffMsg:
@@ -315,8 +318,8 @@ func (m *model) updatePatch(p patch.Patch) {
 	m.diffView.Update(p)
 }
 func (m *model) resizeScreens() {
-	m.diffView.Resize(m.width, m.height)
-	m.commentView.Resize(m.width, m.height)
+	m.diffView.Resize(m.dimensions.width, m.dimensions.height)
+	m.commentView.Resize(m.dimensions.width, m.dimensions.height)
 }
 
 func (m model) updateKey(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
@@ -347,9 +350,9 @@ func (m model) updateBrowseKey(name string) (tea.Model, tea.Cmd) {
 		m.quitting = true
 		return m, tea.Quit
 	case "c":
-		return m.startEditor((*model).beginComment)
+		return m.startEditor(m.beginComment)
 	case "e":
-		return m.startEditor((*model).openCurrentLine)
+		return m.startEditor(m.openCurrentLine)
 	case "R":
 		return m, m.loadRefresh()
 	case "tab":
@@ -381,15 +384,15 @@ func (m model) updateBrowseView(name string) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m model) startEditor(
-	start func(*model) (tea.Cmd, error),
+func (m *model) startEditor(
+	start func() (tea.Cmd, error),
 ) (tea.Model, tea.Cmd) {
-	cmd, err := start(&m)
+	cmd, err := start()
 	if err != nil {
 		m.err = err
-		return m, nil
+		return *m, nil
 	}
-	return m, cmd
+	return *m, cmd
 }
 
 func (m model) switchPatchKind() (tea.Model, tea.Cmd) {

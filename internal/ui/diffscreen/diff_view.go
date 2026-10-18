@@ -1,6 +1,7 @@
 package diffscreen
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/eskelinenantti/review-my-slop/internal/patch"
@@ -29,15 +30,23 @@ type diffView struct {
 	maxLineWidth int
 	addedLines   int
 	removedLines int
+	countsLabel  string
 	split        bool
 	dark         bool
+	styles       lineStyles
 }
 
 func newDiffView(p patch.Patch, options Options) *diffView {
-	v := &diffView{patch: p, split: options.SideBySide, dark: options.Dark}
+	v := &diffView{
+		patch:  p,
+		split:  options.SideBySide,
+		dark:   options.Dark,
+		styles: newLineStyles(options.Dark),
+	}
 	for fileIndex, file := range p.Files {
 		v.appendFileRows(fileIndex, file)
 	}
+	v.countsLabel = fmt.Sprintf("+%d-%d", v.addedLines, v.removedLines)
 	return v
 }
 
@@ -57,7 +66,12 @@ func (v *diffView) appendHunkRows(
 	hunk patch.Hunk,
 	highlighted highlightedSources,
 ) {
-	v.appendNonLineRow(hunkRow, fileIndex, hunkIndex, hunkHeader(hunk.Header))
+	v.appendNonLineRow(
+		hunkRow,
+		fileIndex,
+		hunkIndex,
+		normalizeHunkHeader(hunk.Header),
+	)
 	appendRow := func(leftLine, rightLine int) {
 		v.appendLineRow(
 			fileIndex,
@@ -74,15 +88,19 @@ func (v *diffView) appendHunkRows(
 			index++
 			continue
 		}
-		if hunk.Lines[index].Kind == patch.Addition {
+		switch hunk.Lines[index].Kind {
+		case patch.Addition:
 			appendRow(-1, index)
 			index++
-			continue
+		case patch.Deletion:
+			addedStart := changeBlockEnd(hunk.Lines, index, patch.Deletion)
+			end := changeBlockEnd(hunk.Lines, addedStart, patch.Addition)
+			appendPairedChangeRows(appendRow, index, addedStart, end)
+			index = end
+		default:
+			appendRow(index, index)
+			index++
 		}
-		addedStart := changeBlockEnd(hunk.Lines, index, patch.Deletion)
-		end := changeBlockEnd(hunk.Lines, addedStart, patch.Addition)
-		appendPairedChangeRows(appendRow, index, addedStart, end)
-		index = end
 	}
 }
 
@@ -191,12 +209,12 @@ func (v *diffView) highlight(file *patch.File) highlightedSources {
 		theme = darkTheme
 	}
 	return highlightedSources{
-		old: render(file.OldPath, file.OldSource, theme),
-		new: render(file.NewPath, file.NewSource, theme),
+		old: highlightSource(file.OldPath, file.OldSource, theme),
+		new: highlightSource(file.NewPath, file.NewSource, theme),
 	}
 }
 
-func hunkHeader(header string) string {
+func normalizeHunkHeader(header string) string {
 	if strings.HasPrefix(header, "@@") {
 		return header
 	}

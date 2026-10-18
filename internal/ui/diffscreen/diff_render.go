@@ -3,14 +3,13 @@ package diffscreen
 import (
 	"fmt"
 	"image/color"
-	"regexp"
 	"strconv"
 	"strings"
 
 	"charm.land/lipgloss/v2"
-	"github.com/charmbracelet/x/ansi"
 
 	"github.com/eskelinenantti/review-my-slop/internal/patch"
+	"github.com/eskelinenantti/review-my-slop/internal/ui/internal/frame"
 )
 
 func (v *diffView) render(
@@ -19,6 +18,10 @@ func (v *diffView) render(
 	selection *diffSelection,
 ) string {
 	viewport = v.clampViewport(viewport)
+	leftWidth, rightWidth := 0, 0
+	if v.split {
+		leftWidth, rightWidth = splitPaneWidths(viewport.width)
+	}
 	lines := make([]string, 0, viewport.height)
 	if v.hasStickyHeader(viewport.top, viewport.height) {
 		current := v.rows[viewport.top]
@@ -36,7 +39,15 @@ func (v *diffView) render(
 		if v.split && current.kind == lineRow {
 			lines = append(
 				lines,
-				v.renderSplitRow(current, y, viewport, cursor, selection),
+				v.renderSplitRow(
+					current,
+					y,
+					viewport,
+					leftWidth,
+					rightWidth,
+					cursor,
+					selection,
+				),
 			)
 		} else {
 			lines = append(
@@ -58,7 +69,7 @@ func (v *diffView) renderUnifiedRow(
 	cursor diffCursor,
 	selection *diffSelection,
 ) string {
-	width := max(20, viewport.width)
+	width := frame.ScreenWidth(viewport.width)
 	switch current.kind {
 	case fileRow:
 		return renderFileRow(current.text, width)
@@ -101,29 +112,28 @@ func (v *diffView) renderUnifiedLine(
 		viewport.leftColumn,
 		width-lipgloss.Width(gutter),
 	)
-	candidate := diffCursor{row: y, pane: cursor.pane}
-	style, colors := renderedLineStyle(
-		line.Kind,
-		candidate,
+	return v.renderCodeLine(
+		value,
+		width,
+		line,
+		diffCursor{row: y, pane: cursor.pane},
 		cursor,
 		selection,
-		v.dark,
 	)
-	return renderStyledRow(style, value, width, colors)
 }
 
 func renderFileRow(path string, width int) string {
-	return fileStyle.Width(max(20, width)).Render(path)
+	return fileStyle.Width(frame.ScreenWidth(width)).Render(path)
 }
 
 func (v *diffView) renderSplitRow(
 	current entry,
 	y int,
 	viewport diffViewport,
+	leftWidth, rightWidth int,
 	cursor diffCursor,
 	selection *diffSelection,
 ) string {
-	leftWidth, rightWidth := splitPaneWidths(viewport.width)
 	left := v.renderPane(
 		current,
 		y,
@@ -175,13 +185,29 @@ func (v *diffView) renderPane(
 		offset,
 		width-lipgloss.Width(gutter),
 	)
-	candidate := diffCursor{row: y, pane: pane}
+	return v.renderCodeLine(
+		value,
+		width,
+		line,
+		diffCursor{row: y, pane: pane},
+		cursor,
+		selection,
+	)
+}
+
+func (v *diffView) renderCodeLine(
+	value string,
+	width int,
+	line patch.Line,
+	candidate, cursor diffCursor,
+	selection *diffSelection,
+) string {
 	style, colors := renderedLineStyle(
 		line.Kind,
 		candidate,
 		cursor,
 		selection,
-		v.dark,
+		v.styles,
 	)
 	return renderStyledRow(style, value, width, colors)
 }
@@ -202,11 +228,11 @@ func renderedLineStyle(
 	candidate diffCursor,
 	cursor diffCursor,
 	selection *diffSelection,
-	dark bool,
+	styles lineStyles,
 ) (lipgloss.Style, foregroundPolicy) {
-	style, colors := lineStyle(kind, dark), preserveForeground
-	if selected(selection, candidate) {
-		style, colors = selectionRowStyle(dark), discardForeground
+	style, colors := lineStyle(kind, styles), preserveForeground
+	if selectionContains(selection, candidate) {
+		style, colors = styles.selection, discardForeground
 	}
 	if cursor == candidate {
 		style, colors = cursorStyle, discardForeground
@@ -214,7 +240,7 @@ func renderedLineStyle(
 	return style, colors
 }
 
-func selected(selection *diffSelection, cursor diffCursor) bool {
+func selectionContains(selection *diffSelection, cursor diffCursor) bool {
 	if selection == nil {
 		return false
 	}
@@ -232,31 +258,39 @@ func selected(selection *diffSelection, cursor diffCursor) bool {
 	) && cursor.row <= max(first.row, last.row)
 }
 
-func lineStyle(kind patch.LineKind, dark bool) lipgloss.Style {
+func lineStyle(kind patch.LineKind, styles lineStyles) lipgloss.Style {
 	switch kind {
 	case patch.Addition:
-		return backgroundStyle(
-			dark,
-			lipgloss.Color("#dafbe1"),
-			lipgloss.Color("#1b3823"),
-		)
+		return styles.added
 	case patch.Deletion:
-		return backgroundStyle(
-			dark,
-			lipgloss.Color("#ffebe9"),
-			lipgloss.Color("#402222"),
-		)
+		return styles.removed
 	default:
 		return contextStyle
 	}
 }
 
-func selectionRowStyle(dark bool) lipgloss.Style {
-	return backgroundStyle(
-		dark,
-		lipgloss.Color("#dbeafe"),
-		lipgloss.Color("#1e3a5f"),
-	)
+type lineStyles struct {
+	added, removed, selection lipgloss.Style
+}
+
+func newLineStyles(dark bool) lineStyles {
+	return lineStyles{
+		added: backgroundStyle(
+			dark,
+			lipgloss.Color("#dafbe1"),
+			lipgloss.Color("#1b3823"),
+		),
+		removed: backgroundStyle(
+			dark,
+			lipgloss.Color("#ffebe9"),
+			lipgloss.Color("#402222"),
+		),
+		selection: backgroundStyle(
+			dark,
+			lipgloss.Color("#dbeafe"),
+			lipgloss.Color("#1e3a5f"),
+		),
+	}
 }
 
 func backgroundStyle(
@@ -275,137 +309,12 @@ func number(value patch.LineNumber) string {
 	return strconv.Itoa(int(value))
 }
 
-type foregroundPolicy uint8
-
-const (
-	preserveForeground foregroundPolicy = iota
-	discardForeground
-)
-
-func renderStyledRow(
-	style lipgloss.Style,
-	value string,
-	width int,
-	colors foregroundPolicy,
-) string {
-	value = filterANSIColors(value, colors)
-	fitted := fitANSIWindow(value, 0, width)
-	prefix := stylePrefix(style)
-	if prefix != "" {
-		fitted = strings.ReplaceAll(fitted, "\x1b[0m", "\x1b[0m"+prefix)
-		fitted = strings.ReplaceAll(fitted, "\x1b[m", "\x1b[m"+prefix)
-	}
-	return style.Render(fitted)
-}
-
-func filterANSIColors(value string, colors foregroundPolicy) string {
-	return ansiSGRPattern.ReplaceAllStringFunc(
-		value, func(sequence string) string {
-			return filterSGR(sequence, colors)
-		},
-	)
-}
-
-func filterSGR(sequence string, colors foregroundPolicy) string {
-	parameters := sequence[2 : len(sequence)-1]
-	if parameters == "" {
-		return sequence
-	}
-	parts := strings.Split(parameters, ";")
-	filtered := filterSGRParts(parts, colors)
-	if len(filtered) == 0 {
-		return ""
-	}
-	return "\x1b[" + strings.Join(filtered, ";") + "m"
-}
-
-func filterSGRParts(parts []string, colors foregroundPolicy) []string {
-	filtered := make([]string, 0, len(parts))
-	for index := 0; index < len(parts); index++ {
-		code, err := strconv.Atoi(parts[index])
-		if err != nil {
-			filtered = append(filtered, parts[index])
-			continue
-		}
-		if extendedColorRemoved(code, colors) {
-			index = colorParameterEnd(parts, index)
-			continue
-		}
-		if simpleColorRemoved(code, colors) {
-			continue
-		}
-		filtered = append(filtered, parts[index])
-	}
-	return filtered
-}
-
-func extendedColorRemoved(code int, colors foregroundPolicy) bool {
-	return code == 48 || (colors == discardForeground && code == 38)
-}
-
-func simpleColorRemoved(code int, colors foregroundPolicy) bool {
-	return backgroundColor(code) ||
-		colors == discardForeground && foregroundColor(code)
-}
-
-func colorParameterEnd(parts []string, index int) int {
-	if index+1 >= len(parts) {
-		return index
-	}
-	switch parts[index+1] {
-	case "2":
-		return min(index+4, len(parts)-1)
-	case "5":
-		return min(index+2, len(parts)-1)
-	default:
-		return index
-	}
-}
-
-func backgroundColor(code int) bool {
-	return (code >= 40 && code <= 49) || (code >= 100 && code <= 107)
-}
-
-func foregroundColor(code int) bool {
-	return (code >= 30 && code <= 39) || (code >= 90 && code <= 97)
-}
-
-func fitANSIWindow(value string, offset, width int) string {
-	if width <= 0 {
-		return ""
-	}
-	value = expandTabs(value)
-	if offset > 0 {
-		value = ansi.TruncateLeft(value, offset, "")
-	}
-	value = ansi.Truncate(value, width, "")
-	if padding := width - lipgloss.Width(value); padding > 0 {
-		value += strings.Repeat(" ", padding)
-	}
-	return value
-}
-
-func expandTabs(value string) string {
-	return strings.ReplaceAll(value, "\t", "    ")
-}
-
-func stylePrefix(style lipgloss.Style) string {
-	const marker = "\x00"
-	rendered := style.Render(marker)
-	index := strings.Index(rendered, marker)
-	if index < 0 {
-		return ""
-	}
-	return rendered[:index]
-}
-
 var (
-	ansiSGRPattern = regexp.MustCompile(`\x1b\[[0-9;]*m`)
-	fileStyle      = lipgloss.NewStyle().Bold(true)
-	metadataStyle  = lipgloss.NewStyle().Faint(true)
-	hunkStyle      = lipgloss.NewStyle().Foreground(lipgloss.Magenta)
-	contextStyle   = lipgloss.NewStyle()
-	addedStyle     = lipgloss.NewStyle().Foreground(lipgloss.Green)
-	removedStyle   = lipgloss.NewStyle().Foreground(lipgloss.Red)
-	cursorStyle    = lipgloss.NewStyle().Reverse(true)
+	fileStyle     = lipgloss.NewStyle().Bold(true)
+	metadataStyle = lipgloss.NewStyle().Faint(true)
+	hunkStyle     = lipgloss.NewStyle().Foreground(lipgloss.Magenta)
+	contextStyle  = lipgloss.NewStyle()
+	addedStyle    = lipgloss.NewStyle().Foreground(lipgloss.Green)
+	removedStyle  = lipgloss.NewStyle().Foreground(lipgloss.Red)
+	cursorStyle   = lipgloss.NewStyle().Reverse(true)
 )

@@ -8,7 +8,9 @@ import (
 
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
+	"github.com/eskelinenantti/review-my-slop/internal/appinfo"
 	"github.com/eskelinenantti/review-my-slop/internal/patch"
+	"github.com/eskelinenantti/review-my-slop/internal/ui"
 	"github.com/eskelinenantti/review-my-slop/internal/ui/internal/frame"
 )
 
@@ -76,9 +78,13 @@ type searchState struct {
 	miss, repeatMiss bool
 }
 
-// New creates a view with default dimensions of 80 columns and 30 rows.
+// New creates a view with the shared default screen dimensions.
 func New(p patch.Patch, options Options) *View {
-	v := &View{options: options, width: 80, height: 30}
+	v := &View{
+		options: options,
+		width:   ui.DefaultScreenWidth,
+		height:  ui.DefaultScreenHeight,
+	}
 	v.view = v.newReviewView(p)
 	v.viewport = v.view.newViewport(v.width, frame.BodyHeight(v.height))
 	v.cursor, _ = v.view.first()
@@ -105,13 +111,13 @@ func (v *View) Configure(options Options) {
 
 // Resize accepts full screen dimensions, reserving space for the header/footer.
 func (v *View) Resize(width, height int) {
-	v.EndDrag()
 	active := v.sideBySideActive()
 	v.width, v.height = width, height
 	v.viewport = v.view.resize(v.viewport, width, frame.BodyHeight(height))
 	if active != v.sideBySideActive() {
 		v.Update(v.view.patch)
 	} else {
+		v.EndDrag()
 		v.viewport = v.view.keepVisible(v.viewport, v.cursor)
 	}
 }
@@ -206,7 +212,7 @@ func (v *View) extendSelectionTo(cursor diffCursor) bool {
 	return ok
 }
 func (v *View) jumpFile(direction direction) {
-	v.ClearSelection()
+	v.selection = nil
 	if cursor, ok := v.view.jumpFile(v.cursor, direction); ok {
 		v.setCursor(cursor)
 	}
@@ -265,11 +271,11 @@ func (v *View) ScrollVertical(rows int) {
 // ToggleSelection starts a range at the focused line or clears the current
 // range.
 func (v *View) ToggleSelection() {
-	v.search.repeatMiss = false
 	if v.selection != nil {
 		v.ClearSelection()
 		return
 	}
+	v.search.repeatMiss = false
 	if _, ok := v.view.line(v.cursor); ok {
 		selection := beginSelection(v.cursor)
 		v.selection = &selection
@@ -306,7 +312,7 @@ func (v *View) Current() (patch.File, patch.Line, bool) {
 func (v *View) BeginSearch() {
 	v.ClearSelection()
 	v.search.active = true
-	v.search.query, v.search.miss, v.search.repeatMiss = "", false, false
+	v.search.query, v.search.miss = "", false
 	v.search.from = v.cursor
 }
 
@@ -389,12 +395,8 @@ func (v *View) Find(d Direction) bool {
 // final blank line. A non-nil error replaces the status while retaining the
 // position label. Dimensions are configured through Resize.
 func (v *View) Render(err error) string {
-	counts := frame.Muted(fmt.Sprintf(
-		"+%d-%d",
-		v.view.addedLines,
-		v.view.removedLines,
-	))
-	header := frame.Title("review-my-slop") + "  " + counts
+	counts := frame.Muted(v.view.countsLabel)
+	header := frame.Title(appinfo.Name) + "  " + counts
 	body := v.renderBody()
 	status := v.renderStatus()
 	footer := frame.Muted(status)
@@ -414,8 +416,7 @@ func (v *View) renderBody() []string {
 		if v.view.patch.Kind == patch.Branch {
 			empty = "No branch or worktree changes."
 		}
-		body = make([]string, frame.BodyHeight(v.height))
-		body[min(1, len(body)-1)] = frame.Muted(empty)
+		body = frame.EmptyBody(v.height, empty)
 	} else {
 		body = strings.Split(
 			v.view.render(v.viewport, v.cursor, v.selection),
@@ -447,10 +448,11 @@ func (v *View) renderFooter(value string) string {
 		label += fmt.Sprintf(" (%d%%)", v.view.viewportProgress(v.viewport))
 	}
 	right := frame.Muted(label)
-	width := max(20, v.width)
-	value = ansi.Truncate(value, max(0, width-lipgloss.Width(right)-1), "")
+	width := frame.ScreenWidth(v.width)
+	rightWidth := lipgloss.Width(right)
+	value = ansi.Truncate(value, max(0, width-rightWidth-1), "")
 	return value + strings.Repeat(
 		" ",
-		max(1, width-lipgloss.Width(value)-lipgloss.Width(right)),
+		max(1, width-lipgloss.Width(value)-rightWidth),
 	) + right
 }

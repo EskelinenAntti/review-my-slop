@@ -3,6 +3,7 @@ package app
 import (
 	"errors"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
@@ -11,6 +12,8 @@ import (
 	"github.com/eskelinenantti/review-my-slop/internal/editor"
 	"github.com/eskelinenantti/review-my-slop/internal/patch"
 )
+
+var errCommentStorageUnavailable = errors.New("comment storage is unavailable")
 
 func (m model) updateComments(name string) (tea.Model, tea.Cmd) {
 	m.err = nil
@@ -41,9 +44,12 @@ func (m model) editSelectedComment() (tea.Model, tea.Cmd) {
 	if !ok {
 		return m, nil
 	}
-	m.edit.index = index
-	m.edit.body = m.comments.items[m.edit.index].Body
-	m.edit.anchor = m.comments.items[m.edit.index].Anchor
+	comment := m.comments.items[index]
+	m.edit = commentEdit{
+		body:   comment.Body,
+		index:  index,
+		anchor: comment.Anchor,
+	}
 	cmd, err := m.openCommentEditor()
 	if err != nil {
 		m.err = err
@@ -58,7 +64,7 @@ func (m *model) beginComment() (tea.Cmd, error) {
 		return nil, errors.New("select code lines before commenting")
 	}
 	anchor := commentAnchor(file, lines)
-	m.edit.body, m.edit.index, m.edit.anchor = "", -1, anchor
+	m.edit = commentEdit{index: -1, anchor: anchor}
 	cmd, err := m.openCommentEditor()
 	if err != nil {
 		return nil, err
@@ -77,7 +83,7 @@ func (m *model) finishCommentEdit() {
 		return
 	}
 	if m.save == nil {
-		m.err = errors.New("comment storage is unavailable")
+		m.err = errCommentStorageUnavailable
 		return
 	}
 	var comment comments.Comment
@@ -113,17 +119,14 @@ func (m *model) deleteComment(index int) {
 		return
 	}
 	if m.delete == nil {
-		m.err = errors.New("comment storage is unavailable")
+		m.err = errCommentStorageUnavailable
 		return
 	}
 	if err := m.delete(m.comments.items[index], m.currentPatch); err != nil {
 		m.err = err
 		return
 	}
-	m.comments.items = append(
-		m.comments.items[:index],
-		m.comments.items[index+1:]...,
-	)
+	m.comments.items = slices.Delete(m.comments.items, index, index+1)
 	m.commentsChanged()
 }
 
@@ -152,7 +155,7 @@ func (m model) sourceLocation() (string, int, error) {
 	if !ok {
 		return "", 0, errors.New("select a code line to open in $EDITOR")
 	}
-	path, number := preferredFilePath(file), line.NewNumber
+	path, number := file.NewPath, line.NewNumber
 	if number == 0 {
 		number = line.OldNumber
 	}
@@ -181,7 +184,7 @@ func (m *model) openCommentEditor() (tea.Cmd, error) {
 }
 
 func commentAnchor(file patch.File, lines []patch.Line) comments.Anchor {
-	anchor := comments.Anchor{FilePath: preferredFilePath(file)}
+	anchor := comments.Anchor{FilePath: file.PreferredPath()}
 	for _, line := range lines {
 		anchor.QuotedLines = append(
 			anchor.QuotedLines,
@@ -191,13 +194,6 @@ func commentAnchor(file patch.File, lines []patch.Line) comments.Anchor {
 		accumulateRange(&anchor.NewStart, &anchor.NewEnd, int(line.NewNumber))
 	}
 	return anchor
-}
-
-func preferredFilePath(file patch.File) string {
-	if file.NewPath != "" && file.NewPath != "/dev/null" {
-		return file.NewPath
-	}
-	return file.OldPath
 }
 
 func accumulateRange(start, end *int, value int) {

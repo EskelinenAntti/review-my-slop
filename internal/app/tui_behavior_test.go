@@ -111,6 +111,38 @@ func TestOpenCurrentLineUsesEditorWithWorkingTreeLocation(t *testing.T) {
 	testutil.RequireEqual(t, line, 2, "location=%q:%d err=%v", path, line, err)
 }
 
+func TestOpenDeletedFileLineRequiresWorkingTreePath(t *testing.T) {
+	p := patch.Patch{
+		Root: "/repo",
+		Files: []patch.File{{
+			OldPath:     "removed.go",
+			DisplayPath: "removed.go",
+			Hunks: []patch.Hunk{{
+				Lines: []patch.Line{{
+					Kind:      patch.Deletion,
+					Text:      "removed()",
+					OldNumber: 1,
+				}},
+			}},
+		}},
+	}
+	m := testModel(p, nil, nil)
+
+	path, line, err := m.sourceLocation()
+	testutil.RequireEqual(t, err != nil, true, "location=%q:%d", path, line)
+	testutil.RequireEqual(t, path, "", "location=%q:%d", path, line)
+	testutil.RequireEqual(t, line, 0, "location=%q:%d", path, line)
+	testutil.RequireEqual(
+		t,
+		err.Error(),
+		"current line has no editable working-tree location",
+		"location=%q:%d err=%v",
+		path,
+		line,
+		err,
+	)
+}
+
 func TestOpenCurrentLineRequiresEditor(t *testing.T) {
 	t.Setenv("EDITOR", "")
 	m := updateModel(t, testModel(coveragePatch(), nil, nil), textKey("e"))
@@ -279,10 +311,11 @@ func TestSelectionCannotCrossHunk(t *testing.T) {
 func TestVimSequencesAndLayoutToggle(t *testing.T) {
 	m := testModel(coveragePatch(), nil, nil)
 	var saved []bool
-	m.configureSideBySide(
-		false,
-		func(enabled bool) error { saved = append(saved, enabled); return nil },
-	)
+	m.saveLayout = func(enabled bool) error {
+		saved = append(saved, enabled)
+		return nil
+	}
+	m.setSideBySide(false)
 	m = updateModel(t, m, tea.WindowSizeMsg{Width: 120, Height: 20})
 	m = updateModel(t, m, textKey("G"))
 	testutil.RequireEqual(t, lineText(m), "more()", "G line=%q", lineText(m))
@@ -311,10 +344,11 @@ func TestVimSequencesAndLayoutToggle(t *testing.T) {
 func TestSavedSideBySideCanBeDisabledInNarrowTerminal(t *testing.T) {
 	m := testModel(coveragePatch(), nil, nil)
 	var saved []bool
-	m.configureSideBySide(
-		true,
-		func(enabled bool) error { saved = append(saved, enabled); return nil },
-	)
+	m.saveLayout = func(enabled bool) error {
+		saved = append(saved, enabled)
+		return nil
+	}
+	m.setSideBySide(true)
 	m = updateModel(t, m, tea.WindowSizeMsg{Width: 80, Height: 20})
 	m = updateModel(t, m, textKey("t"))
 	testutil.RequireEqual(t, !m.diffOptions.SideBySide, true,
@@ -327,7 +361,7 @@ func TestSavedSideBySideCanBeDisabledInNarrowTerminal(t *testing.T) {
 
 func TestResizeAcrossSideBySideThresholdPreservesFocusedLine(t *testing.T) {
 	m := testModel(coveragePatch(), nil, nil)
-	m.configureSideBySide(true, nil)
+	m.setSideBySide(true)
 	focusLine(t, &m, "keep()")
 	_, before, _ := m.diffView.Current()
 	m = updateModel(t, m, tea.WindowSizeMsg{Width: 80, Height: 20})
@@ -387,7 +421,7 @@ func TestPendingKeyIsConsumedByNextKey(t *testing.T) {
 
 func TestStatusShowsBasicBindingsAndHelpShowsCompleteKeyMap(t *testing.T) {
 	m := testModel(coveragePatch(), nil, nil)
-	status := ansi.Strip(strings.Split(m.render(), "\n")[m.height-2])
+	status := ansi.Strip(strings.Split(m.render(), "\n")[m.dimensions.height-2])
 	testutil.RequireEqual(t, strings.HasPrefix(status, "j/k/h/l move"), true,
 		"status=%q", status,
 	)
@@ -395,7 +429,8 @@ func TestStatusShowsBasicBindingsAndHelpShowsCompleteKeyMap(t *testing.T) {
 		"status=%q", status,
 	)
 
-	help := ansi.Strip(m.renderHelp())
+	m.mode = modeHelp
+	help := ansi.Strip(m.render())
 	for _, binding := range []string{
 		"Ctrl-w h/l/w",
 		"zz/zt/zb",

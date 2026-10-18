@@ -3,6 +3,9 @@ package frame
 
 import "strings"
 
+// ScreenWidth returns the minimum width used when rendering screen content.
+func ScreenWidth(width int) int { return max(20, width) }
+
 // SingleLine replaces embedded line breaks in screen text with spaces.
 func SingleLine(value string) string {
 	return strings.ReplaceAll(value, "\n", " ")
@@ -11,6 +14,13 @@ func SingleLine(value string) string {
 // BodyHeight returns the available body rows after reserving the header and
 // footer.
 func BodyHeight(height int) int { return max(1, height-3) }
+
+// EmptyBody creates body rows with a muted message near the top.
+func EmptyBody(height int, message string) []string {
+	rows := make([]string, BodyHeight(height))
+	rows[min(1, len(rows)-1)] = Muted(message)
+	return rows
+}
 
 // BodyRow maps a terminal cell to a body row, excluding header and footer cells
 // and any part of the frame that falls outside the terminal dimensions.
