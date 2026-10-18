@@ -91,12 +91,11 @@ func (s Store) List(repository string) ([]Comment, error) {
 
 // Update replaces an existing comment in the repository.
 func (s Store) Update(comment Comment) error {
-	identityErr := validateCommentIdentity(
+	if err := validateCommentIdentity(
 		comment.Repository,
 		comment.ID,
-	)
-	if identityErr != nil {
-		return identityErr
+	); err != nil {
+		return err
 	}
 	data, err := encodeComment(comment)
 	if err != nil {
