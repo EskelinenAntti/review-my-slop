@@ -206,7 +206,7 @@ func (v *View) extendSelectionTo(cursor diffCursor) bool {
 	return ok
 }
 func (v *View) jumpFile(direction direction) {
-	v.ClearSelection()
+	v.selection = nil
 	if cursor, ok := v.view.jumpFile(v.cursor, direction); ok {
 		v.setCursor(cursor)
 	}
