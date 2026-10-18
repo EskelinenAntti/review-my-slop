@@ -201,13 +201,10 @@ func matchesComment(selected, candidate comments.Comment) bool {
 func commentAnchor(file patch.File, lines []patch.Line) comments.Anchor {
 	anchor := comments.Anchor{FilePath: preferredFilePath(file)}
 	for _, line := range lines {
-		prefix := " "
-		if line.Kind == patch.Addition {
-			prefix = "+"
-		} else if line.Kind == patch.Deletion {
-			prefix = "-"
-		}
-		anchor.QuotedLines = append(anchor.QuotedLines, prefix+line.Text)
+		anchor.QuotedLines = append(
+			anchor.QuotedLines,
+			line.Kind.DiffPrefix()+line.Text,
+		)
 		accumulateRange(&anchor.OldStart, &anchor.OldEnd, int(line.OldNumber))
 		accumulateRange(&anchor.NewStart, &anchor.NewEnd, int(line.NewNumber))
 	}

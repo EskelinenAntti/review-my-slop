@@ -189,11 +189,11 @@ func (v *diffView) renderPane(
 func lineMarker(kind patch.LineKind) string {
 	switch kind {
 	case patch.Addition:
-		return addedStyle.Render("+")
+		return addedStyle.Render(kind.DiffPrefix())
 	case patch.Deletion:
-		return removedStyle.Render("-")
+		return removedStyle.Render(kind.DiffPrefix())
 	default:
-		return " "
+		return kind.DiffPrefix()
 	}
 }
 
