@@ -41,7 +41,11 @@ func (m model) View() tea.View {
 func (m model) render() string {
 	switch m.mode {
 	case modeHelp:
-		return helpscreen.Render(helpBindings, m.width, m.height)
+		return helpscreen.Render(
+			helpBindings,
+			m.dimensions.width,
+			m.dimensions.height,
+		)
 	case modeComments:
 		return m.commentView.Render(m.err)
 	default:

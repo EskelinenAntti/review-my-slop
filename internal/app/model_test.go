@@ -249,7 +249,7 @@ func TestCommentSaveUsesPatchAndPreservesAnchor(t *testing.T) {
 
 func TestRenderingAndKeyBindingsRemainAvailable(t *testing.T) {
 	m := testModel(modelPatch(), nil, nil)
-	m.width, m.height = 80, 10
+	m.dimensions = terminalDimensions{width: 80, height: 10}
 	m.resizeScreens()
 	m.resizeScreens()
 	rendered := m.render()
@@ -272,15 +272,18 @@ func TestRenderingAndKeyBindingsRemainAvailable(t *testing.T) {
 
 func TestEmptyViewKeepsKeyboardHintAtBottom(t *testing.T) {
 	m := testModel(patch.Patch{}, nil, nil)
-	m.width, m.height = 80, 10
+	m.dimensions = terminalDimensions{width: 80, height: 10}
 	m.resizeScreens()
 
 	lines := strings.Split(m.render(), "\n")
-	if got, want := lines[m.height-2], "j/k/h/l move"; !strings.Contains(
-		got,
-		want,
-	) {
-		t.Fatalf("line %d = %q, want it to contain %q", m.height-1, got, want)
+	got, want := lines[m.dimensions.height-2], "j/k/h/l move"
+	if !strings.Contains(got, want) {
+		t.Fatalf(
+			"line %d = %q, want it to contain %q",
+			m.dimensions.height-1,
+			got,
+			want,
+		)
 	}
 	if got := lines[2]; !strings.Contains(
 		got,
@@ -301,7 +304,7 @@ func TestMenuKeyboardHintsStayAtBottom(t *testing.T) {
 		},
 		nil,
 	)
-	m.width, m.height = 80, 10
+	m.dimensions = terminalDimensions{width: 80, height: 10}
 	m.resizeScreens()
 
 	tests := []struct {
@@ -316,10 +319,13 @@ func TestMenuKeyboardHintsStayAtBottom(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			m.mode = test.mode
 			lines := strings.Split(m.render(), "\n")
-			if got := lines[m.height-2]; !strings.Contains(got, test.hint) {
+			if got := lines[m.dimensions.height-2]; !strings.Contains(
+				got,
+				test.hint,
+			) {
 				t.Fatalf(
 					"line %d = %q, want it to contain %q",
-					m.height-1,
+					m.dimensions.height-1,
 					got,
 					test.hint,
 				)
@@ -337,7 +343,7 @@ func TestCommentsMenuScrollsWithinScreenBody(t *testing.T) {
 		}
 	}
 	m := testModel(modelPatch(), items, nil)
-	m.width, m.height = 80, 7
+	m.dimensions = terminalDimensions{width: 80, height: 7}
 	m.mode = modeComments
 	m.resizeScreens()
 	m.commentView.Move(len(items))
@@ -345,13 +351,15 @@ func TestCommentsMenuScrollsWithinScreenBody(t *testing.T) {
 	rendered := strings.Split(ansi.Strip(m.render()), "\n")
 	testutil.RequireEqual(t,
 		strings.Contains(
-			strings.Join(rendered[1:m.height-2], "\n"),
+			strings.Join(rendered[1:m.dimensions.height-2], "\n"),
 			"comment 9",
 		),
 		true, "selected comment is outside the screen body: %q", rendered,
 	)
-	testutil.RequireEqual(t, strings.Contains(rendered[m.height-2], "j/k move"),
-		true, "footer line = %q", rendered[m.height-2],
+	testutil.RequireEqual(
+		t,
+		strings.Contains(rendered[m.dimensions.height-2], "j/k move"),
+		true, "footer line = %q", rendered[m.dimensions.height-2],
 	)
 }
 

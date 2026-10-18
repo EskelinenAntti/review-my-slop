@@ -44,8 +44,8 @@ func TestRunLoadsCommentsAndWiresContext(t *testing.T) {
 		}
 	}, func(m model, _ ...tea.ProgramOption) error {
 		testutil.RequireEqual(t, m.ctx, ctx, "model=%#v", m)
-		testutil.RequireEqual(t, m.width, 120, "model=%#v", m)
-		testutil.RequireEqual(t, m.height, 40, "model=%#v", m)
+		testutil.RequireEqual(t, m.dimensions.width, 120, "model=%#v", m)
+		testutil.RequireEqual(t, m.dimensions.height, 40, "model=%#v", m)
 		testutil.RequireEqual(t, len(m.comments.items), 1, "model=%#v", m)
 
 		result := m.loadRefresh()()

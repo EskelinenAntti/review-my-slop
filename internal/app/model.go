@@ -92,8 +92,7 @@ type model struct {
 
 	diffView    *diffscreen.View
 	commentView *commentscreen.View
-	width       int
-	height      int
+	dimensions  terminalDimensions
 	mode        mode
 	keys        keymap.Matcher
 
@@ -129,8 +128,7 @@ func newModel(
 		comments:     commentState{items: pendingComments},
 		commentView:  commentscreen.New(pendingComments),
 		edit:         commentEdit{index: -1},
-		width:        dimensions.width,
-		height:       dimensions.height,
+		dimensions:   dimensions,
 		save:         save,
 		saveLayout:   layout.saveSideBySide,
 		diffOptions: diffscreen.Options{
@@ -209,7 +207,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.diffView.Configure(m.diffOptions)
 		}
 	case tea.WindowSizeMsg:
-		m.width, m.height = msg.Width, msg.Height
+		m.dimensions = terminalDimensions{width: msg.Width, height: msg.Height}
 		m.resizeScreens()
 
 	case tea.KeyPressMsg:
@@ -316,8 +314,8 @@ func (m *model) updatePatch(p patch.Patch) {
 	m.diffView.Update(p)
 }
 func (m *model) resizeScreens() {
-	m.diffView.Resize(m.width, m.height)
-	m.commentView.Resize(m.width, m.height)
+	m.diffView.Resize(m.dimensions.width, m.dimensions.height)
+	m.commentView.Resize(m.dimensions.width, m.dimensions.height)
 }
 
 func (m model) updateKey(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {

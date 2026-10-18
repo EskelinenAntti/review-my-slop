@@ -84,7 +84,9 @@ func TestMouseClickCommentsAndIgnoreInformationalUI(t *testing.T) {
 		m = updateModel(
 			t,
 			m,
-			tea.MouseClickMsg{X: 0, Y: m.height - 2, Button: tea.MouseLeft},
+			tea.MouseClickMsg{
+				X: 0, Y: m.dimensions.height - 2, Button: tea.MouseLeft,
+			},
 		)
 		testutil.RequireEqual(t, m.mode, mode, "%s",
 			"header/footer click triggered an action",

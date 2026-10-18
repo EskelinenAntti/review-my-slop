@@ -389,7 +389,7 @@ func TestPendingKeyIsConsumedByNextKey(t *testing.T) {
 
 func TestStatusShowsBasicBindingsAndHelpShowsCompleteKeyMap(t *testing.T) {
 	m := testModel(coveragePatch(), nil, nil)
-	status := ansi.Strip(strings.Split(m.render(), "\n")[m.height-2])
+	status := ansi.Strip(strings.Split(m.render(), "\n")[m.dimensions.height-2])
 	testutil.RequireEqual(t, strings.HasPrefix(status, "j/k/h/l move"), true,
 		"status=%q", status,
 	)
