@@ -391,17 +391,17 @@ func (v *View) Find(d Direction) bool {
 // position label. Dimensions are configured through Resize.
 func (v *View) Render(err error) string {
 	added, removed := patchLineCounts(v.view.patch)
-	counts := mutedStyle.Render(fmt.Sprintf("+%d-%d", added, removed))
-	header := titleStyle.Render("review-my-slop") + "  " + counts
+	counts := frame.Muted(fmt.Sprintf("+%d-%d", added, removed))
+	header := frame.Title("review-my-slop") + "  " + counts
 	body := v.renderBody()
 	status := v.renderStatus()
-	footer := mutedStyle.Render(status)
+	footer := frame.Muted(status)
 	if v.search.repeatMiss {
 		message := fmt.Sprintf("no matches for %q", v.search.term)
-		footer = errorStyle.Render(message)
+		footer = frame.Error(message)
 	}
 	if err != nil {
-		footer = errorStyle.Render(strings.ReplaceAll(err.Error(), "\n", " "))
+		footer = frame.Error(strings.ReplaceAll(err.Error(), "\n", " "))
 	}
 	return frame.Render(header, body, v.renderFooter(footer), v.height)
 }
@@ -413,7 +413,7 @@ func (v *View) renderBody() []string {
 			empty = "No branch or worktree changes."
 		}
 		body = make([]string, frame.BodyHeight(v.height))
-		body[min(1, len(body)-1)] = mutedStyle.Render(empty)
+		body[min(1, len(body)-1)] = frame.Muted(empty)
 	} else {
 		body = strings.Split(
 			v.view.render(v.viewport, v.cursor, v.selection),
@@ -428,7 +428,7 @@ func (v *View) renderStatus() string {
 	if v.search.active {
 		status = "/" + v.search.query + cursorStyle.Render(" ")
 		if v.search.miss {
-			status += errorStyle.Render("  no matches")
+			status += frame.Error("  no matches")
 		}
 	} else if v.selection != nil {
 		status = "visual selection  j/k extend  c comment  Esc cancel"
@@ -444,7 +444,7 @@ func (v *View) renderFooter(value string) string {
 	if v.viewport.top > 0 {
 		label += fmt.Sprintf(" (%d%%)", v.view.viewportProgress(v.viewport))
 	}
-	right := mutedStyle.Render(label)
+	right := frame.Muted(label)
 	width := max(20, v.width)
 	value = ansi.Truncate(value, max(0, width-lipgloss.Width(right)-1), "")
 	return value + strings.Repeat(
@@ -476,9 +476,3 @@ func hunkLineCounts(hunk patch.Hunk) (added, removed int) {
 	}
 	return added, removed
 }
-
-var (
-	titleStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Cyan)
-	mutedStyle = lipgloss.NewStyle().Faint(true)
-	errorStyle = lipgloss.NewStyle().Foreground(lipgloss.Red).Bold(true)
-)
