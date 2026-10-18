@@ -195,11 +195,6 @@ func newWithStore(
 	return m, nil
 }
 
-func (m *model) configureSideBySide(enabled bool, save saveSideBySideFunc) {
-	m.saveLayout = save
-	m.setSideBySide(enabled)
-}
-
 func (model) Init() tea.Cmd {
 	return func() tea.Msg { return tea.RequestBackgroundColor() }
 }

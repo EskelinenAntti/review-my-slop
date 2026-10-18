@@ -279,10 +279,11 @@ func TestSelectionCannotCrossHunk(t *testing.T) {
 func TestVimSequencesAndLayoutToggle(t *testing.T) {
 	m := testModel(coveragePatch(), nil, nil)
 	var saved []bool
-	m.configureSideBySide(
-		false,
-		func(enabled bool) error { saved = append(saved, enabled); return nil },
-	)
+	m.saveLayout = func(enabled bool) error {
+		saved = append(saved, enabled)
+		return nil
+	}
+	m.setSideBySide(false)
 	m = updateModel(t, m, tea.WindowSizeMsg{Width: 120, Height: 20})
 	m = updateModel(t, m, textKey("G"))
 	testutil.RequireEqual(t, lineText(m), "more()", "G line=%q", lineText(m))
@@ -311,10 +312,11 @@ func TestVimSequencesAndLayoutToggle(t *testing.T) {
 func TestSavedSideBySideCanBeDisabledInNarrowTerminal(t *testing.T) {
 	m := testModel(coveragePatch(), nil, nil)
 	var saved []bool
-	m.configureSideBySide(
-		true,
-		func(enabled bool) error { saved = append(saved, enabled); return nil },
-	)
+	m.saveLayout = func(enabled bool) error {
+		saved = append(saved, enabled)
+		return nil
+	}
+	m.setSideBySide(true)
 	m = updateModel(t, m, tea.WindowSizeMsg{Width: 80, Height: 20})
 	m = updateModel(t, m, textKey("t"))
 	testutil.RequireEqual(t, !m.diffOptions.SideBySide, true,
@@ -327,7 +329,7 @@ func TestSavedSideBySideCanBeDisabledInNarrowTerminal(t *testing.T) {
 
 func TestResizeAcrossSideBySideThresholdPreservesFocusedLine(t *testing.T) {
 	m := testModel(coveragePatch(), nil, nil)
-	m.configureSideBySide(true, nil)
+	m.setSideBySide(true)
 	focusLine(t, &m, "keep()")
 	_, before, _ := m.diffView.Current()
 	m = updateModel(t, m, tea.WindowSizeMsg{Width: 80, Height: 20})
