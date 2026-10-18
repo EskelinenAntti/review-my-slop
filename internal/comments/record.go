@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"time"
 )
 
 func validateComment(comment Comment) error {
@@ -41,11 +40,7 @@ type legacyComment struct {
 }
 
 type commentRecord struct {
-	ID            string         `json:"id"`
-	Repository    string         `json:"repository"`
-	CreatedAt     time.Time      `json:"created_at"`
-	Anchor        Anchor         `json:"anchor"`
-	Body          string         `json:"body"`
+	Comment
 	LegacyComment *legacyComment `json:"comment"`
 }
 
@@ -54,16 +49,9 @@ func decodeComment(data []byte) (Comment, error) {
 	if err := json.Unmarshal(data, &record); err != nil {
 		return Comment{}, fmt.Errorf("decode comment: %w", err)
 	}
-	comment := Comment{
-		ID:         record.ID,
-		Repository: record.Repository,
-		CreatedAt:  record.CreatedAt,
-		Anchor:     record.Anchor,
-		Body:       record.Body,
-	}
 	if record.LegacyComment != nil {
-		comment.Anchor = record.LegacyComment.Anchor
-		comment.Body = record.LegacyComment.Body
+		record.Anchor = record.LegacyComment.Anchor
+		record.Body = record.LegacyComment.Body
 	}
-	return comment, nil
+	return record.Comment, nil
 }
