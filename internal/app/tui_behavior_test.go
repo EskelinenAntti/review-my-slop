@@ -111,6 +111,38 @@ func TestOpenCurrentLineUsesEditorWithWorkingTreeLocation(t *testing.T) {
 	testutil.RequireEqual(t, line, 2, "location=%q:%d err=%v", path, line, err)
 }
 
+func TestOpenDeletedFileLineRequiresWorkingTreePath(t *testing.T) {
+	p := patch.Patch{
+		Root: "/repo",
+		Files: []patch.File{{
+			OldPath:     "removed.go",
+			DisplayPath: "removed.go",
+			Hunks: []patch.Hunk{{
+				Lines: []patch.Line{{
+					Kind:      patch.Deletion,
+					Text:      "removed()",
+					OldNumber: 1,
+				}},
+			}},
+		}},
+	}
+	m := testModel(p, nil, nil)
+
+	path, line, err := m.sourceLocation()
+	testutil.RequireEqual(t, err != nil, true, "location=%q:%d", path, line)
+	testutil.RequireEqual(t, path, "", "location=%q:%d", path, line)
+	testutil.RequireEqual(t, line, 0, "location=%q:%d", path, line)
+	testutil.RequireEqual(
+		t,
+		err.Error(),
+		"current line has no editable working-tree location",
+		"location=%q:%d err=%v",
+		path,
+		line,
+		err,
+	)
+}
+
 func TestOpenCurrentLineRequiresEditor(t *testing.T) {
 	t.Setenv("EDITOR", "")
 	m := updateModel(t, testModel(coveragePatch(), nil, nil), textKey("e"))

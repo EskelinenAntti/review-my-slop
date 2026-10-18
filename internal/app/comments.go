@@ -155,7 +155,7 @@ func (m model) sourceLocation() (string, int, error) {
 	if !ok {
 		return "", 0, errors.New("select a code line to open in $EDITOR")
 	}
-	path, number := file.PreferredPath(), line.NewNumber
+	path, number := file.NewPath, line.NewNumber
 	if number == 0 {
 		number = line.OldNumber
 	}
