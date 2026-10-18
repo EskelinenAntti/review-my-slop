@@ -17,15 +17,21 @@ func createCommentFile(body string, anchor comments.Anchor) (string, error) {
 		return "", fmt.Errorf("create comment file: %w", err)
 	}
 	path := file.Name()
-	if _, err := file.WriteString(commentDraft(body, anchor)); err != nil {
+	succeeded := false
+	defer func() {
+		if succeeded {
+			return
+		}
 		_ = file.Close()
 		_ = os.Remove(path)
+	}()
+	if _, err := file.WriteString(commentDraft(body, anchor)); err != nil {
 		return "", fmt.Errorf("write comment file: %w", err)
 	}
 	if err := file.Close(); err != nil {
-		_ = os.Remove(path)
 		return "", fmt.Errorf("close comment file: %w", err)
 	}
+	succeeded = true
 	return path, nil
 }
 
