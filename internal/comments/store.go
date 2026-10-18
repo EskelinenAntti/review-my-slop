@@ -176,7 +176,7 @@ func findCommentKey(
 	var found []byte
 	err := forEachComment(bucket, func(key []byte, comment Comment) bool {
 		if comment.Repository == repository && comment.ID == id {
-			found = append([]byte(nil), key...)
+			found = bytes.Clone(key)
 			return false
 		}
 		return true
@@ -201,7 +201,7 @@ func findPendingKeys(
 			return true
 		}
 		if _, ok := wanted[comment.ID]; ok {
-			keys = append(keys, append([]byte(nil), key...))
+			keys = append(keys, bytes.Clone(key))
 		}
 		return true
 	})
