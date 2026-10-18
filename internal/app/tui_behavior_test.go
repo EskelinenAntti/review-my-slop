@@ -74,6 +74,31 @@ func TestCommentRequiresEditor(t *testing.T) {
 	)
 }
 
+func TestExistingCommentEditorFailureClearsPendingEdit(t *testing.T) {
+	t.Setenv("EDITOR", "")
+	items := []comments.Comment{{
+		ID: "one", Body: "existing feedback",
+		Anchor: comments.Anchor{FilePath: "main.go"},
+	}}
+	m := testModel(coveragePatch(), items, nil)
+	m = updateModel(t, m, textKey("C"))
+	m = updateModel(t, m, textKey("e"))
+	if m.err == nil {
+		t.Fatal("expected an editor error")
+	}
+	testutil.RequireEqual(t, m.err.Error(), "$EDITOR is not set",
+		"error = %v", m.err,
+	)
+	testutil.RequireEqual(t, m.edit.index, -1, "pending edit = %#v", m.edit)
+	testutil.RequireEqual(t, m.edit.body, "", "pending edit = %#v", m.edit)
+	testutil.RequireEqual(t, m.edit.anchor.FilePath, "",
+		"pending edit = %#v", m.edit,
+	)
+	testutil.RequireEqual(t, m.comments.items[0].Body, items[0].Body,
+		"comment was changed: %#v", m.comments.items[0],
+	)
+}
+
 func TestEmptyNewCommentIsDiscarded(t *testing.T) {
 	t.Setenv("EDITOR", "true")
 	called := false
