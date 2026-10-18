@@ -45,16 +45,11 @@ func commentDraft(body string, anchor comments.Anchor) string {
 	if len(anchor.QuotedLines) == 0 {
 		return body
 	}
-	lines := suggestionLines(anchor.QuotedLines)
-	var draft strings.Builder
-	_, _ = draft.WriteString(body)
 	if body != "" && !strings.HasSuffix(body, "\n") {
-		_ = draft.WriteByte('\n')
+		body += "\n"
 	}
-	_ = draft.WriteByte('\n')
-	_, _ = draft.WriteString(suggestionBlock(lines))
-	_ = draft.WriteByte('\n')
-	return draft.String()
+	suggestion := suggestionBlock(suggestionLines(anchor.QuotedLines))
+	return body + "\n" + suggestion + "\n"
 }
 
 func stripUnchangedSuggestion(body string, quoted []string) string {
