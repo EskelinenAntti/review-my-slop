@@ -36,12 +36,15 @@ func (v *diffView) findCursor(target cursorIdentity) (diffCursor, bool) {
 }
 
 type cursorMatch struct {
-	cursor         diffCursor
-	rank, distance int
+	cursor   diffCursor
+	rank     cursorMatchRank
+	distance int
 }
 
+type cursorMatchRank uint8
+
 const (
-	noCursorMatch = iota
+	noCursorMatch cursorMatchRank = iota
 	cursorMatchInFile
 	cursorMatchByText
 	cursorMatchByLineNumbers
@@ -99,7 +102,7 @@ func (v *diffView) rowInFile(current entry, target cursorIdentity) bool {
 	)
 }
 
-func lineMatchRank(line, target patch.Line) int {
+func lineMatchRank(line, target patch.Line) cursorMatchRank {
 	if line.Kind != target.Kind {
 		return cursorMatchInFile
 	}
