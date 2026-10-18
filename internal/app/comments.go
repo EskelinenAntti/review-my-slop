@@ -99,18 +99,23 @@ func (m *model) finishCommentEdit() {
 		m.clearCommentEdit()
 		return
 	}
-	if m.edit.index >= 0 {
-		m.comments.items[m.edit.index] = saved
-	} else {
-		m.comments.items = append(m.comments.items, saved)
-		m.commentView.Update(m.comments.items)
-		m.commentView.Move(len(m.comments.items))
-	}
+	m.updateSavedComment(saved, m.edit.index)
 	m.comments.revision++
-	m.commentView.Update(m.comments.items)
 	m.clearCommentEdit()
 	m.err = nil
 	m.diffView.ClearSelection()
+}
+
+func (m *model) updateSavedComment(saved comments.Comment, index int) {
+	if index >= 0 {
+		m.comments.items[index] = saved
+	} else {
+		m.comments.items = append(m.comments.items, saved)
+	}
+	m.commentView.Update(m.comments.items)
+	if index < 0 {
+		m.commentView.Move(len(m.comments.items))
+	}
 }
 
 func (m *model) deleteComment(index int) {
