@@ -79,15 +79,11 @@ func addComment(bucket *bolt.Bucket, id string, data []byte) error {
 func (s Store) List(repository string) ([]Comment, error) {
 	var comments []Comment
 	err := s.view(func(bucket *bolt.Bucket) error {
-		return bucket.ForEach(func(_, value []byte) error {
-			comment, err := decodeComment(value)
-			if err != nil {
-				return err
-			}
+		return forEachComment(bucket, func(_ []byte, comment Comment) bool {
 			if comment.Repository == repository {
 				comments = append(comments, comment)
 			}
-			return nil
+			return true
 		})
 	})
 	return comments, err
