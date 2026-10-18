@@ -50,9 +50,6 @@ func (v *diffView) renderRows(
 			)
 		}
 	}
-	for len(lines) < viewport.height {
-		lines = append(lines, "")
-	}
 	return lines
 }
 

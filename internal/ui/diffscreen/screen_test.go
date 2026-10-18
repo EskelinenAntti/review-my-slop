@@ -9,6 +9,26 @@ import (
 	"github.com/eskelinenantti/review-my-slop/internal/testutil"
 )
 
+func TestScreenFramePadsShortDiffBody(t *testing.T) {
+	v := New(patch.Patch{Files: []patch.File{{
+		DisplayPath: "file.go",
+	}}}, Options{})
+	v.Resize(80, 12)
+	rows := v.view.renderRows(v.viewport, v.cursor, nil)
+	testutil.RequireEqual(t, len(rows), 1,
+		"diff renderer padded content rows: %#v", rows,
+	)
+	screen := strings.Split(v.Render(nil), "\n")
+	testutil.RequireEqual(t, len(screen), 12,
+		"screen has %d rows, want 12", len(screen),
+	)
+	for row := 2; row <= 9; row++ {
+		testutil.RequireEqual(t, screen[row], "",
+			"body row %d = %q, want padding", row, screen[row],
+		)
+	}
+}
+
 func TestSelectedDefaultsToCurrentAndMovementExtendsRange(t *testing.T) {
 	v := New(testPatch(), Options{Dark: true})
 	file, lines, ok := v.Selected()
