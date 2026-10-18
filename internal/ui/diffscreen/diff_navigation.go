@@ -27,17 +27,22 @@ func (v *diffView) cursorAt(y int, pane diffPane) (diffCursor, bool) {
 }
 
 func (v *diffView) first() (diffCursor, bool) {
-	if cursor, ok := v.scan(-1, right, forward); ok {
-		return cursor, true
-	}
-	return v.scan(-1, left, forward)
+	return v.edge(forward)
 }
 
 func (v *diffView) last() (diffCursor, bool) {
-	if cursor, ok := v.scan(len(v.rows), right, backward); ok {
+	return v.edge(backward)
+}
+
+func (v *diffView) edge(direction direction) (diffCursor, bool) {
+	start := -1
+	if direction == backward {
+		start = len(v.rows)
+	}
+	if cursor, ok := v.scan(start, right, direction); ok {
 		return cursor, true
 	}
-	return v.scan(len(v.rows), left, backward)
+	return v.scan(start, left, direction)
 }
 
 func (v *diffView) scan(
