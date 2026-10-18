@@ -140,20 +140,7 @@ func newModel(
 			Dark:       true,
 		},
 		kind: currentPatch.Kind,
-		keys: keymap.New(
-			keymap.Sequence{
-				Prefix:         "g",
-				Keys:           []string{"g"},
-				RetryUnmatched: true,
-			},
-			keymap.Sequence{Prefix: "z", Keys: []string{"z", "t", "b"}},
-			keymap.Sequence{Prefix: "[", Keys: []string{"f"}},
-			keymap.Sequence{Prefix: "]", Keys: []string{"f"}},
-			keymap.Sequence{
-				Prefix: "ctrl+w",
-				Keys:   []string{"h", "l", "ctrl+w"},
-			},
-		),
+		keys: navigationMatcher(),
 	}
 	m.diffView = diffscreen.New(currentPatch, m.diffOptions)
 	m.resizeScreens()

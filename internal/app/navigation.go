@@ -3,10 +3,48 @@ package app
 import (
 	"fmt"
 	"math"
+	"slices"
+	"strings"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/eskelinenantti/review-my-slop/internal/ui/diffscreen"
+	"github.com/eskelinenantti/review-my-slop/internal/ui/keymap"
 )
+
+func navigationMatcher() keymap.Matcher {
+	keysByPrefix := make(map[string][]string)
+	for binding := range navigationMotions {
+		addSequenceKey(keysByPrefix, binding)
+	}
+	for binding := range navigationAlignments {
+		addSequenceKey(keysByPrefix, binding)
+	}
+	prefixes := make([]string, 0, len(keysByPrefix))
+	for prefix := range keysByPrefix {
+		prefixes = append(prefixes, prefix)
+	}
+	slices.Sort(prefixes)
+
+	sequences := make([]keymap.Sequence, 0, len(prefixes))
+	for _, prefix := range prefixes {
+		keys := keysByPrefix[prefix]
+		slices.Sort(keys)
+		// Vim's g prefix retries an unmatched continuation as a fresh key.
+		sequences = append(sequences, keymap.Sequence{
+			Prefix:         prefix,
+			Keys:           keys,
+			RetryUnmatched: prefix == "g",
+		})
+	}
+	return keymap.New(sequences...)
+}
+
+func addSequenceKey(keysByPrefix map[string][]string, binding string) {
+	keys := strings.Fields(binding)
+	if len(keys) == 2 {
+		keysByPrefix[keys[0]] = append(keysByPrefix[keys[0]], keys[1])
+	}
+}
 
 func (m *model) toggleSideBySide() {
 	enabled := !m.diffOptions.SideBySide
