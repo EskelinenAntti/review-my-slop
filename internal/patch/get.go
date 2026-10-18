@@ -323,7 +323,7 @@ func readUntrackedPaths(
 	root string,
 	paths []string,
 ) ([]File, error) {
-	var files []File
+	files := make([]File, 0, len(paths))
 	for _, path := range paths {
 		if err := ctx.Err(); err != nil {
 			return nil, err
