@@ -215,7 +215,7 @@ func renderedLineStyle(
 	styles lineStyles,
 ) (lipgloss.Style, foregroundPolicy) {
 	style, colors := lineStyle(kind, styles), preserveForeground
-	if selected(selection, candidate) {
+	if selectionContains(selection, candidate) {
 		style, colors = styles.selection, discardForeground
 	}
 	if cursor == candidate {
@@ -224,7 +224,7 @@ func renderedLineStyle(
 	return style, colors
 }
 
-func selected(selection *diffSelection, cursor diffCursor) bool {
+func selectionContains(selection *diffSelection, cursor diffCursor) bool {
 	if selection == nil {
 		return false
 	}
