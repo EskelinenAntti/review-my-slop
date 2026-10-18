@@ -105,6 +105,7 @@ func (v *View) keepVisible() {
 
 // Render composes the screen, showing a non-nil error in place of its hints.
 func (v *View) Render(err error) string {
+	width := max(20, v.width)
 	pending := frame.Muted(fmt.Sprintf("%d pending", len(v.items)))
 	header := frame.Title("comments") + "  " + pending
 	height := frame.BodyHeight(v.height)
@@ -116,7 +117,7 @@ func (v *View) Render(err error) string {
 		start := v.firstVisibleRow(height)
 		end := min(len(v.items), start+height)
 		for index := start; index < end; index++ {
-			body = append(body, v.renderRow(index))
+			body = append(body, v.renderRow(index, width))
 		}
 	}
 	footer := frame.Muted(
@@ -124,12 +125,12 @@ func (v *View) Render(err error) string {
 	)
 	if err != nil {
 		message := frame.SingleLine(err.Error())
-		footer = frame.Error(ansi.Truncate(message, max(20, v.width), ""))
+		footer = frame.Error(ansi.Truncate(message, width, ""))
 	}
 	return frame.Render(header, body, footer, v.height)
 }
 
-func (v *View) renderRow(index int) string {
+func (v *View) renderRow(index, width int) string {
 	comment := v.items[index]
 	prefix, style := "  ", commentRowStyle
 	if index == v.row {
@@ -144,10 +145,10 @@ func (v *View) renderRow(index int) string {
 	text := frame.SingleLine(strings.TrimSpace(comment.Body))
 	line := ansi.Truncate(
 		fmt.Sprintf("%s%s  %s", prefix, location, text),
-		max(20, v.width),
+		width,
 		"",
 	)
-	return style.Width(max(20, v.width)).Render(line)
+	return style.Width(width).Render(line)
 }
 
 var (
