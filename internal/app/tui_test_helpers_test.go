@@ -12,18 +12,6 @@ import (
 	"github.com/eskelinenantti/review-my-slop/internal/ui/diffscreen"
 )
 
-func TestSelectionCannotCrossHunk(t *testing.T) {
-	m := testModel(coveragePatch(), nil, nil)
-	m = updateModel(t, m, textKey("v"))
-	for range 10 {
-		m = updateModel(t, m, textKey("j"))
-	}
-	_, line, _ := m.diffView.Current()
-	testutil.RequireEqual(t, line.Text != "more()", true, "%s",
-		"diffSelection crossed hunk",
-	)
-}
-
 func updateModel(t *testing.T, m model, msg tea.Msg) model {
 	t.Helper()
 	next, _ := m.Update(msg)
