@@ -172,8 +172,11 @@ func lineDistance(line, target patch.Line, rowDistance int) int {
 }
 
 func sameFile(candidate, target patch.File) bool {
-	return candidate.OldPath != "" && candidate.OldPath == target.OldPath ||
-		candidate.NewPath != "" && candidate.NewPath == target.NewPath
+	oldPathMatches := candidate.OldPath != "" &&
+		candidate.OldPath == target.OldPath
+	newPathMatches := candidate.NewPath != "" &&
+		candidate.NewPath == target.NewPath
+	return oldPathMatches || newPathMatches
 }
 
 func abs(value int) int {
