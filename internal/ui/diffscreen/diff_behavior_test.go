@@ -268,10 +268,7 @@ func TestFileHeaderSticksWithoutCoveringDiffRows(t *testing.T) {
 	viewport := v.newViewport(60, 3)
 	viewport.top = 3
 
-	rendered := strings.Split(
-		ansi.Strip(v.render(viewport, diffCursor{}, nil)),
-		"\n",
-	)
+	rendered := v.renderRows(viewport, diffCursor{}, nil)
 	testutil.RequireEqual(t, len(rendered), viewport.height,
 		"sticky render = %#v", rendered,
 	)
@@ -287,10 +284,7 @@ func TestFileHeaderSticksWithoutCoveringDiffRows(t *testing.T) {
 
 	secondFileRow := 5
 	viewport.top = secondFileRow
-	rendered = strings.Split(
-		ansi.Strip(v.render(viewport, diffCursor{}, nil)),
-		"\n",
-	)
+	rendered = v.renderRows(viewport, diffCursor{}, nil)
 	testutil.RequireEqual(t, strings.Count(
 		strings.Join(rendered, "\n"),
 		"second.go",
@@ -298,10 +292,7 @@ func TestFileHeaderSticksWithoutCoveringDiffRows(t *testing.T) {
 		"file header was duplicated at its natural position: %#v", rendered)
 
 	viewport.top = secondFileRow + 1
-	rendered = strings.Split(
-		ansi.Strip(v.render(viewport, diffCursor{}, nil)),
-		"\n",
-	)
+	rendered = v.renderRows(viewport, diffCursor{}, nil)
 	testutil.RequireEqual(t, strings.Contains(rendered[0], "second.go"), true,
 		"sticky header did not change with the file: %#v", rendered,
 	)
@@ -351,7 +342,9 @@ func TestKeepVisibleAccountsForStickyFileHeader(t *testing.T) {
 	v := newUnifiedView(longPatch(), true)
 	cursor, _ := v.last()
 	viewport := v.keepVisible(v.newViewport(50, 4), cursor)
-	rendered := ansi.Strip(v.render(viewport, cursor, nil))
+	rendered := ansi.Strip(
+		strings.Join(v.renderRows(viewport, cursor, nil), "\n"),
+	)
 	line, _ := v.line(cursor)
 	testutil.RequireEqual(t,
 		cursor.row < viewport.top+v.contentHeight(viewport), true,
@@ -406,9 +399,13 @@ func TestHorizontalScrollKeepsUnifiedGutterFixed(t *testing.T) {
 	cursor := mustFirst(t, v)
 	viewport := v.newViewport(37, 1)
 	viewport = v.keepVisible(viewport, cursor)
-	before := ansi.Strip(v.render(viewport, cursor, nil))
+	before := ansi.Strip(
+		strings.Join(v.renderRows(viewport, cursor, nil), "\n"),
+	)
 	viewport = v.scrollHorizontal(viewport, 4)
-	after := ansi.Strip(v.render(viewport, cursor, nil))
+	after := ansi.Strip(
+		strings.Join(v.renderRows(viewport, cursor, nil), "\n"),
+	)
 	testutil.RequireEqual(t, before[:14], after[:14],
 		"before=%q after=%q viewport=%#v", before, after, viewport,
 	)
@@ -426,7 +423,9 @@ func TestHorizontalScrollKeepsSplitGuttersAndDividerFixed(t *testing.T) {
 	viewport := v.newViewport(120, 1)
 	viewport = v.keepVisible(viewport, cursor)
 	viewport = v.scrollHorizontal(viewport, 8)
-	rendered := ansi.Strip(v.render(viewport, cursor, nil))
+	rendered := ansi.Strip(
+		strings.Join(v.renderRows(viewport, cursor, nil), "\n"),
+	)
 	testutil.RequireEqual(t, strings.Index(rendered, "│"), 59,
 		"gutters moved: %q", rendered,
 	)
@@ -596,7 +595,7 @@ func renderTarget(
 ) string {
 	viewport := v.newViewport(width, 1)
 	viewport.top = target.row
-	return v.render(viewport, active, selection)
+	return strings.Join(v.renderRows(viewport, active, selection), "\n")
 }
 
 func longLinePatch() patch.Patch {

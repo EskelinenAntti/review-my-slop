@@ -12,11 +12,11 @@ import (
 	"github.com/eskelinenantti/review-my-slop/internal/ui/internal/frame"
 )
 
-func (v *diffView) render(
+func (v *diffView) renderRows(
 	viewport diffViewport,
 	cursor diffCursor,
 	selection *diffSelection,
-) string {
+) []string {
 	viewport = v.clampViewport(viewport)
 	lines := make([]string, 0, viewport.height)
 	if v.hasStickyHeader(viewport.top, viewport.height) {
@@ -53,7 +53,7 @@ func (v *diffView) render(
 	for len(lines) < viewport.height {
 		lines = append(lines, "")
 	}
-	return strings.Join(lines, "\n")
+	return lines
 }
 
 func (v *diffView) renderUnifiedRow(
