@@ -48,6 +48,63 @@ func TestSelectionBetween(t *testing.T) {
 	}
 }
 
+func TestSwitchSelectionPane(t *testing.T) {
+	p := patchWithHunks([]patch.Hunk{
+		{Header: "@@", Lines: []patch.Line{
+			{Kind: patch.Context, Text: "before"},
+			{Kind: patch.Deletion, Text: "removed"},
+			{Kind: patch.Deletion, Text: "extra removal"},
+			{Kind: patch.Addition, Text: "added"},
+			{Kind: patch.Context, Text: "after"},
+		}},
+		{Header: "@@ later @@", Lines: []patch.Line{
+			{Kind: patch.Context, Text: "later"},
+		}},
+	})
+	v := newSideBySideView(p, true)
+	before := mustFirst(t, v)
+	removed, _ := v.search("removed", before, forward)
+	extra, _ := v.search("extra removal", before, forward)
+	after, _ := v.search("after", before, forward)
+	later, _ := v.search("later", before, forward)
+	for _, tt := range []struct {
+		name        string
+		first, last diffCursor
+		pane        diffPane
+		want        diffSelection
+		wantOK      bool
+	}{
+		{"forward range", before, after, left,
+			diffSelection{
+				diffCursor{before.row, left}, diffCursor{after.row, left},
+			}, true},
+		{"backward range", after, before, left,
+			diffSelection{
+				diffCursor{after.row, left}, diffCursor{before.row, left},
+			}, true},
+		{"empty pane falls back", removed, extra, right,
+			diffSelection{
+				diffCursor{removed.row, right}, diffCursor{removed.row, right},
+			}, true},
+		{"different hunks", before, later, left, diffSelection{}, false},
+		{"invalid start", diffCursor{-1, left}, after, right,
+			diffSelection{}, false},
+		{"invalid end", before, diffCursor{len(v.rows), left}, right,
+			diffSelection{}, false},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			selection := diffSelection{First: tt.first, Last: tt.last}
+			got, ok := v.switchSelectionPane(selection, tt.pane)
+			testutil.RequireEqual(t, ok, tt.wantOK, "selection validity")
+			testutil.RequireEqual(t, got, tt.want, "selection endpoints")
+		})
+	}
+	unified := newDiffView(p, Options{})
+	first := mustFirst(t, unified)
+	_, ok := unified.switchSelectionPane(beginSelection(first), left)
+	testutil.RequireEqual(t, ok, false, "unified view has no other pane")
+}
+
 func TestSelectionContains(t *testing.T) {
 	t.Run("no selection", func(t *testing.T) {
 		assertSelectionContains(t, nil, nil)

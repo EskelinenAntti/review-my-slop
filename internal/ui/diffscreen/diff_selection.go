@@ -42,6 +42,18 @@ func (v *diffView) sameFileHunk(first, last diffCursor) bool {
 	return firstRow.file == lastRow.file && firstRow.hunk == lastRow.hunk
 }
 
+func (v *diffView) switchSelectionPane(
+	selection diffSelection,
+	pane diffPane,
+) (diffSelection, bool) {
+	first, firstOK := v.switchPane(selection.First, pane)
+	last, lastOK := v.switchPane(selection.Last, pane)
+	if !firstOK || !lastOK {
+		return diffSelection{}, false
+	}
+	return v.selectionBetween(first, last)
+}
+
 func (v *diffView) lines(selection diffSelection) []patch.Line {
 	if !v.sameFileHunk(selection.First, selection.Last) {
 		return nil
