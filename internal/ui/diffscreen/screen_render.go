@@ -38,10 +38,7 @@ func (v *View) renderBody() []string {
 		}
 		body = frame.EmptyBody(v.height, empty)
 	} else {
-		body = strings.Split(
-			v.view.render(v.viewport, v.cursor, v.selection),
-			"\n",
-		)
+		body = v.view.render(v.viewport, v.cursor, v.selection)
 	}
 	return body
 }

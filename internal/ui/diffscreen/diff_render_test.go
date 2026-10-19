@@ -2,6 +2,7 @@ package diffscreen
 
 import (
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 
@@ -178,11 +179,39 @@ func assertRenderStateIsLocal(t *testing.T, v *diffView) {
 			rendered := v.render(
 				state.viewport, state.cursor, state.selection,
 			)
-			testutil.RequireEqual(t, rendered != baseline, true,
+			testutil.RequireEqual(t, slices.Equal(rendered, baseline), false,
 				"render ignored changed %s", state.name)
 			testutil.RequireEqual(t,
-				v.render(viewport, first, nil), baseline,
+				slices.Equal(v.render(viewport, first, nil), baseline), true,
 				"render retained changed %s", state.name)
 		})
+	}
+}
+
+func TestRenderReturnsPaddedViewportRows(t *testing.T) {
+	for _, split := range []bool{false, true} {
+		for _, height := range []int{1, 5, 20} {
+			v := newDiffView(testPatch(), Options{
+				SideBySide: split,
+				Dark:       true,
+			})
+			viewport := v.newViewport(100, height)
+			rows := v.render(viewport, mustFirst(t, v), nil)
+			testutil.RequireEqual(t, len(rows), height,
+				"split=%t: row count differs from viewport height", split)
+			assertViewportRows(t, rows, len(v.rows))
+		}
+	}
+}
+
+func assertViewportRows(t *testing.T, rows []string, contentRows int) {
+	t.Helper()
+	for index, row := range rows {
+		testutil.RequireEqual(t, strings.ContainsRune(row, '\n'), false,
+			"row=%d: rendered row contains a newline", index)
+		if index >= contentRows {
+			testutil.RequireEqual(t, row, "",
+				"row=%d: padding is not blank", index)
+		}
 	}
 }

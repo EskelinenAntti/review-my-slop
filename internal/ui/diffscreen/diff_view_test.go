@@ -77,7 +77,8 @@ func TestSplitPairsChangeBlocksAndSupportsEmptyPanes(t *testing.T) {
 	}
 
 	viewport := v.newViewport(100, 20)
-	rendered := v.render(viewport, added, nil)
+	rows := v.render(viewport, added, nil)
+	rendered := strings.Join(rows, "\n")
 	testutil.RequireEqual(t, strings.Contains(rendered, "removed one"), true,
 		"paired render missing lines: %q", rendered,
 	)
@@ -85,7 +86,7 @@ func TestSplitPairsChangeBlocksAndSupportsEmptyPanes(t *testing.T) {
 		"paired render missing lines: %q", rendered,
 	)
 
-	for _, row := range strings.Split(rendered, "\n") {
+	for _, row := range rows {
 		testutil.RequireEqual(t,
 			!strings.Contains(row, " │ ") || lipgloss.Width(row) == 100, true,
 			"rendered width = %d", lipgloss.Width(row),
