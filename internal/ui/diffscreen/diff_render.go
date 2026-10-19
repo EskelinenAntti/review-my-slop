@@ -202,31 +202,13 @@ func renderedLineStyle(
 	styles lineStyles,
 ) (lipgloss.Style, foregroundPolicy) {
 	style, colors := lineStyle(kind, styles), preserveForeground
-	if selectionContains(selection, candidate) {
+	if selection.contains(candidate) {
 		style, colors = styles.selection, discardForeground
 	}
 	if cursor == candidate {
 		style, colors = cursorStyle, discardForeground
 	}
 	return style, colors
-}
-
-func selectionContains(selection *diffSelection, cursor diffCursor) bool {
-	if selection == nil {
-		return false
-	}
-	first, last := selection.First, selection.Last
-	if first.row == last.row && first.pane != last.pane {
-		return cursor.row == first.row &&
-			(cursor.pane == first.pane || cursor.pane == last.pane)
-	}
-	if first.pane != cursor.pane {
-		return false
-	}
-	return cursor.row >= min(
-		first.row,
-		last.row,
-	) && cursor.row <= max(first.row, last.row)
 }
 
 func lineStyle(kind patch.LineKind, styles lineStyles) lipgloss.Style {

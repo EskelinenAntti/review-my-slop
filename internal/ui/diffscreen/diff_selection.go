@@ -8,6 +8,23 @@ func beginSelection(cursor diffCursor) diffSelection {
 	return diffSelection{First: cursor, Last: cursor}
 }
 
+func (s diffSelection) rowBounds() (first, last int) {
+	return min(s.First.row, s.Last.row), max(s.First.row, s.Last.row)
+}
+
+func (s *diffSelection) contains(cursor diffCursor) bool {
+	if s == nil {
+		return false
+	}
+	if s.First.row == s.Last.row && s.First.pane != s.Last.pane {
+		return cursor.row == s.First.row &&
+			(cursor.pane == s.First.pane || cursor.pane == s.Last.pane)
+	}
+	first, last := s.rowBounds()
+	return cursor.pane == s.First.pane &&
+		cursor.row >= first && cursor.row <= last
+}
+
 func (v *diffView) extendSelection(
 	selection diffSelection,
 	cursor diffCursor,
@@ -31,10 +48,7 @@ func (v *diffView) lines(selection diffSelection) []patch.Line {
 	if !v.sameFileHunk(selection.First, selection.Last) {
 		return nil
 	}
-	first, last := min(
-		selection.First.row,
-		selection.Last.row,
-	), max(selection.First.row, selection.Last.row)
+	first, last := selection.rowBounds()
 	if first == last && selection.First.pane != selection.Last.pane {
 		return v.paneLines(selection)
 	}
