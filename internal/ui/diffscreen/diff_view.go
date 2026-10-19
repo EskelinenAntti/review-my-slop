@@ -96,7 +96,11 @@ func (v *diffView) appendHunkRows(
 		hunkIndex,
 		normalizeHunkHeader(hunk.Header),
 	)
-	appendRow := func(leftLine, rightLine int) {
+	pairs := unifiedLinePairs
+	if v.split {
+		pairs = splitLinePairs
+	}
+	for leftLine, rightLine := range pairs(hunk.Lines) {
 		v.appendLineRow(
 			fileIndex,
 			hunkIndex,
@@ -105,18 +109,6 @@ func (v *diffView) appendHunkRows(
 			leftLine,
 			rightLine,
 		)
-	}
-	for index := 0; index < len(hunk.Lines); {
-		kind := hunk.Lines[index].Kind
-		if !v.split || (kind != patch.Addition && kind != patch.Deletion) {
-			appendRow(index, index)
-			index++
-			continue
-		}
-		addedStart := changeBlockEnd(hunk.Lines, index, patch.Deletion)
-		end := changeBlockEnd(hunk.Lines, addedStart, patch.Addition)
-		appendPairedChangeRows(appendRow, index, addedStart, end)
-		index = end
 	}
 }
 
@@ -167,30 +159,6 @@ func (v *diffView) highlightRow(
 	}
 	if row.rightLine >= 0 {
 		row.right = highlighted.text(lines[row.rightLine])
-	}
-}
-
-func changeBlockEnd(lines []patch.Line, start int, kind patch.LineKind) int {
-	for start < len(lines) && lines[start].Kind == kind {
-		start++
-	}
-	return start
-}
-
-func appendPairedChangeRows(
-	appendRow func(leftLine, rightLine int),
-	removedStart, addedStart, end int,
-) {
-	count := max(addedStart-removedStart, end-addedStart)
-	for offset := 0; offset < count; offset++ {
-		leftLine, rightLine := -1, -1
-		if removedStart+offset < addedStart {
-			leftLine = removedStart + offset
-		}
-		if addedStart+offset < end {
-			rightLine = addedStart + offset
-		}
-		appendRow(leftLine, rightLine)
 	}
 }
 
