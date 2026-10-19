@@ -3,7 +3,6 @@ package editor
 import (
 	"fmt"
 	"os"
-	"strings"
 
 	"github.com/eskelinenantti/review-my-slop/internal/appinfo"
 	"github.com/eskelinenantti/review-my-slop/internal/comments"
@@ -39,75 +38,4 @@ func readCommentFile(path string, anchor comments.Anchor) (string, error) {
 		return "", fmt.Errorf("read comment file: %w", err)
 	}
 	return stripUnchangedSuggestion(string(body), anchor.QuotedLines), nil
-}
-
-func commentDraft(body string, anchor comments.Anchor) string {
-	if len(anchor.QuotedLines) == 0 {
-		return body
-	}
-	lines := suggestionLines(anchor.QuotedLines)
-	var draft strings.Builder
-	_, _ = draft.WriteString(body)
-	if body != "" && !strings.HasSuffix(body, "\n") {
-		_ = draft.WriteByte('\n')
-	}
-	_ = draft.WriteByte('\n')
-	_, _ = draft.WriteString(suggestionBlock(lines))
-	_ = draft.WriteByte('\n')
-	return draft.String()
-}
-
-func stripUnchangedSuggestion(body string, quoted []string) string {
-	if len(quoted) == 0 {
-		return body
-	}
-	suggestion := suggestionBlock(suggestionLines(quoted))
-	before, after, found := strings.Cut(body, suggestion)
-	if !found {
-		return body
-	}
-	before = strings.TrimRight(before, "\n")
-	if strings.TrimSpace(after) == "" {
-		return before
-	}
-	return before + "\n" + strings.TrimLeft(after, "\n")
-}
-
-func suggestionBlock(lines []string) string {
-	fence := contextFence(lines)
-	var block strings.Builder
-	_, _ = block.WriteString(fence)
-	_, _ = block.WriteString("suggestion\n")
-	for _, line := range lines {
-		_, _ = block.WriteString(line)
-		_ = block.WriteByte('\n')
-	}
-	_, _ = block.WriteString(fence)
-	return block.String()
-}
-
-func suggestionLines(quoted []string) []string {
-	lines := make([]string, 0, len(quoted))
-	for _, line := range quoted {
-		if line != "" && line[0] != '-' {
-			lines = append(lines, line[1:])
-		}
-	}
-	return lines
-}
-
-func contextFence(lines []string) string {
-	longest := 0
-	for _, line := range lines {
-		run := 0
-		for _, char := range line {
-			if char == '`' {
-				run++
-				longest = max(longest, run)
-			} else {
-				run = 0
-			}
-		}
-	}
-	return strings.Repeat("`", max(3, longest+1))
 }
