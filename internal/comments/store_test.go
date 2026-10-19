@@ -305,6 +305,80 @@ func TestLegacyMessageCanBeReadAndUpdated(t *testing.T) {
 	)
 }
 
+func TestStoreOperationsStayWithinRepository(t *testing.T) {
+	for _, operation := range []struct {
+		name      string
+		apply     func(Store, Comment) error
+		wantCount int
+	}{
+		{"update", func(store Store, comment Comment) error {
+			comment.Body = "updated"
+			return store.Update(comment)
+		}, 1},
+		{"delete", func(store Store, comment Comment) error {
+			return store.Delete(comment.Repository, comment.ID)
+		}, 0},
+		{"acknowledge", func(store Store, comment Comment) error {
+			return store.Acknowledge(comment.Repository, []string{comment.ID})
+		}, 0},
+	} {
+		t.Run(operation.name, func(t *testing.T) {
+			store := Store{Path: filepath.Join(t.TempDir(), "comments.db")}
+			other := testComment("/other", "original")
+			target := testComment("/repo", "original")
+			seedLegacyKeys(t, store, []Comment{other, target})
+
+			listed, err := store.List(target.Repository)
+			testutil.NoError(t, err)
+			testutil.RequireEqual(t, len(listed), 1, "comments = %#v", listed)
+			testutil.RequireEqual(t, listed[0].Repository, target.Repository,
+				"comment = %#v", listed[0],
+			)
+
+			testutil.NoError(t, operation.apply(store, target))
+
+			remaining, err := store.List(target.Repository)
+			testutil.NoError(t, err)
+			testutil.RequireEqual(t, len(remaining), operation.wantCount,
+				"remaining comments = %#v", remaining,
+			)
+			if operation.wantCount > 0 {
+				testutil.RequireEqual(t, remaining[0].Body, "updated",
+					"comment = %#v", remaining[0],
+				)
+			}
+			unchanged, err := store.List(other.Repository)
+			testutil.NoError(t, err)
+			testutil.RequireEqual(t, len(unchanged), 1,
+				"other repository comments = %#v", unchanged,
+			)
+			testutil.RequireEqual(t, unchanged[0].Body, other.Body,
+				"other repository comment = %#v", unchanged[0],
+			)
+		})
+	}
+}
+
+func seedLegacyKeys(t *testing.T, store Store, comments []Comment) {
+	t.Helper()
+	// Legacy keys need not match IDs; repositories can share the same ID.
+	records := make([][]byte, len(comments))
+	for i, comment := range comments {
+		data, err := encodeComment(comment)
+		testutil.NoError(t, err)
+		records[i] = data
+	}
+	err := store.transact(func(bucket *bolt.Bucket) error {
+		for i, data := range records {
+			if err := bucket.Put([]byte{byte(i)}, data); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	testutil.NoError(t, err)
+}
+
 func testComment(repository, body string) Comment {
 	return Comment{
 		ID:         body,
