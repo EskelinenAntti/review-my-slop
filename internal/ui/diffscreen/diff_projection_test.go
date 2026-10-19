@@ -20,6 +20,7 @@ func TestSplitRowsPairOnlyAdjacentChangeBlocks(t *testing.T) {
 		lines []patch.Line
 		want  [][2]string
 	}{
+		{"empty hunk", nil, nil},
 		{
 			"additions",
 			[]patch.Line{a1, a2},
@@ -41,6 +42,11 @@ func TestSplitRowsPairOnlyAdjacentChangeBlocks(t *testing.T) {
 			[][2]string{{"old-a", "new-a"}, {"", "new-b"}},
 		},
 		{
+			"equal change blocks",
+			[]patch.Line{d1, d2, a1, a2},
+			[][2]string{{"old-a", "new-a"}, {"old-b", "new-b"}},
+		},
+		{
 			"context separates blocks",
 			[]patch.Line{d1, context, a1},
 			[][2]string{
@@ -59,25 +65,33 @@ func TestSplitRowsPairOnlyAdjacentChangeBlocks(t *testing.T) {
 			[]patch.Line{a1, d1, a2},
 			[][2]string{{"", "new-a"}, {"old-a", "new-b"}},
 		},
+		{
+			"successive change blocks",
+			[]patch.Line{d1, a1, d2, a2},
+			[][2]string{{"old-a", "new-a"}, {"old-b", "new-b"}},
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			p := patch.Patch{
-				Files: []patch.File{
-					{
-						DisplayPath: "file.go",
-						Hunks: []patch.Hunk{
-							{Header: "@@", Lines: tc.lines},
-						},
-					},
-				},
-			}
-			v := newSideBySideView(p, true)
-			got := projectedTexts(v)
-			testutil.RequireEqual(t, slices.Equal(got, tc.want), true,
-				"paired source lines=%v, want %v", got, tc.want,
-			)
+			assertProjectedLines(t, tc.lines, tc.want)
 		})
 	}
+}
+
+func assertProjectedLines(t *testing.T, lines []patch.Line, want [][2]string) {
+	t.Helper()
+	p := patchWithLines(lines)
+	got := projectedTexts(newSideBySideView(p, true))
+	testutil.RequireEqual(t, slices.Equal(got, want), true,
+		"paired source lines=%v, want %v", got, want,
+	)
+	var wantUnified [][2]string
+	for _, line := range lines {
+		wantUnified = append(wantUnified, [2]string{line.Text, line.Text})
+	}
+	gotUnified := projectedTexts(newUnifiedView(p, true))
+	testutil.RequireEqual(t, slices.Equal(gotUnified, wantUnified), true,
+		"unified source lines=%v, want %v", gotUnified, wantUnified,
+	)
 }
 
 func projectedTexts(v *diffView) [][2]string {
