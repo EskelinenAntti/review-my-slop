@@ -1,12 +1,62 @@
 package diffscreen
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/eskelinenantti/review-my-slop/internal/patch"
 	"github.com/eskelinenantti/review-my-slop/internal/testutil"
 )
+
+func TestRenderProjectedLineNumbers(t *testing.T) {
+	p := patchWithLines([]patch.Line{
+		{Kind: patch.Deletion, Text: "old", OldNumber: 10},
+		{Kind: patch.Addition, Text: "new", NewNumber: 20},
+		{Kind: patch.Addition, Text: "extra", NewNumber: 21},
+	})
+	for _, tc := range []struct {
+		name  string
+		split bool
+		line  int
+		pane  diffPane
+		want  string
+	}{
+		{"unified deletion", false, 0, right, "10 - old"},
+		{"unified addition", false, 1, right, "20 + new"},
+		{"unified left pane", false, 0, left, "10 - old"},
+		{"split deletion", true, 0, left, "10 - old"},
+		{"split addition", true, 0, right, "20 + new"},
+		{"split unpaired addition", true, 1, right, "21 + extra"},
+		{"split empty pane", true, 1, left, ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			v := newDiffView(p, Options{SideBySide: tc.split})
+			rendered := renderProjectedTestLine(v, tc.line, tc.pane)
+			got := strings.Join(strings.Fields(ansi.Strip(rendered)), " ")
+			testutil.RequireEqual(t, got, tc.want,
+				"projected source line changed")
+		})
+	}
+}
+
+func renderProjectedTestLine(v *diffView, line int, pane diffPane) string {
+	var rows []int
+	for y, row := range v.rows {
+		if row.kind == lineRow {
+			rows = append(rows, y)
+		}
+	}
+	y := rows[line]
+	renderer := diffRenderer{
+		view: v, cursor: diffCursor{row: y, pane: pane},
+		viewport: diffViewport{width: 40},
+	}
+	if v.split {
+		return renderer.renderPane(v.rows[y], y, pane, 40)
+	}
+	return renderer.renderUnifiedRow(v.rows[y], y)
+}
 
 func TestRenderCodeLineKeepsGutterWhileScrolling(t *testing.T) {
 	for _, tc := range []struct {

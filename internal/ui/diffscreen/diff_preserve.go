@@ -174,13 +174,13 @@ func (v *View) replaceView(next *diffView) {
 }
 
 func identify(v *diffView, cursor diffCursor) cursorIdentity {
-	if !v.valid(cursor) {
+	line, ok := v.line(cursor)
+	if !ok {
 		return cursorIdentity{}
 	}
 	row := v.rows[cursor.row]
 	file := v.patch.Files[row.file]
 	hunk := file.Hunks[row.hunk]
-	line := hunk.Lines[v.lineIndex(row, cursor.pane)]
 	return cursorIdentity{
 		oldPath:    file.OldPath,
 		newPath:    file.NewPath,
