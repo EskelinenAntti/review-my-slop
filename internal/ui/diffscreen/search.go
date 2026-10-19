@@ -1,11 +1,5 @@
 package diffscreen
 
-import (
-	"fmt"
-
-	"github.com/eskelinenantti/review-my-slop/internal/ui/internal/frame"
-)
-
 // Direction chooses the order in which search matches are visited.
 type Direction int8
 
@@ -103,16 +97,4 @@ func (v *View) Find(d Direction) bool {
 		v.setCursor(cursor)
 	}
 	return ok
-}
-
-func (s searchState) renderQuery() string {
-	status := "/" + s.query + cursorStyle.Render(" ")
-	if s.miss {
-		status += frame.Error("  no matches")
-	}
-	return status
-}
-
-func (s searchState) renderRepeatMiss() string {
-	return frame.Error(fmt.Sprintf("no matches for %q", s.term))
 }
