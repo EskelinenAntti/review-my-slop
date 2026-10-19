@@ -50,13 +50,9 @@ const (
 	cursorMatchByLineNumbers
 )
 
-func (m cursorMatch) betterThan(other cursorMatch) bool {
-	return m.rank > other.rank ||
-		m.rank == other.rank && m.distance < other.distance
-}
-
 func (m *cursorMatch) consider(candidate cursorMatch) {
-	if candidate.betterThan(*m) {
+	if candidate.rank > m.rank ||
+		candidate.rank == m.rank && candidate.distance < m.distance {
 		*m = candidate
 	}
 }

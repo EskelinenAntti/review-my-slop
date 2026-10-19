@@ -8,6 +8,40 @@ import (
 	"github.com/eskelinenantti/review-my-slop/internal/testutil"
 )
 
+func TestCursorMatchConsider(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		rank     cursorMatchRank
+		distance int
+		wantNew  bool
+	}{
+		{"higher rank beats distance", cursorMatchByLineNumbers, 100, true},
+		{"lower rank loses despite distance", cursorMatchInFile, 0, false},
+		{"equal rank prefers nearer", cursorMatchByText, 4, true},
+		{"equal rank rejects farther", cursorMatchByText, 6, false},
+		{"ties keep preferred pane", cursorMatchByText, 5, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			original := cursorMatch{
+				cursor: diffCursor{row: 1, pane: right},
+				rank:   cursorMatchByText, distance: 5,
+			}
+			candidate := cursorMatch{
+				cursor: diffCursor{row: 2, pane: left},
+				rank:   tc.rank, distance: tc.distance,
+			}
+			best := original
+			best.consider(candidate)
+			want := original
+			if tc.wantNew {
+				want = candidate
+			}
+			testutil.RequireEqual(t, best, want,
+				"best=%+v, want %+v", best, want)
+		})
+	}
+}
+
 func TestPreserveTranslatesCursorSelectionAndViewport(t *testing.T) {
 	old := newUnifiedView(testPatch(), true)
 	first := mustFirst(t, old)
