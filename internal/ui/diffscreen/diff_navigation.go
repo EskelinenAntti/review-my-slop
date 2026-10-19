@@ -107,17 +107,16 @@ func (v *diffView) jumpFile(
 		return diffCursor{}, false
 	}
 	fileIndex := v.rows[cursor.row].file
-	y := cursor.row
-	for {
-		next, ok := v.scan(y, cursor.pane, direction)
-		if !ok {
-			return diffCursor{}, false
+	step := int(direction)
+	for y := cursor.row + step; y >= 0 && y < len(v.rows); y += step {
+		if v.rows[y].file == fileIndex {
+			continue
 		}
-		if v.rows[next.row].file != fileIndex {
+		if next, ok := v.cursorAt(y, cursor.pane); ok {
 			return next, true
 		}
-		y = next.row
 	}
+	return diffCursor{}, false
 }
 
 func (v *diffView) switchPane(
