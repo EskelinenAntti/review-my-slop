@@ -8,6 +8,11 @@ import (
 	"path/filepath"
 )
 
+const (
+	maxFileSizeMiB = 2
+	maxFileBytes   = maxFileSizeMiB << 20
+)
+
 func readGitSource(
 	ctx context.Context,
 	run runner,
