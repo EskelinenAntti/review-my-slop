@@ -79,7 +79,7 @@ func (v *diffView) appendFileRows(fileIndex int, file patch.File) {
 	for _, metadata := range file.Metadata {
 		v.appendNonLineRow(metadataRow, fileIndex, -1, metadata)
 	}
-	highlighted := v.highlight(&file)
+	highlighted := v.highlight(file)
 	for hunkIndex, hunk := range file.Hunks {
 		v.appendHunkRows(fileIndex, hunkIndex, hunk, highlighted)
 	}
@@ -159,14 +159,14 @@ func (v *diffView) highlightRow(
 	highlighted highlightedSources,
 ) {
 	if !v.split {
-		row.text = sourceText(highlighted, lines[row.rightLine])
+		row.text = highlighted.text(lines[row.rightLine])
 		return
 	}
 	if row.leftLine >= 0 {
-		row.left = sourceText(highlighted, lines[row.leftLine])
+		row.left = highlighted.text(lines[row.leftLine])
 	}
 	if row.rightLine >= 0 {
-		row.right = sourceText(highlighted, lines[row.rightLine])
+		row.right = highlighted.text(lines[row.rightLine])
 	}
 }
 
@@ -191,24 +191,6 @@ func appendPairedChangeRows(
 			rightLine = addedStart + offset
 		}
 		appendRow(leftLine, rightLine)
-	}
-}
-
-func sourceText(highlighted highlightedSources, line patch.Line) string {
-	if line.Kind == patch.Deletion {
-		return highlightedLine(highlighted.old, line.OldNumber, line.Text)
-	}
-	return highlightedLine(highlighted.new, line.NewNumber, line.Text)
-}
-
-func (v *diffView) highlight(file *patch.File) highlightedSources {
-	theme := lightTheme
-	if v.dark {
-		theme = darkTheme
-	}
-	return highlightedSources{
-		old: highlightSource(file.OldPath, file.OldSource, theme),
-		new: highlightSource(file.NewPath, file.NewSource, theme),
 	}
 }
 
