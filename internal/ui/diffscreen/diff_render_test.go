@@ -1,13 +1,71 @@
 package diffscreen
 
 import (
+	"reflect"
 	"strings"
 	"testing"
 
+	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/eskelinenantti/review-my-slop/internal/patch"
 	"github.com/eskelinenantti/review-my-slop/internal/testutil"
 )
+
+func TestRendererLineStylePrecedence(t *testing.T) {
+	styles := newLineStyles(true)
+	candidate := diffCursor{row: 1, pane: right}
+	selection := beginSelection(candidate)
+	for _, tc := range []struct {
+		name      string
+		kind      patch.LineKind
+		cursor    diffCursor
+		selection *diffSelection
+		style     lipgloss.Style
+		colors    foregroundPolicy
+	}{
+		{
+			"context", patch.Context, diffCursor{}, nil,
+			contextStyle, preserveForeground,
+		},
+		{
+			"addition", patch.Addition, diffCursor{}, nil,
+			styles.added, preserveForeground,
+		},
+		{
+			"deletion", patch.Deletion, diffCursor{}, nil,
+			styles.removed, preserveForeground,
+		},
+		{
+			"selection overrides addition", patch.Addition,
+			diffCursor{}, &selection, styles.selection, discardForeground,
+		},
+		{
+			"selection overrides deletion", patch.Deletion,
+			diffCursor{}, &selection, styles.selection, discardForeground,
+		},
+		{
+			"cursor overrides addition", patch.Addition, candidate, nil,
+			cursorStyle, discardForeground,
+		},
+		{
+			"cursor overrides selection", patch.Deletion, candidate,
+			&selection, cursorStyle, discardForeground,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			renderer := diffRenderer{
+				view: &diffView{styles: styles}, cursor: tc.cursor,
+				selection: tc.selection,
+			}
+			style, colors := renderer.lineStyle(tc.kind, candidate)
+			if !reflect.DeepEqual(style, tc.style) {
+				t.Fatal("unexpected line style")
+			}
+			testutil.RequireEqual(t, colors, tc.colors,
+				"unexpected foreground policy")
+		})
+	}
+}
 
 func TestRenderProjectedLineNumbers(t *testing.T) {
 	p := patchWithLines([]patch.Line{

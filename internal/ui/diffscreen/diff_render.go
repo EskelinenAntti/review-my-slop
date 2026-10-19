@@ -170,13 +170,7 @@ func (r diffRenderer) renderCodeLine(
 		r.viewport.leftColumn,
 		width-lipgloss.Width(gutter),
 	)
-	style, colors := renderedLineStyle(
-		line.Kind,
-		candidate,
-		r.cursor,
-		r.selection,
-		r.view.styles,
-	)
+	style, colors := r.lineStyle(line.Kind, candidate)
 	return renderStyledRow(style, value, width, colors)
 }
 
@@ -191,18 +185,15 @@ func lineMarker(kind patch.LineKind) string {
 	}
 }
 
-func renderedLineStyle(
+func (r diffRenderer) lineStyle(
 	kind patch.LineKind,
 	candidate diffCursor,
-	cursor diffCursor,
-	selection *diffSelection,
-	styles lineStyles,
 ) (lipgloss.Style, foregroundPolicy) {
-	style, colors := lineStyle(kind, styles), preserveForeground
-	if selection.contains(candidate) {
-		style, colors = styles.selection, discardForeground
+	style, colors := lineStyle(kind, r.view.styles), preserveForeground
+	if r.selection.contains(candidate) {
+		style, colors = r.view.styles.selection, discardForeground
 	}
-	if cursor == candidate {
+	if r.cursor == candidate {
 		style, colors = cursorStyle, discardForeground
 	}
 	return style, colors
