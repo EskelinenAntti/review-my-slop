@@ -61,6 +61,32 @@ func TestCommentWorkflowLifecycle(t *testing.T) {
 	}
 }
 
+func TestCommentWorkflowResultsAreIndependent(t *testing.T) {
+	var firstBody, secondBody string
+	first, completeFirst := commentWorkflow(
+		context.Background(), "true", "first", comments.Anchor{},
+		func(body string, err error) tea.Msg {
+			testutil.NoError(t, err)
+			firstBody = body
+			return nil
+		},
+	)
+	second, completeSecond := commentWorkflow(
+		context.Background(), "true", "second", comments.Anchor{},
+		func(body string, err error) tea.Msg {
+			testutil.NoError(t, err)
+			secondBody = body
+			return nil
+		},
+	)
+	testutil.NoError(t, first.Run())
+	testutil.NoError(t, second.Run())
+	completeSecond(nil)
+	completeFirst(nil)
+	testutil.CheckEqual(t, firstBody, "first", "first body=%q", firstBody)
+	testutil.CheckEqual(t, secondBody, "second", "second body=%q", secondBody)
+}
+
 func assertWorkflowResult(
 	t *testing.T,
 	body string,
