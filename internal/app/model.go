@@ -22,7 +22,6 @@ type saveCommentFunc func(
 ) (comments.Comment, error)
 type deleteCommentFunc func(comments.Comment, patch.Patch) error
 type loadCommentsFunc func() ([]comments.Comment, error)
-type refreshDiffFunc func(patch.Kind) (patch.Patch, error)
 type saveSideBySideFunc func(bool) error
 
 // commentStore supplies the persistence operations used by the terminal client.
@@ -42,12 +41,6 @@ type initialLayout struct {
 	sideBySide     bool
 	saveSideBySide saveSideBySideFunc
 	dimensions     terminalDimensions
-}
-
-type refreshDiffMsg struct {
-	patch patch.Patch
-	kind  patch.Kind
-	err   error
 }
 
 type commentEditorFinishedMsg struct {
@@ -275,29 +268,6 @@ func (m *model) finishCommentsLoad(msg commentsLoadedMsg) {
 	m.err = nil
 }
 
-func (m *model) finishDiffRefresh(msg refreshDiffMsg) {
-	if msg.kind != m.kind {
-		return
-	}
-	if msg.err != nil {
-		m.err = fmt.Errorf("refresh diff: %w", msg.err)
-		return
-	}
-	m.updatePatch(msg.patch)
-	m.err = nil
-}
-
-func (m model) loadRefresh() tea.Cmd {
-	if m.refresh == nil {
-		return nil
-	}
-	kind := m.kind
-	return func() tea.Msg {
-		p, err := m.refresh(kind)
-		return refreshDiffMsg{patch: p, kind: kind, err: err}
-	}
-}
-
 func (m model) loadComments() tea.Cmd {
 	if m.load == nil {
 		return nil
@@ -313,10 +283,6 @@ func (m model) loadComments() tea.Cmd {
 	}
 }
 
-func (m *model) updatePatch(p patch.Patch) {
-	m.currentPatch = p
-	m.diffView.Update(p)
-}
 func (m *model) resizeScreens() {
 	m.diffView.Resize(m.dimensions.width, m.dimensions.height)
 	m.commentView.Resize(m.dimensions.width, m.dimensions.height)
@@ -393,17 +359,4 @@ func (m *model) startEditor(
 		return *m, nil
 	}
 	return *m, cmd
-}
-
-func (m model) switchPatchKind() (tea.Model, tea.Cmd) {
-	if m.currentPatch.Branch == "" {
-		return m, nil
-	}
-	if m.kind == patch.Unstaged {
-		m.kind = patch.Branch
-	} else {
-		m.kind = patch.Unstaged
-	}
-	m.diffView.ClearSelection()
-	return m, m.loadRefresh()
 }
