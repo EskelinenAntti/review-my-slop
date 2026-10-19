@@ -90,6 +90,47 @@ func TestGetIncludesUnstagedAndUntrackedButNotStagedOnly(t *testing.T) {
 	}
 }
 
+func TestGetOrdersTrackedAndUntrackedFilesTogether(t *testing.T) {
+	for _, test := range []struct {
+		name   string
+		kind   Kind
+		branch string
+	}{
+		{name: "unstaged", kind: Unstaged},
+		{name: "branch", kind: Branch, branch: "main"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			repo := newRepository(t)
+			git(t, repo, "branch", "-M", "main")
+			writeFile(t, repo, "b.txt", "before\n")
+			writeFile(t, repo, "d.txt", "before\n")
+			git(t, repo, "add", ".")
+			git(t, repo, "commit", "-m", "base")
+			writeFile(t, repo, "a.txt", "after\n")
+			writeFile(t, repo, "b.txt", "after\n")
+			writeFile(t, repo, "c.txt", "after\n")
+			writeFile(t, repo, "d.txt", "after\n")
+			t.Chdir(repo)
+
+			got, err := Get(context.Background(), test.kind)
+			testutil.NoError(t, err)
+			testutil.RequireEqual(t, got.Root, repo, "patch = %#v", got)
+			testutil.RequireEqual(t, got.Kind, test.kind, "patch = %#v", got)
+			testutil.RequireEqual(t, got.Branch, test.branch,
+				"patch = %#v", got,
+			)
+			var paths []string
+			for _, file := range got.Files {
+				paths = append(paths, file.DisplayPath)
+			}
+			want := []string{"a.txt", "b.txt", "c.txt", "d.txt"}
+			testutil.RequireEqual(t, reflect.DeepEqual(paths, want), true,
+				"paths = %q, want %q", paths, want,
+			)
+		})
+	}
+}
+
 func TestGetPreservesTrackedPathStartingWithDiffPrefix(t *testing.T) {
 	repo := newRepository(t)
 	path := "b/nested.go"
