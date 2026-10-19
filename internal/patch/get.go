@@ -6,8 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"os/exec"
-	"path/filepath"
 	"slices"
 	"strings"
 )
@@ -16,42 +14,6 @@ const (
 	maxFileSizeMiB = 2
 	maxFileBytes   = maxFileSizeMiB << 20
 )
-
-type runner interface {
-	Run(ctx context.Context, dir string, args ...string) ([]byte, error)
-}
-
-type execRunner struct{}
-
-func (execRunner) Run(
-	ctx context.Context,
-	dir string,
-	args ...string,
-) ([]byte, error) {
-	command := "git " + strings.Join(args, " ")
-	cmd := exec.CommandContext(ctx, "git", args...)
-	cmd.Dir = dir
-	cmd.Env = append(os.Environ(),
-		"GIT_PAGER=cat",
-		"GIT_EXTERNAL_DIFF=",
-		"GIT_CONFIG_NOSYSTEM=1",
-	)
-	out, err := cmd.Output()
-	if ctx.Err() != nil {
-		return nil, fmt.Errorf("%s: %w", command, ctx.Err())
-	}
-	if err == nil {
-		return out, nil
-	}
-	if exitErr, ok := errors.AsType[*exec.ExitError](err); ok {
-		return nil, fmt.Errorf(
-			"%s: %s",
-			command,
-			strings.TrimSpace(string(exitErr.Stderr)),
-		)
-	}
-	return nil, fmt.Errorf("%s: %w", command, err)
-}
 
 // Get retrieves a complete snapshot from the current working directory.
 // Unknown kinds and unavailable branch comparisons return a zero Patch and an
@@ -145,41 +107,6 @@ func comparison(
 	return branch, revision, nil
 }
 
-func discoverRepositoryRoot(
-	ctx context.Context,
-	run runner,
-	directory string,
-) (string, error) {
-	rootBytes, err := run.Run(ctx, directory, "rev-parse", "--show-toplevel")
-	if err != nil {
-		return "", err
-	}
-	root, err := filepath.EvalSymlinks(strings.TrimSpace(string(rootBytes)))
-	if err != nil {
-		return "", fmt.Errorf("resolve repository root: %w", err)
-	}
-	return root, nil
-}
-
-func gitDiff(
-	ctx context.Context,
-	run runner,
-	root string,
-	base string,
-) ([]byte, error) {
-	args := []string{
-		"-c", "core.quotepath=false",
-		"-c", "diff.external=",
-		"--no-pager", "diff", "--no-ext-diff", "--no-color", "--find-renames",
-		"--src-prefix=a/", "--dst-prefix=b/", "--unified=3",
-	}
-	if base != "" {
-		args = append(args, base)
-	}
-	args = append(args, "--")
-	return run.Run(ctx, root, args...)
-}
-
 func loadFiles(
 	ctx context.Context,
 	run runner,
@@ -207,47 +134,4 @@ func loadFiles(
 		return nil, err
 	}
 	return files, nil
-}
-
-func defaultBranch(
-	ctx context.Context,
-	run runner,
-	root string,
-) (string, error) {
-	out, err := run.Run(
-		ctx,
-		root,
-		"symbolic-ref",
-		"--quiet",
-		"--short",
-		"refs/remotes/origin/HEAD",
-	)
-	if ctx.Err() != nil {
-		return "", ctx.Err()
-	}
-	if err == nil {
-		return strings.TrimSpace(string(out)), nil
-	}
-	for _, candidate := range []string{
-		"origin/main",
-		"main",
-		"origin/master",
-		"master",
-	} {
-		_, err := run.Run(
-			ctx,
-			root,
-			"rev-parse",
-			"--verify",
-			"--quiet",
-			candidate+"^{commit}",
-		)
-		if ctx.Err() != nil {
-			return "", ctx.Err()
-		}
-		if err == nil {
-			return candidate, nil
-		}
-	}
-	return "", nil
 }
