@@ -142,6 +142,31 @@ func TestRenderNonLineRowsUseFullWidth(t *testing.T) {
 	}
 }
 
+func TestSplitRendererDerivesPaneWidthsFromViewport(t *testing.T) {
+	v := newDiffView(patchWithLines([]patch.Line{
+		{Kind: patch.Context, Text: "shared", OldNumber: 1, NewNumber: 1},
+	}), Options{SideBySide: true})
+	y := slices.IndexFunc(v.rows, func(row entry) bool {
+		return row.kind == lineRow
+	})
+	renderer := diffRenderer{view: v}
+	for _, tc := range []struct {
+		width, wantWidth int
+	}{
+		{20, 43},
+		{43, 43},
+		{80, 80},
+		{81, 81},
+	} {
+		renderer.viewport.width = tc.width
+		got := renderer.renderRow(y)
+		testutil.RequireEqual(t, lipgloss.Width(got), tc.wantWidth,
+			"viewport width=%d: unexpected row width", tc.width)
+		testutil.RequireEqual(t, strings.Count(ansi.Strip(got), "shared"), 2,
+			"viewport width=%d: both panes must contain code", tc.width)
+	}
+}
+
 func TestRenderCodeLineKeepsGutterWhileScrolling(t *testing.T) {
 	for _, tc := range []struct {
 		name   string

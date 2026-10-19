@@ -13,11 +13,10 @@ import (
 )
 
 type diffRenderer struct {
-	view                  *diffView
-	viewport              diffViewport
-	cursor                diffCursor
-	selection             *diffSelection
-	leftWidth, rightWidth int
+	view      *diffView
+	viewport  diffViewport
+	cursor    diffCursor
+	selection *diffSelection
 }
 
 func (v *diffView) render(
@@ -31,11 +30,6 @@ func (v *diffView) render(
 		viewport:  viewport,
 		cursor:    cursor,
 		selection: selection,
-	}
-	if v.split {
-		renderer.leftWidth, renderer.rightWidth = splitPaneWidths(
-			viewport.width,
-		)
 	}
 	lines := make([]string, 0, viewport.height)
 	if v.hasStickyHeader(viewport.top, viewport.height) {
@@ -108,8 +102,9 @@ func (r diffRenderer) renderSplitRow(
 	current entry,
 	y int,
 ) string {
-	left := r.renderPane(current, y, left, r.leftWidth)
-	right := r.renderPane(current, y, right, r.rightWidth)
+	leftWidth, rightWidth := splitPaneWidths(r.viewport.width)
+	left := r.renderPane(current, y, left, leftWidth)
+	right := r.renderPane(current, y, right, rightWidth)
 	return left + " │ " + right
 }
 
