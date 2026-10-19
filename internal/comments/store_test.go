@@ -108,6 +108,82 @@ func TestStoreQueuesByRepositoryAndDeletesExactPeek(t *testing.T) {
 	)
 }
 
+func TestStoreMutationsStayWithinRepository(t *testing.T) {
+	tests := []struct {
+		name      string
+		mutate    func(Store, Comment) error
+		wantError bool
+	}{
+		{"update", func(store Store, comment Comment) error {
+			comment.Repository = "/repo/a"
+			comment.Body = "changed"
+			return store.Update(comment)
+		}, true},
+		{"delete", func(store Store, comment Comment) error {
+			return store.Delete("/repo/a", comment.ID)
+		}, true},
+		{"acknowledge", func(store Store, comment Comment) error {
+			return store.Acknowledge("/repo/a", []string{comment.ID})
+		}, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			store := Store{Path: filepath.Join(t.TempDir(), "comments.db")}
+			original, err := store.Add(testComment("/repo/b", "other"))
+			testutil.NoError(t, err)
+
+			err = tt.mutate(store, original)
+			testutil.RequireEqual(t, err != nil, tt.wantError,
+				"mutation error = %v", err,
+			)
+
+			remaining, err := store.List("/repo/b")
+			testutil.NoError(t, err)
+			testutil.RequireEqual(t, len(remaining), 1,
+				"comments = %#v", remaining,
+			)
+			testutil.RequireEqual(t, remaining[0].Body, original.Body,
+				"comment was changed: %#v", remaining[0],
+			)
+			unexpected, err := store.List("/repo/a")
+			testutil.NoError(t, err)
+			testutil.RequireEqual(t, len(unexpected), 0,
+				"comments = %#v", unexpected,
+			)
+		})
+	}
+}
+
+func TestRepositoryIterationPreservesEarlyStopAndDecodeErrors(t *testing.T) {
+	store := Store{Path: filepath.Join(t.TempDir(), "comments.db")}
+	for _, repository := range []string{"/repo/a", "/repo/b"} {
+		_, err := store.Add(testComment(repository, repository))
+		testutil.NoError(t, err)
+	}
+	testutil.NoError(t, store.transact(func(bucket *bolt.Bucket) error {
+		return bucket.Put([]byte("z-invalid"), []byte("invalid JSON"))
+	}))
+
+	testutil.NoError(t, store.view(func(bucket *bolt.Bucket) error {
+		var visited []string
+		visit := func(_ []byte, comment Comment) bool {
+			visited = append(visited, comment.Repository)
+			return false
+		}
+		err := forEachRepositoryComment(bucket, "/repo/b", visit)
+		testutil.NoError(t, err)
+		testutil.RequireEqual(t, len(visited), 1, "visited = %#v", visited)
+		testutil.RequireEqual(t, visited[0], "/repo/b",
+			"visited = %#v", visited,
+		)
+		return nil
+	}))
+
+	if _, err := store.List("/missing"); err == nil {
+		t.Fatal("List ignored a malformed record when no repository matched")
+	}
+}
+
 func TestWritePrompt(t *testing.T) {
 	var out bytes.Buffer
 	comment := testComment("/repo", "Handle the nil case.")
