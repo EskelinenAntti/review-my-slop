@@ -114,7 +114,32 @@ func renderProjectedTestLine(v *diffView, line int, pane diffPane) string {
 	if v.split {
 		return renderer.renderPane(v.rows[y], y, pane, 40)
 	}
-	return renderer.renderUnifiedRow(v.rows[y], y)
+	return renderer.renderRow(y)
+}
+
+func TestRenderNonLineRowsUseFullWidth(t *testing.T) {
+	const width = 81
+	for _, tc := range []struct {
+		kind rowKind
+		text string
+		want string
+	}{
+		{fileRow, "file.go", renderFileRow("file.go", width)},
+		{metadataRow, "metadata", metadataStyle.Render("  metadata")},
+		{hunkRow, "@@ hunk", hunkStyle.Render("@@ hunk")},
+	} {
+		for _, split := range []bool{false, true} {
+			renderer := diffRenderer{
+				view: &diffView{
+					split: split,
+					rows:  []entry{{kind: tc.kind, text: tc.text}},
+				},
+				viewport: diffViewport{width: width},
+			}
+			testutil.RequireEqual(t, renderer.renderRow(0), tc.want,
+				"split=%t kind=%d: non-line row changed", split, tc.kind)
+		}
+	}
 }
 
 func TestRenderCodeLineKeepsGutterWhileScrolling(t *testing.T) {

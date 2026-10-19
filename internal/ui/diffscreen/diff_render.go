@@ -13,10 +13,11 @@ import (
 )
 
 type diffRenderer struct {
-	view      *diffView
-	viewport  diffViewport
-	cursor    diffCursor
-	selection *diffSelection
+	view                  *diffView
+	viewport              diffViewport
+	cursor                diffCursor
+	selection             *diffSelection
+	leftWidth, rightWidth int
 }
 
 func (v *diffView) render(
@@ -31,9 +32,10 @@ func (v *diffView) render(
 		cursor:    cursor,
 		selection: selection,
 	}
-	leftWidth, rightWidth := 0, 0
 	if v.split {
-		leftWidth, rightWidth = splitPaneWidths(viewport.width)
+		renderer.leftWidth, renderer.rightWidth = splitPaneWidths(
+			viewport.width,
+		)
 	}
 	lines := make([]string, 0, viewport.height)
 	if v.hasStickyHeader(viewport.top, viewport.height) {
@@ -48,23 +50,7 @@ func (v *diffView) render(
 	}
 	end := min(len(v.rows), viewport.top+v.contentHeight(viewport))
 	for y := viewport.top; y < end; y++ {
-		current := v.rows[y]
-		if v.split && current.kind == lineRow {
-			lines = append(
-				lines,
-				renderer.renderSplitRow(
-					current,
-					y,
-					leftWidth,
-					rightWidth,
-				),
-			)
-		} else {
-			lines = append(
-				lines,
-				renderer.renderUnifiedRow(current, y),
-			)
-		}
+		lines = append(lines, renderer.renderRow(y))
 	}
 	for len(lines) < viewport.height {
 		lines = append(lines, "")
@@ -72,10 +58,8 @@ func (v *diffView) render(
 	return lines
 }
 
-func (r diffRenderer) renderUnifiedRow(
-	current entry,
-	y int,
-) string {
+func (r diffRenderer) renderRow(y int) string {
+	current := r.view.rows[y]
 	width := frame.ScreenWidth(r.viewport.width)
 	switch current.kind {
 	case fileRow:
@@ -85,6 +69,9 @@ func (r diffRenderer) renderUnifiedRow(
 	case hunkRow:
 		return hunkStyle.Render(current.text)
 	case lineRow:
+		if r.view.split {
+			return r.renderSplitRow(current, y)
+		}
 		return r.renderUnifiedLine(current, y, width)
 	}
 	return ""
@@ -120,10 +107,9 @@ func renderFileRow(path string, width int) string {
 func (r diffRenderer) renderSplitRow(
 	current entry,
 	y int,
-	leftWidth, rightWidth int,
 ) string {
-	left := r.renderPane(current, y, left, leftWidth)
-	right := r.renderPane(current, y, right, rightWidth)
+	left := r.renderPane(current, y, left, r.leftWidth)
+	right := r.renderPane(current, y, right, r.rightWidth)
 	return left + " │ " + right
 }
 
