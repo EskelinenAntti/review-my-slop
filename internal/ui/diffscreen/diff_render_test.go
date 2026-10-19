@@ -3,8 +3,39 @@ package diffscreen
 import (
 	"testing"
 
+	"github.com/charmbracelet/x/ansi"
+	"github.com/eskelinenantti/review-my-slop/internal/patch"
 	"github.com/eskelinenantti/review-my-slop/internal/testutil"
 )
+
+func TestRenderCodeLineKeepsGutterWhileScrolling(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		gutter string
+		offset int
+		width  int
+		want   string
+	}{
+		{"unscrolled", "  1 ", 0, 8, "  1 abcd"},
+		{"scrolled", "  1 ", 2, 8, "  1 cdef"},
+		{"past end", "  1 ", 8, 8, "  1     "},
+		{"narrow", "  1 ", 2, 3, "  1"},
+		{"styled gutter", "\x1b[31m+\x1b[0m ", 2, 6, "+ cdef"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			renderer := diffRenderer{
+				view:     newUnifiedView(longPatch(), true),
+				viewport: diffViewport{leftColumn: tc.offset},
+			}
+			rendered := renderer.renderCodeLine(
+				tc.gutter, "\x1b[32mabcdef\x1b[0m", tc.width,
+				patch.Line{Kind: patch.Context}, diffCursor{},
+			)
+			testutil.RequireEqual(t, ansi.Strip(rendered), tc.want,
+				"code line layout changed")
+		})
+	}
+}
 
 func TestRenderStateIsLocalToEachCall(t *testing.T) {
 	t.Run("unified", func(t *testing.T) {
