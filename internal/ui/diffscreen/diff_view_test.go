@@ -99,15 +99,14 @@ func TestSelectionLines(t *testing.T) {
 	first, _ := v.first()
 	last, _ := v.move(first, forward)
 	last, _ = v.move(last, forward)
-	selection := beginSelection(first)
-	selection, ok := v.extendSelection(selection, last)
-	testutil.RequireEqual(t, ok, true, "%s", "selection extension failed")
+	selection, ok := v.selectionBetween(first, last)
+	testutil.RequireEqual(t, ok, true, "%s", "selection creation failed")
 
 	lines := v.lines(selection)
 	testutil.RequireEqual(t, len(lines), 3, "selected lines = %d", len(lines))
 
 	nextFile, _ := v.jumpFile(first, forward)
-	if _, ok := v.extendSelection(selection, nextFile); ok {
+	if _, ok := v.selectionBetween(selection.First, nextFile); ok {
 		t.Fatal("selection crossed a hunk")
 	}
 }

@@ -183,7 +183,7 @@ func (v *View) extendSelectionTo(cursor diffCursor) bool {
 	if v.selection == nil {
 		return true
 	}
-	selection, ok := v.view.extendSelection(*v.selection, cursor)
+	selection, ok := v.view.selectionBetween(v.selection.First, cursor)
 	if ok {
 		v.selection = &selection
 	}
@@ -206,8 +206,7 @@ func (v *View) switchPane(pane diffPane) {
 		if !firstOK || !lastOK {
 			return
 		}
-		selection := beginSelection(first)
-		selection, ok = v.view.extendSelection(selection, last)
+		selection, ok := v.view.selectionBetween(first, last)
 		if !ok {
 			return
 		}

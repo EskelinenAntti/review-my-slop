@@ -70,8 +70,7 @@ func TestSplitSelectionOnlyIncludesActivePane(t *testing.T) {
 	first := mustFirst(t, v)
 	removed, _ := v.search("removed one", first, forward)
 	added, _ := v.search("added one", first, forward)
-	left := beginSelection(removed)
-	left, ok := v.extendSelection(left, removed)
+	left, ok := v.selectionBetween(removed, removed)
 	testutil.RequireEqual(t, ok, true, "left lines = %#v", v.lines(left))
 	testutil.RequireEqual(t, len(v.lines(left)), 1, "left lines = %#v",
 		v.lines(left),
