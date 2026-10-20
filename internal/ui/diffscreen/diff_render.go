@@ -96,12 +96,14 @@ func (r diffRenderer) renderLine(candidate diffCursor, width int) string {
 			text, numberValue = current.left, line.OldNumber
 		}
 		text = marker + " " + text
-		gutter = fmt.Sprintf("%5s ", number(numberValue))
+		gutter = fmt.Sprintf("%*s ", lineNumberWidth, number(numberValue))
 	} else {
 		text = current.text
 		gutter = fmt.Sprintf(
-			"%5s %5s %s ",
+			"%*s %*s %s ",
+			lineNumberWidth,
 			number(line.OldNumber),
+			lineNumberWidth,
 			number(line.NewNumber),
 			marker,
 		)

@@ -209,10 +209,11 @@ func (v *diffView) rowVisible(viewport diffViewport, row int) bool {
 }
 
 func (v *diffView) maxHorizontalOffset(width int) int {
-	contentWidth := max(1, width-14)
+	contentWidth := max(1, width-unifiedGutterWidth)
 	extra := 0
 	if v.split {
-		contentWidth, extra = max(1, splitPaneWidth(width)-6), 2
+		contentWidth = max(1, splitPaneWidth(width)-splitGutterWidth)
+		extra = splitMarkerWidth
 	}
 	return max(0, v.maxLineWidth+extra-contentWidth)
 }

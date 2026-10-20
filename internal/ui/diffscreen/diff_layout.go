@@ -4,6 +4,14 @@ import "github.com/charmbracelet/x/ansi"
 
 const splitDivider = " │ "
 
+// Gutter widths include separators; split rows scroll the marker with the text.
+const (
+	lineNumberWidth    = 5
+	unifiedGutterWidth = 2*lineNumberWidth + 4
+	splitGutterWidth   = lineNumberWidth + 1
+	splitMarkerWidth   = 2
+)
+
 // splitLayout shares pane boundaries between rendering and hit testing.
 type splitLayout struct {
 	leftWidth, rightWidth int

@@ -45,3 +45,24 @@ func TestSplitLayout(t *testing.T) {
 		})
 	}
 }
+
+func TestHorizontalOffsetAccountsForGutters(t *testing.T) {
+	for _, tc := range []struct {
+		name        string
+		split       bool
+		width, want int
+	}{
+		{"unified fits", false, 80, 0},
+		{"unified scrolls", false, 30, 24},
+		{"unified narrower than gutter", false, 10, 39},
+		{"split fits", true, 121, 0},
+		{"split scrolls marker and text", true, 63, 18},
+		{"split narrower than gutter", true, 10, 41},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			v := &diffView{split: tc.split, maxLineWidth: 40}
+			testutil.RequireEqual(t, v.maxHorizontalOffset(tc.width), tc.want,
+				"maximum horizontal offset")
+		})
+	}
+}
