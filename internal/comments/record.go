@@ -7,6 +7,8 @@ import (
 	"time"
 )
 
+const maxCommentBytes = 64 << 10
+
 func validateComment(comment Comment) error {
 	if len(comment.Body) == 0 {
 		return errors.New("comment body is empty")
