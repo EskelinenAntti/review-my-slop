@@ -25,54 +25,46 @@ func (s Store) WritePending(w io.Writer, repository string) error {
 
 // WritePrompt writes comments as Markdown feedback for a coding agent.
 func WritePrompt(w io.Writer, comments []Comment) error {
-	if len(comments) == 0 {
-		_, err := fmt.Fprintln(w, "No pending review comments.")
-		return err
-	}
-	if _, err := fmt.Fprintln(w, "New comments since last run:"); err != nil {
-		return err
-	}
-	for index, comment := range comments {
-		if err := writePromptComment(w, index+1, comment); err != nil {
-			return err
-		}
-	}
-	return nil
+	_, err := fmt.Fprint(w, formatPrompt(comments))
+	return err
 }
 
-func writePromptComment(w io.Writer, number int, comment Comment) error {
+func formatPrompt(comments []Comment) string {
+	if len(comments) == 0 {
+		return "No pending review comments.\n"
+	}
+	var prompt strings.Builder
+	_, _ = prompt.WriteString("New comments since last run:\n")
+	for index, comment := range comments {
+		appendPromptComment(&prompt, index+1, comment)
+	}
+	return prompt.String()
+}
+
+func appendPromptComment(prompt *strings.Builder, number int, comment Comment) {
 	anchor := comment.Anchor
-	_, headingErr := fmt.Fprintf(
-		w,
+	fmt.Fprintf(
+		prompt,
 		"\n### %d. `%s` (%s)\n\n",
 		number,
 		anchor.FilePath,
 		describeRange(anchor),
 	)
-	if headingErr != nil {
-		return headingErr
-	}
-	if err := writeQuotedLines(w, anchor.QuotedLines); err != nil {
-		return err
-	}
-	_, err := fmt.Fprintln(w, strings.TrimSpace(comment.Body))
-	return err
+	appendQuotedLines(prompt, anchor.QuotedLines)
+	_, _ = prompt.WriteString(strings.TrimSpace(comment.Body))
+	_ = prompt.WriteByte('\n')
 }
 
-func writeQuotedLines(w io.Writer, lines []string) error {
+func appendQuotedLines(prompt *strings.Builder, lines []string) {
 	if len(lines) == 0 {
-		return nil
+		return
 	}
-	if _, err := fmt.Fprintln(w, "```diff"); err != nil {
-		return err
-	}
+	_, _ = prompt.WriteString("```diff\n")
 	for _, line := range lines {
-		if _, err := fmt.Fprintln(w, line); err != nil {
-			return err
-		}
+		_, _ = prompt.WriteString(line)
+		_ = prompt.WriteByte('\n')
 	}
-	_, err := fmt.Fprintln(w, "```")
-	return err
+	_, _ = prompt.WriteString("```\n")
 }
 
 func describeRange(anchor Anchor) string {
