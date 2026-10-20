@@ -47,6 +47,22 @@ func (v *diffView) contentHeight(viewport diffViewport) int {
 	return max(1, height)
 }
 
+// rowAt maps a body cell to a projected row, excluding the sticky header and
+// padding below the patch. Body coordinates do not include the screen frame.
+func (v *diffView) rowAt(viewport diffViewport, bodyRow int) (int, bool) {
+	if bodyRow < 0 || bodyRow >= viewport.height {
+		return 0, false
+	}
+	if v.hasStickyHeader(viewport.top, viewport.height) {
+		bodyRow--
+	}
+	row := viewport.top + bodyRow
+	if bodyRow < 0 || row < 0 || row >= len(v.rows) {
+		return 0, false
+	}
+	return row, true
+}
+
 func (v *diffView) keepVisible(
 	viewport diffViewport,
 	cursor diffCursor,
