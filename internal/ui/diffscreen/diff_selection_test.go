@@ -152,6 +152,50 @@ func TestSelectionContains(t *testing.T) {
 	}
 }
 
+func TestSelectionLinesAcrossPanes(t *testing.T) {
+	context := patch.Line{Kind: patch.Context, Text: "shared"}
+	removed := patch.Line{Kind: patch.Deletion, Text: "removed"}
+	added := patch.Line{Kind: patch.Addition, Text: "added"}
+	p := patchWithHunks([]patch.Hunk{{Header: "@@", Lines: []patch.Line{
+		context, removed, added, {Kind: patch.Context, Text: "after"},
+	}}})
+	for _, tt := range []struct {
+		name  string
+		split bool
+		query string
+		pane  diffPane
+		want  []patch.Line
+	}{
+		{"unified context", false, "shared", left, []patch.Line{context}},
+		{"unified context reversed", false, "shared", right,
+			[]patch.Line{context}},
+		{"split context", true, "shared", left, []patch.Line{context}},
+		{"split context reversed", true, "shared", right,
+			[]patch.Line{context}},
+		{"unified change", false, "removed", left, []patch.Line{removed}},
+		{"unified change reversed", false, "removed", right,
+			[]patch.Line{removed}},
+		{"split change", true, "removed", left, []patch.Line{removed, added}},
+		{"split change reversed", true, "removed", right,
+			[]patch.Line{added, removed}},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			v := newDiffView(p, Options{SideBySide: tt.split})
+			last, ok := v.last()
+			testutil.RequireEqual(t, ok, true, "find last row")
+			cursor, ok := v.search(tt.query, last, forward)
+			testutil.RequireEqual(t, ok, true, "find selected row")
+			selection := diffSelection{
+				First: diffCursor{cursor.row, tt.pane},
+				Last:  diffCursor{cursor.row, tt.pane.other()},
+			}
+			testutil.RequireEqual(t,
+				slices.Equal(v.lines(selection), tt.want), true,
+				"selected lines")
+		})
+	}
+}
+
 func assertSelectionContains(
 	t *testing.T,
 	selection *diffSelection,

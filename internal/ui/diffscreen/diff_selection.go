@@ -12,11 +12,15 @@ func (s diffSelection) rowBounds() (first, last int) {
 	return min(s.First.row, s.Last.row), max(s.First.row, s.Last.row)
 }
 
+func (s diffSelection) spansPanesOnOneRow() bool {
+	return s.First.row == s.Last.row && s.First.pane != s.Last.pane
+}
+
 func (s *diffSelection) contains(cursor diffCursor) bool {
 	if s == nil {
 		return false
 	}
-	if s.First.row == s.Last.row && s.First.pane != s.Last.pane {
+	if s.spansPanesOnOneRow() {
 		return cursor.row == s.First.row &&
 			(cursor.pane == s.First.pane || cursor.pane == s.Last.pane)
 	}
@@ -58,10 +62,10 @@ func (v *diffView) lines(selection diffSelection) []patch.Line {
 	if !v.sameFileHunk(selection.First, selection.Last) {
 		return nil
 	}
-	first, last := selection.rowBounds()
-	if first == last && selection.First.pane != selection.Last.pane {
+	if selection.spansPanesOnOneRow() {
 		return v.paneLines(selection)
 	}
+	first, last := selection.rowBounds()
 	lines := make([]patch.Line, 0, last-first+1)
 	for y := first; y <= last; y++ {
 		pane := selection.paneAt(y)
