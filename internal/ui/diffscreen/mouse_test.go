@@ -128,6 +128,34 @@ func TestSplitMouseRejectsDividerEmptyPaneAndCrossPaneDrag(t *testing.T) {
 	)
 }
 
+func TestSplitMousePaneBoundaries(t *testing.T) {
+	for _, tt := range []struct {
+		name              string
+		width, rightStart int
+	}{
+		{name: "even width", width: 120, rightStart: 61},
+		{name: "odd width", width: 121, rightStart: 62},
+		{name: "minimum split-screen width", width: 100, rightStart: 51},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			v := New(testPatch(), Options{SideBySide: true})
+			v.Resize(tt.width, 20)
+			testutil.RequireEqual(t, v.BeginDrag(tt.rightStart-4, 3), true,
+				"last left-pane cell was ignored")
+			testutil.RequireEqual(t, v.cursor.pane, left,
+				"last left-pane cell focused the wrong pane")
+			for x := tt.rightStart - 3; x < tt.rightStart; x++ {
+				testutil.RequireEqual(t, v.BeginDrag(x, 3), false,
+					"divider cell %d accepted", x)
+			}
+			testutil.RequireEqual(t, v.BeginDrag(tt.rightStart, 3), true,
+				"first right-pane cell was ignored")
+			testutil.RequireEqual(t, v.cursor.pane, right,
+				"first right-pane cell focused the wrong pane")
+		})
+	}
+}
+
 func TestDragRejectsOtherHunksAndCancelsOnStateChanges(t *testing.T) {
 	v := New(testPatch(), Options{})
 	v.Resize(80, 20)

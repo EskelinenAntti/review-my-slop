@@ -17,10 +17,7 @@ func (v *diffView) render(
 	selection *diffSelection,
 ) string {
 	viewport = v.clampViewport(viewport)
-	leftWidth, rightWidth := 0, 0
-	if v.split {
-		leftWidth, rightWidth = splitPaneWidths(viewport.width)
-	}
+	layout := newSplitLayout(viewport.width)
 	lines := make([]string, 0, viewport.height)
 	if v.hasStickyHeader(viewport.top, viewport.height) {
 		current := v.rows[viewport.top]
@@ -42,8 +39,7 @@ func (v *diffView) render(
 					current,
 					y,
 					viewport,
-					leftWidth,
-					rightWidth,
+					layout,
 					cursor,
 					selection,
 				),
@@ -128,7 +124,7 @@ func (v *diffView) renderSplitRow(
 	current entry,
 	y int,
 	viewport diffViewport,
-	leftWidth, rightWidth int,
+	layout splitLayout,
 	cursor diffCursor,
 	selection *diffSelection,
 ) string {
@@ -136,7 +132,7 @@ func (v *diffView) renderSplitRow(
 		current,
 		y,
 		left,
-		leftWidth,
+		layout.leftWidth,
 		viewport.leftColumn,
 		cursor,
 		selection,
@@ -145,17 +141,12 @@ func (v *diffView) renderSplitRow(
 		current,
 		y,
 		right,
-		rightWidth,
+		layout.rightWidth,
 		viewport.leftColumn,
 		cursor,
 		selection,
 	)
-	return left + " │ " + right
-}
-
-func splitPaneWidths(width int) (left, right int) {
-	left = max(20, (width-3)/2)
-	return left, max(20, width-3-left)
+	return left + splitPaneDivider + right
 }
 
 func (v *diffView) renderPane(
