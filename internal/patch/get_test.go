@@ -558,6 +558,70 @@ func TestParseHunkBodyEscapesTerminalControls(t *testing.T) {
 	)
 }
 
+func TestParseHunkBodyEdgeCases(t *testing.T) {
+	tests := []struct {
+		name string
+		body string
+		want []Line
+	}{
+		{name: "empty body", want: []Line{}},
+		{
+			name: "empty source lines",
+			body: " \n-\n+\n",
+			want: []Line{
+				{Kind: Context, OldNumber: 10, NewNumber: 20},
+				{Kind: Deletion, OldNumber: 11},
+				{Kind: Addition, NewNumber: 21},
+			},
+		},
+		{
+			name: "no trailing newline",
+			body: "+new",
+			want: []Line{{Kind: Addition, Text: "new", NewNumber: 20}},
+		},
+		{
+			name: "newline markers do not advance counters",
+			body: "-old\n\\ No newline at end of file\n" +
+				"+new\n\\ No newline at end of file\n same\n",
+			want: []Line{
+				{Kind: Deletion, Text: "old", OldNumber: 10},
+				{Kind: Addition, Text: "new", NewNumber: 20},
+				{Kind: Context, Text: "same", OldNumber: 11, NewNumber: 21},
+			},
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			lines, err := parseHunkBody(10, 20, []byte(test.body))
+			testutil.NoError(t, err)
+			if !reflect.DeepEqual(lines, test.want) {
+				t.Fatalf("lines = %#v, want %#v", lines, test.want)
+			}
+		})
+	}
+}
+
+func TestParseHunkBodyRejectsMalformedLines(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		body string
+		want string
+	}{
+		{"empty diff line", "+valid\n\n", "malformed empty diff line"},
+		{"unknown prefix", "+valid\n?invalid\n", "unexpected diff prefix '?'"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			lines, err := parseHunkBody(1, 1, []byte(test.body))
+			if err == nil || err.Error() != test.want {
+				t.Fatalf("error = %v, want %q", err, test.want)
+			}
+			if lines != nil {
+				t.Fatalf("lines = %#v, want nil on error", lines)
+			}
+		})
+	}
+}
+
 func FuzzParseHunkBody(f *testing.F) {
 	f.Add([]byte("+hello\n-world\n"))
 	f.Add([]byte(" context\n"))
