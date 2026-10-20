@@ -41,7 +41,7 @@ func (v *diffView) render(
 			),
 		)
 	}
-	end := min(len(v.rows), viewport.top+v.contentHeight(viewport))
+	end := v.contentEnd(viewport)
 	for y := viewport.top; y < end; y++ {
 		lines = append(lines, renderer.renderRow(y))
 	}

@@ -94,3 +94,32 @@ func TestViewportRowAtEmptyPatch(t *testing.T) {
 	_, ok := v.rowAt(diffViewport{height: 3}, 0)
 	testutil.RequireEqual(t, ok, false, "empty patch has no projected rows")
 }
+
+func TestViewportContentEnd(t *testing.T) {
+	v := &diffView{rows: []entry{
+		{kind: fileRow},
+		{kind: hunkRow},
+		{kind: lineRow},
+		{kind: lineRow},
+		{kind: fileRow},
+		{kind: lineRow},
+	}}
+	for _, tt := range []struct {
+		name             string
+		top, height, end int
+	}{
+		{name: "file header", height: 3, end: 3},
+		{name: "sticky header", top: 1, height: 3, end: 3},
+		{name: "single row", top: 2, height: 1, end: 3},
+		{name: "padding", top: 4, height: 5, end: 6},
+		{name: "sticky padding", top: 5, height: 3, end: 6},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			viewport := diffViewport{top: tt.top, height: tt.height}
+			testutil.RequireEqual(t, v.contentEnd(viewport), tt.end,
+				"content end")
+		})
+	}
+	testutil.RequireEqual(t, (&diffView{}).contentEnd(diffViewport{height: 3}),
+		0, "empty patch content end")
+}

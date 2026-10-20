@@ -47,6 +47,12 @@ func (v *diffView) contentHeight(viewport diffViewport) int {
 	return max(1, height)
 }
 
+// contentEnd is the exclusive projected-row bound, excluding padding and
+// accounting for the row reserved by a sticky header.
+func (v *diffView) contentEnd(viewport diffViewport) int {
+	return min(len(v.rows), viewport.top+v.contentHeight(viewport))
+}
+
 // rowAt maps a body cell to a projected row, excluding the sticky header and
 // padding below the patch. Body coordinates do not include the screen frame.
 func (v *diffView) rowAt(viewport diffViewport, bodyRow int) (int, bool) {
@@ -187,8 +193,7 @@ func (v *diffView) viewportProgress(viewport diffViewport) int {
 	if len(v.rows) == 0 {
 		return 0
 	}
-	bottom := min(len(v.rows), viewport.top+v.contentHeight(viewport))
-	return bottom * 100 / len(v.rows)
+	return v.contentEnd(viewport) * 100 / len(v.rows)
 }
 
 func (v *diffView) nearest(
