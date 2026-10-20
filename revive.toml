@@ -1,6 +1,13 @@
-# Enable every Revive rule with its default values except add-constant.
+# Enable every Revive rule with its default values except the rules below.
 enable-all-rules = true
 
 # Name literals when they express a domain concept; keep incidental values inline.
 [rule.add-constant]
+disabled = true
+
+# Judge readability directly rather than enforcing complexity scores.
+[rule.cognitive-complexity]
+disabled = true
+
+[rule.cyclomatic]
 disabled = true
