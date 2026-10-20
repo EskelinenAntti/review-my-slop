@@ -7,6 +7,50 @@ import (
 	"github.com/eskelinenantti/review-my-slop/internal/testutil"
 )
 
+func TestLineDistanceFallbacks(t *testing.T) {
+	for _, tc := range []struct {
+		name        string
+		line        patch.Line
+		target      patch.Line
+		rowDistance int
+		want        int
+	}{
+		{
+			name:        "new numbers take precedence",
+			line:        patch.Line{OldNumber: 10, NewNumber: 20},
+			target:      patch.Line{OldNumber: 11, NewNumber: 25},
+			rowDistance: 1, want: 5,
+		},
+		{
+			name:        "missing new candidate uses old numbers",
+			line:        patch.Line{OldNumber: 10},
+			target:      patch.Line{OldNumber: 7, NewNumber: 25},
+			rowDistance: 1, want: 3,
+		},
+		{
+			name:        "missing new target uses old numbers",
+			line:        patch.Line{OldNumber: 7, NewNumber: 20},
+			target:      patch.Line{OldNumber: 10},
+			rowDistance: 1, want: 3,
+		},
+		{
+			name:        "disjoint sides use row distance",
+			line:        patch.Line{OldNumber: 10},
+			target:      patch.Line{NewNumber: 20},
+			rowDistance: -4, want: 4,
+		},
+		{
+			name:        "missing numbers use row distance",
+			rowDistance: 4, want: 4,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got := lineDistance(tc.line, tc.target, tc.rowDistance)
+			testutil.RequireEqual(t, got, tc.want, "line distance")
+		})
+	}
+}
+
 func TestFindCursorRanking(t *testing.T) {
 	target := patch.Line{
 		Kind: patch.Context, OldNumber: 10, NewNumber: 10, Text: "target",
