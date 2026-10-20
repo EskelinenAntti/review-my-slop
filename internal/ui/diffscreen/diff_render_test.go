@@ -73,6 +73,7 @@ func TestRenderProjectedLineNumbers(t *testing.T) {
 		{Kind: patch.Deletion, Text: "old", OldNumber: 10},
 		{Kind: patch.Addition, Text: "new", NewNumber: 20},
 		{Kind: patch.Addition, Text: "extra", NewNumber: 21},
+		{Kind: patch.Context, Text: "shared", OldNumber: 11, NewNumber: 22},
 	})
 	for _, tc := range []struct {
 		name  string
@@ -88,6 +89,9 @@ func TestRenderProjectedLineNumbers(t *testing.T) {
 		{"split addition", true, 0, right, "20 + new"},
 		{"split unpaired addition", true, 1, right, "21 + extra"},
 		{"split empty pane", true, 1, left, ""},
+		{"unified context", false, 3, right, "11 22 shared"},
+		{"split old context", true, 2, left, "11 shared"},
+		{"split new context", true, 2, right, "22 shared"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			v := newDiffView(p, Options{SideBySide: tc.split})
@@ -95,6 +99,40 @@ func TestRenderProjectedLineNumbers(t *testing.T) {
 			got := strings.Join(strings.Fields(ansi.Strip(rendered)), " ")
 			testutil.RequireEqual(t, got, tc.want,
 				"projected source line changed")
+		})
+	}
+}
+
+func TestRenderLineKeepsLayoutWhileScrolling(t *testing.T) {
+	p := patchWithLines([]patch.Line{
+		{Kind: patch.Deletion, Text: "abcdef", OldNumber: 10},
+		{Kind: patch.Addition, Text: "abcdef", NewNumber: 20},
+	})
+	for _, tc := range []struct {
+		name  string
+		split bool
+		pane  diffPane
+		width int
+		want  string
+	}{
+		{"unified", false, right, 22, "10 - cdef"},
+		{"unified left identity", false, left, 22, "10 - cdef"},
+		{"split old", true, left, 14, "10 abcdef"},
+		{"split new", true, right, 14, "20 abcdef"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			v := newDiffView(p, Options{SideBySide: tc.split})
+			cursor := mustFirst(t, v)
+			cursor.pane = tc.pane
+			renderer := diffRenderer{
+				view: v, viewport: diffViewport{leftColumn: 2},
+			}
+			rendered := renderer.renderLine(cursor, tc.width)
+			got := strings.Join(strings.Fields(ansi.Strip(rendered)), " ")
+			testutil.RequireEqual(t, got, tc.want,
+				"gutter or scrollable content changed")
+			testutil.RequireEqual(t, lipgloss.Width(rendered), tc.width,
+				"line width changed")
 		})
 	}
 }
@@ -112,7 +150,7 @@ func renderProjectedTestLine(v *diffView, line int, pane diffPane) string {
 		viewport: diffViewport{width: 40},
 	}
 	if v.split {
-		return renderer.renderPane(v.rows[y], y, pane, 40)
+		return renderer.renderLine(diffCursor{row: y, pane: pane}, 40)
 	}
 	return renderer.renderRow(y)
 }
