@@ -2,7 +2,6 @@ package diffscreen
 
 import (
 	"charm.land/lipgloss/v2"
-	"github.com/charmbracelet/x/ansi"
 
 	"github.com/eskelinenantti/review-my-slop/internal/ui/internal/scroll"
 )
@@ -31,6 +30,6 @@ func (v *diffView) maxHorizontalOffset(width int) int {
 
 func renderedLineWidth(current entry) int {
 	return lipgloss.Width(
-		expandTabs(ansi.Strip(current.text + current.left + current.right)),
+		expandTabs(current.text + current.left + current.right),
 	)
 }
