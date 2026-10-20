@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"iter"
 	"os"
 	"path/filepath"
 )
@@ -24,16 +25,16 @@ func loadUntracked(
 	if err != nil {
 		return nil, err
 	}
-	return readUntrackedPaths(ctx, root, untrackedPaths(out))
+	return readUntrackedFiles(ctx, root, out)
 }
 
-func readUntrackedPaths(
+func readUntrackedFiles(
 	ctx context.Context,
 	root string,
-	paths []string,
+	output []byte,
 ) ([]File, error) {
-	files := make([]File, 0, len(paths))
-	for _, path := range paths {
+	files := make([]File, 0)
+	for path := range untrackedPaths(output) {
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
@@ -48,14 +49,14 @@ func readUntrackedPaths(
 	return files, nil
 }
 
-func untrackedPaths(out []byte) []string {
-	var paths []string
-	for path := range bytes.SplitSeq(out, []byte{0}) {
-		if len(path) > 0 {
-			paths = append(paths, string(path))
+func untrackedPaths(output []byte) iter.Seq[string] {
+	return func(yield func(string) bool) {
+		for path := range bytes.SplitSeq(output, []byte{0}) {
+			if len(path) > 0 && !yield(string(path)) {
+				return
+			}
 		}
 	}
-	return paths
 }
 
 func readUntrackedFile(root, path string) (File, bool, error) {
