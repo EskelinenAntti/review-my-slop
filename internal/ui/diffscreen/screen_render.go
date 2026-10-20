@@ -30,27 +30,23 @@ func (v *View) Render(err error) string {
 }
 
 func (v *View) renderBody() []string {
-	var body []string
-	if len(v.view.patch.Files) == 0 {
-		empty := "No unstaged or untracked changes."
-		if v.view.patch.Kind == patch.Branch {
-			empty = "No branch or worktree changes."
-		}
-		body = frame.EmptyBody(v.height, empty)
-	} else {
-		body = v.view.render(v.viewport, v.cursor, v.selection)
+	if len(v.view.patch.Files) > 0 {
+		return v.view.render(v.viewport, v.cursor, v.selection)
 	}
-	return body
+	if v.view.patch.Kind == patch.Branch {
+		return frame.EmptyBody(v.height, "No branch or worktree changes.")
+	}
+	return frame.EmptyBody(v.height, "No unstaged or untracked changes.")
 }
 
 func (v *View) renderStatus() string {
-	status := "j/k/h/l move  c comment  ? help  q quit"
 	if v.search.active {
-		status = v.search.renderQuery()
-	} else if v.selection != nil {
-		status = "visual selection  j/k extend  c comment  Esc cancel"
+		return v.search.renderQuery()
 	}
-	return status
+	if v.selection != nil {
+		return "visual selection  j/k extend  c comment  Esc cancel"
+	}
+	return "j/k/h/l move  c comment  ? help  q quit"
 }
 
 func (v *View) renderFooter(value string) string {
