@@ -100,6 +100,49 @@ func TestFindCursorRanking(t *testing.T) {
 	}
 }
 
+func TestFindCursorFileFiltering(t *testing.T) {
+	line := patch.Line{
+		Kind: patch.Context, OldNumber: 10, NewNumber: 10, Text: "target",
+	}
+	v := newDiffView(patch.Patch{Files: []patch.File{
+		{OldPath: "other.go", NewPath: "other.go",
+			Hunks: []patch.Hunk{{Lines: []patch.Line{line}}}},
+		{OldPath: "old.go", NewPath: "new.go", Metadata: []string{"target"},
+			Hunks: []patch.Hunk{{Header: "target", Lines: []patch.Line{line}}}},
+		{OldPath: "metadata.go", NewPath: "metadata.go",
+			Metadata: []string{"target"}},
+	}}, Options{SideBySide: true})
+	for _, tc := range []struct {
+		name    string
+		oldPath string
+		newPath string
+		valid   bool
+		want    bool
+	}{
+		{"old path matches renamed file", "old.go", "renamed.go", true, true},
+		{"new path matches renamed file", "previous.go", "new.go", true, true},
+		{"missing file", "missing.go", "missing.go", true, false},
+		{"metadata only", "metadata.go", "metadata.go", true, false},
+		{"empty paths", "", "", true, false},
+		{"invalid identity", "old.go", "new.go", false, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			cursor, ok := v.findCursor(cursorIdentity{
+				oldPath: tc.oldPath, newPath: tc.newPath, line: line,
+				cursor: diffCursor{pane: right}, valid: tc.valid,
+			})
+			testutil.RequireEqual(t, ok, tc.want, "cursor found")
+			if ok {
+				file, _ := v.file(cursor)
+				testutil.RequireEqual(t, file.NewPath, "new.go",
+					"matching file")
+				got, _ := v.line(cursor)
+				testutil.RequireEqual(t, got, line, "matching source line")
+			}
+		})
+	}
+}
+
 func TestCursorIdentitySameHunk(t *testing.T) {
 	target := cursorIdentity{
 		oldPath: "old.go", newPath: "new.go",
