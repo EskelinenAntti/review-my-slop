@@ -45,14 +45,13 @@ func commentDraft(body string, anchor comments.Anchor) string {
 	if len(anchor.QuotedLines) == 0 {
 		return body
 	}
-	lines := suggestionLines(anchor.QuotedLines)
 	var draft strings.Builder
 	_, _ = draft.WriteString(body)
 	if body != "" && !strings.HasSuffix(body, "\n") {
 		_ = draft.WriteByte('\n')
 	}
 	_ = draft.WriteByte('\n')
-	_, _ = draft.WriteString(suggestionBlock(lines))
+	_, _ = draft.WriteString(suggestionBlock(anchor.QuotedLines))
 	_ = draft.WriteByte('\n')
 	return draft.String()
 }
@@ -61,7 +60,7 @@ func stripUnchangedSuggestion(body string, quoted []string) string {
 	if len(quoted) == 0 {
 		return body
 	}
-	suggestion := suggestionBlock(suggestionLines(quoted))
+	suggestion := suggestionBlock(quoted)
 	before, after, found := strings.Cut(body, suggestion)
 	if !found {
 		return body
@@ -73,7 +72,10 @@ func stripUnchangedSuggestion(body string, quoted []string) string {
 	return before + "\n" + strings.TrimLeft(after, "\n")
 }
 
-func suggestionBlock(lines []string) string {
+// suggestionBlock renders only the new-side text from diff-prefixed quotes.
+// Choose the fence after filtering so deleted backticks do not lengthen it.
+func suggestionBlock(quoted []string) string {
+	lines := suggestionLines(quoted)
 	fence := contextFence(lines)
 	var block strings.Builder
 	_, _ = block.WriteString(fence)
