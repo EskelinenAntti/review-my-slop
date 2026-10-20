@@ -100,12 +100,17 @@ func (v *diffView) scrollHorizontal(
 	viewport diffViewport,
 	columns int,
 ) diffViewport {
-	columns = max(
-		-viewport.leftColumn,
-		min(columns, v.maxHorizontalOffset(viewport.width)-viewport.leftColumn),
+	viewport.leftColumn = scrollOffset(
+		viewport.leftColumn,
+		columns,
+		v.maxHorizontalOffset(viewport.width),
 	)
-	viewport.leftColumn += columns
 	return v.clampViewport(viewport)
+}
+
+// scrollOffset bounds the distance before adding it to avoid integer overflow.
+func scrollOffset(offset, distance, limit int) int {
+	return offset + max(-offset, min(distance, limit-offset))
 }
 
 func (v *diffView) scrollVertical(
@@ -113,8 +118,7 @@ func (v *diffView) scrollVertical(
 	cursor diffCursor,
 	rows int,
 ) (diffViewport, diffCursor) {
-	rows = max(-viewport.top, min(rows, v.maxTop(viewport.height)-viewport.top))
-	viewport.top += rows
+	viewport.top = scrollOffset(viewport.top, rows, v.maxTop(viewport.height))
 	viewport = v.clampViewport(viewport)
 	if !v.valid(cursor) || v.cursorVisible(viewport, cursor) {
 		return viewport, cursor
