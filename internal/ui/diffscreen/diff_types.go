@@ -31,13 +31,6 @@ type diffSelection struct {
 	Last  diffCursor
 }
 
-type direction int8
-
-const (
-	backward direction = -1
-	forward  direction = 1
-)
-
 type verticalAlignment uint8
 
 const (

@@ -16,9 +16,9 @@ func (v *diffView) scrollVertical(
 		viewport.top,
 		min(cursor.row, viewport.top+v.contentHeight(viewport)-1),
 	)
-	d := forward
+	d := Forward
 	if cursor.row > target {
-		d = backward
+		d = Backward
 	}
 	candidate, ok := v.nearest(target, cursor.pane, d, viewport)
 	if !ok && v.split {
@@ -33,7 +33,7 @@ func (v *diffView) scrollVertical(
 func (v *diffView) scrollHalfPage(
 	viewport diffViewport,
 	cursor diffCursor,
-	direction direction,
+	direction Direction,
 ) (diffViewport, diffCursor) {
 	if !v.valid(cursor) {
 		return viewport, cursor
@@ -52,7 +52,7 @@ func (v *diffView) scrollHalfPage(
 func (v *diffView) nearest(
 	target int,
 	pane diffPane,
-	direction direction,
+	direction Direction,
 	viewport diffViewport,
 ) (diffCursor, bool) {
 	if cursor, ok := v.cursorInViewport(target, pane, viewport); ok {

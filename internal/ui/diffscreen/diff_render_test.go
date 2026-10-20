@@ -262,7 +262,7 @@ func TestRenderStateIsLocalToEachCall(t *testing.T) {
 func assertRenderStateIsLocal(t *testing.T, v *diffView) {
 	t.Helper()
 	first := mustFirst(t, v)
-	next, ok := v.move(first, forward)
+	next, ok := v.move(first, Forward)
 	testutil.RequireEqual(t, ok, true, "second line missing")
 	viewport := v.newViewport(80, 5)
 	baseline := v.render(viewport, first, nil)

@@ -16,10 +16,10 @@ func TestSelectionBetween(t *testing.T) {
 	})
 	v := newSideBySideView(p, true)
 	first := mustFirst(t, v)
-	removed, _ := v.search("removed one", first, forward)
-	after, _ := v.search("after", first, forward)
-	later, _ := v.search("later", first, forward)
-	other, _ := v.search("other", first, forward)
+	removed, _ := v.search("removed one", first, Forward)
+	after, _ := v.search("after", first, Forward)
+	later, _ := v.search("later", first, Forward)
+	other, _ := v.search("other", first, Forward)
 	for _, tt := range []struct {
 		name        string
 		first, last diffCursor
@@ -63,10 +63,10 @@ func TestSwitchSelectionPane(t *testing.T) {
 	})
 	v := newSideBySideView(p, true)
 	before := mustFirst(t, v)
-	removed, _ := v.search("removed", before, forward)
-	extra, _ := v.search("extra removal", before, forward)
-	after, _ := v.search("after", before, forward)
-	later, _ := v.search("later", before, forward)
+	removed, _ := v.search("removed", before, Forward)
+	extra, _ := v.search("extra removal", before, Forward)
+	after, _ := v.search("after", before, Forward)
+	later, _ := v.search("later", before, Forward)
 	for _, tt := range []struct {
 		name        string
 		first, last diffCursor
@@ -183,7 +183,7 @@ func TestSelectionLinesAcrossPanes(t *testing.T) {
 			v := newDiffView(p, Options{SideBySide: tt.split})
 			last, ok := v.last()
 			testutil.RequireEqual(t, ok, true, "find last row")
-			cursor, ok := v.search(tt.query, last, forward)
+			cursor, ok := v.search(tt.query, last, Forward)
 			testutil.RequireEqual(t, ok, true, "find selected row")
 			selection := diffSelection{
 				First: diffCursor{cursor.row, tt.pane},

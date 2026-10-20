@@ -11,15 +11,15 @@ func TestNeighborRows(t *testing.T) {
 	for _, tc := range []struct {
 		name       string
 		row, limit int
-		direction  direction
+		direction  Direction
 		want       []int
 	}{
-		{"forward ties", 3, 3, forward, []int{4, 2, 5, 1}},
-		{"backward ties", 3, 3, backward, []int{2, 4, 1, 5}},
-		{"bounds left to caller", 0, 3, forward, []int{1, -1, 2, -2}},
-		{"origin excluded", 3, 1, forward, nil},
-		{"zero limit", 3, 0, forward, nil},
-		{"negative limit", 3, -1, backward, nil},
+		{"forward ties", 3, 3, Forward, []int{4, 2, 5, 1}},
+		{"backward ties", 3, 3, Backward, []int{2, 4, 1, 5}},
+		{"bounds left to caller", 0, 3, Forward, []int{1, -1, 2, -2}},
+		{"origin excluded", 3, 1, Forward, nil},
+		{"zero limit", 3, 0, Forward, nil},
+		{"negative limit", 3, -1, Backward, nil},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			got := slices.Collect(neighborRows(tc.row, tc.limit, tc.direction))
@@ -42,7 +42,7 @@ func TestNeighborRowsStopsWhenConsumerBreaks(t *testing.T) {
 
 func collectNeighborRows(count int) []int {
 	var visited []int
-	for row := range neighborRows(3, 4, forward) {
+	for row := range neighborRows(3, 4, Forward) {
 		visited = append(visited, row)
 		if len(visited) == count {
 			break
@@ -140,53 +140,53 @@ func TestJumpFile(t *testing.T) {
 		name      string
 		split     bool
 		start     diffCursor
-		direction direction
+		direction Direction
 		want      diffCursor
 		ok        bool
 	}{
 		{
 			"forward left", true, diffCursor{1, left},
-			forward, diffCursor{6, left}, true,
+			Forward, diffCursor{6, left}, true,
 		},
 		{
 			"forward right", true, diffCursor{1, right},
-			forward, diffCursor{8, right}, true,
+			Forward, diffCursor{8, right}, true,
 		},
 		{
 			"backward left", true, diffCursor{11, left},
-			backward, diffCursor{6, left}, true,
+			Backward, diffCursor{6, left}, true,
 		},
 		{
 			"backward right", true, diffCursor{11, right},
-			backward, diffCursor{8, right}, true,
+			Backward, diffCursor{8, right}, true,
 		},
 		{
 			"unified forward", false, diffCursor{1, right},
-			forward, diffCursor{8, right}, true,
+			Forward, diffCursor{8, right}, true,
 		},
 		{
 			"unified backward", false, diffCursor{11, right},
-			backward, diffCursor{8, right}, true,
+			Backward, diffCursor{8, right}, true,
 		},
 		{
 			"first file", true, diffCursor{2, right},
-			backward, diffCursor{}, false,
+			Backward, diffCursor{}, false,
 		},
 		{
 			"last file", true, diffCursor{10, left},
-			forward, diffCursor{}, false,
+			Forward, diffCursor{}, false,
 		},
 		{
 			"invalid row", true, diffCursor{-1, right},
-			forward, diffCursor{}, false,
+			Forward, diffCursor{}, false,
 		},
 		{
 			"metadata row", true, diffCursor{4, right},
-			forward, diffCursor{}, false,
+			Forward, diffCursor{}, false,
 		},
 		{
 			"empty pane", true, diffCursor{6, right},
-			forward, diffCursor{}, false,
+			Forward, diffCursor{}, false,
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

@@ -58,16 +58,16 @@ func (v *View) Move(motion Motion) {
 // direction maps paired navigation motions to their traversal direction.
 // Endpoint motions scan inward: forward for the first line, backward for
 // the last.
-func (m Motion) direction() direction {
+func (m Motion) direction() Direction {
 	switch m {
 	case PreviousLine, PreviousPage, LastLine, PreviousFile:
-		return backward
+		return Backward
 	default:
-		return forward
+		return Forward
 	}
 }
 
-func (v *View) step(direction direction) {
+func (v *View) step(direction Direction) {
 	next, ok := v.view.move(v.cursor, direction)
 	if !ok {
 		return
@@ -81,7 +81,7 @@ func (v *View) setCursor(cursor diffCursor) {
 	v.cursor = cursor
 	v.viewport = v.view.keepVisible(v.viewport, cursor)
 }
-func (v *View) halfPage(direction direction) {
+func (v *View) halfPage(direction Direction) {
 	viewport, cursor := v.view.scrollHalfPage(v.viewport, v.cursor, direction)
 	v.applyScroll(viewport, cursor)
 }
@@ -95,7 +95,7 @@ func (v *View) applyScroll(viewport diffViewport, cursor diffCursor) {
 	v.viewport, v.cursor = viewport, cursor
 }
 
-func (v *View) jumpFile(direction direction) {
+func (v *View) jumpFile(direction Direction) {
 	v.selection = nil
 	if cursor, ok := v.view.jumpFile(v.cursor, direction); ok {
 		v.setCursor(cursor)

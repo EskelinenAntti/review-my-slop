@@ -45,7 +45,7 @@ func TestCursorMatchConsider(t *testing.T) {
 func TestPreserveTranslatesCursorSelectionAndViewport(t *testing.T) {
 	old := newUnifiedView(testPatch(), true)
 	first := mustFirst(t, old)
-	cursor, ok := old.search("added one", first, forward)
+	cursor, ok := old.search("added one", first, Forward)
 	testutil.RequireEqual(t, ok, true, "%s", "cursor not found")
 
 	selection, ok := old.selectionBetween(first, cursor)

@@ -39,16 +39,16 @@ func (v *diffView) rowCursors(y int, preferred diffPane) iter.Seq[diffCursor] {
 }
 
 func (v *diffView) first() (diffCursor, bool) {
-	return v.edge(forward)
+	return v.edge(Forward)
 }
 
 func (v *diffView) last() (diffCursor, bool) {
-	return v.edge(backward)
+	return v.edge(Backward)
 }
 
-func (v *diffView) edge(direction direction) (diffCursor, bool) {
+func (v *diffView) edge(direction Direction) (diffCursor, bool) {
 	start := -1
-	if direction == backward {
+	if direction == Backward {
 		start = len(v.rows)
 	}
 	if cursor, ok := v.scan(start, right, direction); ok {
@@ -60,7 +60,7 @@ func (v *diffView) edge(direction direction) (diffCursor, bool) {
 func (v *diffView) scan(
 	start int,
 	pane diffPane,
-	direction direction,
+	direction Direction,
 ) (diffCursor, bool) {
 	step := int(direction)
 	for y := start + step; y >= 0 && y < len(v.rows); y += step {
@@ -73,7 +73,7 @@ func (v *diffView) scan(
 
 func (v *diffView) move(
 	cursor diffCursor,
-	direction direction,
+	direction Direction,
 ) (diffCursor, bool) {
 	if !v.valid(cursor) {
 		return diffCursor{}, false
@@ -84,7 +84,7 @@ func (v *diffView) move(
 func (v *diffView) cursorNearMetadata(
 	y int,
 	pane diffPane,
-	direction direction,
+	direction Direction,
 ) (diffCursor, bool) {
 	for candidateY := range neighborRows(y, len(v.rows)+1, direction) {
 		if candidate, ok := v.cursorInFile(candidateY, y, pane); ok {
@@ -97,7 +97,7 @@ func (v *diffView) cursorNearMetadata(
 // neighborRows visits rows at increasing distances below limit, excluding the
 // origin. Equidistant rows are visited in the preferred direction first.
 // Callers apply their own file or viewport bounds.
-func neighborRows(row, limit int, direction direction) iter.Seq[int] {
+func neighborRows(row, limit int, direction Direction) iter.Seq[int] {
 	return func(yield func(int) bool) {
 		for distance := 1; distance < limit; distance++ {
 			offset := int(direction) * distance
@@ -123,7 +123,7 @@ func (v *diffView) cursorInFile(
 
 func (v *diffView) jumpFile(
 	cursor diffCursor,
-	direction direction,
+	direction Direction,
 ) (diffCursor, bool) {
 	if !v.valid(cursor) {
 		return diffCursor{}, false
@@ -157,5 +157,5 @@ func (v *diffView) switchPane(
 			return candidate, true
 		}
 	}
-	return v.scan(cursor.row, pane, forward)
+	return v.scan(cursor.row, pane, Forward)
 }

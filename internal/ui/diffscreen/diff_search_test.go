@@ -31,7 +31,7 @@ func TestSearchMetadataMatchesVisibleTextOnly(t *testing.T) {
 
 func assertMetadataSearch(t *testing.T, v *diffView, query string, want bool) {
 	t.Helper()
-	for _, direction := range []direction{forward, backward} {
+	for _, direction := range []Direction{Forward, Backward} {
 		cursor, ok := v.searchRow(query, 1, right, direction)
 		testutil.RequireEqual(t, ok, want, "metadata match")
 		if ok {

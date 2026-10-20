@@ -9,7 +9,7 @@ import (
 func (v *diffView) search(
 	query string,
 	cursor diffCursor,
-	direction direction,
+	direction Direction,
 ) (diffCursor, bool) {
 	if query == "" || !v.valid(cursor) {
 		return diffCursor{}, false
@@ -29,7 +29,7 @@ func (v *diffView) searchRow(
 	query string,
 	y int,
 	pane diffPane,
-	direction direction,
+	direction Direction,
 ) (diffCursor, bool) {
 	if v.rows[y].kind != lineRow {
 		text := strings.ToLower(ansi.Strip(v.rows[y].text))
