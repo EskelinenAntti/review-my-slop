@@ -4,8 +4,85 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/sourcegraph/go-diff/diff"
+
 	"github.com/eskelinenantti/review-my-slop/internal/testutil"
 )
+
+func TestParseTrackedFile(t *testing.T) {
+	tests := []struct {
+		name, oldPath, newPath string
+		wantOld, wantNew       string
+	}{
+		{"modified", "a/code.go", "b/code.go", "code.go", "code.go"},
+		{"renamed", "a/old.go", "b/new.go", "old.go", "new.go"},
+		{"added", "/dev/null", "b/new.go", "", "new.go"},
+		{"deleted", "a/old.go", "/dev/null", "old.go", ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			fd := &diff.FileDiff{
+				OrigName: tt.oldPath,
+				NewName:  tt.newPath,
+				Extended: []string{"metadata\x1b[2J"},
+				Hunks: []*diff.Hunk{{
+					OrigStartLine: 10, OrigLines: 1,
+					NewStartLine: 20, NewLines: 1,
+					Section: "function",
+					Body:    []byte("-old\n+new\n"),
+				}},
+			}
+			got, err := parseTrackedFile(fd)
+			testutil.NoError(t, err)
+			want := File{
+				OldPath: tt.wantOld, NewPath: tt.wantNew,
+				DisplayPath: tt.wantNew,
+				Metadata:    []string{visibleText("metadata\x1b[2J")},
+				Hunks: []Hunk{{
+					Header: "@@ -10,1 +20,1 @@ function",
+					Lines: []Line{
+						{Kind: Deletion, Text: "old", OldNumber: 10},
+						{Kind: Addition, Text: "new", NewNumber: 20},
+					},
+				}},
+			}
+			if want.DisplayPath == "" {
+				want.DisplayPath = tt.wantOld
+			}
+			if !reflect.DeepEqual(got, want) {
+				t.Fatalf("file = %#v, want %#v", got, want)
+			}
+		})
+	}
+}
+
+func TestParseTrackedFileWithoutHunks(t *testing.T) {
+	got, err := parseTrackedFile(&diff.FileDiff{
+		OrigName: "a/old.go", NewName: "b/new.go",
+		Extended: []string{"similarity index 100%"},
+	})
+	testutil.NoError(t, err)
+	want := File{
+		OldPath: "old.go", NewPath: "new.go", DisplayPath: "new.go",
+		Metadata: []string{"similarity index 100%"},
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("file = %#v, want %#v", got, want)
+	}
+}
+
+func TestParseTrackedFileRejectsMalformedHunk(t *testing.T) {
+	got, err := parseTrackedFile(&diff.FileDiff{
+		OrigName: "a/code.go", NewName: "b/code.go",
+		Hunks: []*diff.Hunk{{Body: []byte("?invalid\n")}},
+	})
+	if err == nil || err.Error() != "code.go: unexpected diff prefix '?'" {
+		t.Fatalf("error = %v, want file-scoped malformed hunk error", err)
+	}
+	if !reflect.DeepEqual(got, File{}) {
+		t.Fatalf("file = %#v, want zero value on error", got)
+	}
+}
 
 func TestParseHunkBodyBoundaries(t *testing.T) {
 	tests := []struct {

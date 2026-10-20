@@ -2,7 +2,6 @@ package patch
 
 import (
 	"bytes"
-	"context"
 	"errors"
 	"fmt"
 	"strings"
@@ -10,45 +9,13 @@ import (
 	"github.com/sourcegraph/go-diff/diff"
 )
 
-func (l fileLoader) parseTracked(
-	ctx context.Context,
-	raw []byte,
-) ([]File, error) {
-	if len(bytes.TrimSpace(raw)) == 0 {
-		return nil, nil
-	}
-	parsed, err := diff.ParseMultiFileDiff(raw)
-	if err != nil {
-		return nil, fmt.Errorf("parse git diff: %w", err)
-	}
-	files := make([]File, 0, len(parsed))
-	for _, fd := range parsed {
-		if err := ctx.Err(); err != nil {
-			return nil, err
-		}
-		file, err := l.parseTrackedFile(ctx, fd)
-		if err != nil {
-			return nil, err
-		}
-		files = append(files, file)
-	}
-	return files, nil
-}
-
-func (l fileLoader) parseTrackedFile(
-	ctx context.Context,
-	fd *diff.FileDiff,
-) (File, error) {
-	oldPath := cleanDiffPath(fd.OrigName)
-	newPath := cleanDiffPath(fd.NewName)
+func parseTrackedFile(fd *diff.FileDiff) (File, error) {
 	file := File{
-		OldPath:  oldPath,
-		NewPath:  newPath,
+		OldPath:  cleanDiffPath(fd.OrigName),
+		NewPath:  cleanDiffPath(fd.NewName),
 		Metadata: visibleStrings(fd.Extended),
 	}
 	file.DisplayPath = visibleText(file.PreferredPath())
-	file.OldSource = readGitSource(ctx, l.run, l.root, l.oldRevision, oldPath)
-	file.NewSource = readWorkingTree(l.root, newPath)
 	for _, h := range fd.Hunks {
 		lines, err := parseHunkBody(h.OrigStartLine, h.NewStartLine, h.Body)
 		if err != nil {

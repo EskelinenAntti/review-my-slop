@@ -1,6 +1,7 @@
 package patch
 
 import (
+	"bytes"
 	"cmp"
 	"context"
 	"errors"
@@ -8,6 +9,8 @@ import (
 	"os"
 	"slices"
 	"strings"
+
+	"github.com/sourcegraph/go-diff/diff"
 )
 
 const (
@@ -117,7 +120,7 @@ type fileLoader struct {
 }
 
 func (l fileLoader) load(ctx context.Context, raw []byte) ([]File, error) {
-	files, err := l.parseTracked(ctx, raw)
+	files, err := l.loadTracked(ctx, raw)
 	if err != nil {
 		return nil, err
 	}
@@ -135,6 +138,35 @@ func (l fileLoader) load(ctx context.Context, raw []byte) ([]File, error) {
 
 	if err := ctx.Err(); err != nil {
 		return nil, err
+	}
+	return files, nil
+}
+
+func (l fileLoader) loadTracked(
+	ctx context.Context,
+	raw []byte,
+) ([]File, error) {
+	if len(bytes.TrimSpace(raw)) == 0 {
+		return nil, nil
+	}
+	parsed, err := diff.ParseMultiFileDiff(raw)
+	if err != nil {
+		return nil, fmt.Errorf("parse git diff: %w", err)
+	}
+	files := make([]File, 0, len(parsed))
+	for _, fd := range parsed {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		file, err := parseTrackedFile(fd)
+		if err != nil {
+			return nil, err
+		}
+		file.OldSource = readGitSource(
+			ctx, l.run, l.root, l.oldRevision, file.OldPath,
+		)
+		file.NewSource = readWorkingTree(l.root, file.NewPath)
+		files = append(files, file)
 	}
 	return files, nil
 }
