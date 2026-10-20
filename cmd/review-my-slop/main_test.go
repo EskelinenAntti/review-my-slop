@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -12,6 +13,30 @@ import (
 	"github.com/eskelinenantti/review-my-slop/internal/comments"
 	"github.com/eskelinenantti/review-my-slop/internal/testutil"
 )
+
+func TestRunCodeChecksStorageBeforeLoadingPatch(t *testing.T) {
+	t.Setenv("XDG_DATA_HOME", "")
+	t.Setenv("HOME", "")
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	err := runCode(ctx)
+	if err == nil ||
+		!strings.Contains(err.Error(), "resolve user home directory") {
+		t.Fatalf("error = %v, want storage configuration error", err)
+	}
+}
+
+func TestRunCodePropagatesPatchLoadError(t *testing.T) {
+	t.Setenv("XDG_DATA_HOME", t.TempDir())
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	err := runCode(ctx)
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("error = %v, want context cancellation", err)
+	}
+}
 
 func TestRunCommentsPrintsAndConsumesCurrentRepositoryFeedback(t *testing.T) {
 	repo := initRepository(t)
