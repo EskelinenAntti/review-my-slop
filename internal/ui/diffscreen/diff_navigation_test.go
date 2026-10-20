@@ -7,6 +7,50 @@ import (
 	"github.com/eskelinenantti/review-my-slop/internal/testutil"
 )
 
+func TestNeighborRows(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		row, limit int
+		direction  direction
+		want       []int
+	}{
+		{"forward ties", 3, 3, forward, []int{4, 2, 5, 1}},
+		{"backward ties", 3, 3, backward, []int{2, 4, 1, 5}},
+		{"bounds left to caller", 0, 3, forward, []int{1, -1, 2, -2}},
+		{"origin excluded", 3, 1, forward, nil},
+		{"zero limit", 3, 0, forward, nil},
+		{"negative limit", 3, -1, backward, nil},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got := slices.Collect(neighborRows(tc.row, tc.limit, tc.direction))
+			if !slices.Equal(got, tc.want) {
+				t.Fatalf("neighbor rows = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestNeighborRowsStopsWhenConsumerBreaks(t *testing.T) {
+	for _, count := range []int{1, 2, 3} {
+		visited := collectNeighborRows(count)
+		want := []int{4, 2, 5}[:count]
+		if !slices.Equal(visited, want) {
+			t.Fatalf("visited rows = %v, want %v", visited, want)
+		}
+	}
+}
+
+func collectNeighborRows(count int) []int {
+	var visited []int
+	for row := range neighborRows(3, 4, forward) {
+		visited = append(visited, row)
+		if len(visited) == count {
+			break
+		}
+	}
+	return visited
+}
+
 func TestRowCursors(t *testing.T) {
 	for _, tc := range []struct {
 		name      string

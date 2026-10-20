@@ -86,19 +86,26 @@ func (v *diffView) cursorNearMetadata(
 	pane diffPane,
 	direction direction,
 ) (diffCursor, bool) {
-	for distance := 1; distance <= len(v.rows); distance++ {
-		for _, candidateY := range neighborRows(y, distance, direction) {
-			if candidate, ok := v.cursorInFile(candidateY, y, pane); ok {
-				return candidate, true
-			}
+	for candidateY := range neighborRows(y, len(v.rows)+1, direction) {
+		if candidate, ok := v.cursorInFile(candidateY, y, pane); ok {
+			return candidate, true
 		}
 	}
 	return diffCursor{}, false
 }
 
-func neighborRows(row, distance int, direction direction) [2]int {
-	offset := int(direction) * distance
-	return [2]int{row + offset, row - offset}
+// neighborRows visits rows at increasing distances below limit, excluding the
+// origin. Equidistant rows are visited in the preferred direction first.
+// Callers apply their own file or viewport bounds.
+func neighborRows(row, limit int, direction direction) iter.Seq[int] {
+	return func(yield func(int) bool) {
+		for distance := 1; distance < limit; distance++ {
+			offset := int(direction) * distance
+			if !yield(row+offset) || !yield(row-offset) {
+				return
+			}
+		}
+	}
 }
 
 func (v *diffView) cursorInFile(
