@@ -10,12 +10,9 @@ import (
 	"github.com/sourcegraph/go-diff/diff"
 )
 
-func parseTracked(
+func (l fileLoader) parseTracked(
 	ctx context.Context,
-	run runner,
-	root string,
 	raw []byte,
-	oldRevision string,
 ) ([]File, error) {
 	if len(bytes.TrimSpace(raw)) == 0 {
 		return nil, nil
@@ -29,7 +26,7 @@ func parseTracked(
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
-		file, err := parseTrackedFile(ctx, run, root, fd, oldRevision)
+		file, err := l.parseTrackedFile(ctx, fd)
 		if err != nil {
 			return nil, err
 		}
@@ -38,12 +35,9 @@ func parseTracked(
 	return files, nil
 }
 
-func parseTrackedFile(
+func (l fileLoader) parseTrackedFile(
 	ctx context.Context,
-	run runner,
-	root string,
 	fd *diff.FileDiff,
-	oldRevision string,
 ) (File, error) {
 	oldPath := cleanDiffPath(fd.OrigName)
 	newPath := cleanDiffPath(fd.NewName)
@@ -53,8 +47,8 @@ func parseTrackedFile(
 		Metadata: visibleStrings(fd.Extended),
 	}
 	file.DisplayPath = visibleText(file.PreferredPath())
-	file.OldSource = readGitSource(ctx, run, root, oldRevision, oldPath)
-	file.NewSource = readWorkingTree(root, newPath)
+	file.OldSource = readGitSource(ctx, l.run, l.root, l.oldRevision, oldPath)
+	file.NewSource = readWorkingTree(l.root, newPath)
 	for _, h := range fd.Hunks {
 		lines, err := parseHunkBody(h.OrigStartLine, h.NewStartLine, h.Body)
 		if err != nil {

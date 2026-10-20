@@ -90,6 +90,28 @@ func TestGetIncludesUnstagedAndUntrackedButNotStagedOnly(t *testing.T) {
 	}
 }
 
+func TestGetUnstagedSourcesUseIndexAndWorkingTree(t *testing.T) {
+	repo := newRepository(t)
+	writeFile(t, repo, "tracked.txt", "committed\n")
+	git(t, repo, "add", "tracked.txt")
+	git(t, repo, "commit", "-m", "base")
+	writeFile(t, repo, "tracked.txt", "indexed\n")
+	git(t, repo, "add", "tracked.txt")
+	writeFile(t, repo, "tracked.txt", "working tree\n")
+	t.Chdir(repo)
+
+	got, err := Get(context.Background(), Unstaged)
+	testutil.NoError(t, err)
+	testutil.RequireEqual(t, len(got.Files), 1, "files = %#v", got.Files)
+	file := got.Files[0]
+	testutil.RequireEqual(t, file.OldSource, "indexed\n",
+		"old source = %q", file.OldSource,
+	)
+	testutil.RequireEqual(t, file.NewSource, "working tree\n",
+		"new source = %q", file.NewSource,
+	)
+}
+
 func TestGetPreservesTrackedPathStartingWithDiffPrefix(t *testing.T) {
 	repo := newRepository(t)
 	path := "b/nested.go"

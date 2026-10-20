@@ -67,7 +67,8 @@ func load(
 	if err != nil {
 		return Patch{}, err
 	}
-	files, err := loadFiles(ctx, run, root, raw, oldRevision)
+	loader := fileLoader{run: run, root: root, oldRevision: oldRevision}
+	files, err := loader.load(ctx, raw)
 	if err != nil {
 		return Patch{}, err
 	}
@@ -107,18 +108,20 @@ func comparison(
 	return branch, revision, nil
 }
 
-func loadFiles(
-	ctx context.Context,
-	run runner,
-	root string,
-	raw []byte,
-	oldRevision string,
-) ([]File, error) {
-	files, err := parseTracked(ctx, run, root, raw, oldRevision)
+// fileLoader shares the repository and comparison source across file loading.
+// Context remains operation-scoped so cancellation is explicit at each step.
+type fileLoader struct {
+	run         runner
+	root        string
+	oldRevision string
+}
+
+func (l fileLoader) load(ctx context.Context, raw []byte) ([]File, error) {
+	files, err := l.parseTracked(ctx, raw)
 	if err != nil {
 		return nil, err
 	}
-	untracked, err := loadUntracked(ctx, run, root)
+	untracked, err := loadUntracked(ctx, l.run, l.root)
 	if err != nil {
 		return nil, err
 	}
