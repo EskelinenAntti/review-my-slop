@@ -77,6 +77,74 @@ func TestSplitRowsPairOnlyAdjacentChangeBlocks(t *testing.T) {
 	}
 }
 
+func TestProjectRowsPreservesMetadataAndSourceLocations(t *testing.T) {
+	p := patch.Patch{Files: []patch.File{
+		{DisplayPath: "empty.txt", Metadata: []string{"new file mode 100644"}},
+		{DisplayPath: "changed.txt", Hunks: []patch.Hunk{
+			{Header: "section", Lines: []patch.Line{
+				{Kind: patch.Deletion, Text: "old", OldNumber: 1},
+				{Kind: patch.Addition, Text: "new!", NewNumber: 1},
+			}},
+			{Header: "@@ already formatted @@"},
+		}},
+	}}
+	for _, split := range []bool{false, true} {
+		options := Options{SideBySide: split}
+		rows, width := projectRows(p, options)
+		want := []entry{
+			{
+				kind: fileRow, file: 0, hunk: -1,
+				leftLine: -1, rightLine: -1, text: "empty.txt",
+			},
+			{
+				kind: metadataRow, file: 0, hunk: -1,
+				leftLine: -1, rightLine: -1, text: "new file mode 100644",
+			},
+			{
+				kind: fileRow, file: 1, hunk: -1,
+				leftLine: -1, rightLine: -1, text: "changed.txt",
+			},
+			{
+				kind: hunkRow, file: 1, hunk: 0,
+				leftLine: -1, rightLine: -1, text: "@@ section",
+			},
+		}
+		wantWidth := 4
+		if split {
+			want = append(want, entry{
+				kind: lineRow, file: 1, hunk: 0,
+				leftLine: 0, rightLine: 1, left: "old", right: "new!",
+			})
+			wantWidth = 7
+		} else {
+			want = append(want,
+				entry{
+					kind: lineRow, file: 1, hunk: 0,
+					leftLine: 0, rightLine: 0, text: "old",
+				},
+				entry{
+					kind: lineRow, file: 1, hunk: 0,
+					leftLine: 1, rightLine: 1, text: "new!",
+				},
+			)
+		}
+		want = append(want, entry{
+			kind: hunkRow, file: 1, hunk: 1,
+			leftLine: -1, rightLine: -1, text: "@@ already formatted @@",
+		})
+		testutil.RequireEqual(t, slices.Equal(rows, want), true,
+			"split=%v rows=%#v, want %#v", split, rows, want)
+		testutil.RequireEqual(t, width, wantWidth,
+			"split=%v width=%d, want %d", split, width, wantWidth)
+	}
+}
+
+func TestProjectRowsEmptyPatch(t *testing.T) {
+	rows, width := projectRows(patch.Patch{}, Options{})
+	testutil.RequireEqual(t, len(rows), 0, "empty patch rows=%v", rows)
+	testutil.RequireEqual(t, width, 0, "empty patch width=%d", width)
+}
+
 func assertProjectedLines(t *testing.T, lines []patch.Line, want [][2]string) {
 	t.Helper()
 	p := patchWithLines(lines)

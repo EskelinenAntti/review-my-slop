@@ -15,8 +15,7 @@ func TestRenamedFileHighlightsEachSideUsingItsOwnPath(t *testing.T) {
 		OldSource: source,
 		NewSource: source,
 	}
-	view := &diffView{dark: true}
-	highlighted := view.highlight(file)
+	highlighted := highlightFile(file, Options{Dark: true})
 	old := strings.Join(highlighted.old, "\n")
 	updated := strings.Join(highlighted.new, "\n")
 	if old == updated || stripANSI(old) != strings.TrimSuffix(
@@ -115,9 +114,8 @@ func answer(value int) string {
 }
 `
 	file := patch.File{NewPath: "example.go", NewSource: source}
-	darkView, lightView := &diffView{dark: true}, &diffView{dark: false}
-	dark := strings.Join(darkView.highlight(file).new, "\n")
-	light := strings.Join(lightView.highlight(file).new, "\n")
+	dark := strings.Join(highlightFile(file, Options{Dark: true}).new, "\n")
+	light := strings.Join(highlightFile(file, Options{Dark: false}).new, "\n")
 	if dark == light {
 		t.Fatal(
 			"light and dark terminal backgrounds use identical highlighting",

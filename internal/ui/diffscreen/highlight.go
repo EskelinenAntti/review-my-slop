@@ -18,9 +18,9 @@ const (
 	darkTheme  = "catppuccin-mocha"
 )
 
-func (v *diffView) highlight(file patch.File) highlightedSources {
+func highlightFile(file patch.File, options Options) highlightedSources {
 	theme := lightTheme
-	if v.dark {
+	if options.Dark {
 		theme = darkTheme
 	}
 	return highlightedSources{
