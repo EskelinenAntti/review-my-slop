@@ -75,15 +75,10 @@ func renderFileRow(path string, width int) string {
 }
 
 func (r diffRenderer) renderSplitRow(y int) string {
-	leftWidth, rightWidth := splitPaneWidths(r.viewport.width)
-	left := r.renderLine(diffCursor{row: y, pane: left}, leftWidth)
-	right := r.renderLine(diffCursor{row: y, pane: right}, rightWidth)
-	return left + " │ " + right
-}
-
-func splitPaneWidths(width int) (left, right int) {
-	left = max(20, (width-3)/2)
-	return left, max(20, width-3-left)
+	layout := newSplitLayout(r.viewport.width)
+	left := r.renderLine(diffCursor{row: y, pane: left}, layout.leftWidth)
+	right := r.renderLine(diffCursor{row: y, pane: right}, layout.rightWidth)
+	return left + splitDivider + right
 }
 
 func (r diffRenderer) renderLine(candidate diffCursor, width int) string {

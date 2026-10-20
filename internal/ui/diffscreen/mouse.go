@@ -53,14 +53,9 @@ func (v *View) cursorAtPoint(x, y int) (diffCursor, bool) {
 	}
 	pane := right
 	if v.view.split {
-		leftWidth, _ := splitPaneWidths(v.viewport.width)
-		switch {
-		case x < leftWidth:
-			pane = left
-		case x < leftWidth+3:
+		pane, ok = newSplitLayout(v.viewport.width).paneAt(x)
+		if !ok {
 			return diffCursor{}, false
-		default:
-			pane = right
 		}
 	}
 	return v.view.cursorAt(v.viewport.top+row, pane)

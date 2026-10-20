@@ -212,7 +212,7 @@ func (v *diffView) maxHorizontalOffset(width int) int {
 	contentWidth := max(1, width-14)
 	extra := 0
 	if v.split {
-		contentWidth, extra = max(1, (width-3)/2-6), 2
+		contentWidth, extra = max(1, splitPaneWidth(width)-6), 2
 	}
 	return max(0, v.maxLineWidth+extra-contentWidth)
 }
