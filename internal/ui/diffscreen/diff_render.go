@@ -111,21 +111,6 @@ func (r diffRenderer) renderLine(candidate diffCursor, width int) string {
 			marker,
 		)
 	}
-	return r.renderCodeLine(
-		gutter,
-		text,
-		width,
-		line,
-		candidate,
-	)
-}
-
-func (r diffRenderer) renderCodeLine(
-	gutter, text string,
-	width int,
-	line patch.Line,
-	candidate diffCursor,
-) string {
 	value := gutter + fitANSIWindow(
 		text,
 		r.viewport.leftColumn,

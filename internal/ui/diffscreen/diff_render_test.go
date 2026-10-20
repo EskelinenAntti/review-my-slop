@@ -205,29 +205,33 @@ func TestSplitRendererDerivesPaneWidthsFromViewport(t *testing.T) {
 	}
 }
 
-func TestRenderCodeLineKeepsGutterWhileScrolling(t *testing.T) {
+func TestRenderLineKeepsGutterWhileScrolling(t *testing.T) {
+	const unifiedGutter = "    1     1   "
 	for _, tc := range []struct {
 		name   string
-		gutter string
+		split  bool
 		offset int
 		width  int
 		want   string
 	}{
-		{"unscrolled", "  1 ", 0, 8, "  1 abcd"},
-		{"scrolled", "  1 ", 2, 8, "  1 cdef"},
-		{"past end", "  1 ", 8, 8, "  1     "},
-		{"narrow", "  1 ", 2, 3, "  1"},
-		{"styled gutter", "\x1b[31m+\x1b[0m ", 2, 6, "+ cdef"},
+		{"unscrolled", false, 0, 18, unifiedGutter + "abcd"},
+		{"scrolled", false, 2, 18, unifiedGutter + "cdef"},
+		{"past end", false, 8, 18, unifiedGutter + "    "},
+		{"narrow", false, 2, 3, "   "},
+		{"split unscrolled", true, 0, 12, "    1   abcd"},
+		{"split scrolled", true, 2, 12, "    1 abcdef"},
+		{"split past end", true, 20, 12, "    1       "},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			v := newDiffView(patchWithLines([]patch.Line{{
+				Kind: patch.Context, Text: "abcdef",
+				OldNumber: 1, NewNumber: 1,
+			}}), Options{SideBySide: tc.split, Dark: true})
 			renderer := diffRenderer{
-				view:     newUnifiedView(longPatch(), true),
+				view:     v,
 				viewport: diffViewport{leftColumn: tc.offset},
 			}
-			rendered := renderer.renderCodeLine(
-				tc.gutter, "\x1b[32mabcdef\x1b[0m", tc.width,
-				patch.Line{Kind: patch.Context}, diffCursor{},
-			)
+			rendered := renderer.renderLine(mustFirst(t, v), tc.width)
 			testutil.RequireEqual(t, ansi.Strip(rendered), tc.want,
 				"code line layout changed")
 		})
