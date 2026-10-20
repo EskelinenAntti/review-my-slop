@@ -32,6 +32,38 @@ func testModel(
 	)
 }
 
+func TestBrowseKeyDispatch(t *testing.T) {
+	for _, tt := range []struct {
+		name string
+		keys []string
+		mode mode
+	}{
+		{name: "help", keys: []string{"?"}, mode: modeHelp},
+		{name: "search", keys: []string{"/"}, mode: modeSearch},
+		{name: "comments", keys: []string{"C"}, mode: modeComments},
+		{name: "unknown", keys: []string{"unknown"}, mode: modeBrowse},
+		{name: "pending prefix", keys: []string{"z"}, mode: modeBrowse},
+		{
+			name: "consumed continuation",
+			keys: []string{"z", "?"}, mode: modeBrowse,
+		},
+		{
+			name: "retried continuation",
+			keys: []string{"g", "?"}, mode: modeHelp,
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			m := testModel(modelPatch(), nil, nil)
+			m.err = errors.New("previous error")
+			for _, key := range tt.keys {
+				m = updateModel(t, m, textKey(key))
+			}
+			testutil.RequireEqual(t, m.mode, tt.mode, "mode = %v", m.mode)
+			testutil.RequireEqual(t, m.err, nil, "error = %v", m.err)
+		})
+	}
+}
+
 func TestStoreBackedCommentLifecycle(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	store := comments.Store{Path: filepath.Join(t.TempDir(), "comments.db")}

@@ -245,44 +245,6 @@ func (m model) updateWorkflow(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m *model) finishCommentEditor(msg commentEditorFinishedMsg) {
-	if msg.err != nil {
-		m.err = msg.err
-		m.clearCommentEdit()
-		return
-	}
-	m.edit.body = msg.body
-	m.finishCommentEdit()
-}
-
-func (m *model) finishCommentsLoad(msg commentsLoadedMsg) {
-	if msg.revision != m.comments.revision {
-		return
-	}
-	if msg.err != nil {
-		m.err = fmt.Errorf("refresh comments: %w", msg.err)
-		return
-	}
-	m.comments.items = msg.comments
-	m.commentView.Update(m.comments.items)
-	m.err = nil
-}
-
-func (m model) loadComments() tea.Cmd {
-	if m.load == nil {
-		return nil
-	}
-	revision := m.comments.revision
-	return func() tea.Msg {
-		comments, err := m.load()
-		return commentsLoadedMsg{
-			comments: comments,
-			revision: revision,
-			err:      err,
-		}
-	}
-}
-
 func (m *model) resizeScreens() {
 	m.diffView.Resize(m.dimensions.width, m.dimensions.height)
 	m.commentView.Resize(m.dimensions.width, m.dimensions.height)
