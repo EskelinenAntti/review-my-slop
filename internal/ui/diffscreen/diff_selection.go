@@ -4,6 +4,30 @@ import (
 	"github.com/eskelinenantti/review-my-slop/internal/patch"
 )
 
+type diffSelection struct {
+	First diffCursor
+	Last  diffCursor
+}
+
+func (s diffSelection) bounds() (first, last int) {
+	return min(s.First.row, s.Last.row), max(s.First.row, s.Last.row)
+}
+
+func (s *diffSelection) contains(cursor diffCursor) bool {
+	if s == nil {
+		return false
+	}
+	if s.First.row == s.Last.row && s.First.pane != s.Last.pane {
+		return cursor.row == s.First.row &&
+			(cursor.pane == s.First.pane || cursor.pane == s.Last.pane)
+	}
+	if s.First.pane != cursor.pane {
+		return false
+	}
+	first, last := s.bounds()
+	return cursor.row >= first && cursor.row <= last
+}
+
 func beginSelection(cursor diffCursor) diffSelection {
 	return diffSelection{First: cursor, Last: cursor}
 }
@@ -31,10 +55,7 @@ func (v *diffView) lines(selection diffSelection) []patch.Line {
 	if !v.sameFileHunk(selection.First, selection.Last) {
 		return nil
 	}
-	first, last := min(
-		selection.First.row,
-		selection.Last.row,
-	), max(selection.First.row, selection.Last.row)
+	first, last := selection.bounds()
 	if first == last && selection.First.pane != selection.Last.pane {
 		return v.paneLines(selection)
 	}

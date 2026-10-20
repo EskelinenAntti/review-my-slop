@@ -26,11 +26,6 @@ type diffViewport struct {
 	height     int
 }
 
-type diffSelection struct {
-	First diffCursor
-	Last  diffCursor
-}
-
 type direction int8
 
 const (
