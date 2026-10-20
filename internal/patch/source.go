@@ -92,11 +92,25 @@ func visibleStrings(values []string) []string {
 }
 
 func visibleSource(value string) string {
+	return escapeControls(value, "\n")
+}
+
+func visibleText(value string) string {
+	return escapeControls(value, `\n`)
+}
+
+func escapeControls(value, newline string) string {
 	var result strings.Builder
-	result.Grow(len(value))
+	size := len(value)
+	if len(newline) > 1 {
+		size += strings.Count(value, "\n") * (len(newline) - 1)
+	}
+	result.Grow(size)
 	for _, r := range value {
 		switch {
-		case r == '\n' || r == '\t':
+		case r == '\n':
+			_, _ = result.WriteString(newline)
+		case r == '\t':
 			_, _ = result.WriteRune(r)
 		case r == '\r':
 			_, _ = result.WriteString(`\r`)
@@ -107,8 +121,4 @@ func visibleSource(value string) string {
 		}
 	}
 	return result.String()
-}
-
-func visibleText(value string) string {
-	return strings.ReplaceAll(visibleSource(value), "\n", `\n`)
 }
