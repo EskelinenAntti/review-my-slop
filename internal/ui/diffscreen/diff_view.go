@@ -52,26 +52,19 @@ func changeCountsLabel(p patch.Patch) string {
 	added, removed := 0, 0
 	for _, file := range p.Files {
 		for _, hunk := range file.Hunks {
-			hunkAdded, hunkRemoved := countChanges(hunk.Lines)
-			added += hunkAdded
-			removed += hunkRemoved
+			for _, line := range hunk.Lines {
+				switch line.Kind {
+				case patch.Addition:
+					added++
+				case patch.Deletion:
+					removed++
+				default:
+					continue
+				}
+			}
 		}
 	}
 	return fmt.Sprintf("+%d-%d", added, removed)
-}
-
-func countChanges(lines []patch.Line) (added, removed int) {
-	for _, line := range lines {
-		switch line.Kind {
-		case patch.Addition:
-			added++
-		case patch.Deletion:
-			removed++
-		default:
-			continue
-		}
-	}
-	return added, removed
 }
 
 func (v *diffView) appendFileRows(fileIndex int, file patch.File) {
