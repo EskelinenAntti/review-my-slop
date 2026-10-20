@@ -81,6 +81,34 @@ func gitDiff(
 	return run.Run(ctx, root, args...)
 }
 
+func comparison(
+	ctx context.Context,
+	run runner,
+	root string,
+	kind Kind,
+) (branch, revision string, err error) {
+	if kind != Branch {
+		return "", "", nil
+	}
+	branch, err = defaultBranch(ctx, run, root)
+	if err != nil {
+		return "", "", fmt.Errorf("discover default branch: %w", err)
+	}
+	if branch == "" {
+		return "", "", errors.New("default branch is unavailable")
+	}
+	baseBytes, err := run.Run(ctx, root, "merge-base", branch, "HEAD")
+	if err != nil {
+		return "", "", fmt.Errorf(
+			"find branch point with %s: %w",
+			branch,
+			err,
+		)
+	}
+	revision = strings.TrimSpace(string(baseBytes))
+	return branch, revision, nil
+}
+
 func defaultBranch(
 	ctx context.Context,
 	run runner,
