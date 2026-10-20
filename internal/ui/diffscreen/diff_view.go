@@ -101,33 +101,17 @@ func (v *diffView) appendHunkRows(
 		pairs = splitLinePairs
 	}
 	for leftLine, rightLine := range pairs(hunk.Lines) {
-		v.appendLineRow(
-			fileIndex,
-			hunkIndex,
-			hunk.Lines,
-			highlighted,
-			leftLine,
-			rightLine,
-		)
+		row := entry{
+			kind:      lineRow,
+			file:      fileIndex,
+			hunk:      hunkIndex,
+			leftLine:  leftLine,
+			rightLine: rightLine,
+		}
+		v.highlightRow(&row, hunk.Lines, highlighted)
+		v.maxLineWidth = max(v.maxLineWidth, renderedLineWidth(row))
+		v.rows = append(v.rows, row)
 	}
-}
-
-func (v *diffView) appendLineRow(
-	fileIndex, hunkIndex int,
-	lines []patch.Line,
-	highlighted highlightedSources,
-	leftLine, rightLine int,
-) {
-	row := entry{
-		kind:      lineRow,
-		file:      fileIndex,
-		hunk:      hunkIndex,
-		leftLine:  leftLine,
-		rightLine: rightLine,
-	}
-	v.highlightRow(&row, lines, highlighted)
-	v.maxLineWidth = max(v.maxLineWidth, renderedLineWidth(row))
-	v.rows = append(v.rows, row)
 }
 
 func (v *diffView) appendNonLineRow(
