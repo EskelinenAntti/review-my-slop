@@ -16,6 +16,10 @@ func TestLayoutSettingsRoundTrip(t *testing.T) {
 		t.Fatalf("default layout = %+v, error = %v", enabled, err)
 	}
 	testutil.NoError(t, writePreferences(path, Preferences{SideBySide: true}))
+	data, err := os.ReadFile(path)
+	testutil.NoError(t, err)
+	testutil.RequireEqual(t, string(data), "{\"side_by_side\":true}\n",
+		"saved preferences=%q", data)
 
 	saved, err := readPreferences(path)
 	testutil.NoError(t, err)
@@ -74,12 +78,12 @@ func TestReadErrors(t *testing.T) {
 	assertPreferenceError(t, err, "read UI settings")
 }
 
-func TestReplacePreferencesFileCleansUpAfterRenameFailure(t *testing.T) {
+func TestWritePreferencesCleansUpAfterRenameFailure(t *testing.T) {
 	directory := t.TempDir()
 	path := filepath.Join(directory, "ui.json")
 	testutil.NoError(t, os.Mkdir(path, 0700))
 
-	err := replacePreferencesFile(path, []byte("settings\n"))
+	err := writePreferences(path, Preferences{SideBySide: true})
 	assertPreferenceError(t, err, "replace UI settings")
 
 	entries, err := os.ReadDir(directory)

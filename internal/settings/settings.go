@@ -55,10 +55,6 @@ func writePreferences(path string, preferences Preferences) error {
 		return fmt.Errorf("encode UI settings: %w", err)
 	}
 	data = append(data, '\n')
-	return replacePreferencesFile(path, data)
-}
-
-func replacePreferencesFile(path string, data []byte) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return fmt.Errorf("create UI settings directory: %w", err)
 	}
