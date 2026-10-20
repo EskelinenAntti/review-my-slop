@@ -1,10 +1,77 @@
 package diffscreen
 
 import (
+	"slices"
 	"testing"
 
 	"github.com/eskelinenantti/review-my-slop/internal/testutil"
 )
+
+func TestRowCursors(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		split     bool
+		row       entry
+		y         int
+		preferred diffPane
+		want      []diffCursor
+	}{
+		{
+			"left preferred", true, entry{kind: lineRow}, 0, left,
+			[]diffCursor{{0, left}, {0, right}},
+		},
+		{
+			"right preferred", true, entry{kind: lineRow}, 0, right,
+			[]diffCursor{{0, right}, {0, left}},
+		},
+		{
+			"empty preferred pane", true,
+			entry{kind: lineRow, leftLine: -1}, 0, left,
+			[]diffCursor{{0, right}},
+		},
+		{
+			"empty fallback pane", true,
+			entry{kind: lineRow, rightLine: -1}, 0, left,
+			[]diffCursor{{0, left}},
+		},
+		{
+			"unified retains left identity", false,
+			entry{kind: lineRow, leftLine: -1}, 0, left,
+			[]diffCursor{{0, left}},
+		},
+		{
+			"unified retains right identity", false,
+			entry{kind: lineRow}, 0, right, []diffCursor{{0, right}},
+		},
+		{"metadata", true, entry{kind: metadataRow}, 0, left, nil},
+		{"negative row", true, entry{kind: lineRow}, -1, left, nil},
+		{"past last row", true, entry{kind: lineRow}, 1, right, nil},
+		{
+			"empty row", true,
+			entry{kind: lineRow, leftLine: -1, rightLine: -1}, 0, left, nil,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			v := &diffView{split: tc.split, rows: []entry{tc.row}}
+			got := slices.Collect(v.rowCursors(tc.y, tc.preferred))
+			if !slices.Equal(got, tc.want) {
+				t.Fatalf("row cursors = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestRowCursorsStopsWhenConsumerBreaks(t *testing.T) {
+	v := &diffView{split: true, rows: []entry{{kind: lineRow}}}
+	var visited []diffCursor
+	for cursor := range v.rowCursors(0, right) {
+		visited = append(visited, cursor)
+		break
+	}
+	if !slices.Equal(visited, []diffCursor{{0, right}}) {
+		t.Fatalf("visited cursors = %v, want only the preferred pane", visited)
+	}
+}
 
 func TestJumpFile(t *testing.T) {
 	for _, tc := range []struct {

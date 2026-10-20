@@ -1,5 +1,7 @@
 package diffscreen
 
+import "iter"
+
 func (v *diffView) valid(cursor diffCursor) bool {
 	return cursor.row >= 0 && cursor.row < len(v.rows) &&
 		v.lineIndex(v.rows[cursor.row], cursor.pane) >= 0
@@ -18,6 +20,22 @@ func (v *diffView) lineIndex(current entry, pane diffPane) int {
 func (v *diffView) cursorAt(y int, pane diffPane) (diffCursor, bool) {
 	cursor := diffCursor{row: y, pane: pane}
 	return cursor, v.valid(cursor)
+}
+
+// rowCursors visits valid panes in preference order. Unified rows retain the
+// preferred pane identity but are visited only once.
+func (v *diffView) rowCursors(y int, preferred diffPane) iter.Seq[diffCursor] {
+	panes := []diffPane{preferred}
+	if v.split {
+		panes = append(panes, preferred.other())
+	}
+	return func(yield func(diffCursor) bool) {
+		for _, pane := range panes {
+			if cursor, ok := v.cursorAt(y, pane); ok && !yield(cursor) {
+				return
+			}
+		}
+	}
 }
 
 func (v *diffView) first() (diffCursor, bool) {
@@ -90,11 +108,8 @@ func (v *diffView) cursorInFile(
 	if y < 0 || y >= len(v.rows) || v.rows[y].file != v.rows[origin].file {
 		return diffCursor{}, false
 	}
-	if candidate, ok := v.cursorAt(y, pane); ok {
+	for candidate := range v.rowCursors(y, pane) {
 		return candidate, true
-	}
-	if v.split {
-		return v.cursorAt(y, pane.other())
 	}
 	return diffCursor{}, false
 }

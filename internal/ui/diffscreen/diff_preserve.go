@@ -63,14 +63,7 @@ func (v *diffView) matchRow(y int, target cursorIdentity) cursorMatch {
 		return cursorMatch{}
 	}
 	best := cursorMatch{}
-	for _, pane := range [2]diffPane{
-		target.cursor.pane,
-		target.cursor.pane.other(),
-	} {
-		candidate, ok := v.cursorAt(y, pane)
-		if !ok {
-			continue
-		}
+	for candidate := range v.rowCursors(y, target.cursor.pane) {
 		line, _ := v.line(candidate)
 		match := cursorMatch{
 			cursor:   candidate,

@@ -38,27 +38,11 @@ func (v *diffView) searchRow(
 		}
 		return diffCursor{}, false
 	}
-	if candidate, ok := v.searchPane(query, y, pane); ok {
-		return candidate, true
-	}
-	if v.split {
-		return v.searchPane(query, y, pane.other())
-	}
-	return diffCursor{}, false
-}
-
-func (v *diffView) searchPane(
-	query string,
-	y int,
-	pane diffPane,
-) (diffCursor, bool) {
-	candidate, ok := v.cursorAt(y, pane)
-	if !ok {
-		return diffCursor{}, false
-	}
-	line, _ := v.line(candidate)
-	if strings.Contains(strings.ToLower(line.Text), query) {
-		return candidate, true
+	for candidate := range v.rowCursors(y, pane) {
+		line, _ := v.line(candidate)
+		if strings.Contains(strings.ToLower(line.Text), query) {
+			return candidate, true
+		}
 	}
 	return diffCursor{}, false
 }
