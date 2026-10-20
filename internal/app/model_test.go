@@ -71,6 +71,9 @@ func TestStoreBackedCommentLifecycle(t *testing.T) {
 	)
 
 	id := loaded[0].ID
+	refreshed := modelPatch()
+	refreshed.Kind = patch.Branch
+	m.updatePatch(refreshed)
 	m.edit.index = 0
 	m.edit.body = "edited"
 	m.finishCommentEdit()
@@ -97,6 +100,37 @@ func TestStoreBackedCommentLifecycle(t *testing.T) {
 	)
 	testutil.RequireEqual(t, len(loaded), 0, "remaining = %#v, error = %v",
 		loaded, err,
+	)
+}
+
+func TestStoreBackedCommentsUseBoundRepository(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	store := comments.Store{Path: filepath.Join(t.TempDir(), "comments.db")}
+	other, err := store.Add(comments.Comment{
+		Repository: "/other-repo",
+		Body:       "unrelated feedback",
+	})
+	testutil.NoError(t, err)
+	m, err := newWithStore(
+		context.Background(), store, modelPatch(), nil, defaultDimensions,
+	)
+	testutil.NoError(t, err)
+	saved, err := m.save(comments.Comment{
+		Repository: other.Repository,
+		Body:       "current repository feedback",
+	})
+	testutil.NoError(t, err)
+	testutil.RequireEqual(t, saved.Repository, "/repo", "saved = %#v", saved)
+	loaded, err := m.load()
+	testutil.NoError(t, err)
+	testutil.RequireEqual(t, len(loaded), 1, "loaded = %#v", loaded)
+	testutil.RequireEqual(t, loaded[0].ID, saved.ID, "loaded = %#v", loaded)
+	testutil.NoError(t, m.delete(saved))
+	remaining, err := store.List(other.Repository)
+	testutil.NoError(t, err)
+	testutil.RequireEqual(t, len(remaining), 1, "remaining = %#v", remaining)
+	testutil.RequireEqual(t, remaining[0].ID, other.ID,
+		"remaining = %#v", remaining,
 	)
 }
 
@@ -223,27 +257,21 @@ func TestViewSwitchPreservesSemanticCursor(t *testing.T) {
 	testutil.RequireEqual(t, got, want, "focused line=%#v, want %#v", got, want)
 }
 
-func TestCommentSaveUsesPatchAndPreservesAnchor(t *testing.T) {
-	var savedPatch patch.Patch
+func TestCommentSavePreservesAnchor(t *testing.T) {
 	m := testModel(modelPatch(), nil, func(
 		stored comments.Comment,
-		p patch.Patch,
 	) (comments.Comment, error) {
-		savedPatch = p
 		stored.ID = "1"
 		return stored, nil
 	})
 	m.edit.body = "comment"
 	m.edit.anchor = comments.Anchor{FilePath: "main.go"}
 	m.finishCommentEdit()
-	testutil.RequireEqual(t, savedPatch.Root, "/repo",
-		"saved patch/comments = %#v %#v", savedPatch, m.comments.items,
-	)
 	testutil.RequireEqual(t, len(m.comments.items), 1,
-		"saved patch/comments = %#v %#v", savedPatch, m.comments.items,
+		"saved comments = %#v", m.comments.items,
 	)
 	testutil.RequireEqual(t, m.comments.items[0].Anchor.FilePath, "main.go",
-		"saved patch/comments = %#v %#v", savedPatch, m.comments.items,
+		"saved comments = %#v", m.comments.items,
 	)
 }
 
