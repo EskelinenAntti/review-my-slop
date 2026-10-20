@@ -50,14 +50,18 @@ func Save(preferences Preferences) error {
 }
 
 func writePreferences(path string, preferences Preferences) error {
-	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
-		return fmt.Errorf("create UI settings directory: %w", err)
-	}
 	data, err := json.Marshal(preferences)
 	if err != nil {
 		return fmt.Errorf("encode UI settings: %w", err)
 	}
 	data = append(data, '\n')
+	return replacePreferencesFile(path, data)
+}
+
+func replacePreferencesFile(path string, data []byte) error {
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		return fmt.Errorf("create UI settings directory: %w", err)
+	}
 	temporary, err := os.CreateTemp(filepath.Dir(path), "ui-*.tmp")
 	if err != nil {
 		return fmt.Errorf("create UI settings file: %w", err)

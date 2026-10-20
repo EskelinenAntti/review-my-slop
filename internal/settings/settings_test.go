@@ -74,6 +74,22 @@ func TestReadErrors(t *testing.T) {
 	assertPreferenceError(t, err, "read UI settings")
 }
 
+func TestReplacePreferencesFileCleansUpAfterRenameFailure(t *testing.T) {
+	directory := t.TempDir()
+	path := filepath.Join(directory, "ui.json")
+	testutil.NoError(t, os.Mkdir(path, 0700))
+
+	err := replacePreferencesFile(path, []byte("settings\n"))
+	assertPreferenceError(t, err, "replace UI settings")
+
+	entries, err := os.ReadDir(directory)
+	testutil.NoError(t, err)
+	testutil.RequireEqual(t, len(entries), 1,
+		"unexpected files after failed replacement: %v", entries)
+	testutil.RequireEqual(t, entries[0].IsDir(), true,
+		"replacement changed the existing directory: %v", entries)
+}
+
 func assertPreferenceError(t *testing.T, err error, message string) {
 	t.Helper()
 	testutil.RequireEqual(t, err != nil, true, "expected %s error", message)
