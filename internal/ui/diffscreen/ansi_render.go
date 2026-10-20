@@ -35,22 +35,18 @@ func renderStyledRow(
 func filterANSIColors(value string, colors foregroundPolicy) string {
 	return ansiSGRPattern.ReplaceAllStringFunc(
 		value, func(sequence string) string {
-			return filterSGR(sequence, colors)
+			parameters := sequence[2 : len(sequence)-1]
+			if parameters == "" {
+				return sequence
+			}
+			parts := strings.Split(parameters, ";")
+			filtered := filterSGRParts(parts, colors)
+			if len(filtered) == 0 {
+				return ""
+			}
+			return "\x1b[" + strings.Join(filtered, ";") + "m"
 		},
 	)
-}
-
-func filterSGR(sequence string, colors foregroundPolicy) string {
-	parameters := sequence[2 : len(sequence)-1]
-	if parameters == "" {
-		return sequence
-	}
-	parts := strings.Split(parameters, ";")
-	filtered := filterSGRParts(parts, colors)
-	if len(filtered) == 0 {
-		return ""
-	}
-	return "\x1b[" + strings.Join(filtered, ";") + "m"
 }
 
 func filterSGRParts(parts []string, colors foregroundPolicy) []string {

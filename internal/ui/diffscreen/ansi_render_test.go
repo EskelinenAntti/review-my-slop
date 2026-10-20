@@ -16,6 +16,18 @@ func TestFilterANSIColors(t *testing.T) {
 		{"plain text", "code", "code", "code"},
 		{"resets", "\x1b[m\x1b[0m", "\x1b[m\x1b[0m", "\x1b[m\x1b[0m"},
 		{
+			"multiple styled spans",
+			"\x1b[31;44mred\x1b[0m plain \x1b[1;32mgreen\x1b[m",
+			"\x1b[31mred\x1b[0m plain \x1b[1;32mgreen\x1b[m",
+			"red\x1b[0m plain \x1b[1mgreen\x1b[m",
+		},
+		{
+			"non-SGR sequences",
+			"\x1b[2K\x1b[31mcode\x1b[0m",
+			"\x1b[2K\x1b[31mcode\x1b[0m",
+			"\x1b[2Kcode\x1b[0m",
+		},
+		{
 			"non-color parameters",
 			"\x1b[29;50;89;98;99;108mcode",
 			"\x1b[29;50;89;98;99;108mcode",
