@@ -35,6 +35,7 @@ func commentWorkflow(
 	onComplete func(string, error) tea.Msg,
 ) (*commandAdapter, tea.ExecCallback) {
 	adapter := &commandAdapter{}
+	var editedBody string
 	adapter.run = func() error {
 		path, err := createCommentFile(body, anchor)
 		if err != nil {
@@ -45,11 +46,11 @@ func commentWorkflow(
 		if err := adapter.execute(editorCommand); err != nil {
 			return fmt.Errorf("editor: %w", err)
 		}
-		adapter.body, err = readCommentFile(path, anchor)
+		editedBody, err = readCommentFile(path, anchor)
 		return err
 	}
 	return adapter, func(err error) tea.Msg {
-		return onComplete(adapter.body, err)
+		return onComplete(editedBody, err)
 	}
 }
 
@@ -81,7 +82,6 @@ func editorCommand() (string, error) {
 
 type commandAdapter struct {
 	run            func() error
-	body           string
 	stdin          io.Reader
 	stdout, stderr io.Writer
 }

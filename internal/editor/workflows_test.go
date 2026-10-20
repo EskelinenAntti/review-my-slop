@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -13,6 +14,27 @@ import (
 	"github.com/eskelinenantti/review-my-slop/internal/comments"
 	"github.com/eskelinenantti/review-my-slop/internal/testutil"
 )
+
+func TestCommandAdapterForwardsStreams(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	adapter := &commandAdapter{}
+	adapter.SetStdin(strings.NewReader("input\n"))
+	adapter.SetStdout(&stdout)
+	adapter.SetStderr(&stderr)
+	adapter.run = func() error {
+		return adapter.execute(exec.Command(
+			"sh", "-c", "cat; printf diagnostic >&2",
+		))
+	}
+
+	testutil.NoError(t, adapter.Run())
+	testutil.CheckEqual(t, stdout.String(), "input\n",
+		"stdout=%q", stdout.String(),
+	)
+	testutil.CheckEqual(t, stderr.String(), "diagnostic",
+		"stderr=%q", stderr.String(),
+	)
+}
 
 func TestCommentWorkflowLifecycle(t *testing.T) {
 	for _, tc := range []struct{ name, script, body, want, errorText string }{
