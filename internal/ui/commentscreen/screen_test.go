@@ -34,6 +34,48 @@ func TestUpdatePreservesFocusByID(t *testing.T) {
 	)
 }
 
+func TestUpdateFocusLookupFallbacks(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		selectedID string
+		items      []comments.Comment
+		wantIndex  int
+	}{
+		{
+			name:       "missing ID keeps index when still in bounds",
+			selectedID: "removed",
+			items: []comments.Comment{
+				{ID: "new-first"}, {ID: "new-second"},
+			},
+			wantIndex: 1,
+		},
+		{
+			name:      "empty ID keeps index",
+			items:     []comments.Comment{{}, {ID: "new-second"}},
+			wantIndex: 1,
+		},
+		{
+			name:       "duplicate ID selects first match",
+			selectedID: "duplicate",
+			items: []comments.Comment{
+				{ID: "duplicate"}, {ID: "duplicate"},
+			},
+			wantIndex: 0,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			v := New([]comments.Comment{{ID: "first"}, {ID: tc.selectedID}})
+			v.Move(1)
+			v.Update(tc.items)
+			index, ok := v.SelectedIndex()
+			testutil.RequireEqual(t, ok, true, "%s",
+				"updated list has no selection")
+			testutil.RequireEqual(t, index, tc.wantIndex,
+				"selected index=%d, want %d", index, tc.wantIndex)
+		})
+	}
+}
+
 func TestMovementKeepsSelectedCommentVisible(t *testing.T) {
 	items := make([]comments.Comment, 10)
 	for index := range items {

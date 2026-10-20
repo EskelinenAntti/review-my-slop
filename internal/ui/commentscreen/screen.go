@@ -34,18 +34,18 @@ func New(items []comments.Comment) *View {
 // when the selected comment disappears. Empty lists are valid.
 func (v *View) Update(items []comments.Comment) {
 	selectedID := ""
-	if index, ok := v.SelectedIndex(); ok {
-		selectedID = v.items[index].ID
+	if selected, ok := v.Selected(); ok {
+		selectedID = selected.ID
 	}
 	v.items = slices.Clone(items)
 	v.pendingLabel = fmt.Sprintf("%d pending", len(v.items))
 	v.row = min(v.row, max(0, len(v.items)-1))
 	if selectedID != "" {
-		for index, item := range v.items {
-			if item.ID == selectedID {
-				v.row = index
-				break
-			}
+		index := slices.IndexFunc(v.items, func(item comments.Comment) bool {
+			return item.ID == selectedID
+		})
+		if index >= 0 {
+			v.row = index
 		}
 	}
 	v.keepVisible()
