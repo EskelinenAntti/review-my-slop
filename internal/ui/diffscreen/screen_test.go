@@ -9,7 +9,7 @@ import (
 	"github.com/eskelinenantti/review-my-slop/internal/testutil"
 )
 
-func TestMoveDispatchesFileAndPaneMotions(t *testing.T) {
+func TestMoveDispatchesNavigationMotions(t *testing.T) {
 	v := New(testPatch(), Options{SideBySide: true})
 	v.Resize(120, 10)
 	for _, step := range []struct {
@@ -27,7 +27,13 @@ func TestMoveDispatchesFileAndPaneMotions(t *testing.T) {
 		{"nearest previous new line", NewPane, "first.go", "added one", right},
 		{"next file", NextFile, "second.go", "other", right},
 		{"previous file", PreviousFile, "first.go", "after", right},
-		{"unknown motion", Motion(255), "first.go", "after", right},
+		{"first line", FirstLine, "first.go", "before", right},
+		{"next line", NextLine, "first.go", "added one", right},
+		{"previous line", PreviousLine, "first.go", "before", right},
+		{"last line", LastLine, "second.go", "other", right},
+		{"previous page", PreviousPage, "first.go", "after", right},
+		{"next page", NextPage, "second.go", "other", right},
+		{"unknown motion", Motion(255), "second.go", "other", right},
 	} {
 		t.Run(step.name, func(t *testing.T) {
 			v.drag = &v.cursor

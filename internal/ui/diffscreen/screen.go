@@ -116,34 +116,16 @@ func (v *View) Move(motion Motion) {
 	v.EndDrag()
 	v.search.repeatMiss = false
 	switch motion {
-	case PreviousLine:
-		v.step(backward)
-	case NextLine:
-		v.step(forward)
-	case PreviousPage:
-		v.halfPage(backward)
-	case NextPage:
-		v.halfPage(forward)
-	case FirstLine:
-		if cursor, ok := v.view.first(); ok {
+	case PreviousLine, NextLine:
+		v.step(motion.direction())
+	case PreviousPage, NextPage:
+		v.halfPage(motion.direction())
+	case FirstLine, LastLine:
+		if cursor, ok := v.view.edge(motion.direction()); ok {
 			v.setCursor(cursor)
 		}
-	case LastLine:
-		if cursor, ok := v.view.last(); ok {
-			v.setCursor(cursor)
-		}
-
-	default:
-		v.moveBetweenSections(motion)
-	}
-}
-
-func (v *View) moveBetweenSections(motion Motion) {
-	switch motion {
-	case PreviousFile:
-		v.jumpFile(backward)
-	case NextFile:
-		v.jumpFile(forward)
+	case PreviousFile, NextFile:
+		v.jumpFile(motion.direction())
 	case OldPane:
 		v.switchPane(left)
 	case NewPane:
@@ -152,6 +134,17 @@ func (v *View) moveBetweenSections(motion Motion) {
 		v.switchPane(v.cursor.pane.other())
 	default:
 		return
+	}
+}
+
+// direction maps paired navigation motions to their traversal direction.
+// Endpoint motions scan inward: forward for the first line, backward for the last.
+func (m Motion) direction() direction {
+	switch m {
+	case PreviousLine, PreviousPage, LastLine, PreviousFile:
+		return backward
+	default:
+		return forward
 	}
 }
 
