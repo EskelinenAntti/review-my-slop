@@ -5,11 +5,27 @@ import (
 	"context"
 	"errors"
 	"os/exec"
+	"slices"
 	"strings"
 	"testing"
 
 	"github.com/eskelinenantti/review-my-slop/internal/testutil"
 )
+
+func TestShellCommandQuotesArguments(t *testing.T) {
+	arguments := []string{
+		"plain", "two words", "single'quote", `double"quote`,
+		"$HOME", "$(exit 7)", "; exit 7", "", "line\nbreak",
+	}
+	command := shellCommand(
+		context.Background(), `printf '%s\000'`, arguments...,
+	)
+	output, err := command.Output()
+	testutil.NoError(t, err)
+	got := strings.Split(strings.TrimSuffix(string(output), "\x00"), "\x00")
+	testutil.RequireEqual(t, slices.Equal(got, arguments), true,
+		"arguments=%q, want %q", got, arguments)
+}
 
 func TestCommandAdapterStreams(t *testing.T) {
 	var stdout, stderr bytes.Buffer

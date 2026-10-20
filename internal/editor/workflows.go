@@ -40,7 +40,7 @@ func commentWorkflow(
 			return err
 		}
 		defer os.Remove(path)
-		editorCommand := commentCommand(ctx, command, path)
+		editorCommand := shellCommand(ctx, command, path)
 		if err := adapter.execute(editorCommand); err != nil {
 			return fmt.Errorf("editor: %w", err)
 		}
