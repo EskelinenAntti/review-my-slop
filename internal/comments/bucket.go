@@ -37,13 +37,12 @@ func replaceComment(bucket *bolt.Bucket, comment Comment, data []byte) error {
 	return bucket.Put([]byte(comment.ID), data)
 }
 
-func deleteKeys(bucket *bolt.Bucket, keys [][]byte) error {
-	for _, key := range keys {
-		if err := bucket.Delete(key); err != nil {
-			return err
-		}
+func deleteComment(bucket *bolt.Bucket, repository, id string) error {
+	key, err := findCommentKey(bucket, repository, id)
+	if err != nil {
+		return err
 	}
-	return nil
+	return bucket.Delete(key)
 }
 
 func pendingBytes(bucket *bolt.Bucket) int {
@@ -87,11 +86,16 @@ func findCommentKey(
 	return found, nil
 }
 
-func findPendingKeys(
+func acknowledgeComments(
 	bucket *bolt.Bucket,
 	repository string,
-	wantedIDs map[string]struct{},
-) ([][]byte, error) {
+	ids []string,
+) error {
+	wantedIDs := make(map[string]struct{}, len(ids))
+	for _, id := range ids {
+		wantedIDs[id] = struct{}{}
+	}
+	// Collect keys before mutating the bucket so cursor iteration stays valid.
 	var keys [][]byte
 	visit := func(key []byte, comment Comment) bool {
 		if _, ok := wantedIDs[comment.ID]; ok {
@@ -100,7 +104,15 @@ func findPendingKeys(
 		return true
 	}
 	err := forEachRepositoryComment(bucket, repository, visit)
-	return keys, err
+	if err != nil {
+		return err
+	}
+	for _, key := range keys {
+		if err := bucket.Delete(key); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func forEachRepositoryComment(

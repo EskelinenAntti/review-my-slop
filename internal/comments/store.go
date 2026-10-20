@@ -93,11 +93,7 @@ func (s Store) Delete(repository, id string) error {
 		return err
 	}
 	return s.transact(func(bucket *bolt.Bucket) error {
-		key, err := findCommentKey(bucket, repository, id)
-		if err != nil {
-			return err
-		}
-		return bucket.Delete(key)
+		return deleteComment(bucket, repository, id)
 	})
 }
 
@@ -106,15 +102,7 @@ func (s Store) Acknowledge(repository string, ids []string) error {
 	if len(ids) == 0 {
 		return nil
 	}
-	wantedIDs := make(map[string]struct{}, len(ids))
-	for _, id := range ids {
-		wantedIDs[id] = struct{}{}
-	}
 	return s.transact(func(bucket *bolt.Bucket) error {
-		keys, err := findPendingKeys(bucket, repository, wantedIDs)
-		if err != nil {
-			return err
-		}
-		return deleteKeys(bucket, keys)
+		return acknowledgeComments(bucket, repository, ids)
 	})
 }

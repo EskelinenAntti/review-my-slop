@@ -178,6 +178,68 @@ func TestStoreMutationsStayWithinRepository(t *testing.T) {
 	}
 }
 
+func TestStoreDeletionUsesStoredKeys(t *testing.T) {
+	for _, operation := range []struct {
+		name string
+		run  func(Store) error
+	}{
+		{"delete", func(store Store) error {
+			return store.Delete("/repo", "legacy")
+		}},
+		{"acknowledge", func(store Store) error {
+			return store.Acknowledge(
+				"/repo", []string{"legacy", "legacy", "missing"},
+			)
+		}},
+	} {
+		t.Run(operation.name, func(t *testing.T) {
+			store := Store{Path: filepath.Join(t.TempDir(), "comments.db")}
+			testutil.NoError(t, store.transact(func(bucket *bolt.Bucket) error {
+				return bucket.Put([]byte{0, 0, 0, 1}, []byte(
+					`{"id":"legacy","repository":"/repo",`+
+						`"comment":{"body":"old"}}`,
+				))
+			}))
+			_, err := store.Add(testComment("/repo", "keep"))
+			testutil.NoError(t, err)
+
+			testutil.NoError(t, operation.run(store))
+
+			remaining, err := store.List("/repo")
+			testutil.NoError(t, err)
+			testutil.RequireEqual(t, len(remaining), 1,
+				"comments = %#v", remaining,
+			)
+			testutil.RequireEqual(t, remaining[0].ID, "keep",
+				"comments = %#v", remaining,
+			)
+		})
+	}
+}
+
+func TestAcknowledgeEmptyIDsDoesNotOpenDatabase(t *testing.T) {
+	testutil.NoError(t, (Store{}).Acknowledge("/repo", nil))
+}
+
+func TestAcknowledgePreservesCommentsOnDecodeError(t *testing.T) {
+	store := Store{Path: filepath.Join(t.TempDir(), "comments.db")}
+	_, err := store.Add(testComment("/repo", "first"))
+	testutil.NoError(t, err)
+	testutil.NoError(t, store.transact(func(bucket *bolt.Bucket) error {
+		return bucket.Put([]byte("z-invalid"), []byte("invalid JSON"))
+	}))
+
+	if err := store.Acknowledge("/repo", []string{"first"}); err == nil {
+		t.Fatal("Acknowledge ignored a malformed record")
+	}
+	testutil.NoError(t, store.view(func(bucket *bolt.Bucket) error {
+		if bucket.Get([]byte("first")) == nil {
+			t.Fatal("Acknowledge removed a comment despite a decode error")
+		}
+		return nil
+	}))
+}
+
 func TestRepositoryIterationPreservesEarlyStopAndDecodeErrors(t *testing.T) {
 	store := Store{Path: filepath.Join(t.TempDir(), "comments.db")}
 	for _, repository := range []string{"/repo/a", "/repo/b"} {
