@@ -159,18 +159,33 @@ func TestNarrowLayoutFallbackPreservesPreferenceAndPosition(t *testing.T) {
 	)
 }
 
-func TestPageMovementDoesNotPartiallyChangeRejectedSelection(t *testing.T) {
-	v := New(testPatch(), Options{Dark: true})
-	v.Resize(80, 30)
-	v.ToggleSelection()
-	beforeCursor, beforeViewport := v.cursor, v.viewport
-	v.Move(NextPage)
-	testutil.RequireEqual(t, v.cursor, beforeCursor, "%s",
-		"rejected selection partially changed state",
-	)
-	testutil.RequireEqual(t, v.viewport, beforeViewport, "%s",
-		"rejected selection partially changed state",
-	)
+func TestScrollingDoesNotPartiallyChangeRejectedSelection(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		height int
+		scroll func(*View)
+	}{
+		{"page", 30, func(v *View) { v.Move(NextPage) }},
+		{"vertical", 5, func(v *View) { v.ScrollVertical(100) }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			v := New(testPatch(), Options{Dark: true})
+			v.Resize(80, tc.height)
+			v.ToggleSelection()
+			beforeCursor, beforeViewport := v.cursor, v.viewport
+			beforeSelection := *v.selection
+			tc.scroll(v)
+			testutil.RequireEqual(t, v.cursor, beforeCursor, "%s",
+				"rejected selection changed focus",
+			)
+			testutil.RequireEqual(t, v.viewport, beforeViewport, "%s",
+				"rejected selection changed viewport",
+			)
+			testutil.RequireEqual(t, *v.selection, beforeSelection, "%s",
+				"rejected selection changed range",
+			)
+		})
+	}
 }
 
 func TestSearchPreviewAcceptRepeatAndCancel(t *testing.T) {

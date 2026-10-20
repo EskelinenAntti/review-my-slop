@@ -171,7 +171,13 @@ func (v *View) setCursor(cursor diffCursor) {
 }
 func (v *View) halfPage(direction direction) {
 	viewport, cursor := v.view.scrollHalfPage(v.viewport, v.cursor, direction)
-	if !v.extendSelectionTo(cursor) {
+	v.applyScroll(viewport, cursor)
+}
+
+// applyScroll keeps focus, viewport, and selection changes atomic when a
+// proposed scroll would extend the selection beyond its original hunk.
+func (v *View) applyScroll(viewport diffViewport, cursor diffCursor) {
+	if cursor != v.cursor && !v.extendSelectionTo(cursor) {
 		return
 	}
 	v.viewport, v.cursor = viewport, cursor
@@ -234,10 +240,7 @@ func (v *View) ScrollHorizontal(columns int) {
 func (v *View) ScrollVertical(rows int) {
 	v.search.repeatMiss = false
 	viewport, cursor := v.view.scrollVertical(v.viewport, v.cursor, rows)
-	if cursor != v.cursor && !v.extendSelectionTo(cursor) {
-		return
-	}
-	v.viewport, v.cursor = viewport, cursor
+	v.applyScroll(viewport, cursor)
 }
 
 // ToggleSelection starts a range at the focused line or clears the current
