@@ -21,37 +21,27 @@ func unifiedLinePairs(lines []patch.Line) iter.Seq2[int, int] {
 func splitLinePairs(lines []patch.Line) iter.Seq2[int, int] {
 	return func(yield func(int, int) bool) {
 		for index := 0; index < len(lines); {
-			end, ok := yieldLineBlock(lines, index, yield)
-			if !ok {
-				return
+			kind := lines[index].Kind
+			if kind != patch.Addition && kind != patch.Deletion {
+				if !yield(index, index) {
+					return
+				}
+				index++
+				continue
+			}
+			addedStart := changeBlockEnd(lines, index, patch.Deletion)
+			end := changeBlockEnd(lines, addedStart, patch.Addition)
+			count := max(addedStart-index, end-addedStart)
+			for offset := 0; offset < count; offset++ {
+				left := blockLineIndex(index, addedStart, offset)
+				right := blockLineIndex(addedStart, end, offset)
+				if !yield(left, right) {
+					return
+				}
 			}
 			index = end
 		}
 	}
-}
-
-// yieldLineBlock emits one context line or paired change block and returns the
-// next source index. A false result means the consumer stopped iteration.
-func yieldLineBlock(
-	lines []patch.Line,
-	start int,
-	yield func(int, int) bool,
-) (int, bool) {
-	kind := lines[start].Kind
-	if kind != patch.Addition && kind != patch.Deletion {
-		return start + 1, yield(start, start)
-	}
-	addedStart := changeBlockEnd(lines, start, patch.Deletion)
-	end := changeBlockEnd(lines, addedStart, patch.Addition)
-	count := max(addedStart-start, end-addedStart)
-	for offset := 0; offset < count; offset++ {
-		left := blockLineIndex(start, addedStart, offset)
-		right := blockLineIndex(addedStart, end, offset)
-		if !yield(left, right) {
-			return end, false
-		}
-	}
-	return end, true
 }
 
 func blockLineIndex(start, end, offset int) int {
