@@ -31,25 +31,9 @@ func (v *diffView) render(
 	}
 	end := min(len(v.rows), viewport.top+v.contentHeight(viewport))
 	for y := viewport.top; y < end; y++ {
-		current := v.rows[y]
-		if v.split && current.kind == lineRow {
-			lines = append(
-				lines,
-				v.renderSplitRow(
-					current,
-					y,
-					viewport,
-					layout,
-					cursor,
-					selection,
-				),
-			)
-		} else {
-			lines = append(
-				lines,
-				v.renderUnifiedRow(current, y, viewport, cursor, selection),
-			)
-		}
+		lines = append(lines,
+			v.renderRow(y, viewport, layout, cursor, selection),
+		)
 	}
 	for len(lines) < viewport.height {
 		lines = append(lines, "")
@@ -57,29 +41,33 @@ func (v *diffView) render(
 	return strings.Join(lines, "\n")
 }
 
-func (v *diffView) renderUnifiedRow(
-	current entry,
+func (v *diffView) renderRow(
 	y int,
 	viewport diffViewport,
+	layout splitLayout,
 	cursor diffCursor,
 	selection *diffSelection,
 ) string {
-	width := frame.ScreenWidth(viewport.width)
+	current := v.rows[y]
 	switch current.kind {
 	case fileRow:
-		return renderFileRow(current.text, width)
+		return renderFileRow(current.text, viewport.width)
 	case metadataRow:
 		return metadataStyle.Render("  " + current.text)
 	case hunkRow:
 		return hunkStyle.Render(current.text)
 	case lineRow:
+		if v.split {
+			return v.renderSplitRow(
+				current, y, viewport, layout, cursor, selection,
+			)
+		}
 		return v.renderUnifiedLine(
 			current,
 			y,
 			viewport,
 			cursor,
 			selection,
-			width,
 		)
 	}
 	return ""
@@ -91,8 +79,8 @@ func (v *diffView) renderUnifiedLine(
 	viewport diffViewport,
 	cursor diffCursor,
 	selection *diffSelection,
-	width int,
 ) string {
+	width := frame.ScreenWidth(viewport.width)
 	line, _ := v.rowLine(current, right)
 	prefix := lineMarker(line.Kind)
 	gutter := fmt.Sprintf(
