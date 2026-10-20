@@ -34,6 +34,14 @@ type diffView struct {
 	styles       lineStyles
 }
 
+func (v *diffView) rowLine(current entry, pane diffPane) (patch.Line, bool) {
+	index := v.lineIndex(current, pane)
+	if index < 0 {
+		return patch.Line{}, false
+	}
+	return v.patch.Files[current.file].Hunks[current.hunk].Lines[index], true
+}
+
 func newDiffView(p patch.Patch, options Options) *diffView {
 	v := &diffView{
 		patch:       p,

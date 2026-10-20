@@ -95,12 +95,8 @@ func (v *diffView) file(cursor diffCursor) (patch.File, bool) {
 }
 
 func (v *diffView) line(cursor diffCursor) (patch.Line, bool) {
-	if !v.valid(cursor) {
+	if cursor.row < 0 || cursor.row >= len(v.rows) {
 		return patch.Line{}, false
 	}
-	current := v.rows[cursor.row]
-	return v.patch.Files[current.file].Hunks[current.hunk].Lines[v.lineIndex(
-		current,
-		cursor.pane,
-	)], true
+	return v.rowLine(v.rows[cursor.row], cursor.pane)
 }
