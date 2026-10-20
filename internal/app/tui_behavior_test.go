@@ -74,6 +74,17 @@ func TestCommentRequiresEditor(t *testing.T) {
 	)
 }
 
+func TestBeginCommentPropagatesEditorFailureAndClearsEdit(t *testing.T) {
+	t.Setenv("EDITOR", "")
+	m := testModel(coveragePatch(), nil, nil)
+	cmd, err := m.beginComment()
+	testutil.RequireEqual(t, cmd == nil, true, "failed editor returned command")
+	testutil.RequireEqual(t, err != nil, true, "missing editor did not fail")
+	testutil.RequireEqual(t, err.Error(), "$EDITOR is not set", "wrong error")
+	testutil.RequireEqual(t, m.edit.index, -1, "pending edit index not cleared")
+	testutil.RequireEqual(t, m.edit.anchor.FilePath, "", "anchor not cleared")
+}
+
 func TestEmptyNewCommentIsDiscarded(t *testing.T) {
 	t.Setenv("EDITOR", "true")
 	called := false
