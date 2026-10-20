@@ -34,13 +34,30 @@ func testModel(
 
 func TestBrowseKeyDispatch(t *testing.T) {
 	for _, tt := range []struct {
-		name string
-		keys []string
-		mode mode
+		name        string
+		keys        []string
+		mode        mode
+		wantCommand bool
+		quitting    bool
 	}{
 		{name: "help", keys: []string{"?"}, mode: modeHelp},
 		{name: "search", keys: []string{"/"}, mode: modeSearch},
-		{name: "comments", keys: []string{"C"}, mode: modeComments},
+		{
+			name: "comments", keys: []string{"C"}, mode: modeComments,
+			wantCommand: true,
+		},
+		{
+			name: "refresh", keys: []string{"R"}, mode: modeBrowse,
+			wantCommand: true,
+		},
+		{
+			name: "quit", keys: []string{"q"}, mode: modeBrowse,
+			wantCommand: true, quitting: true,
+		},
+		{
+			name: "interrupt", keys: []string{"ctrl+c"}, mode: modeBrowse,
+			wantCommand: true, quitting: true,
+		},
 		{name: "unknown", keys: []string{"unknown"}, mode: modeBrowse},
 		{name: "pending prefix", keys: []string{"z"}, mode: modeBrowse},
 		{
@@ -55,11 +72,25 @@ func TestBrowseKeyDispatch(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			m := testModel(modelPatch(), nil, nil)
 			m.err = errors.New("previous error")
+			m.load = func() ([]comments.Comment, error) { return nil, nil }
+			m.refresh = func(patch.Kind) (patch.Patch, error) {
+				return modelPatch(), nil
+			}
+			var cmd tea.Cmd
 			for _, key := range tt.keys {
-				m = updateModel(t, m, textKey(key))
+				updated, command := m.Update(textKey(key))
+				var ok bool
+				m, ok = updated.(model)
+				if !ok {
+					t.Fatalf("Update returned %T, want model", updated)
+				}
+				cmd = command
 			}
 			testutil.RequireEqual(t, m.mode, tt.mode, "mode = %v", m.mode)
 			testutil.RequireEqual(t, m.err, nil, "error = %v", m.err)
+			testutil.RequireEqual(t, cmd != nil, tt.wantCommand,
+				"command returned")
+			testutil.RequireEqual(t, m.quitting, tt.quitting, "quitting")
 		})
 	}
 }
