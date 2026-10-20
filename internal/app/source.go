@@ -2,7 +2,6 @@ package app
 
 import (
 	"errors"
-	"path/filepath"
 
 	tea "charm.land/bubbletea/v2"
 
@@ -24,17 +23,11 @@ func (m model) sourceLocation() (string, int, error) {
 	if !ok {
 		return "", 0, errors.New("select a code line to open in $EDITOR")
 	}
-	path, number := file.NewPath, line.NewNumber
-	if number == 0 {
-		number = line.OldNumber
-	}
-	if path == "" || path == "/dev/null" || number < 1 {
+	path, number, ok := file.WorkingTreeLocation(m.currentPatch.Root, line)
+	if !ok {
 		return "", 0, errors.New(
 			"current line has no editable working-tree location",
 		)
-	}
-	if !filepath.IsAbs(path) {
-		path = filepath.Join(m.currentPatch.Root, filepath.FromSlash(path))
 	}
 	return path, int(number), nil
 }
