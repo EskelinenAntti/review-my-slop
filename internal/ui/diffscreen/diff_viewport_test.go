@@ -6,6 +6,32 @@ import (
 	"github.com/eskelinenantti/review-my-slop/internal/testutil"
 )
 
+func TestAlignmentOffset(t *testing.T) {
+	for _, tt := range []struct {
+		name      string
+		height    int
+		alignment Alignment
+		want      int
+	}{
+		{name: "top", height: 6, alignment: Top, want: 0},
+		{name: "center even height", height: 6, alignment: Center, want: 3},
+		{name: "center odd height", height: 5, alignment: Center, want: 2},
+		{name: "bottom", height: 6, alignment: Bottom, want: 5},
+		{name: "single row top", height: 1, alignment: Top, want: 0},
+		{name: "single row center", height: 1, alignment: Center, want: 0},
+		{name: "single row bottom", height: 1, alignment: Bottom, want: 0},
+		{
+			name: "unknown defaults to top", height: 6,
+			alignment: Alignment(255), want: 0,
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			testutil.RequireEqual(t, alignmentOffset(tt.height, tt.alignment),
+				tt.want, "alignment offset")
+		})
+	}
+}
+
 func TestViewportRowAt(t *testing.T) {
 	v := &diffView{rows: []entry{
 		{kind: fileRow},

@@ -127,7 +127,7 @@ func TestViewportAlignmentResizeAndScrolling(t *testing.T) {
 		"cursor not visible: %#v %#v", cursor, viewport,
 	)
 
-	viewport = v.align(viewport, cursor, middle)
+	viewport = v.align(viewport, cursor, Center)
 	headerHeight := 0
 	if v.hasStickyHeader(viewport.top, viewport.height) {
 		headerHeight = 1

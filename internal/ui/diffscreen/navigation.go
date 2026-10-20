@@ -122,11 +122,7 @@ func (v *View) Align(alignment Alignment) {
 	if _, ok := v.view.line(v.cursor); !ok {
 		return
 	}
-	v.viewport = v.view.align(
-		v.viewport,
-		v.cursor,
-		verticalAlignment(alignment),
-	)
+	v.viewport = v.view.align(v.viewport, v.cursor, alignment)
 }
 
 // ScrollHorizontal shifts the visible content by the requested columns.

@@ -30,11 +30,3 @@ type diffSelection struct {
 	First diffCursor
 	Last  diffCursor
 }
-
-type verticalAlignment uint8
-
-const (
-	top verticalAlignment = iota
-	middle
-	bottom
-)
