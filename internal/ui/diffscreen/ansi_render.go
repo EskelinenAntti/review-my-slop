@@ -57,29 +57,26 @@ func filterSGRParts(parts []string, colors foregroundPolicy) []string {
 	filtered := parts[:0]
 	for index := 0; index < len(parts); index++ {
 		code, err := strconv.Atoi(parts[index])
-		if err != nil {
+		if err != nil || !colorRemoved(code, colors) {
 			filtered = append(filtered, parts[index])
 			continue
 		}
-		if extendedColorRemoved(code, colors) {
+		if code == 38 || code == 48 {
 			index = colorParameterEnd(parts, index)
-			continue
 		}
-		if simpleColorRemoved(code, colors) {
-			continue
-		}
-		filtered = append(filtered, parts[index])
 	}
 	return filtered
 }
 
-func extendedColorRemoved(code int, colors foregroundPolicy) bool {
-	return code == 48 || (colors == discardForeground && code == 38)
-}
-
-func simpleColorRemoved(code int, colors foregroundPolicy) bool {
-	return backgroundColor(code) ||
-		colors == discardForeground && foregroundColor(code)
+func colorRemoved(code int, colors foregroundPolicy) bool {
+	switch {
+	case code >= 40 && code <= 49, code >= 100 && code <= 107:
+		return true
+	case code >= 30 && code <= 39, code >= 90 && code <= 97:
+		return colors == discardForeground
+	default:
+		return false
+	}
 }
 
 func colorParameterEnd(parts []string, index int) int {
@@ -94,14 +91,6 @@ func colorParameterEnd(parts []string, index int) int {
 	default:
 		return index
 	}
-}
-
-func backgroundColor(code int) bool {
-	return (code >= 40 && code <= 49) || (code >= 100 && code <= 107)
-}
-
-func foregroundColor(code int) bool {
-	return (code >= 30 && code <= 39) || (code >= 90 && code <= 97)
 }
 
 func fitANSIWindow(value string, offset, width int) string {
