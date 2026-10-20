@@ -54,30 +54,7 @@ func writePreferences(path string, preferences Preferences) error {
 	if err != nil {
 		return fmt.Errorf("encode UI settings: %w", err)
 	}
-	data = append(data, '\n')
-	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
-		return fmt.Errorf("create UI settings directory: %w", err)
-	}
-	temporary, err := os.CreateTemp(filepath.Dir(path), "ui-*.tmp")
-	if err != nil {
-		return fmt.Errorf("create UI settings file: %w", err)
-	}
-	temporaryPath := temporary.Name()
-	defer os.Remove(temporaryPath)
-	defer temporary.Close()
-	if err := temporary.Chmod(0o600); err != nil {
-		return fmt.Errorf("secure UI settings file: %w", err)
-	}
-	if _, err := temporary.Write(data); err != nil {
-		return fmt.Errorf("write UI settings: %w", err)
-	}
-	if err := temporary.Close(); err != nil {
-		return fmt.Errorf("close UI settings: %w", err)
-	}
-	if err := os.Rename(temporaryPath, path); err != nil {
-		return fmt.Errorf("replace UI settings: %w", err)
-	}
-	return nil
+	return replaceSettingsFile(path, append(data, '\n'))
 }
 
 func settingsPath() (string, error) {
