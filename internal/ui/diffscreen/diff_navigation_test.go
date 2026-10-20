@@ -117,6 +117,24 @@ func TestRowCursorsStopsWhenConsumerBreaks(t *testing.T) {
 	}
 }
 
+func BenchmarkRowCursorsUnified(b *testing.B) {
+	benchmarkRowCursors(b, false)
+}
+
+func BenchmarkRowCursorsSplit(b *testing.B) {
+	benchmarkRowCursors(b, true)
+}
+
+func benchmarkRowCursors(b *testing.B, split bool) {
+	b.Helper()
+	v := &diffView{split: split, rows: []entry{{kind: lineRow}}}
+	b.ReportAllocs()
+	for b.Loop() {
+		for range v.rowCursors(0, right) {
+		}
+	}
+}
+
 func TestJumpFile(t *testing.T) {
 	for _, tc := range []struct {
 		name      string

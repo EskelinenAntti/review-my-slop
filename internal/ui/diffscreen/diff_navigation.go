@@ -25,15 +25,15 @@ func (v *diffView) cursorAt(y int, pane diffPane) (diffCursor, bool) {
 // rowCursors visits valid panes in preference order. Unified rows retain the
 // preferred pane identity but are visited only once.
 func (v *diffView) rowCursors(y int, preferred diffPane) iter.Seq[diffCursor] {
-	panes := []diffPane{preferred}
-	if v.split {
-		panes = append(panes, preferred.other())
-	}
 	return func(yield func(diffCursor) bool) {
-		for _, pane := range panes {
-			if cursor, ok := v.cursorAt(y, pane); ok && !yield(cursor) {
-				return
-			}
+		if cursor, ok := v.cursorAt(y, preferred); ok && !yield(cursor) {
+			return
+		}
+		if !v.split {
+			return
+		}
+		if cursor, ok := v.cursorAt(y, preferred.other()); ok {
+			yield(cursor)
 		}
 	}
 }
