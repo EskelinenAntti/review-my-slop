@@ -45,11 +45,10 @@ func (m model) editSelectedComment() (tea.Model, tea.Cmd) {
 	}
 	comment := m.comments.items[index]
 	m.edit = commentEdit{
-		body:   comment.Body,
 		index:  index,
 		anchor: comment.Anchor,
 	}
-	cmd, err := m.openCommentEditor()
+	cmd, err := m.openCommentEditor(comment.Body)
 	if err != nil {
 		m.err = err
 		return m, nil
@@ -64,7 +63,7 @@ func (m *model) beginComment() (tea.Cmd, error) {
 	}
 	anchor := comments.NewAnchor(file, lines)
 	m.edit = commentEdit{index: -1, anchor: anchor}
-	return m.openCommentEditor()
+	return m.openCommentEditor("")
 }
 
 func (m *model) finishCommentEditor(msg commentEditorFinishedMsg) {
@@ -73,13 +72,12 @@ func (m *model) finishCommentEditor(msg commentEditorFinishedMsg) {
 		m.clearCommentEdit()
 		return
 	}
-	m.edit.body = msg.body
-	m.finishCommentEdit()
+	m.finishCommentEdit(msg.body)
 }
 
-func (m *model) finishCommentEdit() {
+func (m *model) finishCommentEdit(body string) {
 	defer m.clearCommentEdit()
-	body := strings.TrimSpace(m.edit.body)
+	body = strings.TrimSpace(body)
 	if body == "" {
 		if m.edit.index >= 0 {
 			m.deleteComment(m.edit.index)
@@ -173,8 +171,8 @@ func (m *model) clearCommentEdit() {
 	m.edit = commentEdit{index: -1}
 }
 
-func (m *model) openCommentEditor() (tea.Cmd, error) {
-	cmd, err := editor.EditComment(m.ctx, m.edit.body, m.edit.anchor, func(
+func (m *model) openCommentEditor(body string) (tea.Cmd, error) {
+	cmd, err := editor.EditComment(m.ctx, body, m.edit.anchor, func(
 		body string,
 		err error,
 	) tea.Msg {

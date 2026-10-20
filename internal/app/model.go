@@ -79,7 +79,6 @@ type commentState struct {
 }
 
 type commentEdit struct {
-	body   string
 	index  int
 	anchor comments.Anchor
 }

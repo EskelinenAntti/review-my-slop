@@ -54,14 +54,11 @@ func TestCommentSaveFailureClearsPendingEdit(t *testing.T) {
 	})
 	m = updateModel(t, m, textKey("c"))
 	m = updateModel(t, m, commentEditorFinishedMsg{body: "keep this"})
-	testutil.RequireEqual(t, m.edit.body, "", "body=%q err=%v", m.edit.body,
-		m.err,
-	)
-	testutil.RequireEqual(t, m.err != nil, true, "body=%q err=%v", m.edit.body,
-		m.err,
-	)
+	testutil.RequireEqual(t, m.edit.index, -1, "pending edit index not cleared")
+	testutil.RequireEqual(t, m.edit.anchor.FilePath, "", "anchor not cleared")
+	testutil.RequireEqual(t, m.err != nil, true, "error = %v", m.err)
 	testutil.RequireEqual(t, m.err.Error(), "storage unavailable",
-		"body=%q err=%v", m.edit.body, m.err,
+		"error = %v", m.err,
 	)
 }
 

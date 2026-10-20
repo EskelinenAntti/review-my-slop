@@ -81,9 +81,8 @@ func TestStoreBackedCommentLifecycle(t *testing.T) {
 		NewStart:    2,
 		QuotedLines: []string{"+new()"},
 	}
-	m.edit.body = "check this"
 	m.edit.anchor = anchor
-	m.finishCommentEdit()
+	m.finishCommentEdit("check this")
 	testutil.RequireEqual(t, m.err, nil, "%s", m.err)
 
 	loaded, err := m.load()
@@ -104,8 +103,7 @@ func TestStoreBackedCommentLifecycle(t *testing.T) {
 
 	id := loaded[0].ID
 	m.edit.index = 0
-	m.edit.body = "edited"
-	m.finishCommentEdit()
+	m.finishCommentEdit("edited")
 	testutil.RequireEqual(t, m.err, nil, "%s", m.err)
 
 	loaded, err = m.load()
@@ -265,9 +263,8 @@ func TestCommentSaveUsesPatchAndPreservesAnchor(t *testing.T) {
 		stored.ID = "1"
 		return stored, nil
 	})
-	m.edit.body = "comment"
 	m.edit.anchor = comments.Anchor{FilePath: "main.go"}
-	m.finishCommentEdit()
+	m.finishCommentEdit("comment")
 	testutil.RequireEqual(t, savedPatch.Root, "/repo",
 		"saved patch/comments = %#v %#v", savedPatch, m.comments.items,
 	)
