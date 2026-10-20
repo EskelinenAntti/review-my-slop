@@ -18,6 +18,24 @@ const (
 	darkTheme  = "catppuccin-mocha"
 )
 
+func (v *diffView) highlight(file patch.File) highlightedSources {
+	theme := lightTheme
+	if v.dark {
+		theme = darkTheme
+	}
+	return highlightedSources{
+		old: highlightSource(file.OldPath, file.OldSource, theme),
+		new: highlightSource(file.NewPath, file.NewSource, theme),
+	}
+}
+
+func (s highlightedSources) text(line patch.Line) string {
+	if line.Kind == patch.Deletion {
+		return highlightedLine(s.old, line.OldNumber, line.Text)
+	}
+	return highlightedLine(s.new, line.NewNumber, line.Text)
+}
+
 func highlightSource(filename, source, theme string) []string {
 	if source == "" {
 		return nil

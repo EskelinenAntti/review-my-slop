@@ -16,7 +16,7 @@ func TestRenamedFileHighlightsEachSideUsingItsOwnPath(t *testing.T) {
 		NewSource: source,
 	}
 	view := &diffView{dark: true}
-	highlighted := view.highlight(&file)
+	highlighted := view.highlight(file)
 	old := strings.Join(highlighted.old, "\n")
 	updated := strings.Join(highlighted.new, "\n")
 	if old == updated || stripANSI(old) != strings.TrimSuffix(
@@ -55,14 +55,10 @@ func answer(value int) string {
 	return ""
 }
 `
-	dark := strings.Join(
-		highlightSource("example.go", source, darkTheme),
-		"\n",
-	)
-	light := strings.Join(
-		highlightSource("example.go", source, lightTheme),
-		"\n",
-	)
+	file := patch.File{NewPath: "example.go", NewSource: source}
+	darkView, lightView := &diffView{dark: true}, &diffView{dark: false}
+	dark := strings.Join(darkView.highlight(file).new, "\n")
+	light := strings.Join(lightView.highlight(file).new, "\n")
 	if dark == light {
 		t.Fatal(
 			"light and dark terminal backgrounds use identical highlighting",
@@ -85,6 +81,75 @@ func answer(value int) string {
 				name,
 				rendered,
 			)
+		}
+	}
+}
+
+func TestHighlightedSourcesText(t *testing.T) {
+	sources := highlightedSources{
+		old: []string{"old first", "old second"},
+		new: []string{"new first", "new second"},
+	}
+	for _, test := range []struct {
+		name string
+		line patch.Line
+		want string
+	}{
+		{
+			"deletion uses old number",
+			patch.Line{Kind: patch.Deletion, OldNumber: 2, NewNumber: 1},
+			"old second",
+		},
+		{
+			"addition uses new number",
+			patch.Line{Kind: patch.Addition, OldNumber: 2, NewNumber: 1},
+			"new first",
+		},
+		{
+			"context uses new source",
+			patch.Line{Kind: patch.Context, OldNumber: 1, NewNumber: 2},
+			"new second",
+		},
+		{
+			"missing number",
+			patch.Line{Kind: patch.Addition, Text: "fallback"},
+			"fallback",
+		},
+		{
+			"negative number",
+			patch.Line{Kind: patch.Deletion, OldNumber: -1, Text: "fallback"},
+			"fallback",
+		},
+		{
+			"old number out of range",
+			patch.Line{Kind: patch.Deletion, OldNumber: 3, Text: "fallback"},
+			"fallback",
+		},
+		{
+			"new number out of range",
+			patch.Line{Kind: patch.Context, NewNumber: 3, Text: "fallback"},
+			"fallback",
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			if got := sources.text(test.line); got != test.want {
+				t.Fatalf("text(%+v) = %q, want %q", test.line, got, test.want)
+			}
+		})
+	}
+}
+
+func TestHighlightedSourcesWithoutSource(t *testing.T) {
+	view := &diffView{dark: true}
+	sources := view.highlight(patch.File{})
+	for _, kind := range []patch.LineKind{
+		patch.Context, patch.Addition, patch.Deletion,
+	} {
+		line := patch.Line{
+			Kind: kind, OldNumber: 1, NewNumber: 1, Text: "fallback",
+		}
+		if got := sources.text(line); got != line.Text {
+			t.Errorf("text(%+v) = %q, want %q", line, got, line.Text)
 		}
 	}
 }
