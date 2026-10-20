@@ -8,11 +8,8 @@ import (
 	"github.com/eskelinenantti/review-my-slop/internal/settings"
 )
 
-type saveCommentFunc func(
-	comments.Comment,
-	patch.Patch,
-) (comments.Comment, error)
-type deleteCommentFunc func(comments.Comment, patch.Patch) error
+type saveCommentFunc func(comments.Comment) (comments.Comment, error)
+type deleteCommentFunc func(comments.Comment) error
 type loadCommentsFunc func() ([]comments.Comment, error)
 
 // commentStore supplies the persistence operations used by the terminal client.
@@ -34,11 +31,12 @@ func newWithStore(
 	if err != nil {
 		return model{}, err
 	}
+	// Refreshes and patch-kind switches stay in the session's repository.
+	repository := currentPatch.Root
 	m := newModel(ctx, currentPatch, pendingComments, func(
 		comment comments.Comment,
-		current patch.Patch,
 	) (comments.Comment, error) {
-		comment.Repository = current.Root
+		comment.Repository = repository
 		if comment.ID != "" {
 			if err := store.Update(comment); err != nil {
 				return comments.Comment{}, err
@@ -53,11 +51,11 @@ func newWithStore(
 		},
 		dimensions: dimensions,
 	})
-	m.delete = func(comment comments.Comment, current patch.Patch) error {
-		return store.Delete(current.Root, comment.ID)
+	m.delete = func(comment comments.Comment) error {
+		return store.Delete(repository, comment.ID)
 	}
 	m.load = func() ([]comments.Comment, error) {
-		return store.List(currentPatch.Root)
+		return store.List(repository)
 	}
 	return m, nil
 }

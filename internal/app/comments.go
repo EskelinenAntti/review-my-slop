@@ -96,7 +96,7 @@ func (m *model) finishCommentEdit(body string) {
 	} else {
 		comment = comments.Comment{Anchor: m.edit.anchor, Body: body}
 	}
-	saved, err := m.save(comment, m.currentPatch)
+	saved, err := m.save(comment)
 	if err != nil {
 		m.err = err
 		return
@@ -125,7 +125,7 @@ func (m *model) deleteComment(index int) {
 		m.err = errCommentStorageUnavailable
 		return
 	}
-	if err := m.delete(m.comments.items[index], m.currentPatch); err != nil {
+	if err := m.delete(m.comments.items[index]); err != nil {
 		m.err = err
 		return
 	}

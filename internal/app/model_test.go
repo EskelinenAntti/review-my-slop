@@ -284,26 +284,20 @@ func TestViewSwitchPreservesSemanticCursor(t *testing.T) {
 	testutil.RequireEqual(t, got, want, "focused line=%#v, want %#v", got, want)
 }
 
-func TestCommentSaveUsesPatchAndPreservesAnchor(t *testing.T) {
-	var savedPatch patch.Patch
+func TestCommentSavePreservesAnchor(t *testing.T) {
 	m := testModel(modelPatch(), nil, func(
 		stored comments.Comment,
-		p patch.Patch,
 	) (comments.Comment, error) {
-		savedPatch = p
 		stored.ID = "1"
 		return stored, nil
 	})
 	m.edit.anchor = comments.Anchor{FilePath: "main.go"}
 	m.finishCommentEdit("comment")
-	testutil.RequireEqual(t, savedPatch.Root, "/repo",
-		"saved patch/comments = %#v %#v", savedPatch, m.comments.items,
-	)
 	testutil.RequireEqual(t, len(m.comments.items), 1,
-		"saved patch/comments = %#v %#v", savedPatch, m.comments.items,
+		"saved comments = %#v", m.comments.items,
 	)
 	testutil.RequireEqual(t, m.comments.items[0].Anchor.FilePath, "main.go",
-		"saved patch/comments = %#v %#v", savedPatch, m.comments.items,
+		"saved comments = %#v", m.comments.items,
 	)
 }
 
