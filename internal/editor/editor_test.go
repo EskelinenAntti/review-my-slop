@@ -88,10 +88,55 @@ func TestExternalEditorCommandReadsEditedDraft(t *testing.T) {
 }
 
 func TestCommentDraftRoundTrip(t *testing.T) {
-	anchor := comments.Anchor{QuotedLines: []string{" old", "-gone", "+new"}}
+	for _, tc := range []struct {
+		name       string
+		quoted     []string
+		suggestion string
+	}{
+		{name: "no quote"},
+		{
+			name: "mixed lines", quoted: []string{" old", "-gone", "+new"},
+			suggestion: "```suggestion\nold\nnew\n```",
+		},
+		{
+			name: "deletions only", quoted: []string{"-gone"},
+			suggestion: "```suggestion\n```",
+		},
+		{
+			name: "empty quoted line", quoted: []string{""},
+			suggestion: "```suggestion\n```",
+		},
+		{
+			name: "blank source line", quoted: []string{"+"},
+			suggestion: "```suggestion\n\n```",
+		},
+		{
+			name: "backticks", quoted: []string{"+````", "-``````"},
+			suggestion: "`````suggestion\n````\n`````",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			assertCommentDraftRoundTrip(t, tc.quoted, tc.suggestion)
+		})
+	}
+}
+
+func assertCommentDraftRoundTrip(
+	t *testing.T,
+	quoted []string,
+	suggestion string,
+) {
+	t.Helper()
+	anchor := comments.Anchor{QuotedLines: quoted}
+	want := "body"
+	if suggestion != "" {
+		want += "\n\n" + suggestion + "\n"
+	}
 	draft := commentDraft("body", anchor)
-	got := stripUnchangedSuggestion(draft, anchor.QuotedLines)
-	if got != "body" {
+	if draft != want {
+		t.Fatalf("draft = %q, want %q", draft, want)
+	}
+	if got := stripUnchangedSuggestion(draft, quoted); got != "body" {
 		t.Fatalf("unchanged suggestion result = %q", got)
 	}
 }
