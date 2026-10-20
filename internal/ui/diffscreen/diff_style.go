@@ -33,24 +33,19 @@ func (r diffRenderer) lineStyle(
 	kind patch.LineKind,
 	candidate diffCursor,
 ) (lipgloss.Style, foregroundPolicy) {
-	style, colors := lineStyle(kind, r.view.styles), preserveForeground
-	if r.selection.contains(candidate) {
-		style, colors = r.view.styles.selection, discardForeground
-	}
 	if r.cursor == candidate {
-		style, colors = cursorStyle, discardForeground
+		return cursorStyle, discardForeground
 	}
-	return style, colors
-}
-
-func lineStyle(kind patch.LineKind, styles lineStyles) lipgloss.Style {
+	if r.selection.contains(candidate) {
+		return r.view.styles.selection, discardForeground
+	}
 	switch kind {
 	case patch.Addition:
-		return styles.added
+		return r.view.styles.added, preserveForeground
 	case patch.Deletion:
-		return styles.removed
+		return r.view.styles.removed, preserveForeground
 	default:
-		return contextStyle
+		return contextStyle, preserveForeground
 	}
 }
 

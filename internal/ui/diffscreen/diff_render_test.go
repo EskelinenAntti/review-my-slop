@@ -37,6 +37,14 @@ func TestRendererLineStylePrecedence(t *testing.T) {
 			styles.removed, preserveForeground,
 		},
 		{
+			"unknown kind falls back to context", patch.LineKind('?'),
+			diffCursor{}, nil, contextStyle, preserveForeground,
+		},
+		{
+			"selection overrides context", patch.Context,
+			diffCursor{}, &selection, styles.selection, discardForeground,
+		},
+		{
 			"selection overrides addition", patch.Addition,
 			diffCursor{}, &selection, styles.selection, discardForeground,
 		},
@@ -46,6 +54,10 @@ func TestRendererLineStylePrecedence(t *testing.T) {
 		},
 		{
 			"cursor overrides addition", patch.Addition, candidate, nil,
+			cursorStyle, discardForeground,
+		},
+		{
+			"cursor overrides context", patch.Context, candidate, nil,
 			cursorStyle, discardForeground,
 		},
 		{

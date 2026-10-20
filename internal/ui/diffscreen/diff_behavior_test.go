@@ -562,7 +562,7 @@ func TestRenderStyledRowStripsSyntaxBackgroundColors(t *testing.T) {
 		" ",
 	)
 	rendered := renderStyledRow(
-		lineStyle(patch.Addition, newLineStyles(true)),
+		newLineStyles(true).added,
 		value,
 		80,
 		preserveForeground,
