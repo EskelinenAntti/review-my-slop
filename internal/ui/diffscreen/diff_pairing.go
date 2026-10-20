@@ -21,35 +21,41 @@ func unifiedLinePairs(lines []patch.Line) iter.Seq2[int, int] {
 func splitLinePairs(lines []patch.Line) iter.Seq2[int, int] {
 	return func(yield func(int, int) bool) {
 		for index := 0; index < len(lines); {
-			next, ok := yieldLineBlock(lines, index, yield)
-			if !ok {
+			block := lineBlockAt(lines, index)
+			if !block.yield(yield) {
 				return
 			}
-			index = next
+			index = max(block.leftEnd, block.rightEnd)
 		}
 	}
 }
 
-func yieldLineBlock(
-	lines []patch.Line,
-	start int,
-	yield func(int, int) bool,
-) (int, bool) {
+// lineBlock describes half-open source ranges paired in the two panes.
+type lineBlock struct {
+	leftStart, leftEnd   int
+	rightStart, rightEnd int
+}
+
+func lineBlockAt(lines []patch.Line, start int) lineBlock {
 	kind := lines[start].Kind
 	if kind != patch.Addition && kind != patch.Deletion {
-		return start + 1, yield(start, start)
+		return lineBlock{start, start + 1, start, start + 1}
 	}
 	addedStart := changeBlockEnd(lines, start, patch.Deletion)
 	end := changeBlockEnd(lines, addedStart, patch.Addition)
-	count := max(addedStart-start, end-addedStart)
+	return lineBlock{start, addedStart, addedStart, end}
+}
+
+func (b lineBlock) yield(yield func(int, int) bool) bool {
+	count := max(b.leftEnd-b.leftStart, b.rightEnd-b.rightStart)
 	for offset := 0; offset < count; offset++ {
-		left := blockLineIndex(start, addedStart, offset)
-		right := blockLineIndex(addedStart, end, offset)
+		left := blockLineIndex(b.leftStart, b.leftEnd, offset)
+		right := blockLineIndex(b.rightStart, b.rightEnd, offset)
 		if !yield(left, right) {
-			return end, false
+			return false
 		}
 	}
-	return end, true
+	return true
 }
 
 func blockLineIndex(start, end, offset int) int {
