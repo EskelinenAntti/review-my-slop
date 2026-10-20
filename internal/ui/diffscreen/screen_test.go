@@ -9,6 +9,47 @@ import (
 	"github.com/eskelinenantti/review-my-slop/internal/testutil"
 )
 
+func TestMoveDispatchesFileAndPaneMotions(t *testing.T) {
+	v := New(testPatch(), Options{SideBySide: true})
+	v.Resize(120, 10)
+	for _, step := range []struct {
+		name   string
+		motion Motion
+		file   string
+		text   string
+		pane   diffPane
+	}{
+		{"old pane", OldPane, "first.go", "before", left},
+		{"new pane", NewPane, "first.go", "before", right},
+		{"other pane", OtherPane, "first.go", "before", left},
+		{"paired deletion", NextLine, "first.go", "removed one", left},
+		{"unpaired deletion", NextLine, "first.go", "removed two", left},
+		{"nearest previous new line", NewPane, "first.go", "added one", right},
+		{"next file", NextFile, "second.go", "other", right},
+		{"previous file", PreviousFile, "first.go", "after", right},
+		{"unknown motion", Motion(255), "first.go", "after", right},
+	} {
+		t.Run(step.name, func(t *testing.T) {
+			v.drag = &v.cursor
+			v.search.repeatMiss = true
+			v.Move(step.motion)
+			file, line, ok := v.Current()
+			testutil.RequireEqual(t, ok, true, "%s", "lost focus")
+			testutil.RequireEqual(t, file.PreferredPath(), step.file,
+				"%s", "file",
+			)
+			testutil.RequireEqual(t, line.Text, step.text, "%s", "line")
+			testutil.RequireEqual(t, v.cursor.pane, step.pane, "%s", "pane")
+			testutil.RequireEqual(t, v.drag == nil, true,
+				"%s", "drag remained active",
+			)
+			testutil.RequireEqual(t, v.search.repeatMiss, false,
+				"%s", "search miss remained",
+			)
+		})
+	}
+}
+
 func TestSelectedDefaultsToCurrentAndMovementExtendsRange(t *testing.T) {
 	v := New(testPatch(), Options{Dark: true})
 	file, lines, ok := v.Selected()

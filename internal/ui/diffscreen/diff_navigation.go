@@ -151,23 +151,11 @@ func (v *diffView) switchPane(
 	if candidate, ok := v.cursorAt(cursor.row, pane); ok {
 		return candidate, true
 	}
-	if candidate, ok := v.previousInFile(cursor, pane); ok {
-		return candidate, true
-	}
-	return v.scan(cursor.row, pane, forward)
-}
-
-func (v *diffView) previousInFile(
-	cursor diffCursor,
-	pane diffPane,
-) (diffCursor, bool) {
-	for y := cursor.row - 1; y >= 0; y-- {
-		if v.rows[y].file != v.rows[cursor.row].file {
-			break
-		}
+	file := v.rows[cursor.row].file
+	for y := cursor.row - 1; y >= 0 && v.rows[y].file == file; y-- {
 		if candidate, ok := v.cursorAt(y, pane); ok {
 			return candidate, true
 		}
 	}
-	return diffCursor{}, false
+	return v.scan(cursor.row, pane, forward)
 }
