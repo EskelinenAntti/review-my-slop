@@ -43,6 +43,54 @@ func TestLinePairsPreserveSourceIndices(t *testing.T) {
 	}
 }
 
+func TestSplitLinePairsChangeBlocks(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		lines []patch.Line
+		want  [][2]int
+	}{
+		{name: "empty"},
+		{
+			name: "balanced replacement",
+			lines: []patch.Line{
+				{Kind: patch.Deletion}, {Kind: patch.Deletion},
+				{Kind: patch.Addition}, {Kind: patch.Addition},
+			},
+			want: [][2]int{{0, 2}, {1, 3}},
+		},
+		{
+			name: "extra additions",
+			lines: []patch.Line{
+				{Kind: patch.Deletion}, {Kind: patch.Addition},
+				{Kind: patch.Addition},
+			},
+			want: [][2]int{{0, 1}, {-1, 2}},
+		},
+		{
+			name:  "addition before deletion stays separate",
+			lines: []patch.Line{{Kind: patch.Addition}, {Kind: patch.Deletion}},
+			want:  [][2]int{{-1, 0}, {1, -1}},
+		},
+		{
+			name: "context separates changes",
+			lines: []patch.Line{
+				{Kind: patch.Deletion}, {Kind: patch.Context},
+				{Kind: patch.Addition},
+			},
+			want: [][2]int{{0, -1}, {1, 1}, {-1, 2}},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var got [][2]int
+			for left, right := range splitLinePairs(tc.lines) {
+				got = append(got, [2]int{left, right})
+			}
+			testutil.RequireEqual(t, slices.Equal(got, tc.want), true,
+				"line pairs=%v, want %v", got, tc.want)
+		})
+	}
+}
+
 func TestLinePairsStopWhenConsumerBreaks(t *testing.T) {
 	kinds := []patch.LineKind{patch.Context, patch.Deletion, patch.Addition}
 	for _, kind := range kinds {
