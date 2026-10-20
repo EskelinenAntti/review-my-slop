@@ -80,6 +80,33 @@ func TestSplitRowsPairOnlyAdjacentChangeBlocks(t *testing.T) {
 	}
 }
 
+func TestUnifiedRowsPreserveLineOrder(t *testing.T) {
+	lines := []patch.Line{
+		{Kind: patch.Context, Text: "before"},
+		{Kind: patch.Deletion, Text: "old-a"},
+		{Kind: patch.Deletion, Text: "old-b"},
+		{Kind: patch.Addition, Text: "new"},
+		{Kind: patch.LineKind(255), Text: "unknown"},
+		{Kind: patch.Context, Text: "after"},
+	}
+	v := newUnifiedView(patchWithLines(lines), true)
+	var got []patch.Line
+	for _, row := range v.rows {
+		if row.kind != lineRow {
+			continue
+		}
+		line, ok := v.rowLine(row, right)
+		testutil.RequireEqual(t, ok, true, "code row has no source line")
+		got = append(got, line)
+		testutil.RequireEqual(t, row.leftLine, row.rightLine,
+			"unified row refers to different source lines",
+		)
+	}
+	testutil.RequireEqual(t, slices.Equal(got, lines), true,
+		"projected lines=%v, want %v", got, lines,
+	)
+}
+
 func projectedTexts(v *diffView) [][2]string {
 	var got [][2]string
 	for row, entry := range v.rows {
