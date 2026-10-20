@@ -2,6 +2,7 @@ package commentscreen
 
 import (
 	"fmt"
+	"math"
 	"strings"
 	"testing"
 
@@ -61,6 +62,25 @@ func TestMovementKeepsSelectedCommentVisible(t *testing.T) {
 	v.Move(-100)
 	selected, _ := v.Selected()
 	testutil.RequireEqual(t, selected.ID, "0", "first selection=%#v", selected)
+}
+
+func TestMovementBoundsExtremeDistances(t *testing.T) {
+	v := New([]comments.Comment{{ID: "first"}, {ID: "last"}})
+	for range 2 {
+		v.Move(math.MaxInt)
+		index, ok := v.SelectedIndex()
+		testutil.RequireEqual(t, ok, true, "selected index=%d", index)
+		testutil.RequireEqual(t, index, 1, "selected index=%d", index)
+	}
+	v.Move(math.MinInt)
+	index, _ := v.SelectedIndex()
+	testutil.RequireEqual(t, index, 0, "selected index=%d", index)
+
+	v.Update(nil)
+	v.Move(math.MaxInt)
+	v.Move(math.MinInt)
+	_, ok := v.SelectedIndex()
+	testutil.RequireEqual(t, ok, false, "%s", "empty view has a selection")
 }
 
 func TestSelectedIndexTracksFocusedComment(t *testing.T) {

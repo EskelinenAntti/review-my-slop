@@ -3,13 +3,15 @@ package diffscreen
 import (
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
+
+	"github.com/eskelinenantti/review-my-slop/internal/ui/internal/scroll"
 )
 
 func (v *diffView) scrollHorizontal(
 	viewport diffViewport,
 	columns int,
 ) diffViewport {
-	viewport.leftColumn = scrollOffset(
+	viewport.leftColumn = scroll.Offset(
 		viewport.leftColumn,
 		columns,
 		v.maxHorizontalOffset(viewport.width),

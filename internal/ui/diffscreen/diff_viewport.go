@@ -1,5 +1,7 @@
 package diffscreen
 
+import "github.com/eskelinenantti/review-my-slop/internal/ui/internal/scroll"
+
 func (v *diffView) newViewport(width, height int) diffViewport {
 	return v.resize(diffViewport{}, width, height)
 }
@@ -113,17 +115,12 @@ func alignmentOffset(height int, alignment verticalAlignment) int {
 	return 0
 }
 
-// scrollOffset bounds the distance before adding it to avoid integer overflow.
-func scrollOffset(offset, distance, limit int) int {
-	return offset + max(-offset, min(distance, limit-offset))
-}
-
 func (v *diffView) scrollVertical(
 	viewport diffViewport,
 	cursor diffCursor,
 	rows int,
 ) (diffViewport, diffCursor) {
-	viewport.top = scrollOffset(viewport.top, rows, v.maxTop(viewport.height))
+	viewport.top = scroll.Offset(viewport.top, rows, v.maxTop(viewport.height))
 	viewport = v.clampViewport(viewport)
 	if !v.valid(cursor) || v.cursorVisible(viewport, cursor) {
 		return viewport, cursor
