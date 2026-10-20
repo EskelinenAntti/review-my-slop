@@ -108,6 +108,60 @@ func TestStoreQueuesByRepositoryAndDeletesExactPeek(t *testing.T) {
 	)
 }
 
+func TestStoreMutationsCannotAccessOtherRepositories(t *testing.T) {
+	tests := []struct {
+		name    string
+		mutate  func(Store, Comment) error
+		wantErr bool
+	}{
+		{
+			name: "update",
+			mutate: func(store Store, comment Comment) error {
+				comment.Repository = "/repo/a"
+				comment.Body = "changed"
+				return store.Update(comment)
+			},
+			wantErr: true,
+		},
+		{
+			name: "delete",
+			mutate: func(store Store, comment Comment) error {
+				return store.Delete("/repo/a", comment.ID)
+			},
+			wantErr: true,
+		},
+		{
+			name: "acknowledge",
+			mutate: func(store Store, comment Comment) error {
+				return store.Acknowledge("/repo/a", []string{comment.ID})
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			store := Store{Path: filepath.Join(t.TempDir(), "comments.db")}
+			comment, err := store.Add(testComment("/repo/b", "other"))
+			testutil.NoError(t, err)
+
+			err = tt.mutate(store, comment)
+			testutil.RequireEqual(t, err != nil, tt.wantErr,
+				"mutation error = %v, want error = %v", err, tt.wantErr,
+			)
+			remaining, err := store.List("/repo/b")
+			testutil.NoError(t, err)
+			testutil.RequireEqual(t, len(remaining), 1,
+				"remaining = %#v", remaining,
+			)
+			testutil.RequireEqual(t, remaining[0].Body, comment.Body,
+				"other repository comment changed: %#v", remaining,
+			)
+			own, err := store.List("/repo/a")
+			testutil.NoError(t, err)
+			testutil.RequireEqual(t, len(own), 0, "comments = %#v", own)
+		})
+	}
+}
+
 func TestWritePrompt(t *testing.T) {
 	var out bytes.Buffer
 	comment := testComment("/repo", "Handle the nil case.")
