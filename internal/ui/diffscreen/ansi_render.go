@@ -2,7 +2,6 @@ package diffscreen
 
 import (
 	"regexp"
-	"strconv"
 	"strings"
 
 	"charm.land/lipgloss/v2"
@@ -45,48 +44,21 @@ func filterSGR(sequence string, colors foregroundPolicy) string {
 	if parameters == "" {
 		return sequence
 	}
-	parts := strings.Split(parameters, ";")
-	filtered := parts[:0]
-	for index := 0; index < len(parts); index++ {
-		code, err := strconv.Atoi(parts[index])
-		if err != nil {
-			filtered = append(filtered, parts[index])
-			continue
-		}
+	var filtered []string
+	for code, parameter := range sgrParameters(parameters) {
 		switch {
-		case code == 38 || code == 48:
-			// Color components are data, even when they resemble SGR commands.
-			end := colorParameterEnd(parts, index)
-			if code == 38 && colors == preserveForeground {
-				filtered = append(filtered, parts[index:end+1]...)
-			}
-			index = end
 		case (code >= 40 && code <= 49) || (code >= 100 && code <= 107):
 			// Syntax backgrounds must not override diff and selection styling.
 		case colors == discardForeground &&
 			((code >= 30 && code <= 39) || (code >= 90 && code <= 97)):
 		default:
-			filtered = append(filtered, parts[index])
+			filtered = append(filtered, parameter)
 		}
 	}
 	if len(filtered) == 0 {
 		return ""
 	}
 	return "\x1b[" + strings.Join(filtered, ";") + "m"
-}
-
-func colorParameterEnd(parts []string, index int) int {
-	if index+1 >= len(parts) {
-		return index
-	}
-	switch parts[index+1] {
-	case "2":
-		return min(index+4, len(parts)-1)
-	case "5":
-		return min(index+2, len(parts)-1)
-	default:
-		return index
-	}
 }
 
 func fitANSIWindow(value string, offset, width int) string {
