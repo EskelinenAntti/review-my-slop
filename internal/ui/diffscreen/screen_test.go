@@ -91,6 +91,25 @@ func TestUpdateAndConfigurePreserveState(t *testing.T) {
 	)
 }
 
+func TestChangeCountsFollowPatchUpdatesAndLayoutChanges(t *testing.T) {
+	v := New(testPatch(), Options{})
+	v.Resize(120, 10)
+	testutil.RequireEqual(t, v.view.countsLabel, "+2-2", "initial counts")
+	v.Configure(Options{SideBySide: true})
+	testutil.RequireEqual(t, v.view.countsLabel, "+2-2", "split counts")
+
+	p := testPatch()
+	p.Files[1].Hunks[0].Lines = append(p.Files[1].Hunks[0].Lines,
+		patch.Line{Kind: patch.Addition, Text: "another", NewNumber: 2},
+	)
+	v.Update(p)
+	testutil.RequireEqual(t, v.view.countsLabel, "+3-2", "updated counts")
+	v.Resize(80, 10)
+	testutil.RequireEqual(t, v.view.countsLabel, "+3-2", "narrow layout counts")
+	v.Update(patch.Patch{})
+	testutil.RequireEqual(t, v.view.countsLabel, "+0-0", "empty patch counts")
+}
+
 func TestNarrowLayoutFallbackPreservesPreferenceAndPosition(t *testing.T) {
 	p := longPatch()
 	p.Files[0].OldPath, p.Files[0].NewPath = "long.go", "long.go"
@@ -116,6 +135,44 @@ func TestNarrowLayoutFallbackPreservesPreferenceAndPosition(t *testing.T) {
 	testutil.RequireEqual(t, strings.Contains(v.Render(nil), " │ "), true,
 		"%s", "resize lost split preference",
 	)
+}
+
+func TestAlignPositionsFocusInBothLayouts(t *testing.T) {
+	for _, layout := range []struct {
+		name  string
+		split bool
+	}{
+		{"unified", false},
+		{"split", true},
+	} {
+		for _, alignment := range []struct {
+			name  string
+			value Alignment
+			row   int
+		}{
+			{"top", Top, 1},
+			{"center", Center, 3},
+			{"bottom", Bottom, 6},
+		} {
+			t.Run(layout.name+"/"+alignment.name, func(t *testing.T) {
+				v := New(longPatch(), Options{SideBySide: layout.split})
+				v.Resize(120, 10)
+				for range 10 {
+					v.Move(NextLine)
+				}
+				cursor := v.cursor
+				v.Align(alignment.value)
+
+				testutil.RequireEqual(t, v.cursor, cursor,
+					"alignment changed focus",
+				)
+				testutil.RequireEqual(t,
+					v.cursor.row-v.viewport.top+1, alignment.row,
+					"unexpected body row (including sticky header)",
+				)
+			})
+		}
+	}
 }
 
 func TestPageMovementDoesNotPartiallyChangeRejectedSelection(t *testing.T) {

@@ -4,19 +4,15 @@ import (
 	"github.com/eskelinenantti/review-my-slop/internal/patch"
 )
 
-func beginSelection(cursor diffCursor) diffSelection {
-	return diffSelection{First: cursor, Last: cursor}
-}
-
-func (v *diffView) extendSelection(
-	selection diffSelection,
-	cursor diffCursor,
+// selectionBetween preserves endpoint order and allows either pane, but both
+// endpoints must identify code in the same file and hunk.
+func (v *diffView) selectionBetween(
+	first, last diffCursor,
 ) (diffSelection, bool) {
-	if !v.sameFileHunk(selection.First, cursor) {
-		return selection, false
+	if !v.sameFileHunk(first, last) {
+		return diffSelection{}, false
 	}
-	selection.Last = cursor
-	return selection, true
+	return diffSelection{First: first, Last: last}, true
 }
 
 func (v *diffView) sameFileHunk(first, last diffCursor) bool {
@@ -25,6 +21,22 @@ func (v *diffView) sameFileHunk(first, last diffCursor) bool {
 	}
 	firstRow, lastRow := v.rows[first.row], v.rows[last.row]
 	return firstRow.file == lastRow.file && firstRow.hunk == lastRow.hunk
+}
+
+func (s *diffSelection) contains(cursor diffCursor) bool {
+	if s == nil {
+		return false
+	}
+	first, last := s.First, s.Last
+	if first.row == last.row && first.pane != last.pane {
+		return cursor.row == first.row &&
+			(cursor.pane == first.pane || cursor.pane == last.pane)
+	}
+	if first.pane != cursor.pane {
+		return false
+	}
+	return cursor.row >= min(first.row, last.row) &&
+		cursor.row <= max(first.row, last.row)
 }
 
 func (v *diffView) lines(selection diffSelection) []patch.Line {

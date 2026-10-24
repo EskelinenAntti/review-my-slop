@@ -46,14 +46,6 @@ func filterSGR(sequence string, colors foregroundPolicy) string {
 		return sequence
 	}
 	parts := strings.Split(parameters, ";")
-	filtered := filterSGRParts(parts, colors)
-	if len(filtered) == 0 {
-		return ""
-	}
-	return "\x1b[" + strings.Join(filtered, ";") + "m"
-}
-
-func filterSGRParts(parts []string, colors foregroundPolicy) []string {
 	filtered := parts[:0]
 	for index := 0; index < len(parts); index++ {
 		code, err := strconv.Atoi(parts[index])
@@ -61,25 +53,26 @@ func filterSGRParts(parts []string, colors foregroundPolicy) []string {
 			filtered = append(filtered, parts[index])
 			continue
 		}
-		if extendedColorRemoved(code, colors) {
-			index = colorParameterEnd(parts, index)
-			continue
+		switch {
+		case code == 38 || code == 48:
+			// Color components are data, even when they resemble SGR commands.
+			end := colorParameterEnd(parts, index)
+			if code == 38 && colors == preserveForeground {
+				filtered = append(filtered, parts[index:end+1]...)
+			}
+			index = end
+		case (code >= 40 && code <= 49) || (code >= 100 && code <= 107):
+			// Syntax backgrounds must not override diff and selection styling.
+		case colors == discardForeground &&
+			((code >= 30 && code <= 39) || (code >= 90 && code <= 97)):
+		default:
+			filtered = append(filtered, parts[index])
 		}
-		if simpleColorRemoved(code, colors) {
-			continue
-		}
-		filtered = append(filtered, parts[index])
 	}
-	return filtered
-}
-
-func extendedColorRemoved(code int, colors foregroundPolicy) bool {
-	return code == 48 || (colors == discardForeground && code == 38)
-}
-
-func simpleColorRemoved(code int, colors foregroundPolicy) bool {
-	return backgroundColor(code) ||
-		colors == discardForeground && foregroundColor(code)
+	if len(filtered) == 0 {
+		return ""
+	}
+	return "\x1b[" + strings.Join(filtered, ";") + "m"
 }
 
 func colorParameterEnd(parts []string, index int) int {
@@ -94,14 +87,6 @@ func colorParameterEnd(parts []string, index int) int {
 	default:
 		return index
 	}
-}
-
-func backgroundColor(code int) bool {
-	return (code >= 40 && code <= 49) || (code >= 100 && code <= 107)
-}
-
-func foregroundColor(code int) bool {
-	return (code >= 30 && code <= 39) || (code >= 90 && code <= 97)
 }
 
 func fitANSIWindow(value string, offset, width int) string {

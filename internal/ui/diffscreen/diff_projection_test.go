@@ -2,11 +2,184 @@ package diffscreen
 
 import (
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/eskelinenantti/review-my-slop/internal/patch"
 	"github.com/eskelinenantti/review-my-slop/internal/testutil"
 )
+
+func TestAppendHunkRowsPreservesProjectionData(t *testing.T) {
+	oldText := "\x1b[31mold\tone\x1b[0m"
+	longText := strings.Repeat("x", 24)
+	newText := "\x1b[32mnew\x1b[0m"
+	hunk := patch.Hunk{Header: "header", Lines: []patch.Line{
+		{Kind: patch.Deletion, OldNumber: 1},
+		{Kind: patch.Deletion, OldNumber: 2},
+		{Kind: patch.Addition, NewNumber: 1},
+	}}
+	highlighted := highlightedSources{
+		old: []string{oldText, longText},
+		new: []string{newText},
+	}
+	for _, tc := range []struct {
+		name  string
+		split bool
+		want  []entry
+	}{
+		{
+			name: "unified",
+			want: []entry{
+				{leftLine: 0, rightLine: 0, text: oldText},
+				{leftLine: 1, rightLine: 1, text: longText},
+				{leftLine: 2, rightLine: 2, text: newText},
+			},
+		},
+		{
+			name:  "split",
+			split: true,
+			want: []entry{
+				{leftLine: 0, rightLine: 2, left: oldText, right: newText},
+				{leftLine: 1, rightLine: -1, left: longText},
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			v := &diffView{split: tc.split}
+			v.appendHunkRows(2, 3, hunk, highlighted)
+			header := entry{
+				kind: hunkRow, file: 2, hunk: 3,
+				leftLine: -1, rightLine: -1, text: "@@ header",
+			}
+			testutil.RequireEqual(t, v.rows[0], header,
+				"header = %#v, want %#v", v.rows[0], header,
+			)
+			testutil.RequireEqual(t, len(v.rows), len(tc.want)+1,
+				"row count = %d, want %d", len(v.rows), len(tc.want)+1,
+			)
+			for index, want := range tc.want {
+				want.kind, want.file, want.hunk = lineRow, 2, 3
+				testutil.RequireEqual(t, v.rows[index+1], want,
+					"row %d = %#v, want %#v", index, v.rows[index+1], want,
+				)
+			}
+			v.appendHunkRows(2, 4, patch.Hunk{}, highlighted)
+			testutil.RequireEqual(t, v.maxLineWidth, 24,
+				"maximum line width = %d, want 24", v.maxLineWidth,
+			)
+		})
+	}
+}
+
+func TestUnifiedLinePairs(t *testing.T) {
+	lines := []patch.Line{
+		{Kind: patch.Context},
+		{Kind: patch.Deletion},
+		{Kind: patch.Addition},
+	}
+	for length := 0; length <= len(lines); length++ {
+		var got [][2]int
+		for leftLine, rightLine := range unifiedLinePairs(lines[:length]) {
+			got = append(got, [2]int{leftLine, rightLine})
+		}
+		want := [][2]int{{0, 0}, {1, 1}, {2, 2}}
+		if !slices.Equal(got, want[:length]) {
+			t.Fatalf("line pairs = %v, want %v", got, want[:length])
+		}
+	}
+}
+
+func TestSplitLinePairs(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		kinds []patch.LineKind
+		want  [][2]int
+	}{
+		{name: "empty"},
+		{
+			name:  "split additions only",
+			kinds: []patch.LineKind{patch.Addition, patch.Addition},
+			want:  [][2]int{{-1, 0}, {-1, 1}},
+		},
+		{
+			name:  "split deletions only",
+			kinds: []patch.LineKind{patch.Deletion, patch.Deletion},
+			want:  [][2]int{{0, -1}, {1, -1}},
+		},
+		{
+			name: "split more deletions",
+			kinds: []patch.LineKind{
+				patch.Deletion, patch.Deletion, patch.Addition,
+			},
+			want: [][2]int{{0, 2}, {1, -1}},
+		},
+		{
+			name: "split more additions",
+			kinds: []patch.LineKind{
+				patch.Deletion, patch.Addition, patch.Addition,
+			},
+			want: [][2]int{{0, 1}, {-1, 2}},
+		},
+		{
+			name: "split independent change blocks",
+			kinds: []patch.LineKind{
+				patch.Addition, patch.Deletion, patch.Addition,
+				patch.Context, patch.Deletion,
+			},
+			want: [][2]int{{-1, 0}, {1, 2}, {3, 3}, {4, -1}},
+		},
+		{
+			name:  "unknown kind retains both panes",
+			kinds: []patch.LineKind{patch.LineKind(255)},
+			want:  [][2]int{{0, 0}},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			lines := make([]patch.Line, len(tc.kinds))
+			for index, kind := range tc.kinds {
+				lines[index].Kind = kind
+			}
+			var got [][2]int
+			for leftLine, rightLine := range splitLinePairs(lines) {
+				got = append(got, [2]int{leftLine, rightLine})
+			}
+			if !slices.Equal(got, tc.want) {
+				t.Fatalf("line pairs = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestLinePairsStopsEarly(t *testing.T) {
+	lines := []patch.Line{
+		{Kind: patch.Context},
+		{Kind: patch.Deletion},
+		{Kind: patch.Deletion},
+		{Kind: patch.Addition},
+		{Kind: patch.Addition},
+		{Kind: patch.Context},
+	}
+	for _, split := range []bool{false, true} {
+		for stopAfter := 1; stopAfter <= 3; stopAfter++ {
+			count := 0
+			pairs := unifiedLinePairs(lines)
+			if split {
+				pairs = splitLinePairs(lines)
+			}
+			for range pairs {
+				count++
+				if count == stopAfter {
+					break
+				}
+			}
+			if count != stopAfter {
+				t.Fatalf("split=%v: yielded %d pairs, want %d",
+					split, count, stopAfter,
+				)
+			}
+		}
+	}
+}
 
 func TestSplitRowsPairOnlyAdjacentChangeBlocks(t *testing.T) {
 	code := func(kind patch.LineKind, text string) patch.Line {

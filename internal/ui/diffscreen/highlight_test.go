@@ -15,8 +15,7 @@ func TestRenamedFileHighlightsEachSideUsingItsOwnPath(t *testing.T) {
 		OldSource: source,
 		NewSource: source,
 	}
-	view := &diffView{dark: true}
-	highlighted := view.highlight(&file)
+	highlighted := newHighlightedSources(file, Options{Dark: true})
 	old := strings.Join(highlighted.old, "\n")
 	updated := strings.Join(highlighted.new, "\n")
 	if old == updated || stripANSI(old) != strings.TrimSuffix(
@@ -55,12 +54,13 @@ func answer(value int) string {
 	return ""
 }
 `
+	file := patch.File{NewPath: "example.go", NewSource: source}
 	dark := strings.Join(
-		highlightSource("example.go", source, darkTheme),
+		newHighlightedSources(file, Options{Dark: true}).new,
 		"\n",
 	)
 	light := strings.Join(
-		highlightSource("example.go", source, lightTheme),
+		newHighlightedSources(file, Options{Dark: false}).new,
 		"\n",
 	)
 	if dark == light {
@@ -86,6 +86,64 @@ func answer(value int) string {
 				rendered,
 			)
 		}
+	}
+}
+
+func TestHighlightedSourcesText(t *testing.T) {
+	sources := highlightedSources{
+		old: []string{"old first", "old second"},
+		new: []string{"new first", "new second"},
+	}
+	for _, test := range []struct {
+		name string
+		line patch.Line
+		want string
+	}{
+		{
+			name: "deletion uses old source and number",
+			line: patch.Line{Kind: patch.Deletion, OldNumber: 2, NewNumber: 1},
+			want: "old second",
+		},
+		{
+			name: "addition uses new source and number",
+			line: patch.Line{Kind: patch.Addition, OldNumber: 1, NewNumber: 2},
+			want: "new second",
+		},
+		{
+			name: "context uses new source and number",
+			line: patch.Line{Kind: patch.Context, OldNumber: 2, NewNumber: 1},
+			want: "new first",
+		},
+		{
+			name: "missing old number falls back to patch text",
+			line: patch.Line{Kind: patch.Deletion, Text: "fallback"},
+			want: "fallback",
+		},
+		{
+			name: "out of range new number falls back to patch text",
+			line: patch.Line{
+				Kind: patch.Addition, NewNumber: 3, Text: "fallback",
+			},
+			want: "fallback",
+		},
+		{
+			name: "out of range old number falls back to patch text",
+			line: patch.Line{
+				Kind: patch.Deletion, OldNumber: 3, Text: "fallback",
+			},
+			want: "fallback",
+		},
+		{
+			name: "missing new number falls back to patch text",
+			line: patch.Line{Kind: patch.Context, Text: "fallback"},
+			want: "fallback",
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			if got := sources.text(test.line); got != test.want {
+				t.Fatalf("text(%+v) = %q, want %q", test.line, got, test.want)
+			}
+		})
 	}
 }
 

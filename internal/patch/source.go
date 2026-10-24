@@ -10,10 +10,9 @@ import (
 	"strings"
 )
 
-func readGitSource(
+func (r repository) readGitSource(
 	ctx context.Context,
-	run runner,
-	root, revision, path string,
+	revision, path string,
 ) string {
 	if path == "" {
 		return ""
@@ -22,18 +21,18 @@ func readGitSource(
 	if revision != "" {
 		source = revision + ":" + path
 	}
-	out, err := run.Run(ctx, root, "show", source)
+	out, err := r.run.Run(ctx, r.root, "show", source)
 	if err != nil {
 		return ""
 	}
 	return safeSource(out)
 }
 
-func readWorkingTree(root, path string) string {
+func (r repository) readWorkingTree(path string) string {
 	if path == "" {
 		return ""
 	}
-	full := filepath.Join(root, filepath.FromSlash(path))
+	full := filepath.Join(r.root, filepath.FromSlash(path))
 	info, err := os.Lstat(full)
 	if err != nil || !info.Mode().IsRegular() {
 		return ""

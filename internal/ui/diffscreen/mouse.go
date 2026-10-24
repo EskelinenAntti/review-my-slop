@@ -30,7 +30,7 @@ func (v *View) DragTo(x, y int) {
 	if cursor == *v.drag && v.selection == nil {
 		return
 	}
-	selection, ok := v.view.extendSelection(beginSelection(*v.drag), cursor)
+	selection, ok := v.view.selectionBetween(*v.drag, cursor)
 	if !ok {
 		return
 	}
@@ -57,7 +57,7 @@ func (v *View) cursorAtPoint(x, y int) (diffCursor, bool) {
 		switch {
 		case x < leftWidth:
 			pane = left
-		case x < leftWidth+3:
+		case x < leftWidth+paneSeparatorWidth:
 			return diffCursor{}, false
 		default:
 			pane = right

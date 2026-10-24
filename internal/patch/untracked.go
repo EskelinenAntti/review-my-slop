@@ -8,14 +8,10 @@ import (
 	"path/filepath"
 )
 
-func loadUntracked(
-	ctx context.Context,
-	run runner,
-	root string,
-) ([]File, error) {
-	out, err := run.Run(
+func (r repository) loadUntracked(ctx context.Context) ([]File, error) {
+	out, err := r.run.Run(
 		ctx,
-		root,
+		r.root,
 		"ls-files",
 		"--others",
 		"--exclude-standard",
@@ -24,20 +20,15 @@ func loadUntracked(
 	if err != nil {
 		return nil, err
 	}
-	return readUntrackedPaths(ctx, root, untrackedPaths(out))
-}
-
-func readUntrackedPaths(
-	ctx context.Context,
-	root string,
-	paths []string,
-) ([]File, error) {
-	files := make([]File, 0, len(paths))
-	for _, path := range paths {
+	files := make([]File, 0)
+	for path := range bytes.SplitSeq(out, []byte{0}) {
+		if len(path) == 0 {
+			continue
+		}
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
-		file, include, err := readUntrackedFile(root, path)
+		file, include, err := r.readUntrackedFile(string(path))
 		if err != nil {
 			return nil, err
 		}
@@ -48,18 +39,8 @@ func readUntrackedPaths(
 	return files, nil
 }
 
-func untrackedPaths(out []byte) []string {
-	var paths []string
-	for path := range bytes.SplitSeq(out, []byte{0}) {
-		if len(path) > 0 {
-			paths = append(paths, string(path))
-		}
-	}
-	return paths
-}
-
-func readUntrackedFile(root, path string) (File, bool, error) {
-	full := filepath.Join(root, filepath.FromSlash(path))
+func (r repository) readUntrackedFile(path string) (File, bool, error) {
+	full := filepath.Join(r.root, filepath.FromSlash(path))
 	info, err := os.Lstat(full)
 	if err != nil {
 		return File{}, false, fmt.Errorf("stat untracked %q: %w", path, err)

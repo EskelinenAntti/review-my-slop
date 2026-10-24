@@ -35,12 +35,13 @@ func testModel(
 func TestStoreBackedCommentLifecycle(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	store := comments.Store{Path: filepath.Join(t.TempDir(), "comments.db")}
+	other, err := store.Add(comments.Comment{
+		Repository: "/other-repo",
+		Body:       "unrelated comment",
+	})
+	testutil.NoError(t, err)
 	m, err := newWithStore(
-		context.Background(),
-		store,
-		modelPatch(),
-		nil,
-		defaultDimensions,
+		context.Background(), store, modelPatch(), nil, defaultDimensions,
 	)
 	testutil.NoError(t, err)
 
@@ -97,6 +98,14 @@ func TestStoreBackedCommentLifecycle(t *testing.T) {
 	)
 	testutil.RequireEqual(t, len(loaded), 0, "remaining = %#v, error = %v",
 		loaded, err,
+	)
+	otherComments, err := store.List(other.Repository)
+	testutil.NoError(t, err)
+	testutil.RequireEqual(t, len(otherComments), 1,
+		"unrelated comments = %#v", otherComments,
+	)
+	testutil.RequireEqual(t, otherComments[0].ID, other.ID,
+		"unrelated comments = %#v", otherComments,
 	)
 }
 
@@ -223,28 +232,49 @@ func TestViewSwitchPreservesSemanticCursor(t *testing.T) {
 	testutil.RequireEqual(t, got, want, "focused line=%#v, want %#v", got, want)
 }
 
-func TestCommentSaveUsesPatchAndPreservesAnchor(t *testing.T) {
-	var savedPatch patch.Patch
-	m := testModel(modelPatch(), nil, func(
-		stored comments.Comment,
-		p patch.Patch,
-	) (comments.Comment, error) {
-		savedPatch = p
-		stored.ID = "1"
-		return stored, nil
-	})
-	m.edit.body = "comment"
-	m.edit.anchor = comments.Anchor{FilePath: "main.go"}
-	m.finishCommentEdit()
-	testutil.RequireEqual(t, savedPatch.Root, "/repo",
-		"saved patch/comments = %#v %#v", savedPatch, m.comments.items,
-	)
-	testutil.RequireEqual(t, len(m.comments.items), 1,
-		"saved patch/comments = %#v %#v", savedPatch, m.comments.items,
-	)
-	testutil.RequireEqual(t, m.comments.items[0].Anchor.FilePath, "main.go",
-		"saved patch/comments = %#v %#v", savedPatch, m.comments.items,
-	)
+func TestCommentSaveUsesRepositoryAndPreservesAnchor(t *testing.T) {
+	for _, editing := range []bool{false, true} {
+		t.Run(fmt.Sprintf("editing=%t", editing), func(t *testing.T) {
+			anchor := comments.Anchor{FilePath: "main.go"}
+			var items []comments.Comment
+			if editing {
+				items = []comments.Comment{{
+					ID:         "1",
+					Repository: "/previous-repo",
+					Body:       "original",
+					Anchor:     anchor,
+				}}
+			}
+			var saved comments.Comment
+			m := testModel(modelPatch(), items, func(
+				stored comments.Comment,
+			) (comments.Comment, error) {
+				saved = stored
+				stored.ID = "1"
+				return stored, nil
+			})
+			if editing {
+				m.edit.index = 0
+			}
+			m.edit.body = "comment"
+			m.edit.anchor = anchor
+			m.finishCommentEdit()
+			testutil.NoError(t, m.err)
+			testutil.RequireEqual(t, saved.Repository, "/repo",
+				"saved comment = %#v", saved,
+			)
+			testutil.RequireEqual(t, saved.Body, "comment",
+				"saved comment = %#v", saved,
+			)
+			testutil.RequireEqual(t, len(m.comments.items), 1,
+				"saved comments = %#v", m.comments.items,
+			)
+			testutil.RequireEqual(t,
+				m.comments.items[0].Anchor.FilePath, "main.go",
+				"saved comments = %#v", m.comments.items,
+			)
+		})
+	}
 }
 
 func TestRenderingAndKeyBindingsRemainAvailable(t *testing.T) {

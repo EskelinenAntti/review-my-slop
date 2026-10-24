@@ -108,6 +108,54 @@ func TestStoreQueuesByRepositoryAndDeletesExactPeek(t *testing.T) {
 	)
 }
 
+func TestStoreMutationsStayWithinRepository(t *testing.T) {
+	for _, operation := range []string{"update", "delete", "acknowledge"} {
+		t.Run(operation, func(t *testing.T) {
+			store := Store{Path: filepath.Join(t.TempDir(), "comments.db")}
+			local := testComment("/repo/a", "local")
+			other := testComment("/repo/b", "other")
+			for _, comment := range []Comment{local, other} {
+				_, err := store.Add(comment)
+				testutil.NoError(t, err)
+			}
+
+			var err error
+			switch operation {
+			case "update":
+				changed := other
+				changed.Repository = local.Repository
+				changed.Body = "changed"
+				err = store.Update(changed)
+			case "delete":
+				err = store.Delete(local.Repository, other.ID)
+			case "acknowledge":
+				err = store.Acknowledge(local.Repository, []string{other.ID})
+			default:
+				t.Fatalf("unknown operation %q", operation)
+			}
+			if operation == "acknowledge" {
+				testutil.NoError(t, err)
+			} else if err == nil {
+				t.Fatal("mutation accepted a comment from another repository")
+			}
+
+			for _, want := range []Comment{local, other} {
+				remaining, err := store.List(want.Repository)
+				testutil.NoError(t, err)
+				testutil.RequireEqual(t, len(remaining), 1,
+					"comments = %#v, want one unchanged comment", remaining,
+				)
+				testutil.RequireEqual(t, remaining[0].ID, want.ID,
+					"comment ID = %q, want %q", remaining[0].ID, want.ID,
+				)
+				testutil.RequireEqual(t, remaining[0].Body, want.Body,
+					"comment body = %q, want %q", remaining[0].Body, want.Body,
+				)
+			}
+		})
+	}
+}
+
 func TestWritePrompt(t *testing.T) {
 	var out bytes.Buffer
 	comment := testComment("/repo", "Handle the nil case.")

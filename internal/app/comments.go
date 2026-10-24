@@ -2,18 +2,62 @@ package app
 
 import (
 	"errors"
-	"path/filepath"
+	"fmt"
 	"slices"
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/eskelinenantti/review-my-slop/internal/comments"
-	"github.com/eskelinenantti/review-my-slop/internal/editor"
 	"github.com/eskelinenantti/review-my-slop/internal/patch"
 )
 
 var errCommentStorageUnavailable = errors.New("comment storage is unavailable")
+
+type saveCommentFunc func(comments.Comment) (comments.Comment, error)
+type deleteCommentFunc func(comments.Comment) error
+type loadCommentsFunc func() ([]comments.Comment, error)
+
+// commentState pairs stored comments with the revision used to reject stale
+// loads.
+type commentState struct {
+	items    []comments.Comment
+	revision uint64
+}
+
+type commentsLoadedMsg struct {
+	comments []comments.Comment
+	revision uint64
+	err      error
+}
+
+func (m model) loadComments() tea.Cmd {
+	if m.load == nil {
+		return nil
+	}
+	revision := m.comments.revision
+	return func() tea.Msg {
+		comments, err := m.load()
+		return commentsLoadedMsg{
+			comments: comments,
+			revision: revision,
+			err:      err,
+		}
+	}
+}
+
+func (m *model) finishCommentsLoad(msg commentsLoadedMsg) {
+	if msg.revision != m.comments.revision {
+		return
+	}
+	if msg.err != nil {
+		m.err = fmt.Errorf("refresh comments: %w", msg.err)
+		return
+	}
+	m.comments.items = msg.comments
+	m.commentView.Update(m.comments.items)
+	m.err = nil
+}
 
 func (m model) updateComments(name string) (tea.Model, tea.Cmd) {
 	m.err = nil
@@ -39,39 +83,6 @@ func (m model) updateComments(name string) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m model) editSelectedComment() (tea.Model, tea.Cmd) {
-	index, ok := m.commentView.SelectedIndex()
-	if !ok {
-		return m, nil
-	}
-	comment := m.comments.items[index]
-	m.edit = commentEdit{
-		body:   comment.Body,
-		index:  index,
-		anchor: comment.Anchor,
-	}
-	cmd, err := m.openCommentEditor()
-	if err != nil {
-		m.err = err
-		return m, nil
-	}
-	return m, cmd
-}
-
-func (m *model) beginComment() (tea.Cmd, error) {
-	file, lines, ok := m.diffView.Selected()
-	if !ok {
-		return nil, errors.New("select code lines before commenting")
-	}
-	anchor := commentAnchor(file, lines)
-	m.edit = commentEdit{index: -1, anchor: anchor}
-	cmd, err := m.openCommentEditor()
-	if err != nil {
-		return nil, err
-	}
-	return cmd, nil
-}
-
 func (m *model) finishCommentEdit() {
 	defer m.clearCommentEdit()
 	body := strings.TrimSpace(m.edit.body)
@@ -93,7 +104,8 @@ func (m *model) finishCommentEdit() {
 	} else {
 		comment = comments.Comment{Anchor: m.edit.anchor, Body: body}
 	}
-	saved, err := m.save(comment, m.currentPatch)
+	comment.Repository = m.currentPatch.Root
+	saved, err := m.save(comment)
 	if err != nil {
 		m.err = err
 		return
@@ -122,7 +134,10 @@ func (m *model) deleteComment(index int) {
 		m.err = errCommentStorageUnavailable
 		return
 	}
-	if err := m.delete(m.comments.items[index], m.currentPatch); err != nil {
+	comment := m.comments.items[index]
+	comment.Repository = m.currentPatch.Root
+	err := m.delete(comment)
+	if err != nil {
 		m.err = err
 		return
 	}
@@ -134,53 +149,6 @@ func (m *model) commentsChanged() {
 	m.commentView.Update(m.comments.items)
 	m.comments.revision++
 	m.err = nil
-}
-
-func (m *model) clearCommentEdit() {
-	m.edit = commentEdit{index: -1}
-}
-
-func (m *model) openCurrentLine() (tea.Cmd, error) {
-	path, number, err := m.sourceLocation()
-	if err != nil {
-		return nil, err
-	}
-	return editor.OpenSource(m.ctx, path, number, func(err error) tea.Msg {
-		return sourceEditorFinishedMsg{err: err}
-	})
-}
-
-func (m model) sourceLocation() (string, int, error) {
-	file, line, ok := m.diffView.Current()
-	if !ok {
-		return "", 0, errors.New("select a code line to open in $EDITOR")
-	}
-	path, number := file.NewPath, line.NewNumber
-	if number == 0 {
-		number = line.OldNumber
-	}
-	if path == "" || path == "/dev/null" || number < 1 {
-		return "", 0, errors.New(
-			"current line has no editable working-tree location",
-		)
-	}
-	if !filepath.IsAbs(path) {
-		path = filepath.Join(m.currentPatch.Root, filepath.FromSlash(path))
-	}
-	return path, int(number), nil
-}
-
-func (m *model) openCommentEditor() (tea.Cmd, error) {
-	cmd, err := editor.EditComment(m.ctx, m.edit.body, m.edit.anchor, func(
-		body string,
-		err error,
-	) tea.Msg {
-		return commentEditorFinishedMsg{body: body, err: err}
-	})
-	if err != nil {
-		m.clearCommentEdit()
-	}
-	return cmd, err
 }
 
 func commentAnchor(file patch.File, lines []patch.Line) comments.Anchor {

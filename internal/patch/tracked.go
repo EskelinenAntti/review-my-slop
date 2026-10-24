@@ -10,10 +10,8 @@ import (
 	"github.com/sourcegraph/go-diff/diff"
 )
 
-func parseTracked(
+func (r repository) parseTracked(
 	ctx context.Context,
-	run runner,
-	root string,
 	raw []byte,
 	oldRevision string,
 ) ([]File, error) {
@@ -29,7 +27,7 @@ func parseTracked(
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
-		file, err := parseTrackedFile(ctx, run, root, fd, oldRevision)
+		file, err := r.parseTrackedFile(ctx, fd, oldRevision)
 		if err != nil {
 			return nil, err
 		}
@@ -38,10 +36,8 @@ func parseTracked(
 	return files, nil
 }
 
-func parseTrackedFile(
+func (r repository) parseTrackedFile(
 	ctx context.Context,
-	run runner,
-	root string,
 	fd *diff.FileDiff,
 	oldRevision string,
 ) (File, error) {
@@ -53,8 +49,8 @@ func parseTrackedFile(
 		Metadata: visibleStrings(fd.Extended),
 	}
 	file.DisplayPath = visibleText(file.PreferredPath())
-	file.OldSource = readGitSource(ctx, run, root, oldRevision, oldPath)
-	file.NewSource = readWorkingTree(root, newPath)
+	file.OldSource = r.readGitSource(ctx, oldRevision, oldPath)
+	file.NewSource = r.readWorkingTree(newPath)
 	for _, h := range fd.Hunks {
 		lines, err := parseHunkBody(h.OrigStartLine, h.NewStartLine, h.Body)
 		if err != nil {
@@ -80,45 +76,29 @@ func parseHunkBody(oldLine, newLine int32, body []byte) ([]Line, error) {
 		if len(raw) == 0 {
 			return nil, errors.New("malformed empty diff line")
 		}
-		text := visibleText(string(raw[1:]))
+		line := Line{Text: visibleText(string(raw[1:]))}
 		switch raw[0] {
 		case ' ':
-			lines = append(
-				lines,
-				Line{
-					Kind:      Context,
-					Text:      text,
-					OldNumber: LineNumber(oldLine),
-					NewNumber: LineNumber(newLine),
-				},
-			)
-			oldLine++
-			newLine++
+			line.Kind = Context
 		case '+':
-			lines = append(
-				lines,
-				Line{
-					Kind:      Addition,
-					Text:      text,
-					NewNumber: LineNumber(newLine),
-				},
-			)
-			newLine++
+			line.Kind = Addition
 		case '-':
-			lines = append(
-				lines,
-				Line{
-					Kind:      Deletion,
-					Text:      text,
-					OldNumber: LineNumber(oldLine),
-				},
-			)
-			oldLine++
+			line.Kind = Deletion
 		case '\\':
 			// "\ No newline at end of file" belongs to the preceding line.
+			continue
 		default:
 			return nil, fmt.Errorf("unexpected diff prefix %q", raw[0])
 		}
+		if line.Kind != Addition {
+			line.OldNumber = LineNumber(oldLine)
+			oldLine++
+		}
+		if line.Kind != Deletion {
+			line.NewNumber = LineNumber(newLine)
+			newLine++
+		}
+		lines = append(lines, line)
 	}
 	return lines, nil
 }
