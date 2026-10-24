@@ -23,6 +23,22 @@ func (v *diffView) sameFileHunk(first, last diffCursor) bool {
 	return firstRow.file == lastRow.file && firstRow.hunk == lastRow.hunk
 }
 
+func (s *diffSelection) contains(cursor diffCursor) bool {
+	if s == nil {
+		return false
+	}
+	first, last := s.First, s.Last
+	if first.row == last.row && first.pane != last.pane {
+		return cursor.row == first.row &&
+			(cursor.pane == first.pane || cursor.pane == last.pane)
+	}
+	if first.pane != cursor.pane {
+		return false
+	}
+	return cursor.row >= min(first.row, last.row) &&
+		cursor.row <= max(first.row, last.row)
+}
+
 func (v *diffView) lines(selection diffSelection) []patch.Line {
 	if !v.sameFileHunk(selection.First, selection.Last) {
 		return nil

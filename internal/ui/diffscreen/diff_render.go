@@ -160,13 +160,7 @@ func (r diffRenderer) renderCodeLine(
 		r.viewport.leftColumn,
 		width-lipgloss.Width(gutter),
 	)
-	style, colors := renderedLineStyle(
-		line.Kind,
-		candidate,
-		r.cursor,
-		r.selection,
-		r.view.styles,
-	)
+	style, colors := r.lineStyle(line.Kind, candidate)
 	return renderStyledRow(style, value, width, colors)
 }
 
@@ -181,39 +175,18 @@ func lineMarker(kind patch.LineKind) string {
 	}
 }
 
-func renderedLineStyle(
+func (r diffRenderer) lineStyle(
 	kind patch.LineKind,
 	candidate diffCursor,
-	cursor diffCursor,
-	selection *diffSelection,
-	styles lineStyles,
 ) (lipgloss.Style, foregroundPolicy) {
-	style, colors := lineStyle(kind, styles), preserveForeground
-	if selectionContains(selection, candidate) {
-		style, colors = styles.selection, discardForeground
+	style, colors := lineStyle(kind, r.view.styles), preserveForeground
+	if r.selection.contains(candidate) {
+		style, colors = r.view.styles.selection, discardForeground
 	}
-	if cursor == candidate {
+	if r.cursor == candidate {
 		style, colors = cursorStyle, discardForeground
 	}
 	return style, colors
-}
-
-func selectionContains(selection *diffSelection, cursor diffCursor) bool {
-	if selection == nil {
-		return false
-	}
-	first, last := selection.First, selection.Last
-	if first.row == last.row && first.pane != last.pane {
-		return cursor.row == first.row &&
-			(cursor.pane == first.pane || cursor.pane == last.pane)
-	}
-	if first.pane != cursor.pane {
-		return false
-	}
-	return cursor.row >= min(
-		first.row,
-		last.row,
-	) && cursor.row <= max(first.row, last.row)
 }
 
 func lineStyle(kind patch.LineKind, styles lineStyles) lipgloss.Style {

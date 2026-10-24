@@ -1,11 +1,84 @@
 package diffscreen
 
 import (
+	"slices"
 	"testing"
 
 	"github.com/eskelinenantti/review-my-slop/internal/patch"
 	"github.com/eskelinenantti/review-my-slop/internal/testutil"
 )
+
+func TestSelectionContains(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		selection *diffSelection
+		want      []diffCursor
+	}{
+		{name: "no selection"},
+		{
+			name: "single line",
+			selection: &diffSelection{
+				First: diffCursor{2, left}, Last: diffCursor{2, left},
+			},
+			want: []diffCursor{{2, left}},
+		},
+		{
+			name: "forward range",
+			selection: &diffSelection{
+				First: diffCursor{1, right}, Last: diffCursor{3, right},
+			},
+			want: []diffCursor{{1, right}, {2, right}, {3, right}},
+		},
+		{
+			name: "reversed range",
+			selection: &diffSelection{
+				First: diffCursor{3, left}, Last: diffCursor{1, left},
+			},
+			want: []diffCursor{{1, left}, {2, left}, {3, left}},
+		},
+		{
+			name: "both panes on one row",
+			selection: &diffSelection{
+				First: diffCursor{2, left}, Last: diffCursor{2, right},
+			},
+			want: []diffCursor{{2, left}, {2, right}},
+		},
+		{
+			name: "reversed panes on one row",
+			selection: &diffSelection{
+				First: diffCursor{2, right}, Last: diffCursor{2, left},
+			},
+			want: []diffCursor{{2, left}, {2, right}},
+		},
+		{
+			name: "cross-pane range highlights first pane",
+			selection: &diffSelection{
+				First: diffCursor{1, left}, Last: diffCursor{3, right},
+			},
+			want: []diffCursor{{1, left}, {2, left}, {3, left}},
+		},
+		{
+			name: "reversed cross-pane range highlights first pane",
+			selection: &diffSelection{
+				First: diffCursor{3, right}, Last: diffCursor{1, left},
+			},
+			want: []diffCursor{{1, right}, {2, right}, {3, right}},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			for row := 0; row <= 4; row++ {
+				for _, pane := range []diffPane{left, right} {
+					cursor := diffCursor{row: row, pane: pane}
+					testutil.RequireEqual(t,
+						tc.selection.contains(cursor),
+						slices.Contains(tc.want, cursor),
+						"cursor=%#v", cursor,
+					)
+				}
+			}
+		})
+	}
+}
 
 func TestSelectionBetween(t *testing.T) {
 	for _, layout := range []struct {
