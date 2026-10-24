@@ -71,3 +71,35 @@ func TestZeroValuePassesKeysThrough(t *testing.T) {
 		t.Fatalf("got %q", got)
 	}
 }
+
+func TestNewOwnsSequenceRules(t *testing.T) {
+	sequences := []Sequence{
+		{Prefix: "g", Keys: []string{"g"}, RetryUnmatched: true},
+	}
+	m := New(sequences...)
+	sequences[0].Keys[0] = "j"
+	sequences[0].Prefix = "z"
+	sequences[0].RetryUnmatched = false
+
+	keys := []string{"g", "g", "g", "j", "z"}
+	want := []string{"", "g g", "", "j", "z"}
+	for i, key := range keys {
+		if got := m.Feed(key); got != want[i] {
+			t.Fatalf("key %d (%q): got %q, want %q", i, key, got, want[i])
+		}
+	}
+}
+
+func TestNewLastRuleForPrefixWins(t *testing.T) {
+	m := New(
+		Sequence{Prefix: "g", Keys: []string{"g"}, RetryUnmatched: true},
+		Sequence{Prefix: "g", Keys: []string{"j"}},
+	)
+	keys := []string{"g", "j", "g", "g"}
+	want := []string{"", "g j", "", ""}
+	for i, key := range keys {
+		if got := m.Feed(key); got != want[i] {
+			t.Fatalf("key %d (%q): got %q, want %q", i, key, got, want[i])
+		}
+	}
+}
