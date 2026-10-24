@@ -25,54 +25,35 @@ func (s Store) WritePending(w io.Writer, repository string) error {
 
 // WritePrompt writes comments as Markdown feedback for a coding agent.
 func WritePrompt(w io.Writer, comments []Comment) error {
+	_, err := fmt.Fprint(w, formatPrompt(comments))
+	return err
+}
+
+func formatPrompt(comments []Comment) string {
 	if len(comments) == 0 {
-		_, err := fmt.Fprintln(w, "No pending review comments.")
-		return err
+		return "No pending review comments.\n"
 	}
-	if _, err := fmt.Fprintln(w, "New comments since last run:"); err != nil {
-		return err
-	}
+	var prompt strings.Builder
+	_, _ = prompt.WriteString("New comments since last run:\n")
 	for index, comment := range comments {
-		if err := writePromptComment(w, index+1, comment); err != nil {
-			return err
+		anchor := comment.Anchor
+		_, _ = fmt.Fprintf(
+			&prompt,
+			"\n### %d. `%s` (%s)\n\n",
+			index+1,
+			anchor.FilePath,
+			describeRange(anchor),
+		)
+		if len(anchor.QuotedLines) > 0 {
+			_, _ = prompt.WriteString("```diff\n")
+			for _, line := range anchor.QuotedLines {
+				_, _ = fmt.Fprintln(&prompt, line)
+			}
+			_, _ = prompt.WriteString("```\n")
 		}
+		_, _ = fmt.Fprintln(&prompt, strings.TrimSpace(comment.Body))
 	}
-	return nil
-}
-
-func writePromptComment(w io.Writer, number int, comment Comment) error {
-	anchor := comment.Anchor
-	_, headingErr := fmt.Fprintf(
-		w,
-		"\n### %d. `%s` (%s)\n\n",
-		number,
-		anchor.FilePath,
-		describeRange(anchor),
-	)
-	if headingErr != nil {
-		return headingErr
-	}
-	if err := writeQuotedLines(w, anchor.QuotedLines); err != nil {
-		return err
-	}
-	_, err := fmt.Fprintln(w, strings.TrimSpace(comment.Body))
-	return err
-}
-
-func writeQuotedLines(w io.Writer, lines []string) error {
-	if len(lines) == 0 {
-		return nil
-	}
-	if _, err := fmt.Fprintln(w, "```diff"); err != nil {
-		return err
-	}
-	for _, line := range lines {
-		if _, err := fmt.Fprintln(w, line); err != nil {
-			return err
-		}
-	}
-	_, err := fmt.Fprintln(w, "```")
-	return err
+	return prompt.String()
 }
 
 func describeRange(anchor Anchor) string {
