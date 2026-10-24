@@ -24,13 +24,13 @@ func TestSelectionBetween(t *testing.T) {
 			})
 			v := newDiffView(p, Options{SideBySide: layout.split, Dark: true})
 			first := mustFirst(t, v)
-			added, ok := v.search("added one", first, forward)
+			added, ok := v.search("added one", first, Forward)
 			testutil.RequireEqual(t, ok, true, "%s", "addition not found")
-			removed, ok := v.search("removed one", first, forward)
+			removed, ok := v.search("removed one", first, Forward)
 			testutil.RequireEqual(t, ok, true, "%s", "deletion not found")
-			nextHunk, ok := v.search("next hunk", first, forward)
+			nextHunk, ok := v.search("next hunk", first, Forward)
 			testutil.RequireEqual(t, ok, true, "%s", "next hunk not found")
-			nextFile, ok := v.jumpFile(first, forward)
+			nextFile, ok := v.jumpFile(first, Forward)
 			testutil.RequireEqual(t, ok, true, "%s", "next file not found")
 
 			for _, tc := range []struct {
@@ -77,7 +77,7 @@ func TestSelectionBetween(t *testing.T) {
 func TestSelectionBetweenRejectsEmptyPane(t *testing.T) {
 	v := newSideBySideView(testPatch(), true)
 	first := mustFirst(t, v)
-	removed, ok := v.search("removed two", first, forward)
+	removed, ok := v.search("removed two", first, Forward)
 	testutil.RequireEqual(t, ok, true, "%s", "unpaired deletion not found")
 	empty := diffCursor{row: removed.row, pane: right}
 	_, ok = v.selectionBetween(first, empty)

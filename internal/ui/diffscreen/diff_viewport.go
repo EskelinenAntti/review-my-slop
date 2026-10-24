@@ -72,7 +72,7 @@ func (v *diffView) keepVisible(
 func (v *diffView) align(
 	viewport diffViewport,
 	cursor diffCursor,
-	alignment verticalAlignment,
+	alignment Alignment,
 ) diffViewport {
 	headerHeight := 0
 	if viewport.height > 1 {
@@ -86,11 +86,11 @@ func (v *diffView) align(
 	return v.clampViewport(viewport)
 }
 
-func alignmentOffset(height int, alignment verticalAlignment) int {
-	if alignment == middle {
+func alignmentOffset(height int, alignment Alignment) int {
+	if alignment == Center {
 		return height / 2
 	}
-	if alignment == bottom {
+	if alignment == Bottom {
 		return height - 1
 	}
 	return 0
@@ -123,9 +123,9 @@ func (v *diffView) scrollVertical(
 		viewport.top,
 		min(cursor.row, viewport.top+v.contentHeight(viewport)-1),
 	)
-	d := forward
+	d := Forward
 	if cursor.row > target {
-		d = backward
+		d = Backward
 	}
 	candidate, ok := v.nearest(target, cursor.pane, d, viewport)
 	if !ok && v.split {
@@ -147,7 +147,7 @@ func (v *diffView) cursorVisible(
 func (v *diffView) scrollHalfPage(
 	viewport diffViewport,
 	cursor diffCursor,
-	direction direction,
+	direction Direction,
 ) (diffViewport, diffCursor) {
 	if !v.valid(cursor) {
 		return viewport, cursor
@@ -174,7 +174,7 @@ func (v *diffView) viewportProgress(viewport diffViewport) int {
 func (v *diffView) nearest(
 	target int,
 	pane diffPane,
-	direction direction,
+	direction Direction,
 	viewport diffViewport,
 ) (diffCursor, bool) {
 	height := v.contentHeight(viewport)

@@ -1,9 +1,9 @@
 package diffscreen
 
-// Direction chooses the order in which search matches are visited.
+// Direction chooses forward or backward traversal through the diff.
 type Direction int8
 
-// Backward and Forward select the search traversal direction.
+// Backward and Forward select the traversal direction.
 const (
 	Backward Direction = -1
 	Forward  Direction = 1
@@ -54,7 +54,7 @@ func (v *View) previewSearch(query string) {
 		v.search.miss = false
 		return
 	}
-	cursor, ok := v.view.search(query, v.search.from, forward)
+	cursor, ok := v.view.search(query, v.search.from, Forward)
 	v.search.miss = !ok
 	if ok {
 		v.setCursor(cursor)
@@ -91,7 +91,7 @@ func (v *View) Find(d Direction) bool {
 	if d != Forward && d != Backward {
 		return false
 	}
-	cursor, ok := v.view.search(v.search.term, v.cursor, direction(d))
+	cursor, ok := v.view.search(v.search.term, v.cursor, d)
 	v.search.repeatMiss = !ok
 	if ok {
 		v.setCursor(cursor)

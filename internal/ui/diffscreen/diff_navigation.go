@@ -27,16 +27,16 @@ func (v *diffView) cursorAt(y int, pane diffPane) (diffCursor, bool) {
 }
 
 func (v *diffView) first() (diffCursor, bool) {
-	return v.edge(forward)
+	return v.edge(Forward)
 }
 
 func (v *diffView) last() (diffCursor, bool) {
-	return v.edge(backward)
+	return v.edge(Backward)
 }
 
-func (v *diffView) edge(direction direction) (diffCursor, bool) {
+func (v *diffView) edge(direction Direction) (diffCursor, bool) {
 	start := -1
-	if direction == backward {
+	if direction == Backward {
 		start = len(v.rows)
 	}
 	if cursor, ok := v.scan(start, right, direction); ok {
@@ -48,7 +48,7 @@ func (v *diffView) edge(direction direction) (diffCursor, bool) {
 func (v *diffView) scan(
 	start int,
 	pane diffPane,
-	direction direction,
+	direction Direction,
 ) (diffCursor, bool) {
 	step := int(direction)
 	for y := start + step; y >= 0 && y < len(v.rows); y += step {
@@ -61,7 +61,7 @@ func (v *diffView) scan(
 
 func (v *diffView) move(
 	cursor diffCursor,
-	direction direction,
+	direction Direction,
 ) (diffCursor, bool) {
 	if !v.valid(cursor) {
 		return diffCursor{}, false
@@ -72,7 +72,7 @@ func (v *diffView) move(
 func (v *diffView) search(
 	query string,
 	cursor diffCursor,
-	direction direction,
+	direction Direction,
 ) (diffCursor, bool) {
 	if query == "" || !v.valid(cursor) {
 		return diffCursor{}, false
@@ -92,7 +92,7 @@ func (v *diffView) searchRow(
 	query string,
 	y int,
 	pane diffPane,
-	direction direction,
+	direction Direction,
 ) (diffCursor, bool) {
 	if v.rows[y].kind != lineRow {
 		return v.searchMetadata(query, y, pane, direction)
@@ -126,7 +126,7 @@ func (v *diffView) searchMetadata(
 	query string,
 	y int,
 	pane diffPane,
-	direction direction,
+	direction Direction,
 ) (diffCursor, bool) {
 	if strings.Contains(strings.ToLower(ansi.Strip(v.rows[y].text)), query) {
 		return v.cursorNearMetadata(y, pane, direction)
@@ -137,7 +137,7 @@ func (v *diffView) searchMetadata(
 func (v *diffView) cursorNearMetadata(
 	y int,
 	pane diffPane,
-	direction direction,
+	direction Direction,
 ) (diffCursor, bool) {
 	for distance := 1; distance <= len(v.rows); distance++ {
 		for _, candidateY := range neighborRows(y, distance, direction) {
@@ -149,7 +149,7 @@ func (v *diffView) cursorNearMetadata(
 	return diffCursor{}, false
 }
 
-func neighborRows(row, distance int, direction direction) [2]int {
+func neighborRows(row, distance int, direction Direction) [2]int {
 	offset := int(direction) * distance
 	return [2]int{row + offset, row - offset}
 }
@@ -172,7 +172,7 @@ func (v *diffView) cursorInFile(
 
 func (v *diffView) jumpFile(
 	cursor diffCursor,
-	direction direction,
+	direction Direction,
 ) (diffCursor, bool) {
 	if !v.valid(cursor) {
 		return diffCursor{}, false
@@ -204,7 +204,7 @@ func (v *diffView) switchPane(
 	if candidate, ok := v.previousInFile(cursor, pane); ok {
 		return candidate, true
 	}
-	return v.scan(cursor.row, pane, forward)
+	return v.scan(cursor.row, pane, Forward)
 }
 
 func (v *diffView) previousInFile(

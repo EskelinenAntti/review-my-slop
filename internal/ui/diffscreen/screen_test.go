@@ -137,6 +137,44 @@ func TestNarrowLayoutFallbackPreservesPreferenceAndPosition(t *testing.T) {
 	)
 }
 
+func TestAlignPositionsFocusInBothLayouts(t *testing.T) {
+	for _, layout := range []struct {
+		name  string
+		split bool
+	}{
+		{"unified", false},
+		{"split", true},
+	} {
+		for _, alignment := range []struct {
+			name  string
+			value Alignment
+			row   int
+		}{
+			{"top", Top, 1},
+			{"center", Center, 3},
+			{"bottom", Bottom, 6},
+		} {
+			t.Run(layout.name+"/"+alignment.name, func(t *testing.T) {
+				v := New(longPatch(), Options{SideBySide: layout.split})
+				v.Resize(120, 10)
+				for range 10 {
+					v.Move(NextLine)
+				}
+				cursor := v.cursor
+				v.Align(alignment.value)
+
+				testutil.RequireEqual(t, v.cursor, cursor,
+					"alignment changed focus",
+				)
+				testutil.RequireEqual(t,
+					v.cursor.row-v.viewport.top+1, alignment.row,
+					"unexpected body row (including sticky header)",
+				)
+			})
+		}
+	}
+}
+
 func TestPageMovementDoesNotPartiallyChangeRejectedSelection(t *testing.T) {
 	v := New(testPatch(), Options{Dark: true})
 	v.Resize(80, 30)

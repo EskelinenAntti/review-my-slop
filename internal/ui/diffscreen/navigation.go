@@ -35,13 +35,13 @@ func (v *View) Move(motion Motion) {
 	v.search.repeatMiss = false
 	switch motion {
 	case PreviousLine:
-		v.step(backward)
+		v.step(Backward)
 	case NextLine:
-		v.step(forward)
+		v.step(Forward)
 	case PreviousPage:
-		v.halfPage(backward)
+		v.halfPage(Backward)
 	case NextPage:
-		v.halfPage(forward)
+		v.halfPage(Forward)
 	case FirstLine:
 		if cursor, ok := v.view.first(); ok {
 			v.setCursor(cursor)
@@ -59,9 +59,9 @@ func (v *View) Move(motion Motion) {
 func (v *View) moveBetweenSections(motion Motion) {
 	switch motion {
 	case PreviousFile:
-		v.jumpFile(backward)
+		v.jumpFile(Backward)
 	case NextFile:
-		v.jumpFile(forward)
+		v.jumpFile(Forward)
 	case OldPane:
 		v.switchPane(left)
 	case NewPane:
@@ -73,7 +73,7 @@ func (v *View) moveBetweenSections(motion Motion) {
 	}
 }
 
-func (v *View) step(direction direction) {
+func (v *View) step(direction Direction) {
 	next, ok := v.view.move(v.cursor, direction)
 	if !ok {
 		return
@@ -89,7 +89,7 @@ func (v *View) setCursor(cursor diffCursor) {
 	v.viewport = v.view.keepVisible(v.viewport, cursor)
 }
 
-func (v *View) halfPage(direction direction) {
+func (v *View) halfPage(direction Direction) {
 	viewport, cursor := v.view.scrollHalfPage(v.viewport, v.cursor, direction)
 	if !v.extendSelectionTo(cursor) {
 		return
@@ -110,7 +110,7 @@ func (v *View) extendSelectionTo(cursor diffCursor) bool {
 	return ok
 }
 
-func (v *View) jumpFile(direction direction) {
+func (v *View) jumpFile(direction Direction) {
 	v.selection = nil
 	if cursor, ok := v.view.jumpFile(v.cursor, direction); ok {
 		v.setCursor(cursor)
@@ -146,7 +146,7 @@ func (v *View) Align(alignment Alignment) {
 	v.viewport = v.view.align(
 		v.viewport,
 		v.cursor,
-		verticalAlignment(alignment),
+		alignment,
 	)
 }
 

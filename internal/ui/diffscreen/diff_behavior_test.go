@@ -68,8 +68,8 @@ func TestSplitPairsUnequalChangeBlocksAndKeepsHunksSeparate(t *testing.T) {
 func TestSplitSelectionOnlyIncludesActivePane(t *testing.T) {
 	v := newSideBySideView(testPatch(), true)
 	first := mustFirst(t, v)
-	removed, _ := v.search("removed one", first, forward)
-	added, _ := v.search("added one", first, forward)
+	removed, _ := v.search("removed one", first, Forward)
+	added, _ := v.search("added one", first, Forward)
 	left, ok := v.selectionBetween(removed, removed)
 	testutil.RequireEqual(t, ok, true, "left lines = %#v", v.lines(left))
 	testutil.RequireEqual(t, len(v.lines(left)), 1, "left lines = %#v",
@@ -189,12 +189,12 @@ func TestSplitVerticalMovementSkipsEmptyActivePane(t *testing.T) {
 	v := newSideBySideView(p, true)
 	first := mustFirst(t, v)
 	left, _ := v.switchPane(first, left)
-	nextLeft, _ := v.move(left, forward)
+	nextLeft, _ := v.move(left, Forward)
 	line, _ := v.line(nextLeft)
 	testutil.RequireEqual(t, line.Text, "two", "left movement = %q", line.Text)
 
 	rightAtContext, _ := v.switchPane(nextLeft, right)
-	nextRight, _ := v.move(rightAtContext, forward)
+	nextRight, _ := v.move(rightAtContext, Forward)
 	line, _ = v.line(nextRight)
 	testutil.RequireEqual(t, line.Text, "three", "right movement = %q",
 		line.Text,
@@ -246,7 +246,7 @@ func TestSplitVerticalMovementAndHalfPageUseVisualRows(t *testing.T) {
 	viewport := v.newViewport(120, 4)
 	viewport = v.keepVisible(viewport, cursor)
 	originalTop := viewport.top
-	viewport, moved := v.scrollHalfPage(viewport, cursor, forward)
+	viewport, moved := v.scrollHalfPage(viewport, cursor, Forward)
 	testutil.RequireEqual(t, viewport.top > originalTop, true,
 		"viewport=%#v cursor=%#v", viewport, moved,
 	)
@@ -254,7 +254,7 @@ func TestSplitVerticalMovementAndHalfPageUseVisualRows(t *testing.T) {
 		"viewport=%#v cursor=%#v", viewport, moved,
 	)
 
-	viewport, moved = v.scrollHalfPage(viewport, moved, backward)
+	viewport, moved = v.scrollHalfPage(viewport, moved, Backward)
 	testutil.RequireEqual(t, viewport.top, originalTop,
 		"round trip viewport=%#v cursor=%#v", viewport, moved,
 	)
@@ -454,8 +454,8 @@ func TestHorizontalScrollStartAndEndClamp(t *testing.T) {
 func TestDiffMarkersUseTerminalColorsAndCursorFillsWidth(t *testing.T) {
 	v := newUnifiedView(testPatch(), true)
 	first := mustFirst(t, v)
-	added, _ := v.search("added one", first, forward)
-	removed, _ := v.search("removed one", first, forward)
+	added, _ := v.search("added one", first, Forward)
+	removed, _ := v.search("removed one", first, Forward)
 	addedRender := renderTarget(v, added, first, 80, nil)
 	removedRender := renderTarget(v, removed, first, 80, nil)
 	testutil.RequireEqual(t, strings.Contains(addedRender, "\x1b[32m+\x1b[m"),
@@ -476,7 +476,7 @@ func TestDiffMarkersUseTerminalColorsAndCursorFillsWidth(t *testing.T) {
 func TestSelectionBackgroundKeepsDefaultWeight(t *testing.T) {
 	v := newUnifiedView(testPatch(), false)
 	first := mustFirst(t, v)
-	removed, _ := v.search("removed one", first, forward)
+	removed, _ := v.search("removed one", first, Forward)
 	selection, ok := v.selectionBetween(removed, removed)
 	testutil.RequireEqual(t, ok, true, "%s", "selection not created")
 	rendered := renderTarget(v, removed, first, 72, &selection)
@@ -515,7 +515,7 @@ func TestSyntaxHighlightingSurvivesDiffStyling(t *testing.T) {
 	}
 	v := newUnifiedView(p, true)
 	first := mustFirst(t, v)
-	added, _ := v.search("new()", first, forward)
+	added, _ := v.search("new()", first, Forward)
 	for _, cursor := range []diffCursor{first, added} {
 		rendered := renderTarget(v, cursor, diffCursor{}, 80, nil)
 		testutil.RequireEqual(t, strings.Contains(rendered, "[38;2;"), true,
@@ -536,7 +536,7 @@ func TestRenderedCodeRowsHaveExactTerminalWidth(t *testing.T) {
 			testutil.RequireEqual(t, width, test.width, "width=%d want=%d",
 				width, test.width,
 			)
-			next, ok := v.move(cursor, forward)
+			next, ok := v.move(cursor, Forward)
 			if !ok {
 				break
 			}
