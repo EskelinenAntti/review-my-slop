@@ -50,12 +50,7 @@ func (m model) editSelectedComment() (tea.Model, tea.Cmd) {
 		index:  index,
 		anchor: comment.Anchor,
 	}
-	cmd, err := m.openCommentEditor()
-	if err != nil {
-		m.err = err
-		return m, nil
-	}
-	return m, cmd
+	return m.startEditor(m.openCommentEditor)
 }
 
 func (m *model) beginComment() (tea.Cmd, error) {
@@ -65,11 +60,7 @@ func (m *model) beginComment() (tea.Cmd, error) {
 	}
 	anchor := commentAnchor(file, lines)
 	m.edit = commentEdit{index: -1, anchor: anchor}
-	cmd, err := m.openCommentEditor()
-	if err != nil {
-		return nil, err
-	}
-	return cmd, nil
+	return m.openCommentEditor()
 }
 
 func (m *model) finishCommentEdit() {
