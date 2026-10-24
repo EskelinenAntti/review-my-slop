@@ -119,11 +119,7 @@ func (r repository) loadFiles(
 	ctx context.Context,
 	oldRevision string,
 ) ([]File, error) {
-	raw, err := r.gitDiff(ctx, oldRevision)
-	if err != nil {
-		return nil, err
-	}
-	files, err := r.parseTracked(ctx, raw, oldRevision)
+	files, err := r.loadTracked(ctx, oldRevision)
 	if err != nil {
 		return nil, err
 	}
