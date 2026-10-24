@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -100,6 +101,30 @@ func TestRunRejectsUnknownSubcommand(t *testing.T) {
 		strings.Contains(err.Error(), `unknown subcommand "unknown"`), true,
 		"error = %v", err,
 	)
+}
+
+func TestRunCodeReturnsStorageConfigurationError(t *testing.T) {
+	t.Setenv("XDG_DATA_HOME", "")
+	t.Setenv("HOME", "")
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	err := runCode(ctx)
+	if err == nil || !strings.Contains(
+		err.Error(), "resolve user home directory",
+	) {
+		t.Fatalf("error = %v, want storage error before patch loading", err)
+	}
+}
+
+func TestRunCodeReturnsPatchLoadError(t *testing.T) {
+	t.Setenv("XDG_DATA_HOME", t.TempDir())
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	if err := runCode(ctx); !errors.Is(err, context.Canceled) {
+		t.Fatalf("error = %v, want context.Canceled", err)
+	}
 }
 
 type failingWriter struct{}
