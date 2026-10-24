@@ -1,5 +1,14 @@
 package diffscreen
 
+// Direction chooses forward or backward traversal through the diff.
+type Direction int8
+
+// Backward and Forward select the traversal direction.
+const (
+	Backward Direction = -1
+	Forward  Direction = 1
+)
+
 // Motion identifies navigation operations without exposing display coordinates.
 type Motion uint8
 
