@@ -18,6 +18,27 @@ const (
 	darkTheme  = "catppuccin-mocha"
 )
 
+func newHighlightedSources(
+	file patch.File,
+	options Options,
+) highlightedSources {
+	theme := lightTheme
+	if options.Dark {
+		theme = darkTheme
+	}
+	return highlightedSources{
+		old: highlightSource(file.OldPath, file.OldSource, theme),
+		new: highlightSource(file.NewPath, file.NewSource, theme),
+	}
+}
+
+func (sources highlightedSources) text(line patch.Line) string {
+	if line.Kind == patch.Deletion {
+		return highlightedLine(sources.old, line.OldNumber, line.Text)
+	}
+	return highlightedLine(sources.new, line.NewNumber, line.Text)
+}
+
 func highlightSource(filename, source, theme string) []string {
 	if source == "" {
 		return nil
