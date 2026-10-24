@@ -50,14 +50,6 @@ func (v *View) Move(motion Motion) {
 		if cursor, ok := v.view.last(); ok {
 			v.setCursor(cursor)
 		}
-
-	default:
-		v.moveBetweenSections(motion)
-	}
-}
-
-func (v *View) moveBetweenSections(motion Motion) {
-	switch motion {
 	case PreviousFile:
 		v.jumpFile(Backward)
 	case NextFile:
