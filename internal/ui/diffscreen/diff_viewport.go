@@ -47,6 +47,37 @@ func (v *diffView) contentHeight(viewport diffViewport) int {
 	return max(1, height)
 }
 
+// rowAtViewportOffset maps a body row to its presentation and source row.
+// Sticky file headers have no source row (index -1); padding and offsets
+// outside the viewport return false.
+func (v *diffView) rowAtViewportOffset(
+	viewport diffViewport,
+	offset int,
+) (entry, int, bool) {
+	if offset < 0 || offset >= viewport.height {
+		return entry{}, -1, false
+	}
+	if v.hasStickyHeader(viewport.top, viewport.height) {
+		if offset == 0 {
+			fileIndex := v.rows[viewport.top].file
+			return entry{
+				kind:      fileRow,
+				file:      fileIndex,
+				hunk:      -1,
+				leftLine:  -1,
+				rightLine: -1,
+				text:      v.patch.Files[fileIndex].DisplayPath,
+			}, -1, true
+		}
+		offset--
+	}
+	y := viewport.top + offset
+	if y < 0 || y >= len(v.rows) {
+		return entry{}, -1, false
+	}
+	return v.rows[y], y, true
+}
+
 func (v *diffView) keepVisible(
 	viewport diffViewport,
 	cursor diffCursor,

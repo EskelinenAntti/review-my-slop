@@ -39,19 +39,12 @@ func (v *diffView) renderRows(
 		)
 	}
 	lines := make([]string, 0, viewport.height)
-	if v.hasStickyHeader(viewport.top, viewport.height) {
-		current := v.rows[viewport.top]
-		lines = append(
-			lines,
-			renderFileRow(
-				v.patch.Files[current.file].DisplayPath,
-				viewport.width,
-			),
-		)
-	}
-	end := min(len(v.rows), viewport.top+v.contentHeight(viewport))
-	for y := viewport.top; y < end; y++ {
-		current := v.rows[y]
+	for offset := 0; offset < viewport.height; offset++ {
+		current, y, ok := v.rowAtViewportOffset(viewport, offset)
+		if !ok {
+			lines = append(lines, "")
+			continue
+		}
 		if v.split && current.kind == lineRow {
 			lines = append(
 				lines,
@@ -63,9 +56,6 @@ func (v *diffView) renderRows(
 				renderer.renderUnifiedRow(current, y),
 			)
 		}
-	}
-	for len(lines) < viewport.height {
-		lines = append(lines, "")
 	}
 	return lines
 }
