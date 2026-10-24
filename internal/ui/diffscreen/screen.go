@@ -410,20 +410,14 @@ func (v *View) Render(err error) string {
 	return frame.Render(header, body, v.renderFooter(footer), v.height)
 }
 func (v *View) renderBody() []string {
-	var body []string
 	if len(v.view.patch.Files) == 0 {
 		empty := "No unstaged or untracked changes."
 		if v.view.patch.Kind == patch.Branch {
 			empty = "No branch or worktree changes."
 		}
-		body = frame.EmptyBody(v.height, empty)
-	} else {
-		body = strings.Split(
-			v.view.render(v.viewport, v.cursor, v.selection),
-			"\n",
-		)
+		return frame.EmptyBody(v.height, empty)
 	}
-	return body
+	return v.view.renderRows(v.viewport, v.cursor, v.selection)
 }
 
 func (v *View) renderStatus() string {

@@ -21,11 +21,11 @@ type diffRenderer struct {
 	leftWidth, rightWidth int
 }
 
-func (v *diffView) render(
+func (v *diffView) renderRows(
 	viewport diffViewport,
 	cursor diffCursor,
 	selection *diffSelection,
-) string {
+) []string {
 	viewport = v.clampViewport(viewport)
 	renderer := diffRenderer{
 		view:      v,
@@ -67,7 +67,7 @@ func (v *diffView) render(
 	for len(lines) < viewport.height {
 		lines = append(lines, "")
 	}
-	return strings.Join(lines, "\n")
+	return lines
 }
 
 func (r diffRenderer) renderUnifiedRow(current entry, y int) string {
