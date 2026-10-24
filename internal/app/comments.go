@@ -2,6 +2,7 @@ package app
 
 import (
 	"errors"
+	"fmt"
 	"slices"
 	"strings"
 
@@ -12,6 +13,51 @@ import (
 )
 
 var errCommentStorageUnavailable = errors.New("comment storage is unavailable")
+
+type saveCommentFunc func(comments.Comment) (comments.Comment, error)
+type deleteCommentFunc func(comments.Comment) error
+type loadCommentsFunc func() ([]comments.Comment, error)
+
+// commentState pairs stored comments with the revision used to reject stale
+// loads.
+type commentState struct {
+	items    []comments.Comment
+	revision uint64
+}
+
+type commentsLoadedMsg struct {
+	comments []comments.Comment
+	revision uint64
+	err      error
+}
+
+func (m model) loadComments() tea.Cmd {
+	if m.load == nil {
+		return nil
+	}
+	revision := m.comments.revision
+	return func() tea.Msg {
+		comments, err := m.load()
+		return commentsLoadedMsg{
+			comments: comments,
+			revision: revision,
+			err:      err,
+		}
+	}
+}
+
+func (m *model) finishCommentsLoad(msg commentsLoadedMsg) {
+	if msg.revision != m.comments.revision {
+		return
+	}
+	if msg.err != nil {
+		m.err = fmt.Errorf("refresh comments: %w", msg.err)
+		return
+	}
+	m.comments.items = msg.comments
+	m.commentView.Update(m.comments.items)
+	m.err = nil
+}
 
 func (m model) updateComments(name string) (tea.Model, tea.Cmd) {
 	m.err = nil

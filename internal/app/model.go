@@ -16,10 +16,6 @@ import (
 	"github.com/eskelinenantti/review-my-slop/internal/patch"
 )
 
-type saveCommentFunc func(comments.Comment) (comments.Comment, error)
-type deleteCommentFunc func(comments.Comment) error
-type loadCommentsFunc func() ([]comments.Comment, error)
-type refreshDiffFunc func(patch.Kind) (patch.Patch, error)
 type saveSideBySideFunc func(bool) error
 
 // commentStore supplies the persistence operations used by the terminal client.
@@ -41,18 +37,6 @@ type initialLayout struct {
 	dimensions     terminalDimensions
 }
 
-type refreshDiffMsg struct {
-	patch patch.Patch
-	kind  patch.Kind
-	err   error
-}
-
-type commentsLoadedMsg struct {
-	comments []comments.Comment
-	revision uint64
-	err      error
-}
-
 type mode uint8
 
 const (
@@ -68,13 +52,6 @@ const verticalScrollStep = 3
 var defaultDimensions = terminalDimensions{
 	width:  ui.DefaultScreenWidth,
 	height: ui.DefaultScreenHeight,
-}
-
-// commentState pairs stored comments with the revision used to reject stale
-// loads.
-type commentState struct {
-	items    []comments.Comment
-	revision uint64
 }
 
 type model struct {
@@ -236,61 +213,6 @@ func (m model) updateWorkflow(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m *model) finishCommentsLoad(msg commentsLoadedMsg) {
-	if msg.revision != m.comments.revision {
-		return
-	}
-	if msg.err != nil {
-		m.err = fmt.Errorf("refresh comments: %w", msg.err)
-		return
-	}
-	m.comments.items = msg.comments
-	m.commentView.Update(m.comments.items)
-	m.err = nil
-}
-
-func (m *model) finishDiffRefresh(msg refreshDiffMsg) {
-	if msg.kind != m.kind {
-		return
-	}
-	if msg.err != nil {
-		m.err = fmt.Errorf("refresh diff: %w", msg.err)
-		return
-	}
-	m.updatePatch(msg.patch)
-	m.err = nil
-}
-
-func (m model) loadRefresh() tea.Cmd {
-	if m.refresh == nil {
-		return nil
-	}
-	kind := m.kind
-	return func() tea.Msg {
-		p, err := m.refresh(kind)
-		return refreshDiffMsg{patch: p, kind: kind, err: err}
-	}
-}
-
-func (m model) loadComments() tea.Cmd {
-	if m.load == nil {
-		return nil
-	}
-	revision := m.comments.revision
-	return func() tea.Msg {
-		comments, err := m.load()
-		return commentsLoadedMsg{
-			comments: comments,
-			revision: revision,
-			err:      err,
-		}
-	}
-}
-
-func (m *model) updatePatch(p patch.Patch) {
-	m.currentPatch = p
-	m.diffView.Update(p)
-}
 func (m *model) resizeScreens() {
 	m.diffView.Resize(m.dimensions.width, m.dimensions.height)
 	m.commentView.Resize(m.dimensions.width, m.dimensions.height)
@@ -350,17 +272,4 @@ func (m model) updateBrowseKey(name string) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	return m, nil
-}
-
-func (m model) switchPatchKind() (tea.Model, tea.Cmd) {
-	if m.currentPatch.Branch == "" {
-		return m, nil
-	}
-	if m.kind == patch.Unstaged {
-		m.kind = patch.Branch
-	} else {
-		m.kind = patch.Unstaged
-	}
-	m.diffView.ClearSelection()
-	return m, m.loadRefresh()
 }
