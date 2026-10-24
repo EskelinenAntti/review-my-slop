@@ -1,8 +1,27 @@
 package diffscreen
 
+import "iter"
+
 func (v *diffView) cursorAt(y int, pane diffPane) (diffCursor, bool) {
 	cursor := diffCursor{row: y, pane: pane}
 	return cursor, v.valid(cursor)
+}
+
+// cursorsAt yields selectable cells in preferred-pane order. Unified rows
+// retain the preferred pane without visiting the same source line twice.
+func (v *diffView) cursorsAt(y int, preferred diffPane) iter.Seq[diffCursor] {
+	return func(yield func(diffCursor) bool) {
+		if cursor, ok := v.cursorAt(y, preferred); ok {
+			if !yield(cursor) {
+				return
+			}
+		}
+		if v.split {
+			if cursor, ok := v.cursorAt(y, preferred.other()); ok {
+				yield(cursor)
+			}
+		}
+	}
 }
 
 func (v *diffView) first() (diffCursor, bool) {

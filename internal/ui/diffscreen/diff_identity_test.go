@@ -93,22 +93,26 @@ func TestLineDistancePrefersSourceNumbers(t *testing.T) {
 }
 
 func TestFindCursorKeepsPreferredPaneOnTies(t *testing.T) {
-	v := newSideBySideView(testPatch(), true)
-	for _, pane := range []diffPane{left, right} {
-		for _, exact := range []bool{false, true} {
-			name := fmt.Sprintf("pane=%v/exact=%v", pane, exact)
-			t.Run(name, func(t *testing.T) {
-				cursor, ok := v.cursorAt(2, pane)
-				testutil.RequireEqual(t, ok, true, "context cursor")
-				target := identify(v, cursor)
-				if !exact {
-					target.line.OldNumber += 100
-					target.line.NewNumber += 100
-				}
-				got, ok := v.findCursor(target)
-				testutil.RequireEqual(t, ok, true, "matching cursor")
-				testutil.CheckEqual(t, got, cursor, "preferred pane")
-			})
+	for _, split := range []bool{false, true} {
+		v := newDiffView(testPatch(), Options{SideBySide: split})
+		for _, pane := range []diffPane{left, right} {
+			for _, exact := range []bool{false, true} {
+				name := fmt.Sprintf(
+					"split=%v/pane=%v/exact=%v", split, pane, exact,
+				)
+				t.Run(name, func(t *testing.T) {
+					cursor, ok := v.cursorAt(2, pane)
+					testutil.RequireEqual(t, ok, true, "context cursor")
+					target := identify(v, cursor)
+					if !exact {
+						target.line.OldNumber += 100
+						target.line.NewNumber += 100
+					}
+					got, ok := v.findCursor(target)
+					testutil.RequireEqual(t, ok, true, "matching cursor")
+					testutil.CheckEqual(t, got, cursor, "preferred pane")
+				})
+			}
 		}
 	}
 }

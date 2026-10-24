@@ -49,14 +49,7 @@ func (v *diffView) findCursor(target cursorIdentity) (diffCursor, bool) {
 		if !v.rowInFile(row, target) {
 			continue
 		}
-		for _, pane := range [2]diffPane{
-			target.cursor.pane,
-			target.cursor.pane.other(),
-		} {
-			cursor, ok := v.cursorAt(y, pane)
-			if !ok {
-				continue
-			}
+		for cursor := range v.cursorsAt(y, target.cursor.pane) {
 			line, _ := v.line(cursor)
 			candidate := cursorMatch{
 				cursor:   cursor,
