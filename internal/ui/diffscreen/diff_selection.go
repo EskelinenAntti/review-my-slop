@@ -77,21 +77,3 @@ func (v *diffView) paneLines(selection diffSelection) []patch.Line {
 	}
 	return []patch.Line{first, last}
 }
-
-func (v *diffView) file(cursor diffCursor) (patch.File, bool) {
-	if !v.valid(cursor) {
-		return patch.File{}, false
-	}
-	return v.patch.Files[v.rows[cursor.row].file], true
-}
-
-func (v *diffView) line(cursor diffCursor) (patch.Line, bool) {
-	if !v.valid(cursor) {
-		return patch.Line{}, false
-	}
-	current := v.rows[cursor.row]
-	return v.patch.Files[current.file].Hunks[current.hunk].Lines[v.lineIndex(
-		current,
-		cursor.pane,
-	)], true
-}

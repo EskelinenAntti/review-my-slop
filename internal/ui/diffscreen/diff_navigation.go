@@ -1,20 +1,5 @@
 package diffscreen
 
-func (v *diffView) valid(cursor diffCursor) bool {
-	return cursor.row >= 0 && cursor.row < len(v.rows) &&
-		v.lineIndex(v.rows[cursor.row], cursor.pane) >= 0
-}
-
-func (v *diffView) lineIndex(current entry, pane diffPane) int {
-	if current.kind != lineRow {
-		return -1
-	}
-	if !v.split || pane == right {
-		return current.rightLine
-	}
-	return current.leftLine
-}
-
 func (v *diffView) cursorAt(y int, pane diffPane) (diffCursor, bool) {
 	cursor := diffCursor{row: y, pane: pane}
 	return cursor, v.valid(cursor)

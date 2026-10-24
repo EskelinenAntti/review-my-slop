@@ -79,8 +79,8 @@ func (r diffRenderer) renderUnifiedLine(
 	current entry,
 	y, width int,
 ) string {
-	hunk := r.view.patch.Files[current.file].Hunks[current.hunk]
-	line := hunk.Lines[current.rightLine]
+	candidate := diffCursor{row: y, pane: r.cursor.pane}
+	line, _ := r.view.line(candidate)
 	prefix := lineMarker(line.Kind)
 	gutter := fmt.Sprintf(
 		"%*s %*s %s ",
@@ -95,7 +95,7 @@ func (r diffRenderer) renderUnifiedLine(
 		current.text,
 		width,
 		line,
-		diffCursor{row: y, pane: r.cursor.pane},
+		candidate,
 	)
 }
 
@@ -115,11 +115,11 @@ func (r diffRenderer) renderPane(
 	pane diffPane,
 	width int,
 ) string {
-	index := r.view.lineIndex(current, pane)
-	if index < 0 {
+	candidate := diffCursor{row: y, pane: pane}
+	line, ok := r.view.line(candidate)
+	if !ok {
 		return strings.Repeat(" ", width)
 	}
-	line := r.view.patch.Files[current.file].Hunks[current.hunk].Lines[index]
 	text := current.right
 	numberValue := line.NewNumber
 	if pane == left {
@@ -132,7 +132,7 @@ func (r diffRenderer) renderPane(
 		prefix+text,
 		width,
 		line,
-		diffCursor{row: y, pane: pane},
+		candidate,
 	)
 }
 
