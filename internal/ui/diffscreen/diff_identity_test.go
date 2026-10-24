@@ -113,6 +113,69 @@ func TestFindCursorKeepsPreferredPaneOnTies(t *testing.T) {
 	}
 }
 
+func TestFindCursorRanksCandidatesAcrossRows(t *testing.T) {
+	target := patch.Line{Kind: patch.Addition, NewNumber: 20, Text: "target"}
+	for _, test := range []struct {
+		name  string
+		lines []patch.Line
+		want  int
+	}{
+		{
+			name: "exact numbers outrank matching text",
+			lines: []patch.Line{
+				{Kind: patch.Addition, NewNumber: 19, Text: "target"},
+				{Kind: patch.Addition, NewNumber: 20, Text: "changed"},
+			},
+			want: 1,
+		},
+		{
+			name: "matching text outranks proximity",
+			lines: []patch.Line{
+				{Kind: patch.Addition, NewNumber: 19, Text: "other"},
+				{Kind: patch.Addition, NewNumber: 30, Text: "target"},
+			},
+			want: 1,
+		},
+		{
+			name: "closer text match wins",
+			lines: []patch.Line{
+				{Kind: patch.Addition, NewNumber: 10, Text: "target"},
+				{Kind: patch.Addition, NewNumber: 19, Text: "target"},
+			},
+			want: 1,
+		},
+		{
+			name: "closer fallback wins",
+			lines: []patch.Line{
+				{Kind: patch.Addition, NewNumber: 10, Text: "other"},
+				{Kind: patch.Addition, NewNumber: 19, Text: "changed"},
+			},
+			want: 1,
+		},
+		{
+			name: "equal distance keeps first row",
+			lines: []patch.Line{
+				{Kind: patch.Addition, NewNumber: 19, Text: "target"},
+				{Kind: patch.Addition, NewNumber: 21, Text: "target"},
+			},
+			want: 0,
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			v := newUnifiedView(patch.Patch{Files: []patch.File{{
+				NewPath: "file.go",
+				Hunks:   []patch.Hunk{{Lines: test.lines}},
+			}}}, true)
+			identity := identify(v, mustFirst(t, v))
+			identity.line = target
+			cursor, ok := v.findCursor(identity)
+			testutil.RequireEqual(t, ok, true, "matching cursor")
+			line, _ := v.line(cursor)
+			testutil.CheckEqual(t, line, test.lines[test.want], "restored line")
+		})
+	}
+}
+
 func TestFindCursorRejectsUnavailableIdentity(t *testing.T) {
 	v := newUnifiedView(testPatch(), true)
 	target := identify(v, mustFirst(t, v))
