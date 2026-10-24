@@ -45,14 +45,13 @@ func commentDraft(body string, anchor comments.Anchor) string {
 	if len(anchor.QuotedLines) == 0 {
 		return body
 	}
-	lines := suggestionLines(anchor.QuotedLines)
 	var draft strings.Builder
 	_, _ = draft.WriteString(body)
 	if body != "" && !strings.HasSuffix(body, "\n") {
 		_ = draft.WriteByte('\n')
 	}
 	_ = draft.WriteByte('\n')
-	_, _ = draft.WriteString(suggestionBlock(lines))
+	_, _ = draft.WriteString(suggestionBlock(anchor.QuotedLines))
 	_ = draft.WriteByte('\n')
 	return draft.String()
 }
@@ -61,7 +60,7 @@ func stripUnchangedSuggestion(body string, quoted []string) string {
 	if len(quoted) == 0 {
 		return body
 	}
-	suggestion := suggestionBlock(suggestionLines(quoted))
+	suggestion := suggestionBlock(quoted)
 	before, after, found := strings.Cut(body, suggestion)
 	if !found {
 		return body
@@ -73,40 +72,28 @@ func stripUnchangedSuggestion(body string, quoted []string) string {
 	return before + "\n" + strings.TrimLeft(after, "\n")
 }
 
-func suggestionBlock(lines []string) string {
-	fence := contextFence(lines)
-	var block strings.Builder
-	_, _ = block.WriteString(fence)
-	_, _ = block.WriteString("suggestion\n")
-	for _, line := range lines {
-		_, _ = block.WriteString(line)
-		_ = block.WriteByte('\n')
-	}
-	_, _ = block.WriteString(fence)
-	return block.String()
-}
-
-func suggestionLines(quoted []string) []string {
-	lines := make([]string, 0, len(quoted))
+// suggestionBlock renders only the new version of the quoted diff, choosing a
+// fence that cannot be closed by retained source text.
+func suggestionBlock(quoted []string) string {
+	var content strings.Builder
 	for _, line := range quoted {
 		if line != "" && line[0] != '-' {
-			lines = append(lines, line[1:])
+			_, _ = content.WriteString(line[1:])
+			_ = content.WriteByte('\n')
 		}
 	}
-	return lines
+	fence := contextFence(content.String())
+	return fence + "suggestion\n" + content.String() + fence
 }
 
-func contextFence(lines []string) string {
-	longest := 0
-	for _, line := range lines {
-		run := 0
-		for _, char := range line {
-			if char == '`' {
-				run++
-				longest = max(longest, run)
-			} else {
-				run = 0
-			}
+func contextFence(content string) string {
+	longest, run := 0, 0
+	for _, char := range content {
+		if char == '`' {
+			run++
+			longest = max(longest, run)
+		} else {
+			run = 0
 		}
 	}
 	return strings.Repeat("`", max(3, longest+1))
