@@ -8,7 +8,7 @@ import (
 )
 
 func commentCommand(ctx context.Context, editor, path string) *exec.Cmd {
-	return shellCommand(ctx, editor, shellQuote(path))
+	return shellCommand(ctx, editor, path)
 }
 
 func sourceCommand(
@@ -16,12 +16,21 @@ func sourceCommand(
 	editor, path string,
 	line int,
 ) *exec.Cmd {
-	arguments := "+" + strconv.Itoa(line) + " " + shellQuote(path)
-	return shellCommand(ctx, editor, arguments)
+	return shellCommand(ctx, editor, "+"+strconv.Itoa(line), path)
 }
 
-func shellCommand(ctx context.Context, editor, arguments string) *exec.Cmd {
-	return exec.CommandContext(ctx, "sh", "-c", editor+" "+arguments)
+// shellCommand preserves shell syntax in the editor setting while treating
+// appended arguments as literal values.
+func shellCommand(
+	ctx context.Context,
+	editor string,
+	arguments ...string,
+) *exec.Cmd {
+	command := editor
+	for _, argument := range arguments {
+		command += " " + shellQuote(argument)
+	}
+	return exec.CommandContext(ctx, "sh", "-c", command)
 }
 
 func shellQuote(value string) string {
