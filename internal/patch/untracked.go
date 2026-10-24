@@ -20,19 +20,15 @@ func (r repository) loadUntracked(ctx context.Context) ([]File, error) {
 	if err != nil {
 		return nil, err
 	}
-	return r.readUntrackedPaths(ctx, untrackedPaths(out))
-}
-
-func (r repository) readUntrackedPaths(
-	ctx context.Context,
-	paths []string,
-) ([]File, error) {
-	files := make([]File, 0, len(paths))
-	for _, path := range paths {
+	files := make([]File, 0)
+	for path := range bytes.SplitSeq(out, []byte{0}) {
+		if len(path) == 0 {
+			continue
+		}
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
-		file, include, err := r.readUntrackedFile(path)
+		file, include, err := r.readUntrackedFile(string(path))
 		if err != nil {
 			return nil, err
 		}
@@ -41,16 +37,6 @@ func (r repository) readUntrackedPaths(
 		}
 	}
 	return files, nil
-}
-
-func untrackedPaths(out []byte) []string {
-	var paths []string
-	for path := range bytes.SplitSeq(out, []byte{0}) {
-		if len(path) > 0 {
-			paths = append(paths, string(path))
-		}
-	}
-	return paths
 }
 
 func (r repository) readUntrackedFile(path string) (File, bool, error) {
