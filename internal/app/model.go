@@ -16,11 +16,8 @@ import (
 	"github.com/eskelinenantti/review-my-slop/internal/patch"
 )
 
-type saveCommentFunc func(
-	comments.Comment,
-	string,
-) (comments.Comment, error)
-type deleteCommentFunc func(comments.Comment, string) error
+type saveCommentFunc func(comments.Comment) (comments.Comment, error)
+type deleteCommentFunc func(comments.Comment) error
 type loadCommentsFunc func() ([]comments.Comment, error)
 type refreshDiffFunc func(patch.Kind) (patch.Patch, error)
 type saveSideBySideFunc func(bool) error
@@ -173,9 +170,7 @@ func newWithStore(
 	}
 	m := newModel(ctx, currentPatch, pendingComments, func(
 		comment comments.Comment,
-		repository string,
 	) (comments.Comment, error) {
-		comment.Repository = repository
 		if comment.ID != "" {
 			if err := store.Update(comment); err != nil {
 				return comments.Comment{}, err
@@ -190,8 +185,8 @@ func newWithStore(
 		},
 		dimensions: dimensions,
 	})
-	m.delete = func(comment comments.Comment, repository string) error {
-		return store.Delete(repository, comment.ID)
+	m.delete = func(comment comments.Comment) error {
+		return store.Delete(comment.Repository, comment.ID)
 	}
 	m.load = func() ([]comments.Comment, error) {
 		return store.List(currentPatch.Root)

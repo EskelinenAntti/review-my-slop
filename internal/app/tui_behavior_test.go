@@ -21,7 +21,6 @@ func TestVisualSelectionCreatesMappedAnchorAndSubmits(t *testing.T) {
 	var saved []comments.Comment
 	m := testModel(coveragePatch(), nil, func(
 		stored comments.Comment,
-		_ string,
 	) (comments.Comment, error) {
 		saved = append(saved, stored)
 		stored.ID = "new"
@@ -48,7 +47,6 @@ func TestCommentSaveFailureClearsPendingEdit(t *testing.T) {
 	t.Setenv("EDITOR", "true")
 	m := testModel(coveragePatch(), nil, func(
 		comments.Comment,
-		string,
 	) (comments.Comment, error) {
 		return comments.Comment{}, errors.New("storage unavailable")
 	})
@@ -79,7 +77,6 @@ func TestEmptyNewCommentIsDiscarded(t *testing.T) {
 	called := false
 	m := testModel(coveragePatch(), nil, func(
 		stored comments.Comment,
-		_ string,
 	) (comments.Comment, error) {
 		called = true
 		return stored, nil
@@ -161,15 +158,11 @@ func TestCommentsCanBeViewedEditedAndDeleted(t *testing.T) {
 	var persisted, deleted comments.Comment
 	m := testModel(coveragePatch(), items, func(
 		stored comments.Comment,
-		_ string,
 	) (comments.Comment, error) {
 		persisted = stored
 		return stored, nil
 	})
-	m.delete = func(
-		stored comments.Comment,
-		_ string,
-	) error {
+	m.delete = func(stored comments.Comment) error {
 		deleted = stored
 		return nil
 	}
@@ -261,7 +254,7 @@ func TestEmptyEditedCommentIsDeleted(t *testing.T) {
 		nil,
 	)
 	deleted := false
-	m.delete = func(comments.Comment, string) error {
+	m.delete = func(comments.Comment) error {
 		deleted = true
 		return nil
 	}
@@ -277,18 +270,29 @@ func TestEmptyEditedCommentIsDeleted(t *testing.T) {
 }
 
 func TestCommentDeleteFailureKeepsCommentAndShowsError(t *testing.T) {
+	item := comments.Comment{
+		ID:         "one",
+		Repository: "/previous-repo",
+		Body:       "keep",
+	}
 	m := testModel(
 		coveragePatch(),
-		[]comments.Comment{{ID: "one", Body: "keep"}},
+		[]comments.Comment{item},
 		nil,
 	)
-	m.delete = func(comments.Comment, string) error {
+	m.delete = func(comment comments.Comment) error {
+		testutil.RequireEqual(t, comment.Repository, m.currentPatch.Root,
+			"deleted comment = %#v", comment,
+		)
 		return errors.New("delete failed")
 	}
 	m = updateModel(t, m, textKey("C"))
 	m = updateModel(t, m, textKey("D"))
 	testutil.RequireEqual(t, len(m.comments.items), 1, "comments=%#v render=%q",
 		m.comments.items, m.render(),
+	)
+	testutil.RequireEqual(t, m.comments.items[0].Repository, item.Repository,
+		"failed deletion changed comment = %#v", m.comments.items[0],
 	)
 	testutil.RequireEqual(t,
 		strings.Contains(ansi.Strip(m.render()), "delete failed"), true,
@@ -745,10 +749,9 @@ func TestCommentAfterRefreshUsesCurrentPatch(t *testing.T) {
 	var savedRepository string
 	m := testModel(coveragePatch(), nil, func(
 		stored comments.Comment,
-		repository string,
 	) (comments.Comment, error) {
 		saved = stored
-		savedRepository = repository
+		savedRepository = stored.Repository
 		return stored, nil
 	})
 	refreshed := coveragePatch()
@@ -772,8 +775,8 @@ func TestCommentDeleteAfterRefreshUsesCurrentRepository(t *testing.T) {
 	m := testModel(coveragePatch(), []comments.Comment{item}, nil)
 	var deleted comments.Comment
 	var deletedRepository string
-	m.delete = func(comment comments.Comment, repository string) error {
-		deleted, deletedRepository = comment, repository
+	m.delete = func(comment comments.Comment) error {
+		deleted, deletedRepository = comment, comment.Repository
 		return nil
 	}
 	refreshed := coveragePatch()
