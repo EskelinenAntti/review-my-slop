@@ -10,6 +10,57 @@ import (
 	"github.com/eskelinenantti/review-my-slop/internal/testutil"
 )
 
+func TestChangeCountsAreIndependentOfProjection(t *testing.T) {
+	for _, tt := range []struct {
+		name  string
+		patch patch.Patch
+		want  string
+	}{
+		{name: "empty", want: "+0-0"},
+		{
+			name: "metadata only",
+			patch: patch.Patch{Files: []patch.File{{
+				DisplayPath: "binary.dat",
+				Metadata:    []string{"Binary files differ"},
+			}}},
+			want: "+0-0",
+		},
+		{name: "context only", patch: longPatch(), want: "+0-0"},
+		{
+			name:  "multiple files and unbalanced changes",
+			patch: testPatch(),
+			want:  "+2-2",
+		},
+		{
+			name: "multiple hunks and change blocks",
+			patch: patch.Patch{Files: []patch.File{{Hunks: []patch.Hunk{
+				{Lines: []patch.Line{
+					{Kind: patch.Deletion},
+					{Kind: patch.Addition},
+					{Kind: patch.Addition},
+					{Kind: patch.Context},
+					{Kind: patch.Addition},
+				}},
+				{Lines: []patch.Line{
+					{Kind: patch.Deletion},
+					{Kind: patch.Deletion},
+				}},
+			}}}},
+			want: "+3-3",
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			for _, split := range []bool{false, true} {
+				v := newDiffView(tt.patch, Options{SideBySide: split})
+				testutil.RequireEqual(t, v.countsLabel, tt.want,
+					"split=%v counts=%q, want %q",
+					split, v.countsLabel, tt.want,
+				)
+			}
+		})
+	}
+}
+
 func TestUnifiedNavigationSearchAndFileJumps(t *testing.T) {
 	v := newUnifiedView(testPatch(), true)
 	first, ok := v.first()

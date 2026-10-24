@@ -91,6 +91,25 @@ func TestUpdateAndConfigurePreserveState(t *testing.T) {
 	)
 }
 
+func TestChangeCountsFollowPatchUpdatesAndLayoutChanges(t *testing.T) {
+	v := New(testPatch(), Options{})
+	v.Resize(120, 10)
+	testutil.RequireEqual(t, v.view.countsLabel, "+2-2", "initial counts")
+	v.Configure(Options{SideBySide: true})
+	testutil.RequireEqual(t, v.view.countsLabel, "+2-2", "split counts")
+
+	p := testPatch()
+	p.Files[1].Hunks[0].Lines = append(p.Files[1].Hunks[0].Lines,
+		patch.Line{Kind: patch.Addition, Text: "another", NewNumber: 2},
+	)
+	v.Update(p)
+	testutil.RequireEqual(t, v.view.countsLabel, "+3-2", "updated counts")
+	v.Resize(80, 10)
+	testutil.RequireEqual(t, v.view.countsLabel, "+3-2", "narrow layout counts")
+	v.Update(patch.Patch{})
+	testutil.RequireEqual(t, v.view.countsLabel, "+0-0", "empty patch counts")
+}
+
 func TestNarrowLayoutFallbackPreservesPreferenceAndPosition(t *testing.T) {
 	p := longPatch()
 	p.Files[0].OldPath, p.Files[0].NewPath = "long.go", "long.go"
