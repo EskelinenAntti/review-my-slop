@@ -5,8 +5,52 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/charmbracelet/x/ansi"
 	"github.com/eskelinenantti/review-my-slop/internal/patch"
 )
+
+func TestRenderCodeLinesScrollOnlyContent(t *testing.T) {
+	const text = "abcdefghijklmnopqrstuvwxyz0123456789"
+	colored := "\x1b[35m" + text + "\x1b[m"
+	p := patch.Patch{Files: []patch.File{{
+		DisplayPath: "file",
+		Hunks: []patch.Hunk{{
+			Header: "@@",
+			Lines: []patch.Line{
+				{Kind: patch.Deletion, Text: colored, OldNumber: 1},
+				{Kind: patch.Addition, Text: colored, NewNumber: 1},
+			},
+		}},
+	}}}
+	for _, test := range []struct {
+		name   string
+		split  bool
+		offset int
+		want   string
+	}{
+		{"unified", false, 0, "    1       - " + text[:31]},
+		{"unified scrolled", false, 4, "    1       - " + text[4:35]},
+		{"split", true, 0, "    1 - " + text[:13] + " │     1 + " + text[:13]},
+		{
+			"split scrolled", true, 4,
+			"    1 " + text[2:17] + " │     1 " + text[2:17],
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			v := newDiffView(p, Options{SideBySide: test.split})
+			cursor, ok := v.cursorAt(2, left)
+			if !ok {
+				t.Fatal("missing deletion cursor")
+			}
+			viewport := v.keepVisible(v.newViewport(45, 1), cursor)
+			viewport = v.scrollHorizontal(viewport, test.offset)
+			got := ansi.Strip(v.renderRows(viewport, cursor, nil)[0])
+			if got != test.want {
+				t.Fatalf("rendered row = %q, want %q", got, test.want)
+			}
+		})
+	}
+}
 
 func TestRenderRowsPreservesLayout(t *testing.T) {
 	for _, test := range []struct {

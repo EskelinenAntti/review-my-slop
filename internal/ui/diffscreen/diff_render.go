@@ -98,13 +98,9 @@ func (r diffRenderer) renderUnifiedLine(
 		number(line.NewNumber),
 		prefix,
 	)
-	value := gutter + fitANSIWindow(
-		current.text,
-		r.viewport.leftColumn,
-		width-lipgloss.Width(gutter),
-	)
 	return r.renderCodeLine(
-		value,
+		gutter,
+		current.text,
 		width,
 		line,
 		diffCursor{row: y, pane: r.cursor.pane},
@@ -144,13 +140,9 @@ func (r diffRenderer) renderPane(
 	}
 	prefix := lineMarker(line.Kind) + " "
 	gutter := fmt.Sprintf("%5s ", number(numberValue))
-	value := gutter + fitANSIWindow(
-		prefix+text,
-		r.viewport.leftColumn,
-		width-lipgloss.Width(gutter),
-	)
 	return r.renderCodeLine(
-		value,
+		gutter,
+		prefix+text,
 		width,
 		line,
 		diffCursor{row: y, pane: pane},
@@ -158,11 +150,16 @@ func (r diffRenderer) renderPane(
 }
 
 func (r diffRenderer) renderCodeLine(
-	value string,
+	gutter, text string,
 	width int,
 	line patch.Line,
 	candidate diffCursor,
 ) string {
+	value := gutter + fitANSIWindow(
+		text,
+		r.viewport.leftColumn,
+		width-lipgloss.Width(gutter),
+	)
 	style, colors := renderedLineStyle(
 		line.Kind,
 		candidate,
