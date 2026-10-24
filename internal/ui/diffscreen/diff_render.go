@@ -93,8 +93,10 @@ func (r diffRenderer) renderUnifiedLine(
 	line := hunk.Lines[current.rightLine]
 	prefix := lineMarker(line.Kind)
 	gutter := fmt.Sprintf(
-		"%5s %5s %s ",
+		"%*s %*s %s ",
+		lineNumberWidth,
 		number(line.OldNumber),
+		lineNumberWidth,
 		number(line.NewNumber),
 		prefix,
 	)
@@ -114,12 +116,7 @@ func renderFileRow(path string, width int) string {
 func (r diffRenderer) renderSplitRow(current entry, y int) string {
 	left := r.renderPane(current, y, left, r.leftWidth)
 	right := r.renderPane(current, y, right, r.rightWidth)
-	return left + " │ " + right
-}
-
-func splitPaneWidths(width int) (left, right int) {
-	left = max(20, (width-3)/2)
-	return left, max(20, width-3-left)
+	return left + paneSeparator + right
 }
 
 func (r diffRenderer) renderPane(
@@ -139,7 +136,7 @@ func (r diffRenderer) renderPane(
 		text, numberValue = current.left, line.OldNumber
 	}
 	prefix := lineMarker(line.Kind) + " "
-	gutter := fmt.Sprintf("%5s ", number(numberValue))
+	gutter := fmt.Sprintf("%*s ", lineNumberWidth, number(numberValue))
 	return r.renderCodeLine(
 		gutter,
 		prefix+text,

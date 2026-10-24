@@ -207,15 +207,6 @@ func (v *diffView) rowVisible(viewport diffViewport, row int) bool {
 		row < viewport.top+v.contentHeight(viewport)
 }
 
-func (v *diffView) maxHorizontalOffset(width int) int {
-	contentWidth := max(1, width-14)
-	extra := 0
-	if v.split {
-		contentWidth, extra = max(1, (width-3)/2-6), 2
-	}
-	return max(0, v.maxLineWidth+extra-contentWidth)
-}
-
 func renderedLineWidth(current entry) int {
 	return lipgloss.Width(
 		expandTabs(ansi.Strip(current.text + current.left + current.right)),
