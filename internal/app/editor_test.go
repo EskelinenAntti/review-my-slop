@@ -1,9 +1,11 @@
 package app
 
 import (
+	"errors"
 	"testing"
 
 	"github.com/eskelinenantti/review-my-slop/internal/comments"
+	"github.com/eskelinenantti/review-my-slop/internal/patch"
 	"github.com/eskelinenantti/review-my-slop/internal/testutil"
 )
 
@@ -82,4 +84,54 @@ func TestEditSelectedCommentStartup(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestCommentEditorFailureClearsEditWithoutSaving(t *testing.T) {
+	item := comments.Comment{ID: "existing", Body: "original body"}
+	m := testModel(modelPatch(), []comments.Comment{item}, func(
+		comment comments.Comment,
+	) (comments.Comment, error) {
+		t.Fatal("failed editor must not save a comment")
+		return comment, nil
+	})
+	m.edit = commentEdit{index: 0, body: item.Body, anchor: item.Anchor}
+	editorErr := errors.New("editor failed")
+
+	next, cmd := m.Update(commentEditorFinishedMsg{
+		body: "partial edit",
+		err:  editorErr,
+	})
+	m = requireModel(t, next)
+	if cmd != nil {
+		t.Fatal("failed editor returned a command")
+	}
+	if !errors.Is(m.err, editorErr) {
+		t.Fatalf("error = %v, want %v", m.err, editorErr)
+	}
+	testutil.RequireEqual(t, m.edit.index, -1, "edit = %#v", m.edit)
+	testutil.RequireEqual(t, m.edit.body, "", "edit = %#v", m.edit)
+	testutil.RequireEqual(t, m.comments.items[0].Body, item.Body,
+		"stored comment = %#v", m.comments.items[0],
+	)
+}
+
+func TestSourceEditorFailureDoesNotRefresh(t *testing.T) {
+	m := testModel(modelPatch(), nil, nil)
+	m.refresh = func(patch.Kind) (patch.Patch, error) {
+		t.Fatal("failed editor must not refresh the diff")
+		return patch.Patch{}, nil
+	}
+	editorErr := errors.New("editor failed")
+
+	next, cmd := m.Update(sourceEditorFinishedMsg{err: editorErr})
+	m = requireModel(t, next)
+	if cmd != nil {
+		t.Fatal("failed editor returned a refresh command")
+	}
+	if !errors.Is(m.err, editorErr) {
+		t.Fatalf("error = %v, want wrapped %v", m.err, editorErr)
+	}
+	testutil.RequireEqual(t, m.err.Error(), "editor: editor failed",
+		"error = %v", m.err,
+	)
 }

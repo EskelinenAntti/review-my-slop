@@ -47,16 +47,11 @@ type refreshDiffMsg struct {
 	err   error
 }
 
-type commentEditorFinishedMsg struct {
-	body string
-	err  error
-}
 type commentsLoadedMsg struct {
 	comments []comments.Comment
 	revision uint64
 	err      error
 }
-type sourceEditorFinishedMsg struct{ err error }
 
 type mode uint8
 
@@ -80,12 +75,6 @@ var defaultDimensions = terminalDimensions{
 type commentState struct {
 	items    []comments.Comment
 	revision uint64
-}
-
-type commentEdit struct {
-	body   string
-	index  int
-	anchor comments.Anchor
 }
 
 type model struct {
@@ -247,16 +236,6 @@ func (m model) updateWorkflow(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m *model) finishCommentEditor(msg commentEditorFinishedMsg) {
-	if msg.err != nil {
-		m.err = msg.err
-		m.clearCommentEdit()
-		return
-	}
-	m.edit.body = msg.body
-	m.finishCommentEdit()
-}
-
 func (m *model) finishCommentsLoad(msg commentsLoadedMsg) {
 	if msg.revision != m.comments.revision {
 		return
@@ -371,17 +350,6 @@ func (m model) updateBrowseKey(name string) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	return m, nil
-}
-
-func (m *model) startEditor(
-	start func() (tea.Cmd, error),
-) (tea.Model, tea.Cmd) {
-	cmd, err := start()
-	if err != nil {
-		m.err = err
-		return *m, nil
-	}
-	return *m, cmd
 }
 
 func (m model) switchPatchKind() (tea.Model, tea.Cmd) {
