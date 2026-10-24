@@ -10,10 +10,8 @@ import (
 	"github.com/sourcegraph/go-diff/diff"
 )
 
-func parseTracked(
+func (r repository) parseTracked(
 	ctx context.Context,
-	run runner,
-	root string,
 	raw []byte,
 	oldRevision string,
 ) ([]File, error) {
@@ -29,7 +27,7 @@ func parseTracked(
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
-		file, err := parseTrackedFile(ctx, run, root, fd, oldRevision)
+		file, err := r.parseTrackedFile(ctx, fd, oldRevision)
 		if err != nil {
 			return nil, err
 		}
@@ -38,10 +36,8 @@ func parseTracked(
 	return files, nil
 }
 
-func parseTrackedFile(
+func (r repository) parseTrackedFile(
 	ctx context.Context,
-	run runner,
-	root string,
 	fd *diff.FileDiff,
 	oldRevision string,
 ) (File, error) {
@@ -53,8 +49,8 @@ func parseTrackedFile(
 		Metadata: visibleStrings(fd.Extended),
 	}
 	file.DisplayPath = visibleText(file.PreferredPath())
-	file.OldSource = readGitSource(ctx, run, root, oldRevision, oldPath)
-	file.NewSource = readWorkingTree(root, newPath)
+	file.OldSource = r.readGitSource(ctx, oldRevision, oldPath)
+	file.NewSource = r.readWorkingTree(newPath)
 	for _, h := range fd.Hunks {
 		lines, err := parseHunkBody(h.OrigStartLine, h.NewStartLine, h.Body)
 		if err != nil {

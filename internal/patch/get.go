@@ -21,6 +21,12 @@ type runner interface {
 	Run(ctx context.Context, dir string, args ...string) ([]byte, error)
 }
 
+// repository binds Git commands and working-tree reads to a discovered root.
+type repository struct {
+	root string
+	run  runner
+}
+
 type execRunner struct{}
 
 func (execRunner) Run(
@@ -97,34 +103,33 @@ func load(
 	if err != nil {
 		return Patch{}, err
 	}
-	branch, oldRevision, err := comparison(ctx, run, root, kind)
+	repo := repository{root: root, run: run}
+	branch, oldRevision, err := repo.comparison(ctx, kind)
 	if err != nil {
 		return Patch{}, err
 	}
-	raw, err := gitDiff(ctx, run, root, oldRevision)
+	raw, err := repo.gitDiff(ctx, oldRevision)
 	if err != nil {
 		return Patch{}, err
 	}
-	return build(ctx, run, root, kind, branch, raw, oldRevision)
+	return repo.build(ctx, kind, branch, raw, oldRevision)
 }
 
-func comparison(
+func (r repository) comparison(
 	ctx context.Context,
-	run runner,
-	root string,
 	kind Kind,
 ) (branch, revision string, err error) {
 	if kind != Branch {
 		return "", "", nil
 	}
-	branch, err = defaultBranch(ctx, run, root)
+	branch, err = r.defaultBranch(ctx)
 	if err != nil {
 		return "", "", fmt.Errorf("discover default branch: %w", err)
 	}
 	if branch == "" {
 		return "", "", errors.New("default branch is unavailable")
 	}
-	baseBytes, err := run.Run(ctx, root, "merge-base", branch, "HEAD")
+	baseBytes, err := r.run.Run(ctx, r.root, "merge-base", branch, "HEAD")
 	if err != nil {
 		return "", "", fmt.Errorf(
 			"find branch point with %s: %w",
@@ -152,10 +157,8 @@ func discoverRepositoryRoot(
 	return root, nil
 }
 
-func gitDiff(
+func (r repository) gitDiff(
 	ctx context.Context,
-	run runner,
-	root string,
 	base string,
 ) ([]byte, error) {
 	args := []string{
@@ -168,23 +171,21 @@ func gitDiff(
 		args = append(args, base)
 	}
 	args = append(args, "--")
-	return run.Run(ctx, root, args...)
+	return r.run.Run(ctx, r.root, args...)
 }
 
-func build(
+func (r repository) build(
 	ctx context.Context,
-	run runner,
-	root string,
 	kind Kind,
 	branch string,
 	raw []byte,
 	oldRevision string,
 ) (Patch, error) {
-	files, err := parseTracked(ctx, run, root, raw, oldRevision)
+	files, err := r.parseTracked(ctx, raw, oldRevision)
 	if err != nil {
 		return Patch{}, err
 	}
-	untracked, err := loadUntracked(ctx, run, root)
+	untracked, err := r.loadUntracked(ctx)
 	if err != nil {
 		return Patch{}, err
 	}
@@ -201,21 +202,17 @@ func build(
 	}
 
 	return Patch{
-		Root:   root,
+		Root:   r.root,
 		Kind:   kind,
 		Branch: branch,
 		Files:  files,
 	}, nil
 }
 
-func defaultBranch(
-	ctx context.Context,
-	run runner,
-	root string,
-) (string, error) {
-	out, err := run.Run(
+func (r repository) defaultBranch(ctx context.Context) (string, error) {
+	out, err := r.run.Run(
 		ctx,
-		root,
+		r.root,
 		"symbolic-ref",
 		"--quiet",
 		"--short",
@@ -233,9 +230,9 @@ func defaultBranch(
 		"origin/master",
 		"master",
 	} {
-		_, err := run.Run(
+		_, err := r.run.Run(
 			ctx,
-			root,
+			r.root,
 			"rev-parse",
 			"--verify",
 			"--quiet",

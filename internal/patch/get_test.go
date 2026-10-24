@@ -165,6 +165,69 @@ func TestGetFromSubdirectoryKeepsRawUntrackedPaths(t *testing.T) {
 	)
 }
 
+func TestLoadKeepsRepositoryOperationsAtDiscoveredRoot(t *testing.T) {
+	root := newRepository(t)
+	git(t, root, "branch", "-M", "main")
+	writeFile(t, root, "tracked.txt", "base\n")
+	git(t, root, "add", ".")
+	git(t, root, "commit", "-m", "base")
+	git(t, root, "switch", "-c", "feature")
+	writeFile(t, root, "tracked.txt", "committed\n")
+	git(t, root, "add", ".")
+	git(t, root, "commit", "-m", "feature")
+	writeFile(t, root, "tracked.txt", "working\n")
+	writeFile(t, root, "nested/untracked.txt", "untracked\n")
+	directory := filepath.Join(root, "nested")
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	for _, test := range []struct {
+		name      string
+		kind      Kind
+		oldSource string
+	}{
+		{name: "unstaged", kind: Unstaged, oldSource: "committed\n"},
+		{name: "branch", kind: Branch, oldSource: "base\n"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			run := runnerFunc(func(
+				gotCtx context.Context,
+				dir string,
+				args ...string,
+			) ([]byte, error) {
+				wantDir := root
+				if strings.Join(args, " ") == "rev-parse --show-toplevel" {
+					wantDir = directory
+				}
+				testutil.RequireEqual(t, dir, wantDir,
+					"git %v directory = %q", args, dir,
+				)
+				testutil.RequireEqual(t, gotCtx, ctx,
+					"git %v context was replaced", args,
+				)
+				return (execRunner{}).Run(gotCtx, dir, args...)
+			})
+			got, err := load(ctx, directory, test.kind, run)
+			testutil.NoError(t, err)
+			testutil.RequireEqual(t, got.Root, root,
+				"patch root = %q", got.Root,
+			)
+			testutil.RequireEqual(t, len(got.Files), 2,
+				"files = %#v", got.Files,
+			)
+			untracked, tracked := got.Files[0], got.Files[1]
+			testutil.RequireEqual(t, untracked.NewSource, "untracked\n",
+				"untracked source = %q", untracked.NewSource,
+			)
+			testutil.RequireEqual(t, tracked.OldSource, test.oldSource,
+				"old source = %q", tracked.OldSource,
+			)
+			testutil.RequireEqual(t, tracked.NewSource, "working\n",
+				"new source = %q", tracked.NewSource,
+			)
+		})
+	}
+}
+
 func TestGetReportsUnavailableBranchAndInvalidKind(t *testing.T) {
 	t.Chdir(newRepository(t))
 	local, err := Get(context.Background(), Unstaged)
@@ -400,7 +463,8 @@ func TestDefaultBranchFallbacks(t *testing.T) {
 				originHEAD: tt.originHEAD,
 				available:  tt.available,
 			}
-			got, err := defaultBranch(context.Background(), runner, root)
+			repo := repository{root: root, run: runner}
+			got, err := repo.defaultBranch(context.Background())
 			testutil.NoError(t, err)
 			testutil.RequireEqual(t, got, tt.want,
 				"default branch = %q, want %q", got, tt.want,
@@ -469,6 +533,16 @@ func TestGetBranchKeepsPathsForAdditionsDeletionsAndRenames(t *testing.T) {
 			paths,
 		)
 	}
+}
+
+type runnerFunc func(context.Context, string, ...string) ([]byte, error)
+
+func (f runnerFunc) Run(
+	ctx context.Context,
+	dir string,
+	args ...string,
+) ([]byte, error) {
+	return f(ctx, dir, args...)
 }
 
 type defaultBranchRunner struct {
