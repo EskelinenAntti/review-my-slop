@@ -14,8 +14,7 @@ func TestPreserveTranslatesCursorSelectionAndViewport(t *testing.T) {
 	cursor, ok := old.search("added one", first, forward)
 	testutil.RequireEqual(t, ok, true, "%s", "cursor not found")
 
-	selection := beginSelection(first)
-	selection, ok = old.extendSelection(selection, cursor)
+	selection, ok := old.selectionBetween(first, cursor)
 	testutil.RequireEqual(t, ok, true, "%s", "selection not created")
 
 	viewport := old.newViewport(100, 4)
@@ -68,10 +67,12 @@ func TestPreserveTranslatesCursorSelectionAndViewport(t *testing.T) {
 func TestPreserveReturnsEmptyStateForEmptyView(t *testing.T) {
 	old := newUnifiedView(testPatch(), true)
 	cursor := mustFirst(t, old)
+	selection, ok := old.selectionBetween(cursor, cursor)
+	testutil.RequireEqual(t, ok, true, "%s", "selection not created")
 	screen := &View{
 		view:      old,
 		cursor:    cursor,
-		selection: ptr(beginSelection(cursor)),
+		selection: &selection,
 		viewport:  old.newViewport(80, 10),
 	}
 
@@ -137,8 +138,6 @@ func TestUpdatePreservesCursorAfterLineDeletion(t *testing.T) {
 		}
 	}
 }
-
-func ptr[T any](value T) *T { return &value }
 
 type cursorDeletionCase struct {
 	name  string

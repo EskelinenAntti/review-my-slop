@@ -70,8 +70,7 @@ func TestSplitSelectionOnlyIncludesActivePane(t *testing.T) {
 	first := mustFirst(t, v)
 	removed, _ := v.search("removed one", first, forward)
 	added, _ := v.search("added one", first, forward)
-	left := beginSelection(removed)
-	left, ok := v.extendSelection(left, removed)
+	left, ok := v.selectionBetween(removed, removed)
 	testutil.RequireEqual(t, ok, true, "left lines = %#v", v.lines(left))
 	testutil.RequireEqual(t, len(v.lines(left)), 1, "left lines = %#v",
 		v.lines(left),
@@ -80,7 +79,8 @@ func TestSplitSelectionOnlyIncludesActivePane(t *testing.T) {
 		"left lines = %#v", v.lines(left),
 	)
 
-	right := beginSelection(added)
+	right, ok := v.selectionBetween(added, added)
+	testutil.RequireEqual(t, ok, true, "right lines = %#v", v.lines(right))
 	testutil.RequireEqual(t, len(v.lines(right)), 1, "right lines = %#v",
 		v.lines(right),
 	)
@@ -485,7 +485,8 @@ func TestSelectionBackgroundKeepsDefaultWeight(t *testing.T) {
 	v := newUnifiedView(testPatch(), false)
 	first := mustFirst(t, v)
 	removed, _ := v.search("removed one", first, forward)
-	selection := beginSelection(removed)
+	selection, ok := v.selectionBetween(removed, removed)
+	testutil.RequireEqual(t, ok, true, "%s", "selection not created")
 	rendered := renderTarget(v, removed, first, 72, &selection)
 	testutil.RequireEqual(t, !strings.Contains(rendered, "\x1b[1m"), true,
 		"selection is bold: %q", rendered,

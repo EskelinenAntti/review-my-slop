@@ -4,19 +4,15 @@ import (
 	"github.com/eskelinenantti/review-my-slop/internal/patch"
 )
 
-func beginSelection(cursor diffCursor) diffSelection {
-	return diffSelection{First: cursor, Last: cursor}
-}
-
-func (v *diffView) extendSelection(
-	selection diffSelection,
-	cursor diffCursor,
+// selectionBetween preserves endpoint order and allows either pane, but both
+// endpoints must identify code in the same file and hunk.
+func (v *diffView) selectionBetween(
+	first, last diffCursor,
 ) (diffSelection, bool) {
-	if !v.sameFileHunk(selection.First, cursor) {
-		return selection, false
+	if !v.sameFileHunk(first, last) {
+		return diffSelection{}, false
 	}
-	selection.Last = cursor
-	return selection, true
+	return diffSelection{First: first, Last: last}, true
 }
 
 func (v *diffView) sameFileHunk(first, last diffCursor) bool {

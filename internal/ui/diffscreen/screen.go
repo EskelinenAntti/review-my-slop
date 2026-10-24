@@ -205,7 +205,7 @@ func (v *View) extendSelectionTo(cursor diffCursor) bool {
 	if v.selection == nil {
 		return true
 	}
-	selection, ok := v.view.extendSelection(*v.selection, cursor)
+	selection, ok := v.view.selectionBetween(v.selection.First, cursor)
 	if ok {
 		v.selection = &selection
 	}
@@ -228,8 +228,7 @@ func (v *View) switchPane(pane diffPane) {
 		if !firstOK || !lastOK {
 			return
 		}
-		selection := beginSelection(first)
-		selection, ok = v.view.extendSelection(selection, last)
+		selection, ok := v.view.selectionBetween(first, last)
 		if !ok {
 			return
 		}
@@ -276,8 +275,7 @@ func (v *View) ToggleSelection() {
 		return
 	}
 	v.search.repeatMiss = false
-	if _, ok := v.view.line(v.cursor); ok {
-		selection := beginSelection(v.cursor)
+	if selection, ok := v.view.selectionBetween(v.cursor, v.cursor); ok {
 		v.selection = &selection
 	}
 }
@@ -292,9 +290,11 @@ func (v *View) ClearSelection() {
 // Selected returns the focused line when no explicit range is selected.
 // The bool is false when the patch has no selectable code.
 func (v *View) Selected() (patch.File, []patch.Line, bool) {
-	selection := beginSelection(v.cursor)
+	selection, ok := v.view.selectionBetween(v.cursor, v.cursor)
 	if v.selection != nil {
 		selection = *v.selection
+	} else if !ok {
+		return patch.File{}, nil, false
 	}
 	file, ok := v.view.file(selection.First)
 	lines := v.view.lines(selection)
