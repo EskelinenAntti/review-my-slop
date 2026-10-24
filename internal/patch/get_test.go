@@ -183,10 +183,11 @@ func TestLoadKeepsRepositoryOperationsAtDiscoveredRoot(t *testing.T) {
 	for _, test := range []struct {
 		name      string
 		kind      Kind
+		branch    string
 		oldSource string
 	}{
 		{name: "unstaged", kind: Unstaged, oldSource: "committed\n"},
-		{name: "branch", kind: Branch, oldSource: "base\n"},
+		{name: "branch", kind: Branch, branch: "main", oldSource: "base\n"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			run := runnerFunc(func(
@@ -211,6 +212,12 @@ func TestLoadKeepsRepositoryOperationsAtDiscoveredRoot(t *testing.T) {
 			testutil.RequireEqual(t, got.Root, root,
 				"patch root = %q", got.Root,
 			)
+			testutil.RequireEqual(t, got.Kind, test.kind,
+				"patch kind = %v", got.Kind,
+			)
+			testutil.RequireEqual(t, got.Branch, test.branch,
+				"patch branch = %q", got.Branch,
+			)
 			testutil.RequireEqual(t, len(got.Files), 2,
 				"files = %#v", got.Files,
 			)
@@ -223,6 +230,52 @@ func TestLoadKeepsRepositoryOperationsAtDiscoveredRoot(t *testing.T) {
 			)
 			testutil.RequireEqual(t, tracked.NewSource, "working\n",
 				"new source = %q", tracked.NewSource,
+			)
+		})
+	}
+}
+
+func TestLoadReturnsZeroPatchWhenFileLoadingFails(t *testing.T) {
+	root := t.TempDir()
+	failure := errors.New("file loading failed")
+	for _, test := range []struct {
+		name    string
+		command string
+		cancel  bool
+	}{
+		{name: "tracked", command: "-c"},
+		{name: "untracked", command: "ls-files"},
+		{name: "canceled after loading", command: "ls-files", cancel: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			run := runnerFunc(func(
+				_ context.Context,
+				_ string,
+				args ...string,
+			) ([]byte, error) {
+				if args[0] == "rev-parse" {
+					return []byte(root + "\n"), nil
+				}
+				if args[0] == test.command {
+					if !test.cancel {
+						return nil, failure
+					}
+					cancel()
+				}
+				return nil, nil
+			})
+			got, err := load(ctx, root, Unstaged, run)
+			wantErr := failure
+			if test.cancel {
+				wantErr = context.Canceled
+			}
+			testutil.RequireEqual(t, errors.Is(err, wantErr), true,
+				"error = %v, want %v", err, wantErr,
+			)
+			testutil.RequireEqual(t, reflect.DeepEqual(got, Patch{}), true,
+				"patch = %#v, want zero patch", got,
 			)
 		})
 	}

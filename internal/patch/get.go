@@ -108,11 +108,16 @@ func load(
 	if err != nil {
 		return Patch{}, err
 	}
-	raw, err := repo.gitDiff(ctx, oldRevision)
+	files, err := repo.loadFiles(ctx, oldRevision)
 	if err != nil {
 		return Patch{}, err
 	}
-	return repo.build(ctx, kind, branch, raw, oldRevision)
+	return Patch{
+		Root:   root,
+		Kind:   kind,
+		Branch: branch,
+		Files:  files,
+	}, nil
 }
 
 func (r repository) comparison(
@@ -174,20 +179,21 @@ func (r repository) gitDiff(
 	return r.run.Run(ctx, r.root, args...)
 }
 
-func (r repository) build(
+func (r repository) loadFiles(
 	ctx context.Context,
-	kind Kind,
-	branch string,
-	raw []byte,
 	oldRevision string,
-) (Patch, error) {
+) ([]File, error) {
+	raw, err := r.gitDiff(ctx, oldRevision)
+	if err != nil {
+		return nil, err
+	}
 	files, err := r.parseTracked(ctx, raw, oldRevision)
 	if err != nil {
-		return Patch{}, err
+		return nil, err
 	}
 	untracked, err := r.loadUntracked(ctx)
 	if err != nil {
-		return Patch{}, err
+		return nil, err
 	}
 	files = append(files, untracked...)
 	slices.SortStableFunc(
@@ -198,15 +204,10 @@ func (r repository) build(
 	)
 
 	if err := ctx.Err(); err != nil {
-		return Patch{}, err
+		return nil, err
 	}
 
-	return Patch{
-		Root:   r.root,
-		Kind:   kind,
-		Branch: branch,
-		Files:  files,
-	}, nil
+	return files, nil
 }
 
 func (r repository) defaultBranch(ctx context.Context) (string, error) {
