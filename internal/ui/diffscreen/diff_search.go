@@ -70,28 +70,28 @@ func (v *diffView) cursorNearMetadata(
 	pane diffPane,
 	direction Direction,
 ) (diffCursor, bool) {
+	fileIndex := v.rows[y].file
 	for distance := 1; distance <= len(v.rows); distance++ {
+		inFile := false
 		for _, candidateY := range neighborRows(y, distance, direction) {
-			if candidate, ok := v.cursorInFile(candidateY, y, pane); ok {
+			if candidateY < 0 || candidateY >= len(v.rows) ||
+				v.rows[candidateY].file != fileIndex {
+				continue
+			}
+			inFile = true
+			if candidate, ok := v.cursorAt(candidateY, pane); ok {
 				return candidate, true
 			}
+			if v.split {
+				if candidate, ok := v.cursorAt(candidateY, pane.other()); ok {
+					return candidate, true
+				}
+			}
 		}
-	}
-	return diffCursor{}, false
-}
-
-func (v *diffView) cursorInFile(
-	y, origin int,
-	pane diffPane,
-) (diffCursor, bool) {
-	if y < 0 || y >= len(v.rows) || v.rows[y].file != v.rows[origin].file {
-		return diffCursor{}, false
-	}
-	if candidate, ok := v.cursorAt(y, pane); ok {
-		return candidate, true
-	}
-	if v.split {
-		return v.cursorAt(y, pane.other())
+		// File rows are contiguous, so neither side can re-enter this file.
+		if !inFile {
+			break
+		}
 	}
 	return diffCursor{}, false
 }
