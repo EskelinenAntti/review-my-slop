@@ -204,14 +204,23 @@ func preserveSelection(
 	if !first.valid || !last.valid {
 		return nil
 	}
-	translatedFirst, firstOK := next.findCursor(first)
-	translatedLast, lastOK := next.findCursor(last)
-	if !firstOK || !lastOK || !sameFilePaths(
+	if !sameFilePaths(
 		first.oldPath,
 		first.newPath,
 		last.oldPath,
 		last.newPath,
-	) || first.hunkHeader != last.hunkHeader {
+	) {
+		return nil
+	}
+	if first.hunkHeader != last.hunkHeader {
+		return nil
+	}
+	translatedFirst, ok := next.findCursor(first)
+	if !ok {
+		return nil
+	}
+	translatedLast, ok := next.findCursor(last)
+	if !ok {
 		return nil
 	}
 	translated, ok := next.selectionBetween(translatedFirst, translatedLast)
