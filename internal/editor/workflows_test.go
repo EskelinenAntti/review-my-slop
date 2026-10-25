@@ -23,6 +23,11 @@ func TestCommentWorkflowLifecycle(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			dir := t.TempDir()
+			draftDir := filepath.Join(
+				dir, "draft's directory $(printf expanded)",
+			)
+			testutil.NoError(t, os.Mkdir(draftDir, 0700))
+			t.Setenv("TMPDIR", draftDir)
 			record := filepath.Join(dir, "draft-path")
 			script := filepath.Join(dir, "editor's script.sh")
 			testutil.NoError(

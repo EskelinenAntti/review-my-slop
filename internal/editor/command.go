@@ -7,10 +7,6 @@ import (
 	"strings"
 )
 
-func commentCommand(ctx context.Context, editor, path string) *exec.Cmd {
-	return shellCommand(ctx, editor, path)
-}
-
 func sourceCommand(
 	ctx context.Context,
 	editor, path string,

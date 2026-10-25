@@ -37,7 +37,7 @@ func TestEditorCommandsTreatPathsAsLiteralArguments(t *testing.T) {
 			ctx := context.Background()
 			const editor = "printf '%s\\000'"
 			assertCommandOutput(
-				t, commentCommand(ctx, editor, path), path+"\x00",
+				t, shellCommand(ctx, editor, path), path+"\x00",
 			)
 			assertCommandOutput(
 				t, sourceCommand(ctx, editor, path, 42), "+42\x00"+path+"\x00",
