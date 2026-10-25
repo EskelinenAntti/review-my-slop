@@ -20,9 +20,8 @@ type saveSideBySideFunc func(bool) error
 
 // commentStore supplies the persistence operations used by the terminal client.
 type commentStore interface {
-	Add(comments.Comment) (comments.Comment, error)
+	Save(comments.Comment) (comments.Comment, error)
 	List(string) ([]comments.Comment, error)
-	Update(comments.Comment) error
 	Delete(string, string) error
 }
 
@@ -134,17 +133,7 @@ func newWithStore(
 	if err != nil {
 		return model{}, err
 	}
-	m := newModel(ctx, currentPatch, pendingComments, func(
-		comment comments.Comment,
-	) (comments.Comment, error) {
-		if comment.ID != "" {
-			if err := store.Update(comment); err != nil {
-				return comments.Comment{}, err
-			}
-			return comment, nil
-		}
-		return store.Add(comment)
-	}, initialLayout{
+	m := newModel(ctx, currentPatch, pendingComments, store.Save, initialLayout{
 		sideBySide: preferences.SideBySide,
 		saveSideBySide: func(enabled bool) error {
 			return settings.Save(settings.Preferences{SideBySide: enabled})

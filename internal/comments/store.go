@@ -40,6 +40,18 @@ func OpenDefault() (Store, error) {
 	return Store{Path: path}, nil
 }
 
+// Save adds a comment without an ID or updates an existing comment with an ID.
+// An ID that is no longer stored in the repository is an error, not an insert.
+func (s Store) Save(comment Comment) (Comment, error) {
+	if comment.ID == "" {
+		return s.Add(comment)
+	}
+	if err := s.Update(comment); err != nil {
+		return Comment{}, err
+	}
+	return comment, nil
+}
+
 // Add validates and stores a comment, assigning an ID and timestamp when
 // absent.
 func (s Store) Add(comment Comment) (Comment, error) {
