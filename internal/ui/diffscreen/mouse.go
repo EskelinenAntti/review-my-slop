@@ -45,9 +45,7 @@ func (v *View) cursorAtPoint(x, y int) (diffCursor, bool) {
 	if !ok {
 		return diffCursor{}, false
 	}
-	if v.view.hasStickyHeader(v.viewport.top, v.viewport.height) {
-		row--
-	}
+	row -= v.view.stickyHeaderHeight(v.viewport.top, v.viewport.height)
 	if row < 0 || row >= v.view.contentHeight(v.viewport) {
 		return diffCursor{}, false
 	}

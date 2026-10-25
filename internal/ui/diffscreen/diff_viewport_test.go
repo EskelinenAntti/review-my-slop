@@ -2,6 +2,40 @@ package diffscreen
 
 import "testing"
 
+func TestStickyHeaderHeight(t *testing.T) {
+	v := &diffView{rows: []projectedRow{
+		{kind: fileRow},
+		{kind: hunkRow},
+		{kind: metadataRow},
+		{kind: lineRow},
+		{kind: fileRow},
+	}}
+	for _, tt := range []struct {
+		name        string
+		top, height int
+		want        int
+	}{
+		{name: "visible file header", top: 0, height: 3},
+		{name: "hunk", top: 1, height: 3, want: 1},
+		{name: "metadata", top: 2, height: 3, want: 1},
+		{name: "code", top: 3, height: 3, want: 1},
+		{name: "next file header", top: 4, height: 3},
+		{name: "single row", top: 3, height: 1},
+		{name: "no height", top: 3, height: 0},
+		{name: "before rows", top: -1, height: 3},
+		{name: "after rows", top: 5, height: 3},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := v.stickyHeaderHeight(tt.top, tt.height); got != tt.want {
+				t.Errorf("stickyHeaderHeight = %d, want %d", got, tt.want)
+			}
+		})
+	}
+	if got := (&diffView{}).stickyHeaderHeight(0, 3); got != 0 {
+		t.Errorf("empty view stickyHeaderHeight = %d, want 0", got)
+	}
+}
+
 func TestVisibleRows(t *testing.T) {
 	v := &diffView{rows: []projectedRow{
 		{kind: fileRow},

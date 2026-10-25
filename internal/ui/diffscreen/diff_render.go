@@ -36,7 +36,7 @@ func (v *diffView) render(
 		leftWidth, rightWidth = splitPaneWidths(viewport.width)
 	}
 	lines := make([]string, 0, viewport.height)
-	if v.hasStickyHeader(viewport.top, viewport.height) {
+	if v.stickyHeaderHeight(viewport.top, viewport.height) > 0 {
 		current := v.rows[viewport.top]
 		lines = append(
 			lines,

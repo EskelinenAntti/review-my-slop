@@ -127,10 +127,7 @@ func TestViewportAlignmentResizeAndScrolling(t *testing.T) {
 	)
 
 	viewport = v.align(viewport, cursor, middle)
-	headerHeight := 0
-	if v.hasStickyHeader(viewport.top, viewport.height) {
-		headerHeight = 1
-	}
+	headerHeight := v.stickyHeaderHeight(viewport.top, viewport.height)
 	testutil.RequireEqual(t, headerHeight+cursor.row-viewport.top,
 		viewport.height/2, "middle alignment = %#v", viewport,
 	)

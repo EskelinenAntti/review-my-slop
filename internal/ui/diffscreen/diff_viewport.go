@@ -19,10 +19,7 @@ func (v *diffView) resize(
 
 func (v *diffView) maxTop(height int) int {
 	end := max(0, len(v.rows)-height)
-	if v.hasStickyHeader(end, height) {
-		end++
-	}
-	return end
+	return end + v.stickyHeaderHeight(end, height)
 }
 
 func (v *diffView) clampViewport(viewport diffViewport) diffViewport {
@@ -34,16 +31,19 @@ func (v *diffView) clampViewport(viewport diffViewport) diffViewport {
 	return viewport
 }
 
-func (v *diffView) hasStickyHeader(top int, viewportHeight int) bool {
-	return viewportHeight > 1 && top >= 0 &&
-		top < len(v.rows) && v.rows[top].kind != fileRow
+// stickyHeaderHeight reserves a row only when the file header has scrolled out
+// of view and there is room left for content.
+func (v *diffView) stickyHeaderHeight(top int, viewportHeight int) int {
+	if viewportHeight > 1 && top >= 0 &&
+		top < len(v.rows) && v.rows[top].kind != fileRow {
+		return 1
+	}
+	return 0
 }
 
 func (v *diffView) contentHeight(viewport diffViewport) int {
-	height := viewport.height
-	if v.hasStickyHeader(viewport.top, viewport.height) {
-		height--
-	}
+	headerHeight := v.stickyHeaderHeight(viewport.top, viewport.height)
+	height := viewport.height - headerHeight
 	return max(1, height)
 }
 
@@ -87,7 +87,7 @@ func (v *diffView) align(
 	}
 	offset := max(0, alignmentOffset(viewport.height, alignment)-headerHeight)
 	viewport.top = cursor.row - offset
-	if !v.hasStickyHeader(viewport.top, viewport.height) {
+	if v.stickyHeaderHeight(viewport.top, viewport.height) == 0 {
 		viewport.top = cursor.row - alignmentOffset(viewport.height, alignment)
 	}
 	return v.clampViewport(viewport)
