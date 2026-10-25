@@ -90,6 +90,30 @@ func TestGetIncludesUnstagedAndUntrackedButNotStagedOnly(t *testing.T) {
 	}
 }
 
+func TestGetSortsTrackedAndUntrackedFilesTogether(t *testing.T) {
+	repo := newRepository(t)
+	for _, path := range []string{"b.txt", "z.txt"} {
+		writeFile(t, repo, path, "before\n")
+	}
+	git(t, repo, "add", ".")
+	git(t, repo, "commit", "-m", "base")
+	for _, path := range []string{"a.txt", "b.txt", "y.txt", "z.txt"} {
+		writeFile(t, repo, path, "after\n")
+	}
+	t.Chdir(repo)
+
+	got, err := Get(context.Background(), Unstaged)
+	testutil.NoError(t, err)
+	var paths []string
+	for _, file := range got.Files {
+		paths = append(paths, file.DisplayPath)
+	}
+	want := []string{"a.txt", "b.txt", "y.txt", "z.txt"}
+	testutil.RequireEqual(t, reflect.DeepEqual(paths, want), true,
+		"file paths = %q, want %q", paths, want,
+	)
+}
+
 func TestGetPreservesTrackedPathStartingWithDiffPrefix(t *testing.T) {
 	repo := newRepository(t)
 	path := "b/nested.go"

@@ -105,7 +105,32 @@ func load(
 	if err != nil {
 		return Patch{}, err
 	}
-	return build(ctx, run, root, kind, branch, raw, oldRevision)
+	files, err := parseTracked(ctx, run, root, raw, oldRevision)
+	if err != nil {
+		return Patch{}, err
+	}
+	untracked, err := loadUntracked(ctx, run, root)
+	if err != nil {
+		return Patch{}, err
+	}
+	files = append(files, untracked...)
+	slices.SortStableFunc(
+		files,
+		func(a, b File) int {
+			return cmp.Compare(a.DisplayPath, b.DisplayPath)
+		},
+	)
+
+	if err := ctx.Err(); err != nil {
+		return Patch{}, err
+	}
+
+	return Patch{
+		Root:   root,
+		Kind:   kind,
+		Branch: branch,
+		Files:  files,
+	}, nil
 }
 
 func comparison(
@@ -169,43 +194,6 @@ func gitDiff(
 	}
 	args = append(args, "--")
 	return run.Run(ctx, root, args...)
-}
-
-func build(
-	ctx context.Context,
-	run runner,
-	root string,
-	kind Kind,
-	branch string,
-	raw []byte,
-	oldRevision string,
-) (Patch, error) {
-	files, err := parseTracked(ctx, run, root, raw, oldRevision)
-	if err != nil {
-		return Patch{}, err
-	}
-	untracked, err := loadUntracked(ctx, run, root)
-	if err != nil {
-		return Patch{}, err
-	}
-	files = append(files, untracked...)
-	slices.SortStableFunc(
-		files,
-		func(a, b File) int {
-			return cmp.Compare(a.DisplayPath, b.DisplayPath)
-		},
-	)
-
-	if err := ctx.Err(); err != nil {
-		return Patch{}, err
-	}
-
-	return Patch{
-		Root:   root,
-		Kind:   kind,
-		Branch: branch,
-		Files:  files,
-	}, nil
 }
 
 func defaultBranch(
