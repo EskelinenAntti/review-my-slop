@@ -4,17 +4,19 @@ import "github.com/eskelinenantti/review-my-slop/internal/patch"
 
 func (v *diffView) valid(cursor diffCursor) bool {
 	return cursor.row >= 0 && cursor.row < len(v.rows) &&
-		v.lineIndex(v.rows[cursor.row], cursor.pane) >= 0
+		v.rows[cursor.row].lineIndex(cursor.pane) >= 0
 }
 
-func (v *diffView) lineIndex(current entry, pane diffPane) int {
-	if current.kind != lineRow {
+// lineIndex uses the projection's pane indexes; unified rows store the same
+// source index in both panes, so lookup does not need to know the layout.
+func (e entry) lineIndex(pane diffPane) int {
+	if e.kind != lineRow {
 		return -1
 	}
-	if !v.split || pane == right {
-		return current.rightLine
+	if pane == right {
+		return e.rightLine
 	}
-	return current.leftLine
+	return e.leftLine
 }
 
 func (v *diffView) file(cursor diffCursor) (patch.File, bool) {
@@ -29,6 +31,6 @@ func (v *diffView) line(cursor diffCursor) (patch.Line, bool) {
 		return patch.Line{}, false
 	}
 	current := v.rows[cursor.row]
-	index := v.lineIndex(current, cursor.pane)
+	index := current.lineIndex(cursor.pane)
 	return v.patch.Files[current.file].Hunks[current.hunk].Lines[index], true
 }

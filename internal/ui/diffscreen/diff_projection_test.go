@@ -36,7 +36,7 @@ func TestNonLineEntriesPreserveProjectionData(t *testing.T) {
 			"sticky and projected headers agree")
 		for _, current := range append(v.rows, sticky) {
 			for _, pane := range []diffPane{left, right} {
-				testutil.CheckEqual(t, v.lineIndex(current, pane), -1,
+				testutil.CheckEqual(t, current.lineIndex(pane), -1,
 					"split=%v: non-code row is not selectable in pane %v",
 					split, pane)
 			}

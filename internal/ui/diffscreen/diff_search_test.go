@@ -2,6 +2,7 @@ package diffscreen
 
 import (
 	"fmt"
+	"slices"
 	"testing"
 
 	"github.com/eskelinenantti/review-my-slop/internal/patch"
@@ -61,7 +62,14 @@ func TestCursorNearMetadata(t *testing.T) {
 			diffCursor{}, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			v := &diffView{rows: rows, split: tc.split}
+			projected := slices.Clone(rows)
+			if !tc.split {
+				// Unified projection stores the source index in both panes.
+				for index := range projected {
+					projected[index].leftLine = projected[index].rightLine
+				}
+			}
+			v := &diffView{rows: projected, split: tc.split}
 			cursor, ok := v.cursorNearMetadata(tc.origin, tc.pane, tc.direction)
 			testutil.RequireEqual(t, ok, tc.ok, "got ok=%t, want %t", ok, tc.ok)
 			testutil.RequireEqual(t, cursor, tc.want,

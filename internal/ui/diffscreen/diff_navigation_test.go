@@ -36,10 +36,17 @@ func TestCursorsAt(t *testing.T) {
 			[]diffCursor{{row: 1, pane: left}}},
 		{"unified retains right", false, 1, right,
 			[]diffCursor{{row: 1, pane: right}}},
-		{"unified ignores left-only cells", false, 2, left, nil},
+		{"unified skips empty row", false, 2, left, nil},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			v := &diffView{rows: rows, split: tc.split}
+			projected := slices.Clone(rows)
+			if !tc.split {
+				// Unified projection stores the source index in both panes.
+				for index := range projected {
+					projected[index].leftLine = projected[index].rightLine
+				}
+			}
+			v := &diffView{rows: projected, split: tc.split}
 			got := slices.Collect(v.cursorsAt(tc.row, tc.preferred))
 			testutil.CheckEqual(t, slices.Equal(got, tc.want), true,
 				"selectable cursors = %v, want %v", got, tc.want)
