@@ -182,23 +182,14 @@ func (v *View) halfPage(direction direction) {
 // applyMovement commits focus and scrolling together only when the active
 // selection can follow the proposed cursor within its original hunk.
 func (v *View) applyMovement(viewport diffViewport, cursor diffCursor) {
-	if !v.extendSelectionTo(cursor) {
-		return
-	}
-	v.viewport, v.cursor = viewport, cursor
-}
-
-// extendSelectionTo accepts unrestricted movement when no range is active.
-// An active range changes only when its endpoint remains in the original hunk.
-func (v *View) extendSelectionTo(cursor diffCursor) bool {
-	if v.selection == nil {
-		return true
-	}
-	selection, ok := v.view.selectionBetween(v.selection.First, cursor)
-	if ok {
+	if v.selection != nil {
+		selection, ok := v.view.selectionBetween(v.selection.First, cursor)
+		if !ok {
+			return
+		}
 		v.selection = &selection
 	}
-	return ok
+	v.viewport, v.cursor = viewport, cursor
 }
 func (v *View) jumpFile(direction direction) {
 	v.selection = nil

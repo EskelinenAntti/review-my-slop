@@ -1,6 +1,7 @@
 package diffscreen
 
 import (
+	"fmt"
 	"math"
 	"strings"
 	"testing"
@@ -116,6 +117,50 @@ func TestNarrowLayoutFallbackPreservesPreferenceAndPosition(t *testing.T) {
 	testutil.RequireEqual(t, strings.Contains(v.Render(nil), " │ "), true,
 		"%s", "resize lost split preference",
 	)
+}
+
+func TestMovementCommitsFocusViewportAndSelection(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		move func(*View)
+	}{
+		{"next line", func(v *View) { v.Move(NextLine) }},
+		{"next page", func(v *View) { v.Move(NextPage) }},
+		{"scroll down", func(v *View) { v.ScrollVertical(8) }},
+	} {
+		for _, selected := range []bool{false, true} {
+			name := fmt.Sprintf("%s/selected=%t", tc.name, selected)
+			t.Run(name, func(t *testing.T) {
+				v := New(longPatch(), Options{})
+				v.Resize(80, 8)
+				for range 4 {
+					v.Move(NextLine)
+				}
+				if selected {
+					v.ToggleSelection()
+				}
+				beforeCursor, beforeViewport := v.cursor, v.viewport
+
+				tc.move(v)
+
+				testutil.RequireEqual(t, v.cursor != beforeCursor, true,
+					"accepted movement did not move focus")
+				testutil.RequireEqual(t, v.viewport != beforeViewport, true,
+					"accepted movement did not scroll")
+				visible := v.view.cursorVisible(v.viewport, v.cursor)
+				testutil.RequireEqual(t, visible, true,
+					"accepted movement left focus outside viewport")
+				if selected {
+					testutil.RequireEqual(t, v.selection.First, beforeCursor,
+						"accepted movement changed selection start")
+					testutil.RequireEqual(t, v.selection.Last, v.cursor,
+						"accepted movement did not extend selection to focus")
+				} else if v.selection != nil {
+					t.Fatal("movement started a selection")
+				}
+			})
+		}
+	}
 }
 
 func TestMovementDoesNotPartiallyChangeRejectedSelection(t *testing.T) {
