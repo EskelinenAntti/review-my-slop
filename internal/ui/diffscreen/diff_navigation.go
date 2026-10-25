@@ -139,19 +139,32 @@ func (v *diffView) cursorNearMetadata(
 	pane diffPane,
 	direction direction,
 ) (diffCursor, bool) {
-	for distance := 1; distance <= len(v.rows); distance++ {
-		for _, candidateY := range neighborRows(y, distance, direction) {
-			if candidate, ok := v.cursorInFile(candidateY, y, pane); ok {
-				return candidate, true
+	return nearestCursor(y, len(v.rows), direction,
+		func(row int) (diffCursor, bool) {
+			return v.cursorInFile(row, y, pane)
+		})
+}
+
+// nearestCursor checks the target first, then increasing distances up to and
+// including maxDistance. Equal distances prefer direction; lookup defines which
+// rows and panes are eligible.
+func nearestCursor(
+	target, maxDistance int,
+	direction direction,
+	lookup func(int) (diffCursor, bool),
+) (diffCursor, bool) {
+	if cursor, ok := lookup(target); ok {
+		return cursor, true
+	}
+	for distance := 1; distance <= maxDistance; distance++ {
+		offset := int(direction) * distance
+		for _, row := range [2]int{target + offset, target - offset} {
+			if cursor, ok := lookup(row); ok {
+				return cursor, true
 			}
 		}
 	}
 	return diffCursor{}, false
-}
-
-func neighborRows(row, distance int, direction direction) [2]int {
-	offset := int(direction) * distance
-	return [2]int{row + offset, row - offset}
 }
 
 func (v *diffView) cursorInFile(
