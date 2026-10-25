@@ -1,9 +1,48 @@
 package diffscreen
 
 import (
+	"fmt"
 	"slices"
 	"testing"
 )
+
+func TestSGRColorClassification(t *testing.T) {
+	for _, test := range []struct {
+		code                   int
+		foreground, background bool
+	}{
+		{0, false, false},
+		{29, false, false},
+		{30, true, false},
+		{37, true, false},
+		{38, true, false},
+		{39, true, false},
+		{40, false, true},
+		{47, false, true},
+		{48, false, true},
+		{49, false, true},
+		{50, false, false},
+		{89, false, false},
+		{90, true, false},
+		{97, true, false},
+		{98, false, false},
+		{99, false, false},
+		{100, false, true},
+		{107, false, true},
+		{108, false, false},
+	} {
+		t.Run(fmt.Sprint(test.code), func(t *testing.T) {
+			if got := isForegroundSGR(test.code); got != test.foreground {
+				t.Errorf("isForegroundSGR(%d) = %v, want %v",
+					test.code, got, test.foreground)
+			}
+			if got := isBackgroundSGR(test.code); got != test.background {
+				t.Errorf("isBackgroundSGR(%d) = %v, want %v",
+					test.code, got, test.background)
+			}
+		})
+	}
+}
 
 func TestFilterANSIColors(t *testing.T) {
 	for _, test := range []struct {

@@ -16,6 +16,11 @@ const (
 	discardForeground
 )
 
+const (
+	sgrExtendedForeground = 38
+	sgrExtendedBackground = 48
+)
+
 func renderStyledRow(
 	style lipgloss.Style,
 	value string,
@@ -64,18 +69,26 @@ func filterSGRParts(parts []string, colors foregroundPolicy) []string {
 			continue
 		}
 		switch {
-		case code == 48 || (colors == discardForeground && code == 38):
+		case code == sgrExtendedBackground ||
+			(colors == discardForeground && code == sgrExtendedForeground):
 			parts = skipColorPayload(parts)
-		case (code >= 40 && code <= 49) || (code >= 100 && code <= 107):
+		case isBackgroundSGR(code):
 			// Background colors are supplied by the row style.
-		case colors == discardForeground &&
-			((code >= 30 && code <= 39) || (code >= 90 && code <= 97)):
+		case colors == discardForeground && isForegroundSGR(code):
 			// Cursor and selection styles also replace syntax foregrounds.
 		default:
 			filtered = append(filtered, parameter)
 		}
 	}
 	return filtered
+}
+
+func isBackgroundSGR(code int) bool {
+	return (code >= 40 && code <= 49) || (code >= 100 && code <= 107)
+}
+
+func isForegroundSGR(code int) bool {
+	return (code >= 30 && code <= 39) || (code >= 90 && code <= 97)
 }
 
 func skipColorPayload(parts []string) []string {
