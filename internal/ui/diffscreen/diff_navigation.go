@@ -26,6 +26,21 @@ func (v *diffView) cursorAt(y int, pane diffPane) (diffCursor, bool) {
 	return cursor, v.valid(cursor)
 }
 
+// inPreferredPane exhausts the caller's lookup in the preferred pane before
+// trying the other pane. Unified views never need an alternate-pane lookup.
+func (v *diffView) inPreferredPane(
+	pane diffPane,
+	lookup func(diffPane) (diffCursor, bool),
+) (diffCursor, bool) {
+	if cursor, ok := lookup(pane); ok {
+		return cursor, true
+	}
+	if v.split {
+		return lookup(pane.other())
+	}
+	return diffCursor{}, false
+}
+
 func (v *diffView) first() (diffCursor, bool) {
 	return v.edge(forward)
 }
@@ -97,13 +112,9 @@ func (v *diffView) searchRow(
 	if v.rows[y].kind != lineRow {
 		return v.searchMetadata(query, y, pane, direction)
 	}
-	if candidate, ok := v.searchPane(query, y, pane); ok {
-		return candidate, true
-	}
-	if v.split {
-		return v.searchPane(query, y, pane.other())
-	}
-	return diffCursor{}, false
+	return v.inPreferredPane(pane, func(pane diffPane) (diffCursor, bool) {
+		return v.searchPane(query, y, pane)
+	})
 }
 
 func (v *diffView) searchPane(
@@ -174,13 +185,9 @@ func (v *diffView) cursorInFile(
 	if y < 0 || y >= len(v.rows) || v.rows[y].file != v.rows[origin].file {
 		return diffCursor{}, false
 	}
-	if candidate, ok := v.cursorAt(y, pane); ok {
-		return candidate, true
-	}
-	if v.split {
-		return v.cursorAt(y, pane.other())
-	}
-	return diffCursor{}, false
+	return v.inPreferredPane(pane, func(pane diffPane) (diffCursor, bool) {
+		return v.cursorAt(y, pane)
+	})
 }
 
 func (v *diffView) jumpFile(

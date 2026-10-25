@@ -132,10 +132,10 @@ func (v *diffView) scrollVertical(
 	if cursor.row > target {
 		d = backward
 	}
-	candidate, ok := v.nearest(target, cursor.pane, d, viewport)
-	if !ok && v.split {
-		candidate, ok = v.nearest(target, cursor.pane.other(), d, viewport)
-	}
+	candidate, ok := v.inPreferredPane(cursor.pane,
+		func(pane diffPane) (diffCursor, bool) {
+			return v.nearest(target, pane, d, viewport)
+		})
 	if ok {
 		cursor = candidate
 	}

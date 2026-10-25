@@ -2,6 +2,50 @@ package diffscreen
 
 import "testing"
 
+func TestInPreferredPane(t *testing.T) {
+	tests := []struct {
+		name      string
+		split     bool
+		preferred diffPane
+		available [2]bool
+		want      diffPane
+		found     bool
+		calls     int
+	}{
+		{"prefer right", true, right, [2]bool{true, true}, right, true, 1},
+		{"prefer left", true, left, [2]bool{true, true}, left, true, 1},
+		{"fall back to left", true, right, [2]bool{true, false}, left, true, 2},
+		{"fallback right", true, left, [2]bool{false, true}, right, true, 2},
+		{"neither pane", true, right, [2]bool{}, right, false, 2},
+		{"unified match", false, right, [2]bool{true, true}, right, true, 1},
+		{"unified miss", false, right, [2]bool{true, false}, right, false, 1},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			v := &diffView{split: tt.split}
+			var visited []diffPane
+			cursor, ok := v.inPreferredPane(tt.preferred,
+				func(pane diffPane) (diffCursor, bool) {
+					visited = append(visited, pane)
+					return diffCursor{row: 7, pane: pane}, tt.available[pane]
+				})
+			want := diffCursor{row: 7, pane: tt.want}
+			if ok != tt.found || ok && cursor != want {
+				t.Fatalf("inPreferredPane = %v, %v; want pane %v, %v",
+					cursor, ok, tt.want, tt.found)
+			}
+			if len(visited) != tt.calls || visited[0] != tt.preferred {
+				t.Fatalf("lookup panes = %v; want %d calls, preferred first",
+					visited, tt.calls)
+			}
+			if len(visited) == 2 && visited[1] != tt.preferred.other() {
+				t.Fatalf("fallback pane = %v; want %v",
+					visited[1], tt.preferred.other())
+			}
+		})
+	}
+}
+
 func TestNearestCursor(t *testing.T) {
 	tests := []struct {
 		name        string
