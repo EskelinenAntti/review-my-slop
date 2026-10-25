@@ -60,14 +60,9 @@ func (v *diffView) rowAtViewportOffset(
 	if v.hasStickyHeader(viewport.top, viewport.height) {
 		if offset == 0 {
 			fileIndex := v.rows[viewport.top].file
-			return entry{
-				kind:      fileRow,
-				file:      fileIndex,
-				hunk:      -1,
-				leftLine:  -1,
-				rightLine: -1,
-				text:      v.patch.Files[fileIndex].DisplayPath,
-			}, -1, true
+			return newNonLineEntry(
+				fileRow, fileIndex, -1, v.patch.Files[fileIndex].DisplayPath,
+			), -1, true
 		}
 		offset--
 	}

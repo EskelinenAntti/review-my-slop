@@ -9,6 +9,41 @@ import (
 	"github.com/eskelinenantti/review-my-slop/internal/testutil"
 )
 
+func TestNonLineEntriesPreserveProjectionData(t *testing.T) {
+	p := patch.Patch{Files: []patch.File{{
+		DisplayPath: "file.go",
+		Metadata:    []string{"file metadata"},
+		Hunks:       []patch.Hunk{{Header: "header"}},
+	}}}
+	for _, split := range []bool{false, true} {
+		v := newDiffView(p, Options{SideBySide: split})
+		want := []entry{
+			{kind: fileRow, file: 0, hunk: -1,
+				leftLine: -1, rightLine: -1, text: "file.go"},
+			{kind: metadataRow, file: 0, hunk: -1,
+				leftLine: -1, rightLine: -1, text: "file metadata"},
+			{kind: hunkRow, file: 0, hunk: 0,
+				leftLine: -1, rightLine: -1, text: "@@ header"},
+		}
+		testutil.RequireEqual(t, slices.Equal(v.rows, want), true,
+			"split=%v: non-code rows = %#v, want %#v", split, v.rows, want)
+		sticky, row, ok := v.rowAtViewportOffset(
+			diffViewport{top: 1, height: 3}, 0,
+		)
+		testutil.RequireEqual(t, ok, true, "sticky header exists")
+		testutil.CheckEqual(t, row, -1, "sticky header has no source row")
+		testutil.CheckEqual(t, sticky, want[0],
+			"sticky and projected headers agree")
+		for _, current := range append(v.rows, sticky) {
+			for _, pane := range []diffPane{left, right} {
+				testutil.CheckEqual(t, v.lineIndex(current, pane), -1,
+					"split=%v: non-code row is not selectable in pane %v",
+					split, pane)
+			}
+		}
+	}
+}
+
 func TestAppendHunkRowsPreservesProjectionData(t *testing.T) {
 	oldText := "\x1b[31mold\tone\x1b[0m"
 	longText := strings.Repeat("x", 24)

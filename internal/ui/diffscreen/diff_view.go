@@ -70,9 +70,13 @@ func (v *diffView) appendFileRows(
 	file patch.File,
 	highlighted highlightedSources,
 ) {
-	v.appendNonLineRow(fileRow, fileIndex, -1, file.DisplayPath)
+	v.rows = append(v.rows, newNonLineEntry(
+		fileRow, fileIndex, -1, file.DisplayPath,
+	))
 	for _, metadata := range file.Metadata {
-		v.appendNonLineRow(metadataRow, fileIndex, -1, metadata)
+		v.rows = append(v.rows, newNonLineEntry(
+			metadataRow, fileIndex, -1, metadata,
+		))
 	}
 	for hunkIndex, hunk := range file.Hunks {
 		v.appendHunkRows(fileIndex, hunkIndex, hunk, highlighted)
@@ -84,12 +88,12 @@ func (v *diffView) appendHunkRows(
 	hunk patch.Hunk,
 	highlighted highlightedSources,
 ) {
-	v.appendNonLineRow(
+	v.rows = append(v.rows, newNonLineEntry(
 		hunkRow,
 		fileIndex,
 		hunkIndex,
 		normalizeHunkHeader(hunk.Header),
-	)
+	))
 	pairs := unifiedLinePairs(hunk.Lines)
 	if v.split {
 		pairs = splitLinePairs(hunk.Lines)
@@ -108,19 +112,20 @@ func (v *diffView) appendHunkRows(
 	}
 }
 
-func (v *diffView) appendNonLineRow(
+// newNonLineEntry marks both source indexes absent for non-code rows.
+func newNonLineEntry(
 	kind rowKind,
 	fileIndex, hunkIndex int,
 	text string,
-) {
-	v.rows = append(v.rows, entry{
+) entry {
+	return entry{
 		kind:      kind,
 		file:      fileIndex,
 		hunk:      hunkIndex,
 		leftLine:  -1,
 		rightLine: -1,
 		text:      text,
-	})
+	}
 }
 
 func (v *diffView) highlightRow(
