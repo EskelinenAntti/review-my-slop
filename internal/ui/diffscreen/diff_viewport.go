@@ -3,6 +3,7 @@ package diffscreen
 import (
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
+	"github.com/eskelinenantti/review-my-slop/internal/ui"
 )
 
 func (v *diffView) newViewport(width, height int) diffViewport {
@@ -107,18 +108,10 @@ func (v *diffView) scrollHorizontal(
 	viewport diffViewport,
 	columns int,
 ) diffViewport {
-	viewport.leftColumn = clampedScrollOffset(
+	viewport.leftColumn = ui.MoveWithinBounds(
 		viewport.leftColumn, columns, v.maxHorizontalOffset(viewport.width),
 	)
 	return v.clampViewport(viewport)
-}
-
-// clampedScrollOffset bounds the movement before adding it so extreme scroll
-// requests (including first/last-column navigation) cannot overflow the offset.
-// The current offset and maximum must be nonnegative.
-func clampedScrollOffset(current, delta, maximum int) int {
-	delta = max(-current, min(delta, maximum-current))
-	return current + delta
 }
 
 func (v *diffView) scrollVertical(
@@ -126,7 +119,7 @@ func (v *diffView) scrollVertical(
 	cursor diffCursor,
 	rows int,
 ) (diffViewport, diffCursor) {
-	viewport.top = clampedScrollOffset(
+	viewport.top = ui.MoveWithinBounds(
 		viewport.top, rows, v.maxTop(viewport.height),
 	)
 	viewport = v.clampViewport(viewport)

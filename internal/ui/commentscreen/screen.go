@@ -61,8 +61,7 @@ func (v *View) Resize(width, height int) {
 
 // Move shifts focus by delta comments within the list bounds.
 func (v *View) Move(delta int) {
-	delta = max(-v.row, min(delta, max(0, len(v.items)-1)-v.row))
-	v.row += delta
+	v.row = ui.MoveWithinBounds(v.row, delta, max(0, len(v.items)-1))
 	v.keepVisible()
 }
 
