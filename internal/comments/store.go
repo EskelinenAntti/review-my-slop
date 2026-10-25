@@ -248,7 +248,7 @@ func forEachComment(
 }
 
 func (s Store) transact(fn func(*bolt.Bucket) error) error {
-	db, err := s.openForWrite()
+	db, err := s.openDatabase(writeDatabase)
 	if err != nil {
 		return err
 	}
@@ -263,7 +263,7 @@ func (s Store) transact(fn func(*bolt.Bucket) error) error {
 }
 
 func (s Store) view(fn func(*bolt.Bucket) error) error {
-	db, err := s.openForRead()
+	db, err := s.openDatabase(readDatabase)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			return nil
@@ -278,14 +278,6 @@ func (s Store) view(fn func(*bolt.Bucket) error) error {
 		}
 		return fn(bucket)
 	})
-}
-
-func (s Store) openForWrite() (*bolt.DB, error) {
-	return s.openDatabase(writeDatabase)
-}
-
-func (s Store) openForRead() (*bolt.DB, error) {
-	return s.openDatabase(readDatabase)
 }
 
 func (s Store) openDatabase(mode databaseMode) (*bolt.DB, error) {
