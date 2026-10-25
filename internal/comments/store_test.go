@@ -108,6 +108,50 @@ func TestStoreQueuesByRepositoryAndDeletesExactPeek(t *testing.T) {
 	)
 }
 
+func TestStoreMutationsCannotAccessAnotherRepository(t *testing.T) {
+	for _, operation := range []string{"update", "delete", "acknowledge"} {
+		t.Run(operation, func(t *testing.T) {
+			store := Store{Path: filepath.Join(t.TempDir(), "comments.db")}
+			original := testComment("/repo/other", "feedback")
+			_, err := store.Add(original)
+			testutil.NoError(t, err)
+
+			switch operation {
+			case "update":
+				foreign := original
+				foreign.Repository = "/repo/current"
+				foreign.Body = "changed"
+				err = store.Update(foreign)
+			case "delete":
+				err = store.Delete("/repo/current", original.ID)
+			case "acknowledge":
+				err = store.Acknowledge("/repo/current", []string{original.ID})
+			default:
+				t.Fatalf("unknown operation %q", operation)
+			}
+			if operation == "acknowledge" {
+				testutil.NoError(t, err)
+			} else if err == nil {
+				t.Fatal("mutation accepted another repository's comment")
+			}
+
+			remaining, err := store.List(original.Repository)
+			testutil.NoError(t, err)
+			testutil.RequireEqual(t, len(remaining), 1,
+				"remaining comments = %#v", remaining,
+			)
+			testutil.RequireEqual(t, remaining[0].Body, original.Body,
+				"comment was modified: %#v", remaining[0],
+			)
+			current, err := store.List("/repo/current")
+			testutil.NoError(t, err)
+			testutil.RequireEqual(t, len(current), 0,
+				"unexpected comments = %#v", current,
+			)
+		})
+	}
+}
+
 func TestWritePrompt(t *testing.T) {
 	var out bytes.Buffer
 	comment := testComment("/repo", "Handle the nil case.")

@@ -87,12 +87,12 @@ func addComment(bucket *bolt.Bucket, id string, data []byte) error {
 func (s Store) List(repository string) ([]Comment, error) {
 	var pendingComments []Comment
 	err := s.view(func(bucket *bolt.Bucket) error {
-		return forEachComment(bucket, func(_ []byte, comment Comment) bool {
-			if comment.Repository == repository {
+		return forEachRepositoryComment(
+			bucket, repository, func(_ []byte, comment Comment) bool {
 				pendingComments = append(pendingComments, comment)
-			}
-			return true
-		})
+				return true
+			},
+		)
 	})
 	return pendingComments, err
 }
@@ -196,13 +196,15 @@ func findCommentKey(
 	repository, id string,
 ) ([]byte, error) {
 	var found []byte
-	err := forEachComment(bucket, func(key []byte, comment Comment) bool {
-		if comment.Repository == repository && comment.ID == id {
-			found = bytes.Clone(key)
-			return false
-		}
-		return true
-	})
+	err := forEachRepositoryComment(
+		bucket, repository, func(key []byte, comment Comment) bool {
+			if comment.ID == id {
+				found = bytes.Clone(key)
+				return false
+			}
+			return true
+		},
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -218,20 +220,20 @@ func findPendingKeys(
 	wantedIDs map[string]struct{},
 ) ([][]byte, error) {
 	var keys [][]byte
-	err := forEachComment(bucket, func(key []byte, comment Comment) bool {
-		if comment.Repository != repository {
+	err := forEachRepositoryComment(
+		bucket, repository, func(key []byte, comment Comment) bool {
+			if _, ok := wantedIDs[comment.ID]; ok {
+				keys = append(keys, bytes.Clone(key))
+			}
 			return true
-		}
-		if _, ok := wantedIDs[comment.ID]; ok {
-			keys = append(keys, bytes.Clone(key))
-		}
-		return true
-	})
+		},
+	)
 	return keys, err
 }
 
-func forEachComment(
+func forEachRepositoryComment(
 	bucket *bolt.Bucket,
+	repository string,
 	visit func(key []byte, comment Comment) bool,
 ) error {
 	cursor := bucket.Cursor()
@@ -239,6 +241,9 @@ func forEachComment(
 		comment, err := decodeComment(value)
 		if err != nil {
 			return err
+		}
+		if comment.Repository != repository {
+			continue
 		}
 		if !visit(key, comment) {
 			return nil
