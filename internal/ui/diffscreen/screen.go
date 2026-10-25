@@ -168,10 +168,7 @@ func (v *View) step(direction direction) {
 	if !ok {
 		return
 	}
-	if !v.extendSelectionTo(next) {
-		return
-	}
-	v.setCursor(next)
+	v.applyMovement(v.view.keepVisible(v.viewport, next), next)
 }
 func (v *View) setCursor(cursor diffCursor) {
 	v.cursor = cursor
@@ -179,6 +176,12 @@ func (v *View) setCursor(cursor diffCursor) {
 }
 func (v *View) halfPage(direction direction) {
 	viewport, cursor := v.view.scrollHalfPage(v.viewport, v.cursor, direction)
+	v.applyMovement(viewport, cursor)
+}
+
+// applyMovement commits focus and scrolling together only when the active
+// selection can follow the proposed cursor within its original hunk.
+func (v *View) applyMovement(viewport diffViewport, cursor diffCursor) {
 	if !v.extendSelectionTo(cursor) {
 		return
 	}
@@ -245,10 +248,11 @@ func (v *View) ScrollHorizontal(columns int) {
 func (v *View) ScrollVertical(rows int) {
 	v.search.repeatMiss = false
 	viewport, cursor := v.view.scrollVertical(v.viewport, v.cursor, rows)
-	if cursor != v.cursor && !v.extendSelectionTo(cursor) {
+	if cursor == v.cursor {
+		v.viewport = viewport
 		return
 	}
-	v.viewport, v.cursor = viewport, cursor
+	v.applyMovement(viewport, cursor)
 }
 
 // ToggleSelection starts a range at the focused line or clears the current

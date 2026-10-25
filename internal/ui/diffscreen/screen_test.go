@@ -118,18 +118,46 @@ func TestNarrowLayoutFallbackPreservesPreferenceAndPosition(t *testing.T) {
 	)
 }
 
-func TestPageMovementDoesNotPartiallyChangeRejectedSelection(t *testing.T) {
-	v := New(testPatch(), Options{Dark: true})
-	v.Resize(80, 30)
-	v.ToggleSelection()
-	beforeCursor, beforeViewport := v.cursor, v.viewport
-	v.Move(NextPage)
-	testutil.RequireEqual(t, v.cursor, beforeCursor, "%s",
-		"rejected selection partially changed state",
-	)
-	testutil.RequireEqual(t, v.viewport, beforeViewport, "%s",
-		"rejected selection partially changed state",
-	)
+func TestMovementDoesNotPartiallyChangeRejectedSelection(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		backward bool
+		move     func(*View)
+	}{
+		{"next line", false, func(v *View) { v.Move(NextLine) }},
+		{"next page", false, func(v *View) { v.Move(NextPage) }},
+		{"scroll down", false, func(v *View) { v.ScrollVertical(math.MaxInt) }},
+		{"previous line", true, func(v *View) { v.Move(PreviousLine) }},
+		{"previous page", true, func(v *View) { v.Move(PreviousPage) }},
+		{"scroll up", true, func(v *View) { v.ScrollVertical(-math.MaxInt) }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			p := longPatch()
+			p.Files[0].Hunks = append(p.Files[0].Hunks, p.Files[0].Hunks[0])
+			v := New(p, Options{Dark: true})
+			v.Resize(80, 8)
+			steps := len(p.Files[0].Hunks[0].Lines) - 1
+			if tc.backward {
+				steps++
+			}
+			for range steps {
+				v.Move(NextLine)
+			}
+			v.ToggleSelection()
+			beforeCursor, beforeViewport := v.cursor, v.viewport
+			beforeSelection := *v.selection
+			tc.move(v)
+			testutil.RequireEqual(t, v.cursor, beforeCursor, "%s",
+				"rejected selection changed cursor",
+			)
+			testutil.RequireEqual(t, v.viewport, beforeViewport, "%s",
+				"rejected selection changed viewport",
+			)
+			testutil.RequireEqual(t, *v.selection, beforeSelection, "%s",
+				"rejected selection changed endpoints",
+			)
+		})
+	}
 }
 
 func TestSearchPreviewAcceptRepeatAndCancel(t *testing.T) {
