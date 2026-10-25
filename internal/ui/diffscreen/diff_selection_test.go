@@ -6,12 +6,17 @@ func TestSelectionBetween(t *testing.T) {
 	v := &diffView{
 		split: true,
 		rows: []entry{
-			{kind: lineRow, file: 0, hunk: 0, leftLine: 0, rightLine: 0},
-			{kind: lineRow, file: 0, hunk: 0, leftLine: 1, rightLine: 1},
-			{kind: lineRow, file: 0, hunk: 1, leftLine: 0, rightLine: 0},
-			{kind: lineRow, file: 1, hunk: 0, leftLine: 0, rightLine: 0},
+			{kind: lineRow, file: 0, hunk: 0,
+				panes: [2]paneContent{{line: 0}, {line: 0}}},
+			{kind: lineRow, file: 0, hunk: 0,
+				panes: [2]paneContent{{line: 1}, {line: 1}}},
+			{kind: lineRow, file: 0, hunk: 1,
+				panes: [2]paneContent{{line: 0}, {line: 0}}},
+			{kind: lineRow, file: 1, hunk: 0,
+				panes: [2]paneContent{{line: 0}, {line: 0}}},
 			{kind: hunkRow, file: 0, hunk: 0},
-			{kind: lineRow, file: 0, hunk: 0, leftLine: -1, rightLine: 2},
+			{kind: lineRow, file: 0, hunk: 0,
+				panes: [2]paneContent{{line: -1}, {line: 2}}},
 		},
 	}
 	for _, tt := range []struct {

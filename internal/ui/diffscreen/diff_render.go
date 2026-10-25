@@ -111,7 +111,7 @@ func (v *diffView) renderUnifiedLine(
 	)
 	return v.renderCodeLine(
 		gutter,
-		current.text,
+		current.panes[right].text,
 		width,
 		viewport.leftColumn,
 		line,
@@ -167,10 +167,10 @@ func (v *diffView) renderPane(
 	if !ok {
 		return strings.Repeat(" ", width)
 	}
-	text := current.right
+	text := current.panes[pane].text
 	numberValue := line.NewNumber
 	if pane == left {
-		text, numberValue = current.left, line.OldNumber
+		numberValue = line.OldNumber
 	}
 	prefix := lineMarker(line.Kind) + " "
 	gutter := fmt.Sprintf("%*s ", lineNumberWidth, number(numberValue))

@@ -17,11 +17,15 @@ const (
 )
 
 type entry struct {
-	kind              rowKind
-	file, hunk        int
-	leftLine          int
-	rightLine         int
-	text, left, right string
+	kind       rowKind
+	file, hunk int
+	text       string
+	panes      [2]paneContent
+}
+
+type paneContent struct {
+	line int
+	text string
 }
 
 type diffView struct {
@@ -125,11 +129,10 @@ func (v *diffView) appendLineRow(
 	leftLine, rightLine int,
 ) {
 	row := entry{
-		kind:      lineRow,
-		file:      fileIndex,
-		hunk:      hunkIndex,
-		leftLine:  leftLine,
-		rightLine: rightLine,
+		kind:  lineRow,
+		file:  fileIndex,
+		hunk:  hunkIndex,
+		panes: [2]paneContent{{line: leftLine}, {line: rightLine}},
 	}
 	v.highlightRow(&row, lines, highlighted)
 	v.maxLineWidth = max(v.maxLineWidth, renderedLineWidth(row))
@@ -142,12 +145,11 @@ func (v *diffView) appendNonLineRow(
 	text string,
 ) {
 	v.rows = append(v.rows, entry{
-		kind:      kind,
-		file:      fileIndex,
-		hunk:      hunkIndex,
-		leftLine:  -1,
-		rightLine: -1,
-		text:      text,
+		kind:  kind,
+		file:  fileIndex,
+		hunk:  hunkIndex,
+		panes: [2]paneContent{{line: -1}, {line: -1}},
+		text:  text,
 	})
 }
 
@@ -157,14 +159,15 @@ func (v *diffView) highlightRow(
 	highlighted highlightedSources,
 ) {
 	if !v.split {
-		row.text = sourceText(highlighted, lines[row.rightLine])
+		pane := &row.panes[right]
+		pane.text = sourceText(highlighted, lines[pane.line])
 		return
 	}
-	if row.leftLine >= 0 {
-		row.left = sourceText(highlighted, lines[row.leftLine])
-	}
-	if row.rightLine >= 0 {
-		row.right = sourceText(highlighted, lines[row.rightLine])
+	for index := range row.panes {
+		pane := &row.panes[index]
+		if pane.line >= 0 {
+			pane.text = sourceText(highlighted, lines[pane.line])
+		}
 	}
 }
 

@@ -15,10 +15,10 @@ func (v *diffView) lineIndex(current entry, pane diffPane) int {
 	if current.kind != lineRow {
 		return -1
 	}
-	if !v.split || pane == right {
-		return current.rightLine
+	if !v.split {
+		pane = right
 	}
-	return current.leftLine
+	return current.panes[pane].line
 }
 
 func (v *diffView) cursorAt(y int, pane diffPane) (diffCursor, bool) {

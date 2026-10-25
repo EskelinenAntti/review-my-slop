@@ -42,11 +42,11 @@ func TestNearestCursor(t *testing.T) {
 
 func TestNearestCursorCallerBoundaries(t *testing.T) {
 	v := &diffView{split: true, rows: []entry{
-		{kind: lineRow, file: 0, leftLine: 0, rightLine: 0},
-		{kind: fileRow, file: 1, leftLine: -1, rightLine: -1},
-		{kind: metadataRow, file: 1, leftLine: -1, rightLine: -1},
-		{kind: lineRow, file: 1, leftLine: 0, rightLine: -1},
-		{kind: lineRow, file: 1, leftLine: 1, rightLine: 1},
+		{kind: lineRow, file: 0, panes: [2]paneContent{{line: 0}, {line: 0}}},
+		{kind: fileRow, file: 1},
+		{kind: metadataRow, file: 1},
+		{kind: lineRow, file: 1, panes: [2]paneContent{{line: 0}, {line: -1}}},
+		{kind: lineRow, file: 1, panes: [2]paneContent{{line: 1}, {line: 1}}},
 	}}
 	t.Run("metadata falls back to other pane", func(t *testing.T) {
 		cursor, ok := v.cursorNearMetadata(2, right, backward)

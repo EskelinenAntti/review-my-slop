@@ -85,6 +85,58 @@ func TestSplitRowsPairOnlyAdjacentChangeBlocks(t *testing.T) {
 	}
 }
 
+func TestHighlightRowKeepsPaneTextWithSourceIndex(t *testing.T) {
+	lines := []patch.Line{
+		{Kind: patch.Deletion, OldNumber: 1, Text: "old fallback"},
+		{Kind: patch.Addition, NewNumber: 2, Text: "new fallback"},
+	}
+	highlighted := highlightedSources{
+		old: []string{"highlighted old"},
+		new: []string{"other new line", "highlighted new"},
+	}
+	for _, tc := range []struct {
+		name        string
+		split       bool
+		left, right int
+		want        [2]paneContent
+	}{
+		{
+			"unified deletion", false, 0, 0,
+			[2]paneContent{{line: 0}, {line: 0, text: "highlighted old"}},
+		},
+		{
+			"unified addition", false, 1, 1,
+			[2]paneContent{{line: 1}, {line: 1, text: "highlighted new"}},
+		},
+		{
+			"paired changes", true, 0, 1,
+			[2]paneContent{
+				{line: 0, text: "highlighted old"},
+				{line: 1, text: "highlighted new"},
+			},
+		},
+		{
+			"empty old pane", true, -1, 1,
+			[2]paneContent{{line: -1}, {line: 1, text: "highlighted new"}},
+		},
+		{
+			"empty new pane", true, 0, -1,
+			[2]paneContent{{line: 0, text: "highlighted old"}, {line: -1}},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			v := &diffView{split: tc.split}
+			row := entry{kind: lineRow, panes: [2]paneContent{
+				{line: tc.left}, {line: tc.right},
+			}}
+			v.highlightRow(&row, lines, highlighted)
+			testutil.RequireEqual(t, row.panes, tc.want,
+				"pane content = %#v", row.panes,
+			)
+		})
+	}
+}
+
 func projectedTexts(v *diffView) [][2]string {
 	var got [][2]string
 	for row, entry := range v.rows {

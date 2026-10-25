@@ -205,7 +205,8 @@ func (v *diffView) rowVisible(viewport diffViewport, row int) bool {
 }
 
 func renderedLineWidth(current entry) int {
+	text := current.text + current.panes[left].text + current.panes[right].text
 	return lipgloss.Width(
-		expandTabs(ansi.Strip(current.text + current.left + current.right)),
+		expandTabs(ansi.Strip(text)),
 	)
 }

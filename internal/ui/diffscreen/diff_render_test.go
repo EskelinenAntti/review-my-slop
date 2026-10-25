@@ -36,7 +36,7 @@ func TestCodeLineWindowKeepsGutterFixed(t *testing.T) {
 			}
 			row := v.rows[cursor.row]
 			text := "\x1b[32mabcdefghij\x1b[0m"
-			row.text, row.right = text, text
+			row.panes[right].text = text
 			var rendered string
 			if tt.split {
 				rendered = v.renderPane(
