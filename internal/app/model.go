@@ -54,11 +54,6 @@ type commentEditorFinishedMsg struct {
 	body string
 	err  error
 }
-type commentsLoadedMsg struct {
-	comments []comments.Comment
-	revision uint64
-	err      error
-}
 type sourceEditorFinishedMsg struct{ err error }
 
 type mode uint8
@@ -76,13 +71,6 @@ const verticalScrollStep = 3
 var defaultDimensions = terminalDimensions{
 	width:  ui.DefaultScreenWidth,
 	height: ui.DefaultScreenHeight,
-}
-
-// commentState pairs stored comments with the revision used to reject stale
-// loads.
-type commentState struct {
-	items    []comments.Comment
-	revision uint64
 }
 
 type commentEdit struct {
@@ -250,16 +238,15 @@ func (m *model) finishCommentEditor(msg commentEditorFinishedMsg) {
 }
 
 func (m *model) finishCommentsLoad(msg commentsLoadedMsg) {
-	if msg.revision != m.comments.revision {
+	updated, err := m.comments.applyLoad(msg)
+	if err != nil {
+		m.err = fmt.Errorf("refresh comments: %w", err)
 		return
 	}
-	if msg.err != nil {
-		m.err = fmt.Errorf("refresh comments: %w", msg.err)
-		return
+	if updated {
+		m.commentView.Update(m.comments.items)
+		m.err = nil
 	}
-	m.comments.items = msg.comments
-	m.commentView.Update(m.comments.items)
-	m.err = nil
 }
 
 func (m *model) finishDiffRefresh(msg refreshDiffMsg) {
