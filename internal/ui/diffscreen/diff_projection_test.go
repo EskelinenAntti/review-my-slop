@@ -59,19 +59,24 @@ func TestSplitRowsPairOnlyAdjacentChangeBlocks(t *testing.T) {
 			[]patch.Line{a1, d1, a2},
 			[][2]string{{"", "new-a"}, {"old-a", "new-b"}},
 		},
+		{
+			"consecutive replacement blocks",
+			[]patch.Line{d1, a1, d2, a2},
+			[][2]string{{"old-a", "new-a"}, {"old-b", "new-b"}},
+		},
+		{
+			"replacement followed by context",
+			[]patch.Line{d1, a1, context},
+			[][2]string{{"old-a", "new-a"}, {"unchanged", "unchanged"}},
+		},
+		{
+			"context before trailing deletion",
+			[]patch.Line{context, d1},
+			[][2]string{{"unchanged", "unchanged"}, {"old-a", ""}},
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			p := patch.Patch{
-				Files: []patch.File{
-					{
-						DisplayPath: "file.go",
-						Hunks: []patch.Hunk{
-							{Header: "@@", Lines: tc.lines},
-						},
-					},
-				},
-			}
-			v := newSideBySideView(p, true)
+			v := newSideBySideView(patchWithLines(tc.lines), true)
 			got := projectedTexts(v)
 			testutil.RequireEqual(t, slices.Equal(got, tc.want), true,
 				"paired source lines=%v, want %v", got, tc.want,

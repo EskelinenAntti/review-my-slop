@@ -93,10 +93,7 @@ func (v *diffView) appendHunkRows(
 			appendRow(-1, index)
 			index++
 		case patch.Deletion:
-			addedStart := changeBlockEnd(hunk.Lines, index, patch.Deletion)
-			end := changeBlockEnd(hunk.Lines, addedStart, patch.Addition)
-			appendPairedChangeRows(appendRow, index, addedStart, end)
-			index = end
+			index = appendPairedChangeRows(appendRow, hunk.Lines, index)
 		default:
 			appendRow(index, index)
 			index++
@@ -172,17 +169,21 @@ func (v *diffView) highlightRow(
 	}
 }
 
-func changeBlockEnd(lines []patch.Line, start int, kind patch.LineKind) int {
-	for start < len(lines) && lines[start].Kind == kind {
-		start++
-	}
-	return start
-}
-
+// appendPairedChangeRows pairs a deletion block with its immediately following
+// additions and returns the first unconsumed line index.
 func appendPairedChangeRows(
 	appendRow func(leftLine, rightLine int),
-	removedStart, addedStart, end int,
-) {
+	lines []patch.Line,
+	removedStart int,
+) int {
+	addedStart := removedStart
+	for addedStart < len(lines) && lines[addedStart].Kind == patch.Deletion {
+		addedStart++
+	}
+	end := addedStart
+	for end < len(lines) && lines[end].Kind == patch.Addition {
+		end++
+	}
 	count := max(addedStart-removedStart, end-addedStart)
 	for offset := 0; offset < count; offset++ {
 		leftLine, rightLine := -1, -1
@@ -194,6 +195,7 @@ func appendPairedChangeRows(
 		}
 		appendRow(leftLine, rightLine)
 	}
+	return end
 }
 
 func sourceText(highlighted highlightedSources, line patch.Line) string {
