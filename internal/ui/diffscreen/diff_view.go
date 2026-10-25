@@ -28,8 +28,6 @@ type diffView struct {
 	patch        patch.Patch
 	rows         []entry
 	maxLineWidth int
-	addedLines   int
-	removedLines int
 	countsLabel  string
 	split        bool
 	dark         bool
@@ -38,16 +36,35 @@ type diffView struct {
 
 func newDiffView(p patch.Patch, options Options) *diffView {
 	v := &diffView{
-		patch:  p,
-		split:  options.SideBySide,
-		dark:   options.Dark,
-		styles: newLineStyles(options.Dark),
+		patch:       p,
+		countsLabel: changeCountsLabel(p),
+		split:       options.SideBySide,
+		dark:        options.Dark,
+		styles:      newLineStyles(options.Dark),
 	}
 	for fileIndex, file := range p.Files {
 		v.appendFileRows(fileIndex, file)
 	}
-	v.countsLabel = fmt.Sprintf("+%d-%d", v.addedLines, v.removedLines)
 	return v
+}
+
+func changeCountsLabel(p patch.Patch) string {
+	var added, removed int
+	for _, file := range p.Files {
+		for _, hunk := range file.Hunks {
+			for _, line := range hunk.Lines {
+				switch line.Kind {
+				case patch.Addition:
+					added++
+				case patch.Deletion:
+					removed++
+				default:
+					continue
+				}
+			}
+		}
+	}
+	return fmt.Sprintf("+%d-%d", added, removed)
 }
 
 func (v *diffView) appendFileRows(fileIndex int, file patch.File) {
@@ -107,10 +124,6 @@ func (v *diffView) appendLineRow(
 	highlighted highlightedSources,
 	leftLine, rightLine int,
 ) {
-	v.countSourceLine(lines, leftLine)
-	if rightLine != leftLine {
-		v.countSourceLine(lines, rightLine)
-	}
 	row := entry{
 		kind:      lineRow,
 		file:      fileIndex,
@@ -121,20 +134,6 @@ func (v *diffView) appendLineRow(
 	v.highlightRow(&row, lines, highlighted)
 	v.maxLineWidth = max(v.maxLineWidth, renderedLineWidth(row))
 	v.rows = append(v.rows, row)
-}
-
-func (v *diffView) countSourceLine(lines []patch.Line, index int) {
-	if index < 0 {
-		return
-	}
-	switch lines[index].Kind {
-	case patch.Addition:
-		v.addedLines++
-	case patch.Deletion:
-		v.removedLines++
-	default:
-		return
-	}
 }
 
 func (v *diffView) appendNonLineRow(
