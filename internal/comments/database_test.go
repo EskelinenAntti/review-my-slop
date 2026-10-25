@@ -55,8 +55,8 @@ func TestStoreTransactionRollsBackCallbackError(t *testing.T) {
 	data, err := encodeComment(comment)
 	testutil.NoError(t, err)
 	want := errors.New("abort transaction")
-	err = store.transact(func(bucket *bolt.Bucket) error {
-		if err := bucket.Put([]byte(comment.ID), data); err != nil {
+	err = store.transact(func(bucket commentBucket) error {
+		if err := bucket.add(comment.ID, data); err != nil {
 			return err
 		}
 		return want

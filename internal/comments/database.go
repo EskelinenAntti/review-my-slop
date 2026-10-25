@@ -19,7 +19,7 @@ const (
 	readDatabase
 )
 
-func (s Store) transact(fn func(*bolt.Bucket) error) error {
+func (s Store) transact(fn func(commentBucket) error) error {
 	db, err := s.openDatabase(writeDatabase)
 	if err != nil {
 		return err
@@ -30,11 +30,11 @@ func (s Store) transact(fn func(*bolt.Bucket) error) error {
 		if err != nil {
 			return err
 		}
-		return fn(bucket)
+		return fn(commentBucket{bucket: bucket})
 	})
 }
 
-func (s Store) view(fn func(*bolt.Bucket) error) error {
+func (s Store) view(fn func(commentBucket) error) error {
 	db, err := s.openDatabase(readDatabase)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
@@ -48,7 +48,7 @@ func (s Store) view(fn func(*bolt.Bucket) error) error {
 		if bucket == nil {
 			return nil
 		}
-		return fn(bucket)
+		return fn(commentBucket{bucket: bucket})
 	})
 }
 

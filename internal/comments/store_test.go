@@ -9,8 +9,6 @@ import (
 	"testing"
 	"time"
 
-	bolt "go.etcd.io/bbolt"
-
 	"github.com/eskelinenantti/review-my-slop/internal/testutil"
 )
 
@@ -39,7 +37,7 @@ func TestStoreViewsCanShareDatabase(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	err := store.view(func(_ *bolt.Bucket) error {
+	err := store.view(func(_ commentBucket) error {
 		comments, err := store.List("/repo")
 		if err != nil {
 			return err
@@ -222,10 +220,10 @@ func TestUpdateCannotExceedPendingSizeLimit(t *testing.T) {
 	existingData, err := encodeComment(comment)
 	testutil.NoError(t, err)
 	paddingSize := maxPendingBytes - len(bulkData) - len(existingData) - 1
-	err = store.transact(func(bucket *bolt.Bucket) error {
+	err = store.transact(func(bucket commentBucket) error {
 		padding := bytes.Repeat([]byte(" "), paddingSize)
 		paddedData := append(padding, bulkData...)
-		return bucket.Put([]byte(bulkComment.ID), paddedData)
+		return bucket.bucket.Put([]byte(bulkComment.ID), paddedData)
 	})
 	testutil.NoError(t, err)
 
@@ -324,8 +322,8 @@ func TestLegacyMessageCanBeReadAndUpdated(t *testing.T) {
   }
 }`,
 	)
-	err := store.transact(func(bucket *bolt.Bucket) error {
-		return bucket.Put([]byte{0, 0, 0, 1}, legacy)
+	err := store.transact(func(bucket commentBucket) error {
+		return bucket.bucket.Put([]byte{0, 0, 0, 1}, legacy)
 	})
 	testutil.NoError(t, err)
 
