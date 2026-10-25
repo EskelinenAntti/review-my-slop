@@ -1,9 +1,7 @@
 package diffscreen
 
 import (
-	"fmt"
 	"image/color"
-	"strconv"
 	"strings"
 
 	"charm.land/lipgloss/v2"
@@ -91,17 +89,8 @@ func (v diffRenderer) renderUnifiedLine(
 ) string {
 	candidate := diffCursor{row: y, pane: v.cursor.pane}
 	line, _ := v.line(candidate)
-	prefix := lineMarker(line.Kind)
-	gutter := fmt.Sprintf(
-		"%*s %*s %s ",
-		lineNumberWidth,
-		number(line.OldNumber),
-		lineNumberWidth,
-		number(line.NewNumber),
-		prefix,
-	)
 	return v.renderCodeLine(
-		gutter,
+		unifiedGutter(line),
 		current.panes[right].text,
 		width,
 		line,
@@ -149,11 +138,9 @@ func (v diffRenderer) renderPane(
 	if pane == left {
 		numberValue = line.OldNumber
 	}
-	prefix := lineMarker(line.Kind) + " "
-	gutter := fmt.Sprintf("%*s ", lineNumberWidth, number(numberValue))
 	return v.renderCodeLine(
-		gutter,
-		prefix+text,
+		splitGutter(numberValue),
+		splitMarker(line.Kind)+text,
 		width,
 		line,
 		candidate,
@@ -249,13 +236,6 @@ func backgroundStyle(
 	return lipgloss.NewStyle().Background(
 		lipgloss.LightDark(dark)(lightColor, darkColor),
 	)
-}
-
-func number(value patch.LineNumber) string {
-	if value == 0 {
-		return ""
-	}
-	return strconv.Itoa(int(value))
 }
 
 var (

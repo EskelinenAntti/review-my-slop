@@ -4,7 +4,45 @@ import (
 	"testing"
 
 	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/x/ansi"
+
+	"github.com/eskelinenantti/review-my-slop/internal/patch"
 )
+
+func TestLineDecorations(t *testing.T) {
+	for _, tt := range []struct {
+		name    string
+		line    patch.Line
+		unified string
+		old     string
+		new     string
+		marker  string
+	}{
+		{"context", patch.Line{OldNumber: 12, NewNumber: 34},
+			"   12    34   ", "   12 ", "   34 ", "  "},
+		{"addition", patch.Line{Kind: patch.Addition, NewNumber: 34},
+			"         34 + ", "      ", "   34 ", "+ "},
+		{"deletion", patch.Line{Kind: patch.Deletion, OldNumber: 12},
+			"   12       - ", "   12 ", "      ", "- "},
+		{"large numbers", patch.Line{OldNumber: 123456, NewNumber: 234567},
+			"123456 234567   ", "123456 ", "234567 ", "  "},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := ansi.Strip(unifiedGutter(tt.line)); got != tt.unified {
+				t.Errorf("unified gutter = %q, want %q", got, tt.unified)
+			}
+			if got := splitGutter(tt.line.OldNumber); got != tt.old {
+				t.Errorf("old gutter = %q, want %q", got, tt.old)
+			}
+			if got := splitGutter(tt.line.NewNumber); got != tt.new {
+				t.Errorf("new gutter = %q, want %q", got, tt.new)
+			}
+			if got := ansi.Strip(splitMarker(tt.line.Kind)); got != tt.marker {
+				t.Errorf("split marker = %q, want %q", got, tt.marker)
+			}
+		})
+	}
+}
 
 func TestSplitPaneWidths(t *testing.T) {
 	for _, tt := range []struct {
