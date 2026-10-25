@@ -93,7 +93,11 @@ func (v *diffView) appendHunkRows(
 		hunkIndex,
 		normalizeHunkHeader(hunk.Header),
 	)
-	appendRow := func(leftLine, rightLine int) {
+	pairs := unifiedHunkLinePairs(hunk.Lines)
+	if v.split {
+		pairs = splitHunkLinePairs(hunk.Lines)
+	}
+	for leftLine, rightLine := range pairs {
 		v.appendLineRow(
 			fileIndex,
 			hunkIndex,
@@ -102,23 +106,6 @@ func (v *diffView) appendHunkRows(
 			leftLine,
 			rightLine,
 		)
-	}
-	for index := 0; index < len(hunk.Lines); {
-		if !v.split || hunk.Lines[index].Kind == patch.Context {
-			appendRow(index, index)
-			index++
-			continue
-		}
-		switch hunk.Lines[index].Kind {
-		case patch.Addition:
-			appendRow(-1, index)
-			index++
-		case patch.Deletion:
-			index = appendPairedChangeRows(appendRow, hunk.Lines, index)
-		default:
-			appendRow(index, index)
-			index++
-		}
 	}
 }
 
@@ -169,35 +156,6 @@ func (v *diffView) highlightRow(
 			pane.text = sourceText(highlighted, lines[pane.line])
 		}
 	}
-}
-
-// appendPairedChangeRows pairs a deletion block with its immediately following
-// additions and returns the first unconsumed line index.
-func appendPairedChangeRows(
-	appendRow func(leftLine, rightLine int),
-	lines []patch.Line,
-	removedStart int,
-) int {
-	addedStart := removedStart
-	for addedStart < len(lines) && lines[addedStart].Kind == patch.Deletion {
-		addedStart++
-	}
-	end := addedStart
-	for end < len(lines) && lines[end].Kind == patch.Addition {
-		end++
-	}
-	count := max(addedStart-removedStart, end-addedStart)
-	for offset := 0; offset < count; offset++ {
-		leftLine, rightLine := -1, -1
-		if removedStart+offset < addedStart {
-			leftLine = removedStart + offset
-		}
-		if addedStart+offset < end {
-			rightLine = addedStart + offset
-		}
-		appendRow(leftLine, rightLine)
-	}
-	return end
 }
 
 func sourceText(highlighted highlightedSources, line patch.Line) string {
