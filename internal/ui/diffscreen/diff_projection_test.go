@@ -85,10 +85,14 @@ func TestSplitRowsPairOnlyAdjacentChangeBlocks(t *testing.T) {
 	}
 }
 
-func TestHighlightRowKeepsPaneTextWithSourceIndex(t *testing.T) {
+func TestAppendLineRowKeepsPaneTextWithSourceIndex(t *testing.T) {
 	lines := []patch.Line{
 		{Kind: patch.Deletion, OldNumber: 1, Text: "old fallback"},
 		{Kind: patch.Addition, NewNumber: 2, Text: "new fallback"},
+		{
+			Kind: patch.Context, OldNumber: 3, NewNumber: 3,
+			Text: "context fallback",
+		},
 	}
 	highlighted := highlightedSources{
 		old: []string{"highlighted old"},
@@ -123,15 +127,33 @@ func TestHighlightRowKeepsPaneTextWithSourceIndex(t *testing.T) {
 			"empty new pane", true, 0, -1,
 			[2]paneContent{{line: 0, text: "highlighted old"}, {line: -1}},
 		},
+		{
+			"unified missing highlighting", false, 2, 2,
+			[2]paneContent{{line: 2}, {line: 2, text: "context fallback"}},
+		},
+		{
+			"split missing highlighting", true, 2, 2,
+			[2]paneContent{
+				{line: 2, text: "context fallback"},
+				{line: 2, text: "context fallback"},
+			},
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			v := &diffView{split: tc.split}
-			row := entry{kind: lineRow, panes: [2]paneContent{
-				{line: tc.left}, {line: tc.right},
-			}}
-			v.highlightRow(&row, lines, highlighted)
+			v.appendLineRow(3, 4, lines, highlighted, tc.left, tc.right)
+			testutil.RequireEqual(t, len(v.rows), 1, "rows = %#v", v.rows)
+			row := v.rows[0]
+			testutil.RequireEqual(t, row.kind, lineRow,
+				"row kind = %v", row.kind,
+			)
+			testutil.RequireEqual(t, row.file, 3, "file index = %d", row.file)
+			testutil.RequireEqual(t, row.hunk, 4, "hunk index = %d", row.hunk)
 			testutil.RequireEqual(t, row.panes, tc.want,
 				"pane content = %#v", row.panes,
+			)
+			testutil.RequireEqual(t, v.maxLineWidth, renderedLineWidth(row),
+				"maximum line width = %d", v.maxLineWidth,
 			)
 		})
 	}

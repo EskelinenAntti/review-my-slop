@@ -121,7 +121,12 @@ func (v *diffView) appendLineRow(
 		hunk:  hunkIndex,
 		panes: [2]paneContent{{line: leftLine}, {line: rightLine}},
 	}
-	v.highlightRow(&row, lines, highlighted)
+	for index := range row.panes {
+		pane := &row.panes[index]
+		if pane.line >= 0 && (v.split || diffPane(index) == right) {
+			pane.text = sourceText(highlighted, lines[pane.line])
+		}
+	}
 	v.maxLineWidth = max(v.maxLineWidth, renderedLineWidth(row))
 	v.rows = append(v.rows, row)
 }
@@ -138,24 +143,6 @@ func (v *diffView) appendNonLineRow(
 		panes: [2]paneContent{{line: -1}, {line: -1}},
 		text:  text,
 	})
-}
-
-func (v *diffView) highlightRow(
-	row *entry,
-	lines []patch.Line,
-	highlighted highlightedSources,
-) {
-	if !v.split {
-		pane := &row.panes[right]
-		pane.text = sourceText(highlighted, lines[pane.line])
-		return
-	}
-	for index := range row.panes {
-		pane := &row.panes[index]
-		if pane.line >= 0 {
-			pane.text = sourceText(highlighted, lines[pane.line])
-		}
-	}
 }
 
 func sourceText(highlighted highlightedSources, line patch.Line) string {
