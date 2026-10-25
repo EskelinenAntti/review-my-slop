@@ -49,12 +49,7 @@ func (m model) editSelectedComment() (tea.Model, tea.Cmd) {
 		index:  index,
 		anchor: comment.Anchor,
 	}
-	cmd, err := m.openCommentEditor()
-	if err != nil {
-		m.err = err
-		return m, nil
-	}
-	return m, cmd
+	return m.startEditor(m.openCommentEditor)
 }
 
 func (m *model) beginComment() (tea.Cmd, error) {
