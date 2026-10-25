@@ -53,7 +53,7 @@ func (m *model) beginComment() (tea.Cmd, error) {
 	if !ok {
 		return nil, errors.New("select code lines before commenting")
 	}
-	anchor := commentAnchor(file, lines)
+	anchor := comments.NewAnchor(file, lines)
 	m.edit = commentEdit{index: -1, anchor: anchor}
 	return m.openCommentEditor()
 }

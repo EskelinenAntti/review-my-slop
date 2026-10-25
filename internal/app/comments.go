@@ -9,7 +9,6 @@ import (
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/eskelinenantti/review-my-slop/internal/comments"
-	"github.com/eskelinenantti/review-my-slop/internal/patch"
 )
 
 var errCommentStorageUnavailable = errors.New("comment storage is unavailable")
@@ -149,29 +148,4 @@ func (m *model) commentsChanged() {
 	m.commentView.Update(m.comments.items)
 	m.comments.revision++
 	m.err = nil
-}
-
-func commentAnchor(file patch.File, lines []patch.Line) comments.Anchor {
-	anchor := comments.Anchor{FilePath: file.PreferredPath()}
-	for _, line := range lines {
-		anchor.QuotedLines = append(
-			anchor.QuotedLines,
-			line.Kind.DiffPrefix()+line.Text,
-		)
-		accumulateRange(&anchor.OldStart, &anchor.OldEnd, int(line.OldNumber))
-		accumulateRange(&anchor.NewStart, &anchor.NewEnd, int(line.NewNumber))
-	}
-	return anchor
-}
-
-func accumulateRange(start, end *int, value int) {
-	if value == 0 {
-		return
-	}
-	if *start == 0 || value < *start {
-		*start = value
-	}
-	if value > *end {
-		*end = value
-	}
 }
