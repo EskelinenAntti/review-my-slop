@@ -204,6 +204,46 @@ func TestSearchOriginSurvivesPatchAndLayoutChanges(t *testing.T) {
 	)
 }
 
+func TestSectionMotions(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		start  Motion
+		motion Motion
+		file   string
+		text   string
+		pane   diffPane
+	}{
+		{"next file", FirstLine, NextFile, "second.go", "other", right},
+		{"previous file", LastLine, PreviousFile, "first.go", "after", right},
+		{"old pane", FirstLine, OldPane, "first.go", "before", left},
+		{"new pane", FirstLine, NewPane, "first.go", "before", right},
+		{"other pane", FirstLine, OtherPane, "first.go", "before", left},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			v := New(testPatch(), Options{SideBySide: true})
+			v.Resize(120, 10)
+			v.Move(tc.start)
+			if tc.motion == NewPane {
+				v.Move(OldPane)
+			}
+			cursor := v.cursor
+			v.drag = &cursor
+			v.search.repeatMiss = true
+
+			v.Move(tc.motion)
+
+			file, line, ok := v.Current()
+			testutil.RequireEqual(t, ok, true, "motion lost focus")
+			testutil.RequireEqual(t, file.DisplayPath, tc.file, "wrong file")
+			testutil.RequireEqual(t, line.Text, tc.text, "wrong source line")
+			testutil.RequireEqual(t, v.cursor.pane, tc.pane, "wrong pane")
+			if v.drag != nil || v.search.repeatMiss {
+				t.Fatal("motion did not clear drag and repeated-search miss")
+			}
+		})
+	}
+}
+
 func TestEmptyAndMetadataOnlyPatches(t *testing.T) {
 	for _, p := range []patch.Patch{
 		{},
