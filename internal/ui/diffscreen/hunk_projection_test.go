@@ -130,3 +130,38 @@ func TestHunkLinePairsStopsWhenConsumerBreaks(t *testing.T) {
 		}
 	}
 }
+
+func TestTakeLineRun(t *testing.T) {
+	lines := []patch.Line{
+		{Kind: patch.Context},
+		{Kind: patch.Deletion},
+		{Kind: patch.Deletion},
+		{Kind: patch.Addition},
+	}
+	for _, tc := range []struct {
+		name  string
+		start int
+		kind  patch.LineKind
+		end   int
+		want  []int
+	}{
+		{"deletions", 1, patch.Deletion, 3, []int{1, 2, -1, -1}},
+		{"addition at end", 3, patch.Addition, 4, []int{3, -1, -1, -1}},
+		{"absent kind", 1, patch.Addition, 1, []int{-1, -1, -1, -1}},
+		{"end of hunk", 4, patch.Deletion, 4, []int{-1, -1, -1, -1}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			run := takeLineRun(lines, tc.start, tc.kind)
+			testutil.RequireEqual(t, run.end, tc.end, "run end")
+			testutil.RequireEqual(t, run.length(), tc.end-tc.start,
+				"run length")
+			for offset, want := range tc.want {
+				testutil.RequireEqual(t, run.lineAt(offset), want,
+					"offset=%d", offset)
+			}
+		})
+	}
+	run := takeLineRun(nil, 0, patch.Deletion)
+	testutil.RequireEqual(t, run.length(), 0, "empty hunk run length")
+	testutil.RequireEqual(t, run.lineAt(0), -1, "empty hunk has no line")
+}

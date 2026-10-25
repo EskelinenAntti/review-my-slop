@@ -33,32 +33,41 @@ func splitHunkLinePairs(lines []patch.Line) iter.Seq2[int, int] {
 				continue
 			}
 
-			removedStart := index
-			removedEnd := lineRunEnd(lines, removedStart, patch.Deletion)
-			addedStart := removedEnd
-			addedEnd := lineRunEnd(lines, addedStart, patch.Addition)
-			count := max(removedEnd-removedStart, addedEnd-addedStart)
-			for offset := 0; offset < count; offset++ {
-				leftLine, rightLine := -1, -1
-				if removedStart+offset < removedEnd {
-					leftLine = removedStart + offset
-				}
-				if addedStart+offset < addedEnd {
-					rightLine = addedStart + offset
-				}
-				if !yield(leftLine, rightLine) {
+			removed := takeLineRun(lines, index, patch.Deletion)
+			added := takeLineRun(lines, removed.end, patch.Addition)
+			rows := max(removed.length(), added.length())
+			for offset := 0; offset < rows; offset++ {
+				if !yield(removed.lineAt(offset), added.lineAt(offset)) {
 					return
 				}
 			}
-			index = addedEnd
+			index = added.end
 		}
 	}
 }
 
-func lineRunEnd(lines []patch.Line, start int, kind patch.LineKind) int {
+type hunkLineRun struct {
+	start, end int
+}
+
+func takeLineRun(
+	lines []patch.Line, start int, kind patch.LineKind,
+) hunkLineRun {
 	end := start
 	for end < len(lines) && lines[end].Kind == kind {
 		end++
 	}
-	return end
+	return hunkLineRun{start: start, end: end}
+}
+
+func (r hunkLineRun) length() int {
+	return r.end - r.start
+}
+
+// lineAt returns -1 when this run has no line at the paired row's offset.
+func (r hunkLineRun) lineAt(offset int) int {
+	if offset >= r.length() {
+		return -1
+	}
+	return r.start + offset
 }
