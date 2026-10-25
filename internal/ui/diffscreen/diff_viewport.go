@@ -107,12 +107,18 @@ func (v *diffView) scrollHorizontal(
 	viewport diffViewport,
 	columns int,
 ) diffViewport {
-	columns = max(
-		-viewport.leftColumn,
-		min(columns, v.maxHorizontalOffset(viewport.width)-viewport.leftColumn),
+	viewport.leftColumn = clampedScrollOffset(
+		viewport.leftColumn, columns, v.maxHorizontalOffset(viewport.width),
 	)
-	viewport.leftColumn += columns
 	return v.clampViewport(viewport)
+}
+
+// clampedScrollOffset bounds the movement before adding it so extreme scroll
+// requests (including first/last-column navigation) cannot overflow the offset.
+// The current offset and maximum must be nonnegative.
+func clampedScrollOffset(current, delta, maximum int) int {
+	delta = max(-current, min(delta, maximum-current))
+	return current + delta
 }
 
 func (v *diffView) scrollVertical(
@@ -120,8 +126,9 @@ func (v *diffView) scrollVertical(
 	cursor diffCursor,
 	rows int,
 ) (diffViewport, diffCursor) {
-	rows = max(-viewport.top, min(rows, v.maxTop(viewport.height)-viewport.top))
-	viewport.top += rows
+	viewport.top = clampedScrollOffset(
+		viewport.top, rows, v.maxTop(viewport.height),
+	)
 	viewport = v.clampViewport(viewport)
 	if !v.valid(cursor) || v.cursorVisible(viewport, cursor) {
 		return viewport, cursor
