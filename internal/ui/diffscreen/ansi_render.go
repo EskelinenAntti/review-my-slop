@@ -61,25 +61,19 @@ func filterSGRParts(parts []string, colors foregroundPolicy) []string {
 			filtered = append(filtered, parts[index])
 			continue
 		}
-		if extendedColorRemoved(code, colors) {
+		switch {
+		case code == 48 || (colors == discardForeground && code == 38):
 			index = colorParameterEnd(parts, index)
-			continue
+		case (code >= 40 && code <= 49) || (code >= 100 && code <= 107):
+			// Background colors are supplied by the row style.
+		case colors == discardForeground &&
+			((code >= 30 && code <= 39) || (code >= 90 && code <= 97)):
+			// Cursor and selection styles also replace syntax foregrounds.
+		default:
+			filtered = append(filtered, parts[index])
 		}
-		if simpleColorRemoved(code, colors) {
-			continue
-		}
-		filtered = append(filtered, parts[index])
 	}
 	return filtered
-}
-
-func extendedColorRemoved(code int, colors foregroundPolicy) bool {
-	return code == 48 || (colors == discardForeground && code == 38)
-}
-
-func simpleColorRemoved(code int, colors foregroundPolicy) bool {
-	return backgroundColor(code) ||
-		colors == discardForeground && foregroundColor(code)
 }
 
 func colorParameterEnd(parts []string, index int) int {
@@ -94,14 +88,6 @@ func colorParameterEnd(parts []string, index int) int {
 	default:
 		return index
 	}
-}
-
-func backgroundColor(code int) bool {
-	return (code >= 40 && code <= 49) || (code >= 100 && code <= 107)
-}
-
-func foregroundColor(code int) bool {
-	return (code >= 30 && code <= 39) || (code >= 90 && code <= 97)
 }
 
 func fitANSIWindow(value string, offset, width int) string {
