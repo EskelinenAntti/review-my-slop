@@ -398,6 +398,38 @@ func TestGetBranchIncludesCommittedStagedUnstagedAndUntrackedChanges(
 	)
 }
 
+func TestGetBranchUsesMergeBaseWhileKeepingBranchName(t *testing.T) {
+	repo := newRepository(t)
+	git(t, repo, "branch", "-M", "main")
+	writeFile(t, repo, "shared.txt", "base\n")
+	git(t, repo, "add", ".")
+	git(t, repo, "commit", "-m", "base")
+	git(t, repo, "branch", "feature")
+
+	writeFile(t, repo, "shared.txt", "main advanced\n")
+	git(t, repo, "add", ".")
+	git(t, repo, "commit", "-m", "advance main")
+	git(t, repo, "switch", "feature")
+	writeFile(t, repo, "shared.txt", "feature change\n")
+
+	t.Chdir(repo)
+	got, err := Get(context.Background(), Branch)
+	testutil.NoError(t, err)
+	testutil.RequireEqual(t, got.Branch, "main", "branch = %q", got.Branch)
+	testutil.RequireEqual(t, len(got.Files), 1, "files = %#v", got.Files)
+	file := got.Files[0]
+	testutil.RequireEqual(t, file.OldSource, "base\n",
+		"old source = %q", file.OldSource,
+	)
+	testutil.RequireEqual(t, containsKind(file, Deletion, "base"), true,
+		"diff must start at the merge base: %#v", file.Hunks,
+	)
+	testutil.RequireEqual(t,
+		containsKind(file, Addition, "feature change"), true,
+		"diff must include the working tree: %#v", file.Hunks,
+	)
+}
+
 func TestDefaultBranchFallbacks(t *testing.T) {
 	tests := []struct {
 		name       string

@@ -97,15 +97,15 @@ func load(
 	if err != nil {
 		return Patch{}, err
 	}
-	branch, oldRevision, err := comparison(ctx, run, root, kind)
+	base, err := comparison(ctx, run, root, kind)
 	if err != nil {
 		return Patch{}, err
 	}
-	raw, err := gitDiff(ctx, run, root, oldRevision)
+	raw, err := gitDiff(ctx, run, root, base.revision)
 	if err != nil {
 		return Patch{}, err
 	}
-	files, err := parseTracked(ctx, run, root, raw, oldRevision)
+	files, err := parseTracked(ctx, run, root, raw, base.revision)
 	if err != nil {
 		return Patch{}, err
 	}
@@ -128,9 +128,14 @@ func load(
 	return Patch{
 		Root:   root,
 		Kind:   kind,
-		Branch: branch,
+		Branch: base.branch,
 		Files:  files,
 	}, nil
+}
+
+type comparisonBase struct {
+	branch   string
+	revision string
 }
 
 func comparison(
@@ -138,27 +143,29 @@ func comparison(
 	run runner,
 	root string,
 	kind Kind,
-) (branch, revision string, err error) {
+) (comparisonBase, error) {
 	if kind != Branch {
-		return "", "", nil
+		return comparisonBase{}, nil
 	}
-	branch, err = defaultBranch(ctx, run, root)
+	branch, err := defaultBranch(ctx, run, root)
 	if err != nil {
-		return "", "", fmt.Errorf("discover default branch: %w", err)
+		return comparisonBase{}, fmt.Errorf("discover default branch: %w", err)
 	}
 	if branch == "" {
-		return "", "", errors.New("default branch is unavailable")
+		return comparisonBase{}, errors.New("default branch is unavailable")
 	}
 	baseBytes, err := run.Run(ctx, root, "merge-base", branch, "HEAD")
 	if err != nil {
-		return "", "", fmt.Errorf(
+		return comparisonBase{}, fmt.Errorf(
 			"find branch point with %s: %w",
 			branch,
 			err,
 		)
 	}
-	revision = strings.TrimSpace(string(baseBytes))
-	return branch, revision, nil
+	return comparisonBase{
+		branch:   branch,
+		revision: strings.TrimSpace(string(baseBytes)),
+	}, nil
 }
 
 func discoverRepositoryRoot(
