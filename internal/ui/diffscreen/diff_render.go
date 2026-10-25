@@ -33,8 +33,8 @@ func (v *diffView) render(
 			),
 		)
 	}
-	end := min(len(v.rows), viewport.top+v.contentHeight(viewport))
-	for y := viewport.top; y < end; y++ {
+	start, end := v.visibleRows(viewport)
+	for y := start; y < end; y++ {
 		current := v.rows[y]
 		if v.split && current.kind == lineRow {
 			lines = append(

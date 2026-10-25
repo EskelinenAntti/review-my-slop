@@ -47,6 +47,13 @@ func (v *diffView) contentHeight(viewport diffViewport) int {
 	return max(1, height)
 }
 
+// visibleRows returns the half-open range of projected rows in the viewport,
+// excluding the space reserved for a sticky file header.
+func (v *diffView) visibleRows(viewport diffViewport) (start, end int) {
+	end = min(len(v.rows), viewport.top+v.contentHeight(viewport))
+	return viewport.top, end
+}
+
 func (v *diffView) keepVisible(
 	viewport diffViewport,
 	cursor diffCursor,
@@ -119,10 +126,8 @@ func (v *diffView) scrollVertical(
 	if !v.valid(cursor) || v.cursorVisible(viewport, cursor) {
 		return viewport, cursor
 	}
-	target := max(
-		viewport.top,
-		min(cursor.row, viewport.top+v.contentHeight(viewport)-1),
-	)
+	start, end := v.visibleRows(viewport)
+	target := max(start, min(cursor.row, end-1))
 	d := forward
 	if cursor.row > target {
 		d = backward
@@ -167,8 +172,8 @@ func (v *diffView) viewportProgress(viewport diffViewport) int {
 	if len(v.rows) == 0 {
 		return 0
 	}
-	bottom := min(len(v.rows), viewport.top+v.contentHeight(viewport))
-	return bottom * 100 / len(v.rows)
+	_, end := v.visibleRows(viewport)
+	return end * 100 / len(v.rows)
 }
 
 func (v *diffView) nearest(
@@ -203,8 +208,8 @@ func (v *diffView) cursorInViewport(
 }
 
 func (v *diffView) rowVisible(viewport diffViewport, row int) bool {
-	return row >= viewport.top &&
-		row < viewport.top+v.contentHeight(viewport)
+	start, end := v.visibleRows(viewport)
+	return row >= start && row < end
 }
 
 func renderedLineWidth(current entry) int {
