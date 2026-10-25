@@ -9,6 +9,24 @@ import (
 	"github.com/eskelinenantti/review-my-slop/internal/comments"
 )
 
+// editCommentDraft owns the temporary file for the duration of edit. Only a
+// successful edit is read back; every exit removes the draft.
+func editCommentDraft(
+	body string,
+	anchor comments.Anchor,
+	edit func(string) error,
+) (string, error) {
+	path, err := createCommentFile(body, anchor)
+	if err != nil {
+		return "", err
+	}
+	defer os.Remove(path)
+	if err := edit(path); err != nil {
+		return "", err
+	}
+	return readCommentFile(path, anchor)
+}
+
 func createCommentFile(body string, anchor comments.Anchor) (string, error) {
 	file, err := os.CreateTemp("", appinfo.Name+"-comment-*.md")
 	if err != nil {

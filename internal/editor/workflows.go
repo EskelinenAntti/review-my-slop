@@ -35,16 +35,15 @@ func commentWorkflow(
 	adapter := &commandAdapter{}
 	var editedBody string
 	adapter.run = func() error {
-		path, err := createCommentFile(body, anchor)
-		if err != nil {
-			return err
-		}
-		defer os.Remove(path)
-		editorCommand := shellCommand(ctx, command, path)
-		if err := adapter.execute(editorCommand); err != nil {
-			return fmt.Errorf("editor: %w", err)
-		}
-		editedBody, err = readCommentFile(path, anchor)
+		var err error
+		editedBody, err = editCommentDraft(body, anchor,
+			func(path string) error {
+				cmd := shellCommand(ctx, command, path)
+				if err := adapter.execute(cmd); err != nil {
+					return fmt.Errorf("editor: %w", err)
+				}
+				return nil
+			})
 		return err
 	}
 	return adapter, func(err error) tea.Msg {
