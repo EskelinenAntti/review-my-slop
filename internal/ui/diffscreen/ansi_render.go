@@ -71,7 +71,17 @@ func filterSGRParts(parts []string, colors foregroundPolicy) []string {
 		switch {
 		case code == sgrExtendedBackground ||
 			(colors == discardForeground && code == sgrExtendedForeground):
-			parts = skipColorPayload(parts)
+			if len(parts) > 0 {
+				// Consume the mode and its payload, even when truncated.
+				switch parts[0] {
+				case "2": // RGB channels
+					parts = parts[min(4, len(parts)):]
+				case "5": // Palette index
+					parts = parts[min(2, len(parts)):]
+				default:
+					// Unknown modes remain for parameter-wise filtering.
+				}
+			}
 		case isBackgroundSGR(code):
 			// Background colors are supplied by the row style.
 		case colors == discardForeground && isForegroundSGR(code):
@@ -89,20 +99,6 @@ func isBackgroundSGR(code int) bool {
 
 func isForegroundSGR(code int) bool {
 	return (code >= 30 && code <= 39) || (code >= 90 && code <= 97)
-}
-
-func skipColorPayload(parts []string) []string {
-	if len(parts) == 0 {
-		return parts
-	}
-	switch parts[0] {
-	case "2":
-		return parts[min(4, len(parts)):]
-	case "5":
-		return parts[min(2, len(parts)):]
-	default:
-		return parts
-	}
 }
 
 func fitANSIWindow(value string, offset, width int) string {
