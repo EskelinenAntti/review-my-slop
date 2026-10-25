@@ -102,8 +102,10 @@ func (v *diffView) renderUnifiedLine(
 	line := hunk.Lines[current.rightLine]
 	prefix := lineMarker(line.Kind)
 	gutter := fmt.Sprintf(
-		"%5s %5s %s ",
+		"%*s %*s %s ",
+		lineNumberWidth,
 		number(line.OldNumber),
+		lineNumberWidth,
 		number(line.NewNumber),
 		prefix,
 	)
@@ -152,12 +154,7 @@ func (v *diffView) renderSplitRow(
 		cursor,
 		selection,
 	)
-	return left + " │ " + right
-}
-
-func splitPaneWidths(width int) (left, right int) {
-	left = max(20, (width-3)/2)
-	return left, max(20, width-3-left)
+	return left + paneSeparator + right
 }
 
 func (v *diffView) renderPane(
@@ -179,7 +176,7 @@ func (v *diffView) renderPane(
 		text, numberValue = current.left, line.OldNumber
 	}
 	prefix := lineMarker(line.Kind) + " "
-	gutter := fmt.Sprintf("%5s ", number(numberValue))
+	gutter := fmt.Sprintf("%*s ", lineNumberWidth, number(numberValue))
 	value := gutter + fitANSIWindow(
 		prefix+text,
 		offset,
