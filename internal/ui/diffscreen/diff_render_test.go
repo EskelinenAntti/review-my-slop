@@ -53,6 +53,8 @@ func TestRenderCodeLinesScrollOnlyContent(t *testing.T) {
 }
 
 func TestRenderRowsPreservesLayout(t *testing.T) {
+	withMetadata := stickyHeaderPatch()
+	withMetadata.Files[0].Metadata = []string{"index 123..456 100644"}
 	for _, test := range []struct {
 		name     string
 		patch    patch.Patch
@@ -69,7 +71,24 @@ func TestRenderRowsPreservesLayout(t *testing.T) {
 			expected: []string{"first.go", "@@", "first one"},
 		},
 		{
+			name: "unified metadata", patch: withMetadata,
+			expected: []string{
+				"first.go", "index 123..456 100644", "@@", "first one",
+			},
+		},
+		{
+			name: "split metadata", patch: withMetadata, split: true,
+			expected: []string{
+				"first.go", "index 123..456 100644", "@@", "first one",
+			},
+		},
+		{
 			name: "sticky", patch: stickyHeaderPatch(), top: 3,
+			expected: []string{"first.go", "first two", "first three"},
+		},
+		{
+			name: "split sticky", patch: stickyHeaderPatch(),
+			split: true, top: 3,
 			expected: []string{"first.go", "first two", "first three"},
 		},
 		{
@@ -80,6 +99,7 @@ func TestRenderRowsPreservesLayout(t *testing.T) {
 			},
 		},
 		{name: "empty", expected: []string{"", "", ""}},
+		{name: "split empty", split: true, expected: []string{"", "", ""}},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			v := newDiffView(test.patch, Options{SideBySide: test.split})
@@ -98,9 +118,13 @@ func TestRenderRowsPreservesLayout(t *testing.T) {
 						index, row, fragment,
 					)
 				}
-			}
-			if test.split && !strings.Contains(rows[2], " │ ") {
-				t.Errorf("split row has no divider: %q", rows[2])
+				entry, _, ok := v.rowAtViewportOffset(viewport, index)
+				wantDivider := test.split && ok && entry.kind == lineRow
+				if strings.Contains(row, paneSeparator) != wantDivider {
+					t.Errorf("row %d = %q, want pane divider: %t",
+						index, row, wantDivider,
+					)
+				}
 			}
 		})
 	}

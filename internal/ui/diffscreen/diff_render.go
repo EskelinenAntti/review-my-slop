@@ -45,22 +45,12 @@ func (v *diffView) renderRows(
 			lines = append(lines, "")
 			continue
 		}
-		if v.split && current.kind == lineRow {
-			lines = append(
-				lines,
-				renderer.renderSplitRow(current, y),
-			)
-		} else {
-			lines = append(
-				lines,
-				renderer.renderUnifiedRow(current, y),
-			)
-		}
+		lines = append(lines, renderer.renderRow(current, y))
 	}
 	return lines
 }
 
-func (r diffRenderer) renderUnifiedRow(current entry, y int) string {
+func (r diffRenderer) renderRow(current entry, y int) string {
 	width := frame.ScreenWidth(r.viewport.width)
 	switch current.kind {
 	case fileRow:
@@ -70,6 +60,9 @@ func (r diffRenderer) renderUnifiedRow(current entry, y int) string {
 	case hunkRow:
 		return hunkStyle.Render(current.text)
 	case lineRow:
+		if r.view.split {
+			return r.renderSplitRow(current, y)
+		}
 		return r.renderUnifiedLine(current, y, width)
 	}
 	return ""
