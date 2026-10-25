@@ -107,15 +107,19 @@ func assertSourceLineConsumers(
 		return
 	}
 	const width = 40
+	renderer := diffRenderer{
+		diffView: v,
+		viewport: v.newViewport(width, 10),
+		cursor:   cursor,
+	}
 	var rendered string
 	if v.split {
-		rendered = v.renderPane(
-			v.rows[cursor.row], cursor.row, cursor.pane, width, 0, cursor, nil,
+		rendered = renderer.renderPane(
+			v.rows[cursor.row], cursor.row, cursor.pane, width,
 		)
 	} else {
-		rendered = v.renderUnifiedLine(
-			v.rows[cursor.row], cursor.row, v.newViewport(width, 10),
-			cursor, nil, width,
+		rendered = renderer.renderUnifiedLine(
+			v.rows[cursor.row], cursor.row, width,
 		)
 	}
 	if !wantValid {

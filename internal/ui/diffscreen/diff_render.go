@@ -12,12 +12,25 @@ import (
 	"github.com/eskelinenantti/review-my-slop/internal/ui/internal/frame"
 )
 
+type diffRenderer struct {
+	*diffView
+	viewport  diffViewport
+	cursor    diffCursor
+	selection *diffSelection
+}
+
 func (v *diffView) render(
 	viewport diffViewport,
 	cursor diffCursor,
 	selection *diffSelection,
 ) string {
 	viewport = v.clampViewport(viewport)
+	renderer := diffRenderer{
+		diffView:  v,
+		viewport:  viewport,
+		cursor:    cursor,
+		selection: selection,
+	}
 	leftWidth, rightWidth := 0, 0
 	if v.split {
 		leftWidth, rightWidth = splitPaneWidths(viewport.width)
@@ -39,20 +52,12 @@ func (v *diffView) render(
 		if v.split && current.kind == lineRow {
 			lines = append(
 				lines,
-				v.renderSplitRow(
-					current,
-					y,
-					viewport,
-					leftWidth,
-					rightWidth,
-					cursor,
-					selection,
-				),
+				renderer.renderSplitRow(current, y, leftWidth, rightWidth),
 			)
 		} else {
 			lines = append(
 				lines,
-				v.renderUnifiedRow(current, y, viewport, cursor, selection),
+				renderer.renderUnifiedRow(current, y),
 			)
 		}
 	}
@@ -62,14 +67,11 @@ func (v *diffView) render(
 	return strings.Join(lines, "\n")
 }
 
-func (v *diffView) renderUnifiedRow(
+func (v diffRenderer) renderUnifiedRow(
 	current entry,
 	y int,
-	viewport diffViewport,
-	cursor diffCursor,
-	selection *diffSelection,
 ) string {
-	width := frame.ScreenWidth(viewport.width)
+	width := frame.ScreenWidth(v.viewport.width)
 	switch current.kind {
 	case fileRow:
 		return renderFileRow(current.text, width)
@@ -78,27 +80,16 @@ func (v *diffView) renderUnifiedRow(
 	case hunkRow:
 		return hunkStyle.Render(current.text)
 	case lineRow:
-		return v.renderUnifiedLine(
-			current,
-			y,
-			viewport,
-			cursor,
-			selection,
-			width,
-		)
+		return v.renderUnifiedLine(current, y, width)
 	}
 	return ""
 }
 
-func (v *diffView) renderUnifiedLine(
+func (v diffRenderer) renderUnifiedLine(
 	current entry,
-	y int,
-	viewport diffViewport,
-	cursor diffCursor,
-	selection *diffSelection,
-	width int,
+	y, width int,
 ) string {
-	candidate := diffCursor{row: y, pane: cursor.pane}
+	candidate := diffCursor{row: y, pane: v.cursor.pane}
 	line, _ := v.line(candidate)
 	prefix := lineMarker(line.Kind)
 	gutter := fmt.Sprintf(
@@ -113,11 +104,8 @@ func (v *diffView) renderUnifiedLine(
 		gutter,
 		current.panes[right].text,
 		width,
-		viewport.leftColumn,
 		line,
 		candidate,
-		cursor,
-		selection,
 	)
 }
 
@@ -125,42 +113,31 @@ func renderFileRow(path string, width int) string {
 	return fileStyle.Width(frame.ScreenWidth(width)).Render(path)
 }
 
-func (v *diffView) renderSplitRow(
+func (v diffRenderer) renderSplitRow(
 	current entry,
 	y int,
-	viewport diffViewport,
 	leftWidth, rightWidth int,
-	cursor diffCursor,
-	selection *diffSelection,
 ) string {
 	left := v.renderPane(
 		current,
 		y,
 		left,
 		leftWidth,
-		viewport.leftColumn,
-		cursor,
-		selection,
 	)
 	right := v.renderPane(
 		current,
 		y,
 		right,
 		rightWidth,
-		viewport.leftColumn,
-		cursor,
-		selection,
 	)
 	return left + paneSeparator + right
 }
 
-func (v *diffView) renderPane(
+func (v diffRenderer) renderPane(
 	current entry,
 	y int,
 	pane diffPane,
-	width, offset int,
-	cursor diffCursor,
-	selection *diffSelection,
+	width int,
 ) string {
 	candidate := diffCursor{row: y, pane: pane}
 	line, ok := v.line(candidate)
@@ -178,27 +155,25 @@ func (v *diffView) renderPane(
 		gutter,
 		prefix+text,
 		width,
-		offset,
 		line,
 		candidate,
-		cursor,
-		selection,
 	)
 }
 
-func (v *diffView) renderCodeLine(
+func (v diffRenderer) renderCodeLine(
 	gutter, text string,
-	width, offset int,
+	width int,
 	line patch.Line,
-	candidate, cursor diffCursor,
-	selection *diffSelection,
+	candidate diffCursor,
 ) string {
-	value := gutter + fitANSIWindow(text, offset, width-lipgloss.Width(gutter))
+	value := gutter + fitANSIWindow(
+		text, v.viewport.leftColumn, width-lipgloss.Width(gutter),
+	)
 	style, colors := renderedLineStyle(
 		line.Kind,
 		candidate,
-		cursor,
-		selection,
+		v.cursor,
+		v.selection,
 		v.styles,
 	)
 	return renderStyledRow(style, value, width, colors)

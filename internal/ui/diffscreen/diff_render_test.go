@@ -37,16 +37,18 @@ func TestCodeLineWindowKeepsGutterFixed(t *testing.T) {
 			row := v.rows[cursor.row]
 			text := "\x1b[32mabcdefghij\x1b[0m"
 			row.panes[right].text = text
+			renderer := diffRenderer{
+				diffView: v,
+				viewport: diffViewport{width: tt.width, leftColumn: tt.offset},
+				cursor:   cursor,
+			}
 			var rendered string
 			if tt.split {
-				rendered = v.renderPane(
-					row, cursor.row, right, tt.width, tt.offset, cursor, nil,
+				rendered = renderer.renderPane(
+					row, cursor.row, right, tt.width,
 				)
 			} else {
-				viewport := diffViewport{leftColumn: tt.offset}
-				rendered = v.renderUnifiedLine(
-					row, cursor.row, viewport, cursor, nil, tt.width,
-				)
+				rendered = renderer.renderUnifiedLine(row, cursor.row, tt.width)
 			}
 			if got := ansi.Strip(rendered); got != tt.want {
 				t.Errorf("rendered = %q, want %q", got, tt.want)
