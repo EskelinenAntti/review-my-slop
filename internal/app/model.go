@@ -331,12 +331,6 @@ func (m model) updateBrowseKey(name string) (tea.Model, tea.Cmd) {
 		return m, m.loadRefresh()
 	case "tab":
 		return m.switchPatchKind()
-	default:
-		return m.updateBrowseView(name)
-	}
-}
-func (m model) updateBrowseView(name string) (tea.Model, tea.Cmd) {
-	switch name {
 	case "?":
 		m.mode = modeHelp
 	case "/":

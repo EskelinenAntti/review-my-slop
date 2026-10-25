@@ -4,9 +4,65 @@ import (
 	"strings"
 	"testing"
 
+	tea "charm.land/bubbletea/v2"
+
 	"github.com/eskelinenantti/review-my-slop/internal/testutil"
 	"github.com/eskelinenantti/review-my-slop/internal/ui/diffscreen"
 )
+
+func TestBrowseActionsRespectPendingPrefixes(t *testing.T) {
+	actions := []struct {
+		key        string
+		mode       mode
+		quitting   bool
+		sideBySide bool
+	}{
+		{key: "?", mode: modeHelp},
+		{key: "/", mode: modeSearch},
+		{key: "C", mode: modeComments},
+		{key: "q", quitting: true},
+		{key: "t", sideBySide: true},
+	}
+	prefixes := []struct {
+		name  string
+		key   tea.KeyPressMsg
+		retry bool
+	}{
+		{name: "none", retry: true},
+		{name: "g", key: textKey("g"), retry: true},
+		{name: "z", key: textKey("z")},
+		{name: "[", key: textKey("[")},
+		{name: "]", key: textKey("]")},
+		{name: "ctrl+w", key: controlKey('w')},
+	}
+	for _, prefix := range prefixes {
+		for _, action := range actions {
+			t.Run(prefix.name+"/"+action.key, func(t *testing.T) {
+				m := testModel(coveragePatch(), nil, nil)
+				if prefix.name != "none" {
+					m = updateModel(t, m, prefix.key)
+				}
+				m = updateModel(t, m, textKey(action.key))
+				if !prefix.retry {
+					testutil.RequireEqual(t, m.mode, modeBrowse,
+						"unmatched action must be consumed")
+					testutil.RequireEqual(t, m.quitting, false,
+						"consumed action must not quit")
+					testutil.RequireEqual(t, m.diffOptions.SideBySide, false,
+						"consumed action must not change layout")
+					m = updateModel(t, m, textKey(action.key))
+				}
+				testutil.RequireEqual(t, m.mode, action.mode,
+					"browse action mode")
+				testutil.RequireEqual(t, m.quitting, action.quitting,
+					"quit action")
+				testutil.RequireEqual(t,
+					m.diffOptions.SideBySide, action.sideBySide,
+					"layout action")
+			})
+		}
+	}
+}
 
 func TestNavigationMatcherRecognizesActions(t *testing.T) {
 	check := func(binding string) {
