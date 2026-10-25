@@ -3,7 +3,7 @@ package diffscreen
 import "testing"
 
 func TestVisibleRows(t *testing.T) {
-	v := &diffView{rows: []entry{
+	v := &diffView{rows: []projectedRow{
 		{kind: fileRow},
 		{kind: hunkRow},
 		{kind: lineRow},

@@ -47,7 +47,7 @@ func TestSelectionContains(t *testing.T) {
 func TestTranslateSelection(t *testing.T) {
 	v := &diffView{
 		split: true,
-		rows: []entry{
+		rows: []projectedRow{
 			{kind: lineRow, file: 0, hunk: 0},
 			{kind: lineRow, file: 0, hunk: 0},
 			{kind: lineRow, file: 0, hunk: 1},
@@ -106,7 +106,7 @@ func TestTranslateSelection(t *testing.T) {
 func TestSelectionBetween(t *testing.T) {
 	v := &diffView{
 		split: true,
-		rows: []entry{
+		rows: []projectedRow{
 			{kind: lineRow, file: 0, hunk: 0,
 				panes: [2]paneContent{{line: 0}, {line: 0}}},
 			{kind: lineRow, file: 0, hunk: 0,

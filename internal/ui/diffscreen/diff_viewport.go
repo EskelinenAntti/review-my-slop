@@ -204,7 +204,7 @@ func (v *diffView) rowVisible(viewport diffViewport, row int) bool {
 	return row >= start && row < end
 }
 
-func renderedLineWidth(current entry) int {
+func renderedLineWidth(current projectedRow) int {
 	text := current.text + current.panes[left].text + current.panes[right].text
 	return lipgloss.Width(
 		expandTabs(ansi.Strip(text)),

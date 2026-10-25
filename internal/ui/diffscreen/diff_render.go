@@ -68,7 +68,7 @@ func (v *diffView) render(
 }
 
 func (v diffRenderer) renderUnifiedRow(
-	current entry,
+	current projectedRow,
 	y int,
 ) string {
 	width := frame.ScreenWidth(v.viewport.width)
@@ -86,7 +86,7 @@ func (v diffRenderer) renderUnifiedRow(
 }
 
 func (v diffRenderer) renderUnifiedLine(
-	current entry,
+	current projectedRow,
 	y, width int,
 ) string {
 	candidate := diffCursor{row: y, pane: v.cursor.pane}
@@ -114,7 +114,7 @@ func renderFileRow(path string, width int) string {
 }
 
 func (v diffRenderer) renderSplitRow(
-	current entry,
+	current projectedRow,
 	y int,
 	leftWidth, rightWidth int,
 ) string {
@@ -134,7 +134,7 @@ func (v diffRenderer) renderSplitRow(
 }
 
 func (v diffRenderer) renderPane(
-	current entry,
+	current projectedRow,
 	y int,
 	pane diffPane,
 	width int,

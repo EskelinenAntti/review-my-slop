@@ -41,7 +41,7 @@ func TestNearestCursor(t *testing.T) {
 }
 
 func TestNearestCursorCallerBoundaries(t *testing.T) {
-	v := &diffView{split: true, rows: []entry{
+	v := &diffView{split: true, rows: []projectedRow{
 		{kind: lineRow, file: 0, panes: [2]paneContent{{line: 0}, {line: 0}}},
 		{kind: fileRow, file: 1},
 		{kind: metadataRow, file: 1},

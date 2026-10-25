@@ -16,7 +16,7 @@ const (
 	lineRow
 )
 
-type entry struct {
+type projectedRow struct {
 	kind       rowKind
 	file, hunk int
 	text       string
@@ -30,7 +30,7 @@ type paneContent struct {
 
 type diffView struct {
 	patch        patch.Patch
-	rows         []entry
+	rows         []projectedRow
 	maxLineWidth int
 	countsLabel  string
 	split        bool
@@ -115,7 +115,7 @@ func (v *diffView) appendLineRow(
 	highlighted highlightedSources,
 	leftLine, rightLine int,
 ) {
-	row := entry{
+	row := projectedRow{
 		kind:  lineRow,
 		file:  fileIndex,
 		hunk:  hunkIndex,
@@ -136,7 +136,7 @@ func (v *diffView) appendNonLineRow(
 	fileIndex, hunkIndex int,
 	text string,
 ) {
-	v.rows = append(v.rows, entry{
+	v.rows = append(v.rows, projectedRow{
 		kind:  kind,
 		file:  fileIndex,
 		hunk:  hunkIndex,

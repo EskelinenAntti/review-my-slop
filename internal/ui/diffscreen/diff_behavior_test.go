@@ -42,7 +42,7 @@ func TestSplitPairsUnequalChangeBlocksAndKeepsHunksSeparate(t *testing.T) {
 		}}},
 	}
 	v := newSideBySideView(p, true)
-	var code []entry
+	var code []projectedRow
 	for _, current := range v.rows {
 		if current.kind == lineRow {
 			code = append(code, current)
