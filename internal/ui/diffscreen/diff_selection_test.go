@@ -2,6 +2,48 @@ package diffscreen
 
 import "testing"
 
+func TestSelectionContains(t *testing.T) {
+	for _, tt := range []struct {
+		name      string
+		selection *diffSelection
+		want      []diffCursor
+	}{
+		{"inactive", nil, nil},
+		{"single line", &diffSelection{
+			diffCursor{2, left}, diffCursor{2, left}},
+			[]diffCursor{{2, left}}},
+		{"forward", &diffSelection{diffCursor{1, right}, diffCursor{3, right}},
+			[]diffCursor{{1, right}, {2, right}, {3, right}}},
+		{"backward", &diffSelection{diffCursor{3, left}, diffCursor{1, left}},
+			[]diffCursor{{1, left}, {2, left}, {3, left}}},
+		{"both panes", &diffSelection{
+			diffCursor{2, left}, diffCursor{2, right}},
+			[]diffCursor{{2, left}, {2, right}}},
+		{"both panes reversed", &diffSelection{
+			diffCursor{2, right}, diffCursor{2, left}},
+			[]diffCursor{{2, left}, {2, right}}},
+		{"different rows and panes", &diffSelection{
+			diffCursor{1, left}, diffCursor{3, right}},
+			[]diffCursor{{1, left}, {2, left}, {3, left}}},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			for row := 0; row <= 4; row++ {
+				for _, pane := range []diffPane{left, right} {
+					cursor := diffCursor{row, pane}
+					want := false
+					for _, selected := range tt.want {
+						want = want || selected == cursor
+					}
+					if got := tt.selection.contains(cursor); got != want {
+						t.Errorf("contains(%v) = %v, want %v",
+							cursor, got, want)
+					}
+				}
+			}
+		})
+	}
+}
+
 func TestTranslateSelection(t *testing.T) {
 	v := &diffView{
 		split: true,
