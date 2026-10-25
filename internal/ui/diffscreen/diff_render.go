@@ -98,8 +98,8 @@ func (v *diffView) renderUnifiedLine(
 	selection *diffSelection,
 	width int,
 ) string {
-	hunk := v.patch.Files[current.file].Hunks[current.hunk]
-	line := hunk.Lines[current.rightLine]
+	candidate := diffCursor{row: y, pane: cursor.pane}
+	line, _ := v.line(candidate)
 	prefix := lineMarker(line.Kind)
 	gutter := fmt.Sprintf(
 		"%*s %*s %s ",
@@ -118,7 +118,7 @@ func (v *diffView) renderUnifiedLine(
 		value,
 		width,
 		line,
-		diffCursor{row: y, pane: cursor.pane},
+		candidate,
 		cursor,
 		selection,
 	)
@@ -165,11 +165,11 @@ func (v *diffView) renderPane(
 	cursor diffCursor,
 	selection *diffSelection,
 ) string {
-	index := v.lineIndex(current, pane)
-	if index < 0 {
+	candidate := diffCursor{row: y, pane: pane}
+	line, ok := v.line(candidate)
+	if !ok {
 		return strings.Repeat(" ", width)
 	}
-	line := v.patch.Files[current.file].Hunks[current.hunk].Lines[index]
 	text := current.right
 	numberValue := line.NewNumber
 	if pane == left {
@@ -186,7 +186,7 @@ func (v *diffView) renderPane(
 		value,
 		width,
 		line,
-		diffCursor{row: y, pane: pane},
+		candidate,
 		cursor,
 		selection,
 	)
