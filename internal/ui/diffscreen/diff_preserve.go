@@ -215,15 +215,10 @@ func preserveSelection(
 	if first.hunkHeader != last.hunkHeader {
 		return nil
 	}
-	translatedFirst, ok := next.findCursor(first)
-	if !ok {
-		return nil
-	}
-	translatedLast, ok := next.findCursor(last)
-	if !ok {
-		return nil
-	}
-	translated, ok := next.selectionBetween(translatedFirst, translatedLast)
+	translated, ok := next.translateSelection(*selection,
+		func(cursor diffCursor) (diffCursor, bool) {
+			return next.findCursor(identify(old, cursor))
+		})
 	if !ok {
 		return nil
 	}

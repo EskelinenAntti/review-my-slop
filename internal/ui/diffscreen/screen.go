@@ -215,12 +215,10 @@ func (v *View) switchPane(pane diffPane) {
 		return
 	}
 	if v.selection != nil {
-		first, firstOK := v.view.switchPane(v.selection.First, pane)
-		last, lastOK := v.view.switchPane(v.selection.Last, pane)
-		if !firstOK || !lastOK {
-			return
-		}
-		selection, ok := v.view.selectionBetween(first, last)
+		selection, ok := v.view.translateSelection(*v.selection,
+			func(cursor diffCursor) (diffCursor, bool) {
+				return v.view.switchPane(cursor, pane)
+			})
 		if !ok {
 			return
 		}

@@ -14,6 +14,23 @@ func (v *diffView) selectionBetween(
 	return diffSelection{First: first, Last: last}, v.sameFileHunk(first, last)
 }
 
+// translateSelection accepts a range only when both translated endpoints remain
+// selectable within the same hunk. Endpoint order is preserved.
+func (v *diffView) translateSelection(
+	selection diffSelection,
+	translate func(diffCursor) (diffCursor, bool),
+) (diffSelection, bool) {
+	first, ok := translate(selection.First)
+	if !ok {
+		return diffSelection{}, false
+	}
+	last, ok := translate(selection.Last)
+	if !ok {
+		return diffSelection{}, false
+	}
+	return v.selectionBetween(first, last)
+}
+
 func (v *diffView) sameFileHunk(first, last diffCursor) bool {
 	if !v.valid(first) || !v.valid(last) {
 		return false
