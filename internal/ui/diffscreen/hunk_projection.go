@@ -34,26 +34,31 @@ func splitHunkLinePairs(lines []patch.Line) iter.Seq2[int, int] {
 			}
 
 			removedStart := index
-			for index < len(lines) && lines[index].Kind == patch.Deletion {
-				index++
-			}
-			addedStart := index
-			for index < len(lines) && lines[index].Kind == patch.Addition {
-				index++
-			}
-			count := max(addedStart-removedStart, index-addedStart)
+			removedEnd := lineRunEnd(lines, removedStart, patch.Deletion)
+			addedStart := removedEnd
+			addedEnd := lineRunEnd(lines, addedStart, patch.Addition)
+			count := max(removedEnd-removedStart, addedEnd-addedStart)
 			for offset := 0; offset < count; offset++ {
 				leftLine, rightLine := -1, -1
-				if removedStart+offset < addedStart {
+				if removedStart+offset < removedEnd {
 					leftLine = removedStart + offset
 				}
-				if addedStart+offset < index {
+				if addedStart+offset < addedEnd {
 					rightLine = addedStart + offset
 				}
 				if !yield(leftLine, rightLine) {
 					return
 				}
 			}
+			index = addedEnd
 		}
 	}
+}
+
+func lineRunEnd(lines []patch.Line, start int, kind patch.LineKind) int {
+	end := start
+	for end < len(lines) && lines[end].Kind == kind {
+		end++
+	}
+	return end
 }

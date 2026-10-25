@@ -86,6 +86,31 @@ func TestHunkLinePairs(t *testing.T) {
 	}
 }
 
+func TestSplitHunkLinePairsStopsWithinReplacement(t *testing.T) {
+	lines := []patch.Line{
+		{Kind: patch.Context},
+		{Kind: patch.Deletion},
+		{Kind: patch.Deletion},
+		{Kind: patch.Addition},
+		{Kind: patch.Addition},
+		{Kind: patch.Addition},
+		{Kind: patch.Context},
+	}
+	want := [][2]int{{0, 0}, {1, 3}, {2, 4}, {-1, 5}, {6, 6}}
+	for stopAfter := 1; stopAfter <= len(want); stopAfter++ {
+		var got [][2]int
+		for leftLine, rightLine := range splitHunkLinePairs(lines) {
+			got = append(got, [2]int{leftLine, rightLine})
+			if len(got) == stopAfter {
+				break
+			}
+		}
+		testutil.RequireEqual(t, slices.Equal(got, want[:stopAfter]), true,
+			"stopAfter=%v: pairs=%v, want %v", stopAfter, got, want[:stopAfter],
+		)
+	}
+}
+
 func TestHunkLinePairsStopsWhenConsumerBreaks(t *testing.T) {
 	for _, kind := range []patch.LineKind{
 		patch.Context, patch.Addition, patch.Deletion,
