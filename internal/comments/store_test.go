@@ -57,6 +57,40 @@ func TestListMissingStoreDoesNotCreateDatabase(t *testing.T) {
 	}
 }
 
+func TestStoreReopenSecuresExistingPaths(t *testing.T) {
+	for _, mode := range []databaseMode{readDatabase, writeDatabase} {
+		name := "read"
+		if mode == writeDatabase {
+			name = "write"
+		}
+		t.Run(name, func(t *testing.T) {
+			store := Store{
+				Path: filepath.Join(t.TempDir(), "state", "comments.db"),
+			}
+			_, err := store.Add(testComment("/repo", "feedback"))
+			testutil.NoError(t, err)
+			directory := filepath.Dir(store.Path)
+			testutil.NoError(t, os.Chmod(directory, 0o755))
+			testutil.NoError(t, os.Chmod(store.Path, 0o644))
+
+			db, err := store.openDatabase(mode)
+			testutil.NoError(t, err)
+			defer db.Close()
+
+			for path, want := range map[string]os.FileMode{
+				directory:  0o700,
+				store.Path: 0o600,
+			} {
+				info, err := os.Stat(path)
+				testutil.NoError(t, err)
+				testutil.RequireEqual(t, info.Mode().Perm(), want,
+					"%s mode = %o, want %o", path, info.Mode().Perm(), want,
+				)
+			}
+		})
+	}
+}
+
 func TestStoreViewsCanShareDatabase(t *testing.T) {
 	store := Store{Path: filepath.Join(t.TempDir(), "comments.db")}
 	if _, err := store.Add(testComment("/repo", "feedback")); err != nil {

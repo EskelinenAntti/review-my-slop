@@ -286,8 +286,18 @@ func (s Store) view(fn func(*bolt.Bucket) error) error {
 }
 
 func (s Store) openDatabase(mode databaseMode) (*bolt.DB, error) {
-	if err := s.preparePath(mode); err != nil {
-		return nil, err
+	if s.Path == "" {
+		return nil, errors.New("comments path is empty")
+	}
+	if mode == readDatabase {
+		if _, err := os.Stat(s.Path); err != nil {
+			return nil, fmt.Errorf("open comments: %w", err)
+		}
+	} else if err := os.MkdirAll(filepath.Dir(s.Path), 0o700); err != nil {
+		return nil, fmt.Errorf("create comments directory: %w", err)
+	}
+	if err := os.Chmod(filepath.Dir(s.Path), 0o700); err != nil {
+		return nil, fmt.Errorf("secure comments directory: %w", err)
 	}
 	db, err := bolt.Open(s.Path, 0o600, &bolt.Options{
 		Timeout:  2 * time.Second,
@@ -301,21 +311,4 @@ func (s Store) openDatabase(mode databaseMode) (*bolt.DB, error) {
 		return nil, fmt.Errorf("secure comments database: %w", err)
 	}
 	return db, nil
-}
-
-func (s Store) preparePath(mode databaseMode) error {
-	if s.Path == "" {
-		return errors.New("comments path is empty")
-	}
-	if mode == readDatabase {
-		if _, err := os.Stat(s.Path); err != nil {
-			return fmt.Errorf("open comments: %w", err)
-		}
-	} else if err := os.MkdirAll(filepath.Dir(s.Path), 0o700); err != nil {
-		return fmt.Errorf("create comments directory: %w", err)
-	}
-	if err := os.Chmod(filepath.Dir(s.Path), 0o700); err != nil {
-		return fmt.Errorf("secure comments directory: %w", err)
-	}
-	return nil
 }
