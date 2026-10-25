@@ -558,6 +558,32 @@ func TestParseHunkBodyEscapesTerminalControls(t *testing.T) {
 	)
 }
 
+func TestParseHunkBodySkipsNewlineMarkers(t *testing.T) {
+	lines, err := parseHunkBody(10, 20, []byte(
+		"-old\n\\ No newline at end of file\n"+
+			"+new\n\\ No newline at end of file\n context\n",
+	))
+	testutil.NoError(t, err)
+	want := []Line{
+		{Kind: Deletion, Text: "old", OldNumber: 10},
+		{Kind: Addition, Text: "new", NewNumber: 20},
+		{Kind: Context, Text: "context", OldNumber: 11, NewNumber: 21},
+	}
+	testutil.RequireEqual(t, reflect.DeepEqual(lines, want), true,
+		"lines = %#v, want %#v", lines, want,
+	)
+}
+
+func TestParseHunkBodyRejectsMalformedLines(t *testing.T) {
+	for _, body := range []string{" context\n\n", " context\n?invalid\n"} {
+		t.Run(body, func(t *testing.T) {
+			lines, err := parseHunkBody(1, 1, []byte(body))
+			testutil.RequireEqual(t, err != nil, true, "error = %v", err)
+			testutil.RequireEqual(t, lines == nil, true, "lines = %#v", lines)
+		})
+	}
+}
+
 func FuzzParseHunkBody(f *testing.F) {
 	f.Add([]byte("+hello\n-world\n"))
 	f.Add([]byte(" context\n"))
