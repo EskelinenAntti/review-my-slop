@@ -25,7 +25,7 @@ func (v *View) Render(err error) string {
 		footer = frame.Error(message)
 	}
 	if err != nil {
-		footer = frame.Error(frame.SingleLine(err.Error()))
+		footer = frame.Error(err.Error())
 	}
 	return frame.Render(header, body, v.renderFooter(footer), v.height)
 }
