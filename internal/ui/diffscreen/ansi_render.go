@@ -54,39 +54,41 @@ func filterSGR(sequence string, colors foregroundPolicy) string {
 }
 
 func filterSGRParts(parts []string, colors foregroundPolicy) []string {
-	filtered := parts[:0]
-	for index := 0; index < len(parts); index++ {
-		code, err := strconv.Atoi(parts[index])
+	filtered := make([]string, 0, len(parts))
+	for len(parts) > 0 {
+		parameter := parts[0]
+		parts = parts[1:]
+		code, err := strconv.Atoi(parameter)
 		if err != nil {
-			filtered = append(filtered, parts[index])
+			filtered = append(filtered, parameter)
 			continue
 		}
 		switch {
 		case code == 48 || (colors == discardForeground && code == 38):
-			index = colorParameterEnd(parts, index)
+			parts = skipColorPayload(parts)
 		case (code >= 40 && code <= 49) || (code >= 100 && code <= 107):
 			// Background colors are supplied by the row style.
 		case colors == discardForeground &&
 			((code >= 30 && code <= 39) || (code >= 90 && code <= 97)):
 			// Cursor and selection styles also replace syntax foregrounds.
 		default:
-			filtered = append(filtered, parts[index])
+			filtered = append(filtered, parameter)
 		}
 	}
 	return filtered
 }
 
-func colorParameterEnd(parts []string, index int) int {
-	if index+1 >= len(parts) {
-		return index
+func skipColorPayload(parts []string) []string {
+	if len(parts) == 0 {
+		return parts
 	}
-	switch parts[index+1] {
+	switch parts[0] {
 	case "2":
-		return min(index+4, len(parts)-1)
+		return parts[min(4, len(parts)):]
 	case "5":
-		return min(index+2, len(parts)-1)
+		return parts[min(2, len(parts)):]
 	default:
-		return index
+		return parts
 	}
 }
 

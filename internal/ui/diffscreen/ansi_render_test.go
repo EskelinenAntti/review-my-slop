@@ -1,6 +1,9 @@
 package diffscreen
 
-import "testing"
+import (
+	"slices"
+	"testing"
+)
 
 func TestFilterANSIColors(t *testing.T) {
 	for _, test := range []struct {
@@ -26,6 +29,10 @@ func TestFilterANSIColors(t *testing.T) {
 			"\x1b[38;2;90;4m", "\x1b[4m"},
 		{"missing color mode", "\x1b[48m", "", ""},
 		{"truncated truecolor", "\x1b[48;2;255m", "", ""},
+		{"truecolor mode without channels", "\x1b[48;2m", "", ""},
+		{"indexed mode without index", "\x1b[48;5m", "", ""},
+		{"adjacent background payloads", "\x1b[48;5;48;48;2;38;48;49;4m",
+			"\x1b[4m", "\x1b[4m"},
 		{"truncated indexed foreground", "\x1b[38;5m", "\x1b[38;5m", ""},
 		{"unknown color mode", "\x1b[48;3;1m", "\x1b[3;1m", "\x1b[3;1m"},
 		{"empty parameter", "\x1b[;44;1m", "\x1b[;1m", "\x1b[;1m"},
@@ -51,5 +58,17 @@ func TestFilterANSIColors(t *testing.T) {
 				})
 			}
 		})
+	}
+}
+
+func TestFilterSGRPartsLeavesInputUnchanged(t *testing.T) {
+	parts := []string{"44", "1", "48", "5", "123", "4"}
+	original := slices.Clone(parts)
+	got := filterSGRParts(parts, preserveForeground)
+	if !slices.Equal(got, []string{"1", "4"}) {
+		t.Fatalf("filterSGRParts() = %v, want [1 4]", got)
+	}
+	if !slices.Equal(parts, original) {
+		t.Errorf("filterSGRParts mutated input: %v", parts)
 	}
 }
