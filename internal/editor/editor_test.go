@@ -75,7 +75,7 @@ func TestExternalEditorCommandReadsEditedDraft(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = os.Remove(path) })
-	command := commentCommand(
+	command := shellCommand(
 		context.Background(), "printf 'edited externally' >", path,
 	)
 	if err := command.Run(); err != nil {

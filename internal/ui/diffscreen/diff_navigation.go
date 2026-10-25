@@ -11,19 +11,34 @@ func (v *diffView) valid(cursor diffCursor) bool {
 		v.lineIndex(v.rows[cursor.row], cursor.pane) >= 0
 }
 
-func (v *diffView) lineIndex(current entry, pane diffPane) int {
+func (v *diffView) lineIndex(current projectedRow, pane diffPane) int {
 	if current.kind != lineRow {
 		return -1
 	}
-	if !v.split || pane == right {
-		return current.rightLine
+	if !v.split {
+		pane = right
 	}
-	return current.leftLine
+	return current.panes[pane].line
 }
 
 func (v *diffView) cursorAt(y int, pane diffPane) (diffCursor, bool) {
 	cursor := diffCursor{row: y, pane: pane}
 	return cursor, v.valid(cursor)
+}
+
+// inPreferredPane exhausts the caller's lookup in the preferred pane before
+// trying the other pane. Unified views never need an alternate-pane lookup.
+func (v *diffView) inPreferredPane(
+	pane diffPane,
+	lookup func(diffPane) (diffCursor, bool),
+) (diffCursor, bool) {
+	if cursor, ok := lookup(pane); ok {
+		return cursor, true
+	}
+	if v.split {
+		return lookup(pane.other())
+	}
+	return diffCursor{}, false
 }
 
 func (v *diffView) first() (diffCursor, bool) {
@@ -97,13 +112,9 @@ func (v *diffView) searchRow(
 	if v.rows[y].kind != lineRow {
 		return v.searchMetadata(query, y, pane, direction)
 	}
-	if candidate, ok := v.searchPane(query, y, pane); ok {
-		return candidate, true
-	}
-	if v.split {
-		return v.searchPane(query, y, pane.other())
-	}
-	return diffCursor{}, false
+	return v.inPreferredPane(pane, func(pane diffPane) (diffCursor, bool) {
+		return v.searchPane(query, y, pane)
+	})
 }
 
 func (v *diffView) searchPane(
@@ -139,19 +150,32 @@ func (v *diffView) cursorNearMetadata(
 	pane diffPane,
 	direction direction,
 ) (diffCursor, bool) {
-	for distance := 1; distance <= len(v.rows); distance++ {
-		for _, candidateY := range neighborRows(y, distance, direction) {
-			if candidate, ok := v.cursorInFile(candidateY, y, pane); ok {
-				return candidate, true
+	return nearestCursor(y, len(v.rows), direction,
+		func(row int) (diffCursor, bool) {
+			return v.cursorInFile(row, y, pane)
+		})
+}
+
+// nearestCursor checks the target first, then increasing distances up to and
+// including maxDistance. Equal distances prefer direction; lookup defines which
+// rows and panes are eligible.
+func nearestCursor(
+	target, maxDistance int,
+	direction direction,
+	lookup func(int) (diffCursor, bool),
+) (diffCursor, bool) {
+	if cursor, ok := lookup(target); ok {
+		return cursor, true
+	}
+	for distance := 1; distance <= maxDistance; distance++ {
+		offset := int(direction) * distance
+		for _, row := range [2]int{target + offset, target - offset} {
+			if cursor, ok := lookup(row); ok {
+				return cursor, true
 			}
 		}
 	}
 	return diffCursor{}, false
-}
-
-func neighborRows(row, distance int, direction direction) [2]int {
-	offset := int(direction) * distance
-	return [2]int{row + offset, row - offset}
 }
 
 func (v *diffView) cursorInFile(
@@ -161,13 +185,9 @@ func (v *diffView) cursorInFile(
 	if y < 0 || y >= len(v.rows) || v.rows[y].file != v.rows[origin].file {
 		return diffCursor{}, false
 	}
-	if candidate, ok := v.cursorAt(y, pane); ok {
-		return candidate, true
-	}
-	if v.split {
-		return v.cursorAt(y, pane.other())
-	}
-	return diffCursor{}, false
+	return v.inPreferredPane(pane, func(pane diffPane) (diffCursor, bool) {
+		return v.cursorAt(y, pane)
+	})
 }
 
 func (v *diffView) jumpFile(

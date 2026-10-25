@@ -54,11 +54,6 @@ type commentEditorFinishedMsg struct {
 	body string
 	err  error
 }
-type commentsLoadedMsg struct {
-	comments []comments.Comment
-	revision uint64
-	err      error
-}
 type sourceEditorFinishedMsg struct{ err error }
 
 type mode uint8
@@ -76,13 +71,6 @@ const verticalScrollStep = 3
 var defaultDimensions = terminalDimensions{
 	width:  ui.DefaultScreenWidth,
 	height: ui.DefaultScreenHeight,
-}
-
-// commentState pairs stored comments with the revision used to reject stale
-// loads.
-type commentState struct {
-	items    []comments.Comment
-	revision uint64
 }
 
 type commentEdit struct {
@@ -140,20 +128,7 @@ func newModel(
 			Dark:       true,
 		},
 		kind: currentPatch.Kind,
-		keys: keymap.New(
-			keymap.Sequence{
-				Prefix:         "g",
-				Keys:           []string{"g"},
-				RetryUnmatched: true,
-			},
-			keymap.Sequence{Prefix: "z", Keys: []string{"z", "t", "b"}},
-			keymap.Sequence{Prefix: "[", Keys: []string{"f"}},
-			keymap.Sequence{Prefix: "]", Keys: []string{"f"}},
-			keymap.Sequence{
-				Prefix: "ctrl+w",
-				Keys:   []string{"h", "l", "ctrl+w"},
-			},
-		),
+		keys: navigationMatcher(),
 	}
 	m.diffView = diffscreen.New(currentPatch, m.diffOptions)
 	m.resizeScreens()
@@ -263,16 +238,15 @@ func (m *model) finishCommentEditor(msg commentEditorFinishedMsg) {
 }
 
 func (m *model) finishCommentsLoad(msg commentsLoadedMsg) {
-	if msg.revision != m.comments.revision {
+	updated, err := m.comments.applyLoad(msg)
+	if err != nil {
+		m.err = fmt.Errorf("refresh comments: %w", err)
 		return
 	}
-	if msg.err != nil {
-		m.err = fmt.Errorf("refresh comments: %w", msg.err)
-		return
+	if updated {
+		m.commentView.Update(m.comments.items)
+		m.err = nil
 	}
-	m.comments.items = msg.comments
-	m.commentView.Update(m.comments.items)
-	m.err = nil
 }
 
 func (m *model) finishDiffRefresh(msg refreshDiffMsg) {
@@ -357,12 +331,6 @@ func (m model) updateBrowseKey(name string) (tea.Model, tea.Cmd) {
 		return m, m.loadRefresh()
 	case "tab":
 		return m.switchPatchKind()
-	default:
-		return m.updateBrowseView(name)
-	}
-}
-func (m model) updateBrowseView(name string) (tea.Model, tea.Cmd) {
-	switch name {
 	case "?":
 		m.mode = modeHelp
 	case "/":

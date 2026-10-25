@@ -16,20 +16,22 @@ const (
 	lineRow
 )
 
-type entry struct {
-	kind              rowKind
-	file, hunk        int
-	leftLine          int
-	rightLine         int
-	text, left, right string
+type projectedRow struct {
+	kind       rowKind
+	file, hunk int
+	text       string
+	panes      [2]paneContent
+}
+
+type paneContent struct {
+	line int
+	text string
 }
 
 type diffView struct {
 	patch        patch.Patch
-	rows         []entry
+	rows         []projectedRow
 	maxLineWidth int
-	addedLines   int
-	removedLines int
 	countsLabel  string
 	split        bool
 	dark         bool
@@ -38,16 +40,35 @@ type diffView struct {
 
 func newDiffView(p patch.Patch, options Options) *diffView {
 	v := &diffView{
-		patch:  p,
-		split:  options.SideBySide,
-		dark:   options.Dark,
-		styles: newLineStyles(options.Dark),
+		patch:       p,
+		countsLabel: changeCountsLabel(p),
+		split:       options.SideBySide,
+		dark:        options.Dark,
+		styles:      newLineStyles(options.Dark),
 	}
 	for fileIndex, file := range p.Files {
 		v.appendFileRows(fileIndex, file)
 	}
-	v.countsLabel = fmt.Sprintf("+%d-%d", v.addedLines, v.removedLines)
 	return v
+}
+
+func changeCountsLabel(p patch.Patch) string {
+	var added, removed int
+	for _, file := range p.Files {
+		for _, hunk := range file.Hunks {
+			for _, line := range hunk.Lines {
+				switch line.Kind {
+				case patch.Addition:
+					added++
+				case patch.Deletion:
+					removed++
+				default:
+					continue
+				}
+			}
+		}
+	}
+	return fmt.Sprintf("+%d-%d", added, removed)
 }
 
 func (v *diffView) appendFileRows(fileIndex int, file patch.File) {
@@ -72,7 +93,11 @@ func (v *diffView) appendHunkRows(
 		hunkIndex,
 		normalizeHunkHeader(hunk.Header),
 	)
-	appendRow := func(leftLine, rightLine int) {
+	pairs := unifiedHunkLinePairs(hunk.Lines)
+	if v.split {
+		pairs = splitHunkLinePairs(hunk.Lines)
+	}
+	for leftLine, rightLine := range pairs {
 		v.appendLineRow(
 			fileIndex,
 			hunkIndex,
@@ -82,26 +107,6 @@ func (v *diffView) appendHunkRows(
 			rightLine,
 		)
 	}
-	for index := 0; index < len(hunk.Lines); {
-		if !v.split || hunk.Lines[index].Kind == patch.Context {
-			appendRow(index, index)
-			index++
-			continue
-		}
-		switch hunk.Lines[index].Kind {
-		case patch.Addition:
-			appendRow(-1, index)
-			index++
-		case patch.Deletion:
-			addedStart := changeBlockEnd(hunk.Lines, index, patch.Deletion)
-			end := changeBlockEnd(hunk.Lines, addedStart, patch.Addition)
-			appendPairedChangeRows(appendRow, index, addedStart, end)
-			index = end
-		default:
-			appendRow(index, index)
-			index++
-		}
-	}
 }
 
 func (v *diffView) appendLineRow(
@@ -110,34 +115,20 @@ func (v *diffView) appendLineRow(
 	highlighted highlightedSources,
 	leftLine, rightLine int,
 ) {
-	v.countSourceLine(lines, leftLine)
-	if rightLine != leftLine {
-		v.countSourceLine(lines, rightLine)
+	row := projectedRow{
+		kind:  lineRow,
+		file:  fileIndex,
+		hunk:  hunkIndex,
+		panes: [2]paneContent{{line: leftLine}, {line: rightLine}},
 	}
-	row := entry{
-		kind:      lineRow,
-		file:      fileIndex,
-		hunk:      hunkIndex,
-		leftLine:  leftLine,
-		rightLine: rightLine,
+	for index := range row.panes {
+		pane := &row.panes[index]
+		if pane.line >= 0 && (v.split || diffPane(index) == right) {
+			pane.text = sourceText(highlighted, lines[pane.line])
+		}
 	}
-	v.highlightRow(&row, lines, highlighted)
 	v.maxLineWidth = max(v.maxLineWidth, renderedLineWidth(row))
 	v.rows = append(v.rows, row)
-}
-
-func (v *diffView) countSourceLine(lines []patch.Line, index int) {
-	if index < 0 {
-		return
-	}
-	switch lines[index].Kind {
-	case patch.Addition:
-		v.addedLines++
-	case patch.Deletion:
-		v.removedLines++
-	default:
-		return
-	}
 }
 
 func (v *diffView) appendNonLineRow(
@@ -145,55 +136,13 @@ func (v *diffView) appendNonLineRow(
 	fileIndex, hunkIndex int,
 	text string,
 ) {
-	v.rows = append(v.rows, entry{
-		kind:      kind,
-		file:      fileIndex,
-		hunk:      hunkIndex,
-		leftLine:  -1,
-		rightLine: -1,
-		text:      text,
+	v.rows = append(v.rows, projectedRow{
+		kind:  kind,
+		file:  fileIndex,
+		hunk:  hunkIndex,
+		panes: [2]paneContent{{line: -1}, {line: -1}},
+		text:  text,
 	})
-}
-
-func (v *diffView) highlightRow(
-	row *entry,
-	lines []patch.Line,
-	highlighted highlightedSources,
-) {
-	if !v.split {
-		row.text = sourceText(highlighted, lines[row.rightLine])
-		return
-	}
-	if row.leftLine >= 0 {
-		row.left = sourceText(highlighted, lines[row.leftLine])
-	}
-	if row.rightLine >= 0 {
-		row.right = sourceText(highlighted, lines[row.rightLine])
-	}
-}
-
-func changeBlockEnd(lines []patch.Line, start int, kind patch.LineKind) int {
-	for start < len(lines) && lines[start].Kind == kind {
-		start++
-	}
-	return start
-}
-
-func appendPairedChangeRows(
-	appendRow func(leftLine, rightLine int),
-	removedStart, addedStart, end int,
-) {
-	count := max(addedStart-removedStart, end-addedStart)
-	for offset := 0; offset < count; offset++ {
-		leftLine, rightLine := -1, -1
-		if removedStart+offset < addedStart {
-			leftLine = removedStart + offset
-		}
-		if addedStart+offset < end {
-			rightLine = addedStart + offset
-		}
-		appendRow(leftLine, rightLine)
-	}
 }
 
 func sourceText(highlighted highlightedSources, line patch.Line) string {

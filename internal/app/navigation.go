@@ -3,9 +3,11 @@ package app
 import (
 	"fmt"
 	"math"
+	"strings"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/eskelinenantti/review-my-slop/internal/ui/diffscreen"
+	"github.com/eskelinenantti/review-my-slop/internal/ui/keymap"
 )
 
 func (m *model) toggleSideBySide() {
@@ -94,4 +96,31 @@ var navigationAlignments = map[string]diffscreen.Alignment{
 	"z z": diffscreen.Center,
 	"z t": diffscreen.Top,
 	"z b": diffscreen.Bottom,
+}
+
+func navigationMatcher() keymap.Matcher {
+	sequences := make(map[string]keymap.Sequence)
+	addBinding := func(binding string) {
+		prefix, key, prefixed := strings.Cut(binding, " ")
+		if !prefixed {
+			return
+		}
+		sequence := sequences[prefix]
+		sequence.Prefix = prefix
+		sequence.Keys = append(sequence.Keys, key)
+		// Only g retries an unmatched continuation as a fresh key.
+		sequence.RetryUnmatched = prefix == "g"
+		sequences[prefix] = sequence
+	}
+	for binding := range navigationMotions {
+		addBinding(binding)
+	}
+	for binding := range navigationAlignments {
+		addBinding(binding)
+	}
+	rules := make([]keymap.Sequence, 0, len(sequences))
+	for _, sequence := range sequences {
+		rules = append(rules, sequence)
+	}
+	return keymap.New(rules...)
 }

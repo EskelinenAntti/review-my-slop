@@ -1,9 +1,7 @@
 package diffscreen
 
 import (
-	"fmt"
 	"image/color"
-	"strconv"
 	"strings"
 
 	"charm.land/lipgloss/v2"
@@ -12,18 +10,31 @@ import (
 	"github.com/eskelinenantti/review-my-slop/internal/ui/internal/frame"
 )
 
+type diffRenderer struct {
+	*diffView
+	viewport  diffViewport
+	cursor    diffCursor
+	selection *diffSelection
+}
+
 func (v *diffView) render(
 	viewport diffViewport,
 	cursor diffCursor,
 	selection *diffSelection,
 ) string {
 	viewport = v.clampViewport(viewport)
+	renderer := diffRenderer{
+		diffView:  v,
+		viewport:  viewport,
+		cursor:    cursor,
+		selection: selection,
+	}
 	leftWidth, rightWidth := 0, 0
 	if v.split {
 		leftWidth, rightWidth = splitPaneWidths(viewport.width)
 	}
 	lines := make([]string, 0, viewport.height)
-	if v.hasStickyHeader(viewport.top, viewport.height) {
+	if v.stickyHeaderHeight(viewport.top, viewport.height) > 0 {
 		current := v.rows[viewport.top]
 		lines = append(
 			lines,
@@ -33,26 +44,18 @@ func (v *diffView) render(
 			),
 		)
 	}
-	end := min(len(v.rows), viewport.top+v.contentHeight(viewport))
-	for y := viewport.top; y < end; y++ {
+	start, end := v.visibleRows(viewport)
+	for y := start; y < end; y++ {
 		current := v.rows[y]
 		if v.split && current.kind == lineRow {
 			lines = append(
 				lines,
-				v.renderSplitRow(
-					current,
-					y,
-					viewport,
-					leftWidth,
-					rightWidth,
-					cursor,
-					selection,
-				),
+				renderer.renderSplitRow(current, y, leftWidth, rightWidth),
 			)
 		} else {
 			lines = append(
 				lines,
-				v.renderUnifiedRow(current, y, viewport, cursor, selection),
+				renderer.renderUnifiedRow(current, y),
 			)
 		}
 	}
@@ -62,14 +65,11 @@ func (v *diffView) render(
 	return strings.Join(lines, "\n")
 }
 
-func (v *diffView) renderUnifiedRow(
-	current entry,
+func (v diffRenderer) renderUnifiedRow(
+	current projectedRow,
 	y int,
-	viewport diffViewport,
-	cursor diffCursor,
-	selection *diffSelection,
 ) string {
-	width := frame.ScreenWidth(viewport.width)
+	width := frame.ScreenWidth(v.viewport.width)
 	switch current.kind {
 	case fileRow:
 		return renderFileRow(current.text, width)
@@ -78,47 +78,23 @@ func (v *diffView) renderUnifiedRow(
 	case hunkRow:
 		return hunkStyle.Render(current.text)
 	case lineRow:
-		return v.renderUnifiedLine(
-			current,
-			y,
-			viewport,
-			cursor,
-			selection,
-			width,
-		)
+		return v.renderUnifiedLine(current, y, width)
 	}
 	return ""
 }
 
-func (v *diffView) renderUnifiedLine(
-	current entry,
-	y int,
-	viewport diffViewport,
-	cursor diffCursor,
-	selection *diffSelection,
-	width int,
+func (v diffRenderer) renderUnifiedLine(
+	current projectedRow,
+	y, width int,
 ) string {
-	hunk := v.patch.Files[current.file].Hunks[current.hunk]
-	line := hunk.Lines[current.rightLine]
-	prefix := lineMarker(line.Kind)
-	gutter := fmt.Sprintf(
-		"%5s %5s %s ",
-		number(line.OldNumber),
-		number(line.NewNumber),
-		prefix,
-	)
-	value := gutter + fitANSIWindow(
-		current.text,
-		viewport.leftColumn,
-		width-lipgloss.Width(gutter),
-	)
+	candidate := diffCursor{row: y, pane: v.cursor.pane}
+	line, _ := v.line(candidate)
 	return v.renderCodeLine(
-		value,
+		unifiedGutter(line),
+		current.panes[right].text,
 		width,
 		line,
-		diffCursor{row: y, pane: cursor.pane},
-		cursor,
-		selection,
+		candidate,
 	)
 }
 
@@ -126,87 +102,65 @@ func renderFileRow(path string, width int) string {
 	return fileStyle.Width(frame.ScreenWidth(width)).Render(path)
 }
 
-func (v *diffView) renderSplitRow(
-	current entry,
+func (v diffRenderer) renderSplitRow(
+	current projectedRow,
 	y int,
-	viewport diffViewport,
 	leftWidth, rightWidth int,
-	cursor diffCursor,
-	selection *diffSelection,
 ) string {
 	left := v.renderPane(
 		current,
 		y,
 		left,
 		leftWidth,
-		viewport.leftColumn,
-		cursor,
-		selection,
 	)
 	right := v.renderPane(
 		current,
 		y,
 		right,
 		rightWidth,
-		viewport.leftColumn,
-		cursor,
-		selection,
 	)
-	return left + " │ " + right
+	return left + paneSeparator + right
 }
 
-func splitPaneWidths(width int) (left, right int) {
-	left = max(20, (width-3)/2)
-	return left, max(20, width-3-left)
-}
-
-func (v *diffView) renderPane(
-	current entry,
+func (v diffRenderer) renderPane(
+	current projectedRow,
 	y int,
 	pane diffPane,
-	width, offset int,
-	cursor diffCursor,
-	selection *diffSelection,
+	width int,
 ) string {
-	index := v.lineIndex(current, pane)
-	if index < 0 {
+	candidate := diffCursor{row: y, pane: pane}
+	line, ok := v.line(candidate)
+	if !ok {
 		return strings.Repeat(" ", width)
 	}
-	line := v.patch.Files[current.file].Hunks[current.hunk].Lines[index]
-	text := current.right
+	text := current.panes[pane].text
 	numberValue := line.NewNumber
 	if pane == left {
-		text, numberValue = current.left, line.OldNumber
+		numberValue = line.OldNumber
 	}
-	prefix := lineMarker(line.Kind) + " "
-	gutter := fmt.Sprintf("%5s ", number(numberValue))
-	value := gutter + fitANSIWindow(
-		prefix+text,
-		offset,
-		width-lipgloss.Width(gutter),
-	)
 	return v.renderCodeLine(
-		value,
+		splitGutter(numberValue),
+		splitMarker(line.Kind)+text,
 		width,
 		line,
-		diffCursor{row: y, pane: pane},
-		cursor,
-		selection,
+		candidate,
 	)
 }
 
-func (v *diffView) renderCodeLine(
-	value string,
+func (v diffRenderer) renderCodeLine(
+	gutter, text string,
 	width int,
 	line patch.Line,
-	candidate, cursor diffCursor,
-	selection *diffSelection,
+	candidate diffCursor,
 ) string {
+	value := gutter + fitANSIWindow(
+		text, v.viewport.leftColumn, width-lipgloss.Width(gutter),
+	)
 	style, colors := renderedLineStyle(
 		line.Kind,
 		candidate,
-		cursor,
-		selection,
+		v.cursor,
+		v.selection,
 		v.styles,
 	)
 	return renderStyledRow(style, value, width, colors)
@@ -231,31 +185,13 @@ func renderedLineStyle(
 	styles lineStyles,
 ) (lipgloss.Style, foregroundPolicy) {
 	style, colors := lineStyle(kind, styles), preserveForeground
-	if selectionContains(selection, candidate) {
+	if selection.contains(candidate) {
 		style, colors = styles.selection, discardForeground
 	}
 	if cursor == candidate {
 		style, colors = cursorStyle, discardForeground
 	}
 	return style, colors
-}
-
-func selectionContains(selection *diffSelection, cursor diffCursor) bool {
-	if selection == nil {
-		return false
-	}
-	first, last := selection.First, selection.Last
-	if first.row == last.row && first.pane != last.pane {
-		return cursor.row == first.row &&
-			(cursor.pane == first.pane || cursor.pane == last.pane)
-	}
-	if first.pane != cursor.pane {
-		return false
-	}
-	return cursor.row >= min(
-		first.row,
-		last.row,
-	) && cursor.row <= max(first.row, last.row)
 }
 
 func lineStyle(kind patch.LineKind, styles lineStyles) lipgloss.Style {
@@ -300,13 +236,6 @@ func backgroundStyle(
 	return lipgloss.NewStyle().Background(
 		lipgloss.LightDark(dark)(lightColor, darkColor),
 	)
-}
-
-func number(value patch.LineNumber) string {
-	if value == 0 {
-		return ""
-	}
-	return strconv.Itoa(int(value))
 }
 
 var (

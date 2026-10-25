@@ -2,6 +2,7 @@ package commentscreen
 
 import (
 	"fmt"
+	"math"
 	"strings"
 	"testing"
 
@@ -61,6 +62,21 @@ func TestMovementKeepsSelectedCommentVisible(t *testing.T) {
 	v.Move(-100)
 	selected, _ := v.Selected()
 	testutil.RequireEqual(t, selected.ID, "0", "first selection=%#v", selected)
+}
+
+func TestMovementHandlesExtremeDeltas(t *testing.T) {
+	v := New([]comments.Comment{{ID: "first"}, {ID: "last"}})
+	deltas := []int{math.MaxInt, math.MaxInt, math.MinInt, math.MinInt}
+	for _, delta := range deltas {
+		v.Move(delta)
+		want := 0
+		if delta > 0 {
+			want = 1
+		}
+		index, ok := v.SelectedIndex()
+		testutil.RequireEqual(t, ok, true, "selected index=%d", index)
+		testutil.RequireEqual(t, index, want, "delta=%d", delta)
+	}
 }
 
 func TestSelectedIndexTracksFocusedComment(t *testing.T) {

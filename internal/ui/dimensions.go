@@ -1,4 +1,4 @@
-// Package ui contains shared user interface configuration.
+// Package ui contains shared user interface configuration and movement rules.
 package ui
 
 // DefaultScreenWidth and DefaultScreenHeight are initial dimensions before

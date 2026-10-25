@@ -89,7 +89,7 @@ func (v *diffView) matchRow(y int, target cursorIdentity) cursorMatch {
 	return best
 }
 
-func (v *diffView) rowInFile(current entry, target cursorIdentity) bool {
+func (v *diffView) rowInFile(current projectedRow, target cursorIdentity) bool {
 	if current.hunk < 0 {
 		return false
 	}
@@ -174,13 +174,13 @@ func (v *View) replaceView(next *diffView) {
 }
 
 func identify(v *diffView, cursor diffCursor) cursorIdentity {
-	if !v.valid(cursor) {
+	line, ok := v.line(cursor)
+	if !ok {
 		return cursorIdentity{}
 	}
 	row := v.rows[cursor.row]
 	file := v.patch.Files[row.file]
 	hunk := file.Hunks[row.hunk]
-	line := hunk.Lines[v.lineIndex(row, cursor.pane)]
 	return cursorIdentity{
 		oldPath:    file.OldPath,
 		newPath:    file.NewPath,
@@ -204,18 +204,21 @@ func preserveSelection(
 	if !first.valid || !last.valid {
 		return nil
 	}
-	translatedFirst, firstOK := next.findCursor(first)
-	translatedLast, lastOK := next.findCursor(last)
-	if !firstOK || !lastOK || !sameFilePaths(
+	if !sameFilePaths(
 		first.oldPath,
 		first.newPath,
 		last.oldPath,
 		last.newPath,
-	) || first.hunkHeader != last.hunkHeader {
+	) {
 		return nil
 	}
-	translated := beginSelection(translatedFirst)
-	translated, ok := next.extendSelection(translated, translatedLast)
+	if first.hunkHeader != last.hunkHeader {
+		return nil
+	}
+	translated, ok := next.translateSelection(*selection,
+		func(cursor diffCursor) (diffCursor, bool) {
+			return next.findCursor(identify(old, cursor))
+		})
 	if !ok {
 		return nil
 	}

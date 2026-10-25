@@ -14,5 +14,5 @@ func Title(value string) string { return titleStyle.Render(value) }
 // Muted renders secondary screen text using the shared muted style.
 func Muted(value string) string { return mutedStyle.Render(value) }
 
-// Error renders status text using the shared error style.
-func Error(value string) string { return errorStyle.Render(value) }
+// Error renders single-line status text using the shared error style.
+func Error(value string) string { return errorStyle.Render(SingleLine(value)) }

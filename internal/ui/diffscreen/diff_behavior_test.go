@@ -42,7 +42,7 @@ func TestSplitPairsUnequalChangeBlocksAndKeepsHunksSeparate(t *testing.T) {
 		}}},
 	}
 	v := newSideBySideView(p, true)
-	var code []entry
+	var code []projectedRow
 	for _, current := range v.rows {
 		if current.kind == lineRow {
 			code = append(code, current)
@@ -51,17 +51,16 @@ func TestSplitPairsUnequalChangeBlocksAndKeepsHunksSeparate(t *testing.T) {
 	testutil.RequireEqual(t, len(code), 5, "visual code entries = %d",
 		len(code),
 	)
-	testutil.RequireEqual(t, code[0].leftLine, 0, "pairing = %#v", code[:3])
-	testutil.RequireEqual(t, code[0].rightLine, 2, "pairing = %#v", code[:3])
-	testutil.RequireEqual(t, code[1].leftLine, 1, "pairing = %#v", code[:3])
-	testutil.RequireEqual(t, code[1].rightLine, 3, "pairing = %#v", code[:3])
-	testutil.RequireEqual(t, code[2].leftLine, -1, "pairing = %#v", code[:3])
-	testutil.RequireEqual(t, code[2].rightLine, 4, "pairing = %#v", code[:3])
+	for index, want := range [][2]int{{0, 2}, {1, 3}, {-1, 4}} {
+		panes := code[index].panes
+		got := [2]int{panes[left].line, panes[right].line}
+		testutil.RequireEqual(t, got, want, "pairing = %#v", code[:3])
+	}
 	testutil.RequireEqual(t, code[4].hunk != code[3].hunk, true,
 		"hunks were paired: %#v", code[4],
 	)
-	testutil.RequireEqual(t, code[4].leftLine, -1, "hunks were paired: %#v",
-		code[4],
+	testutil.RequireEqual(t, code[4].panes[left].line, -1,
+		"hunks were paired: %#v", code[4],
 	)
 }
 
@@ -70,8 +69,7 @@ func TestSplitSelectionOnlyIncludesActivePane(t *testing.T) {
 	first := mustFirst(t, v)
 	removed, _ := v.search("removed one", first, forward)
 	added, _ := v.search("added one", first, forward)
-	left := beginSelection(removed)
-	left, ok := v.extendSelection(left, removed)
+	left, ok := v.selectionBetween(removed, removed)
 	testutil.RequireEqual(t, ok, true, "left lines = %#v", v.lines(left))
 	testutil.RequireEqual(t, len(v.lines(left)), 1, "left lines = %#v",
 		v.lines(left),

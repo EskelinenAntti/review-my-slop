@@ -98,15 +98,14 @@ func TestSelectionLines(t *testing.T) {
 	first, _ := v.first()
 	last, _ := v.move(first, forward)
 	last, _ = v.move(last, forward)
-	selection := beginSelection(first)
-	selection, ok := v.extendSelection(selection, last)
+	selection, ok := v.selectionBetween(first, last)
 	testutil.RequireEqual(t, ok, true, "%s", "selection extension failed")
 
 	lines := v.lines(selection)
 	testutil.RequireEqual(t, len(lines), 3, "selected lines = %d", len(lines))
 
 	nextFile, _ := v.jumpFile(first, forward)
-	if _, ok := v.extendSelection(selection, nextFile); ok {
+	if _, ok := v.selectionBetween(selection.First, nextFile); ok {
 		t.Fatal("selection crossed a hunk")
 	}
 }
@@ -128,10 +127,7 @@ func TestViewportAlignmentResizeAndScrolling(t *testing.T) {
 	)
 
 	viewport = v.align(viewport, cursor, middle)
-	headerHeight := 0
-	if v.hasStickyHeader(viewport.top, viewport.height) {
-		headerHeight = 1
-	}
+	headerHeight := v.stickyHeaderHeight(viewport.top, viewport.height)
 	testutil.RequireEqual(t, headerHeight+cursor.row-viewport.top,
 		viewport.height/2, "middle alignment = %#v", viewport,
 	)

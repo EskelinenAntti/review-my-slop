@@ -1,6 +1,7 @@
 package diffscreen
 
 import (
+	"fmt"
 	"math"
 	"strings"
 	"testing"
@@ -118,18 +119,90 @@ func TestNarrowLayoutFallbackPreservesPreferenceAndPosition(t *testing.T) {
 	)
 }
 
-func TestPageMovementDoesNotPartiallyChangeRejectedSelection(t *testing.T) {
-	v := New(testPatch(), Options{Dark: true})
-	v.Resize(80, 30)
-	v.ToggleSelection()
-	beforeCursor, beforeViewport := v.cursor, v.viewport
-	v.Move(NextPage)
-	testutil.RequireEqual(t, v.cursor, beforeCursor, "%s",
-		"rejected selection partially changed state",
-	)
-	testutil.RequireEqual(t, v.viewport, beforeViewport, "%s",
-		"rejected selection partially changed state",
-	)
+func TestMovementCommitsFocusViewportAndSelection(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		move func(*View)
+	}{
+		{"next line", func(v *View) { v.Move(NextLine) }},
+		{"next page", func(v *View) { v.Move(NextPage) }},
+		{"scroll down", func(v *View) { v.ScrollVertical(8) }},
+	} {
+		for _, selected := range []bool{false, true} {
+			name := fmt.Sprintf("%s/selected=%t", tc.name, selected)
+			t.Run(name, func(t *testing.T) {
+				v := New(longPatch(), Options{})
+				v.Resize(80, 8)
+				for range 4 {
+					v.Move(NextLine)
+				}
+				if selected {
+					v.ToggleSelection()
+				}
+				beforeCursor, beforeViewport := v.cursor, v.viewport
+
+				tc.move(v)
+
+				testutil.RequireEqual(t, v.cursor != beforeCursor, true,
+					"accepted movement did not move focus")
+				testutil.RequireEqual(t, v.viewport != beforeViewport, true,
+					"accepted movement did not scroll")
+				visible := v.view.cursorVisible(v.viewport, v.cursor)
+				testutil.RequireEqual(t, visible, true,
+					"accepted movement left focus outside viewport")
+				if selected {
+					testutil.RequireEqual(t, v.selection.First, beforeCursor,
+						"accepted movement changed selection start")
+					testutil.RequireEqual(t, v.selection.Last, v.cursor,
+						"accepted movement did not extend selection to focus")
+				} else if v.selection != nil {
+					t.Fatal("movement started a selection")
+				}
+			})
+		}
+	}
+}
+
+func TestMovementDoesNotPartiallyChangeRejectedSelection(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		backward bool
+		move     func(*View)
+	}{
+		{"next line", false, func(v *View) { v.Move(NextLine) }},
+		{"next page", false, func(v *View) { v.Move(NextPage) }},
+		{"scroll down", false, func(v *View) { v.ScrollVertical(math.MaxInt) }},
+		{"previous line", true, func(v *View) { v.Move(PreviousLine) }},
+		{"previous page", true, func(v *View) { v.Move(PreviousPage) }},
+		{"scroll up", true, func(v *View) { v.ScrollVertical(-math.MaxInt) }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			p := longPatch()
+			p.Files[0].Hunks = append(p.Files[0].Hunks, p.Files[0].Hunks[0])
+			v := New(p, Options{Dark: true})
+			v.Resize(80, 8)
+			steps := len(p.Files[0].Hunks[0].Lines) - 1
+			if tc.backward {
+				steps++
+			}
+			for range steps {
+				v.Move(NextLine)
+			}
+			v.ToggleSelection()
+			beforeCursor, beforeViewport := v.cursor, v.viewport
+			beforeSelection := *v.selection
+			tc.move(v)
+			testutil.RequireEqual(t, v.cursor, beforeCursor, "%s",
+				"rejected selection changed cursor",
+			)
+			testutil.RequireEqual(t, v.viewport, beforeViewport, "%s",
+				"rejected selection changed viewport",
+			)
+			testutil.RequireEqual(t, *v.selection, beforeSelection, "%s",
+				"rejected selection changed endpoints",
+			)
+		})
+	}
 }
 
 func TestSearchPreviewAcceptRepeatAndCancel(t *testing.T) {
@@ -202,6 +275,46 @@ func TestSearchOriginSurvivesPatchAndLayoutChanges(t *testing.T) {
 	testutil.RequireEqual(t, got, origin, "restored source=%#v, want %#v", got,
 		origin,
 	)
+}
+
+func TestSectionMotions(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		start  Motion
+		motion Motion
+		file   string
+		text   string
+		pane   diffPane
+	}{
+		{"next file", FirstLine, NextFile, "second.go", "other", right},
+		{"previous file", LastLine, PreviousFile, "first.go", "after", right},
+		{"old pane", FirstLine, OldPane, "first.go", "before", left},
+		{"new pane", FirstLine, NewPane, "first.go", "before", right},
+		{"other pane", FirstLine, OtherPane, "first.go", "before", left},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			v := New(testPatch(), Options{SideBySide: true})
+			v.Resize(120, 10)
+			v.Move(tc.start)
+			if tc.motion == NewPane {
+				v.Move(OldPane)
+			}
+			cursor := v.cursor
+			v.drag = &cursor
+			v.search.repeatMiss = true
+
+			v.Move(tc.motion)
+
+			file, line, ok := v.Current()
+			testutil.RequireEqual(t, ok, true, "motion lost focus")
+			testutil.RequireEqual(t, file.DisplayPath, tc.file, "wrong file")
+			testutil.RequireEqual(t, line.Text, tc.text, "wrong source line")
+			testutil.RequireEqual(t, v.cursor.pane, tc.pane, "wrong pane")
+			if v.drag != nil || v.search.repeatMiss {
+				t.Fatal("motion did not clear drag and repeated-search miss")
+			}
+		})
+	}
 }
 
 func TestEmptyAndMetadataOnlyPatches(t *testing.T) {

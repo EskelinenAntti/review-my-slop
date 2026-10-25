@@ -90,6 +90,30 @@ func TestGetIncludesUnstagedAndUntrackedButNotStagedOnly(t *testing.T) {
 	}
 }
 
+func TestGetSortsTrackedAndUntrackedFilesTogether(t *testing.T) {
+	repo := newRepository(t)
+	for _, path := range []string{"b.txt", "z.txt"} {
+		writeFile(t, repo, path, "before\n")
+	}
+	git(t, repo, "add", ".")
+	git(t, repo, "commit", "-m", "base")
+	for _, path := range []string{"a.txt", "b.txt", "y.txt", "z.txt"} {
+		writeFile(t, repo, path, "after\n")
+	}
+	t.Chdir(repo)
+
+	got, err := Get(context.Background(), Unstaged)
+	testutil.NoError(t, err)
+	var paths []string
+	for _, file := range got.Files {
+		paths = append(paths, file.DisplayPath)
+	}
+	want := []string{"a.txt", "b.txt", "y.txt", "z.txt"}
+	testutil.RequireEqual(t, reflect.DeepEqual(paths, want), true,
+		"file paths = %q, want %q", paths, want,
+	)
+}
+
 func TestGetPreservesTrackedPathStartingWithDiffPrefix(t *testing.T) {
 	repo := newRepository(t)
 	path := "b/nested.go"
@@ -374,6 +398,38 @@ func TestGetBranchIncludesCommittedStagedUnstagedAndUntrackedChanges(
 	)
 }
 
+func TestGetBranchUsesMergeBaseWhileKeepingBranchName(t *testing.T) {
+	repo := newRepository(t)
+	git(t, repo, "branch", "-M", "main")
+	writeFile(t, repo, "shared.txt", "base\n")
+	git(t, repo, "add", ".")
+	git(t, repo, "commit", "-m", "base")
+	git(t, repo, "branch", "feature")
+
+	writeFile(t, repo, "shared.txt", "main advanced\n")
+	git(t, repo, "add", ".")
+	git(t, repo, "commit", "-m", "advance main")
+	git(t, repo, "switch", "feature")
+	writeFile(t, repo, "shared.txt", "feature change\n")
+
+	t.Chdir(repo)
+	got, err := Get(context.Background(), Branch)
+	testutil.NoError(t, err)
+	testutil.RequireEqual(t, got.Branch, "main", "branch = %q", got.Branch)
+	testutil.RequireEqual(t, len(got.Files), 1, "files = %#v", got.Files)
+	file := got.Files[0]
+	testutil.RequireEqual(t, file.OldSource, "base\n",
+		"old source = %q", file.OldSource,
+	)
+	testutil.RequireEqual(t, containsKind(file, Deletion, "base"), true,
+		"diff must start at the merge base: %#v", file.Hunks,
+	)
+	testutil.RequireEqual(t,
+		containsKind(file, Addition, "feature change"), true,
+		"diff must include the working tree: %#v", file.Hunks,
+	)
+}
+
 func TestDefaultBranchFallbacks(t *testing.T) {
 	tests := []struct {
 		name       string
@@ -556,6 +612,32 @@ func TestParseHunkBodyEscapesTerminalControls(t *testing.T) {
 	testutil.RequireEqual(t, lines[0].Text, `hello\x1b[2J`, "text = %q",
 		lines[0].Text,
 	)
+}
+
+func TestParseHunkBodySkipsNewlineMarkers(t *testing.T) {
+	lines, err := parseHunkBody(10, 20, []byte(
+		"-old\n\\ No newline at end of file\n"+
+			"+new\n\\ No newline at end of file\n context\n",
+	))
+	testutil.NoError(t, err)
+	want := []Line{
+		{Kind: Deletion, Text: "old", OldNumber: 10},
+		{Kind: Addition, Text: "new", NewNumber: 20},
+		{Kind: Context, Text: "context", OldNumber: 11, NewNumber: 21},
+	}
+	testutil.RequireEqual(t, reflect.DeepEqual(lines, want), true,
+		"lines = %#v, want %#v", lines, want,
+	)
+}
+
+func TestParseHunkBodyRejectsMalformedLines(t *testing.T) {
+	for _, body := range []string{" context\n\n", " context\n?invalid\n"} {
+		t.Run(body, func(t *testing.T) {
+			lines, err := parseHunkBody(1, 1, []byte(body))
+			testutil.RequireEqual(t, err != nil, true, "error = %v", err)
+			testutil.RequireEqual(t, lines == nil, true, "lines = %#v", lines)
+		})
+	}
 }
 
 func FuzzParseHunkBody(f *testing.F) {

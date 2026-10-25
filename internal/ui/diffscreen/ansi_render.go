@@ -16,6 +16,11 @@ const (
 	discardForeground
 )
 
+const (
+	sgrExtendedForeground = 38
+	sgrExtendedBackground = 48
+)
+
 func renderStyledRow(
 	style lipgloss.Style,
 	value string,
@@ -54,53 +59,51 @@ func filterSGR(sequence string, colors foregroundPolicy) string {
 }
 
 func filterSGRParts(parts []string, colors foregroundPolicy) []string {
-	filtered := parts[:0]
-	for index := 0; index < len(parts); index++ {
-		code, err := strconv.Atoi(parts[index])
+	filtered := make([]string, 0, len(parts))
+	for len(parts) > 0 {
+		parameter := parts[0]
+		parts = parts[1:]
+		code, err := strconv.Atoi(parameter)
 		if err != nil {
-			filtered = append(filtered, parts[index])
+			filtered = append(filtered, parameter)
 			continue
 		}
-		if extendedColorRemoved(code, colors) {
-			index = colorParameterEnd(parts, index)
-			continue
+		switch {
+		case code == sgrExtendedBackground ||
+			(colors == discardForeground && code == sgrExtendedForeground):
+			parts = skipExtendedColor(parts)
+		case isBackgroundSGR(code):
+			// Background colors are supplied by the row style.
+		case colors == discardForeground && isForegroundSGR(code):
+			// Cursor and selection styles also replace syntax foregrounds.
+		default:
+			filtered = append(filtered, parameter)
 		}
-		if simpleColorRemoved(code, colors) {
-			continue
-		}
-		filtered = append(filtered, parts[index])
 	}
 	return filtered
 }
 
-func extendedColorRemoved(code int, colors foregroundPolicy) bool {
-	return code == 48 || (colors == discardForeground && code == 38)
-}
-
-func simpleColorRemoved(code int, colors foregroundPolicy) bool {
-	return backgroundColor(code) ||
-		colors == discardForeground && foregroundColor(code)
-}
-
-func colorParameterEnd(parts []string, index int) int {
-	if index+1 >= len(parts) {
-		return index
+// skipExtendedColor consumes a recognized mode and its payload, even when
+// truncated. Unknown modes remain for parameter-wise filtering.
+func skipExtendedColor(parts []string) []string {
+	if len(parts) == 0 {
+		return parts
 	}
-	switch parts[index+1] {
-	case "2":
-		return min(index+4, len(parts)-1)
-	case "5":
-		return min(index+2, len(parts)-1)
+	switch parts[0] {
+	case "2": // Mode followed by three RGB channels.
+		return parts[min(4, len(parts)):]
+	case "5": // Mode followed by a palette index.
+		return parts[min(2, len(parts)):]
 	default:
-		return index
+		return parts
 	}
 }
 
-func backgroundColor(code int) bool {
+func isBackgroundSGR(code int) bool {
 	return (code >= 40 && code <= 49) || (code >= 100 && code <= 107)
 }
 
-func foregroundColor(code int) bool {
+func isForegroundSGR(code int) bool {
 	return (code >= 30 && code <= 39) || (code >= 90 && code <= 97)
 }
 

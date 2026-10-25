@@ -4,9 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"os"
-	"os/exec"
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
@@ -35,21 +33,21 @@ func commentWorkflow(
 	onComplete func(string, error) tea.Msg,
 ) (*commandAdapter, tea.ExecCallback) {
 	adapter := &commandAdapter{}
+	var editedBody string
 	adapter.run = func() error {
-		path, err := createCommentFile(body, anchor)
-		if err != nil {
-			return err
-		}
-		defer os.Remove(path)
-		editorCommand := commentCommand(ctx, command, path)
-		if err := adapter.execute(editorCommand); err != nil {
-			return fmt.Errorf("editor: %w", err)
-		}
-		adapter.body, err = readCommentFile(path, anchor)
+		var err error
+		editedBody, err = editCommentDraft(body, anchor,
+			func(path string) error {
+				cmd := shellCommand(ctx, command, path)
+				if err := adapter.execute(cmd); err != nil {
+					return fmt.Errorf("editor: %w", err)
+				}
+				return nil
+			})
 		return err
 	}
 	return adapter, func(err error) tea.Msg {
-		return onComplete(adapter.body, err)
+		return onComplete(editedBody, err)
 	}
 }
 
@@ -77,20 +75,4 @@ func editorCommand() (string, error) {
 		return "", errors.New("$EDITOR is not set")
 	}
 	return command, nil
-}
-
-type commandAdapter struct {
-	run            func() error
-	body           string
-	stdin          io.Reader
-	stdout, stderr io.Writer
-}
-
-func (c *commandAdapter) Run() error            { return c.run() }
-func (c *commandAdapter) SetStdin(r io.Reader)  { c.stdin = r }
-func (c *commandAdapter) SetStdout(w io.Writer) { c.stdout = w }
-func (c *commandAdapter) SetStderr(w io.Writer) { c.stderr = w }
-func (c *commandAdapter) execute(cmd *exec.Cmd) error {
-	cmd.Stdin, cmd.Stdout, cmd.Stderr = c.stdin, c.stdout, c.stderr
-	return cmd.Run()
 }

@@ -59,22 +59,101 @@ func TestSplitRowsPairOnlyAdjacentChangeBlocks(t *testing.T) {
 			[]patch.Line{a1, d1, a2},
 			[][2]string{{"", "new-a"}, {"old-a", "new-b"}},
 		},
+		{
+			"consecutive replacement blocks",
+			[]patch.Line{d1, a1, d2, a2},
+			[][2]string{{"old-a", "new-a"}, {"old-b", "new-b"}},
+		},
+		{
+			"replacement followed by context",
+			[]patch.Line{d1, a1, context},
+			[][2]string{{"old-a", "new-a"}, {"unchanged", "unchanged"}},
+		},
+		{
+			"context before trailing deletion",
+			[]patch.Line{context, d1},
+			[][2]string{{"unchanged", "unchanged"}, {"old-a", ""}},
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			p := patch.Patch{
-				Files: []patch.File{
-					{
-						DisplayPath: "file.go",
-						Hunks: []patch.Hunk{
-							{Header: "@@", Lines: tc.lines},
-						},
-					},
-				},
-			}
-			v := newSideBySideView(p, true)
+			v := newSideBySideView(patchWithLines(tc.lines), true)
 			got := projectedTexts(v)
 			testutil.RequireEqual(t, slices.Equal(got, tc.want), true,
 				"paired source lines=%v, want %v", got, tc.want,
+			)
+		})
+	}
+}
+
+func TestAppendLineRowKeepsPaneTextWithSourceIndex(t *testing.T) {
+	lines := []patch.Line{
+		{Kind: patch.Deletion, OldNumber: 1, Text: "old fallback"},
+		{Kind: patch.Addition, NewNumber: 2, Text: "new fallback"},
+		{
+			Kind: patch.Context, OldNumber: 3, NewNumber: 3,
+			Text: "context fallback",
+		},
+	}
+	highlighted := highlightedSources{
+		old: []string{"highlighted old"},
+		new: []string{"other new line", "highlighted new"},
+	}
+	for _, tc := range []struct {
+		name        string
+		split       bool
+		left, right int
+		want        [2]paneContent
+	}{
+		{
+			"unified deletion", false, 0, 0,
+			[2]paneContent{{line: 0}, {line: 0, text: "highlighted old"}},
+		},
+		{
+			"unified addition", false, 1, 1,
+			[2]paneContent{{line: 1}, {line: 1, text: "highlighted new"}},
+		},
+		{
+			"paired changes", true, 0, 1,
+			[2]paneContent{
+				{line: 0, text: "highlighted old"},
+				{line: 1, text: "highlighted new"},
+			},
+		},
+		{
+			"empty old pane", true, -1, 1,
+			[2]paneContent{{line: -1}, {line: 1, text: "highlighted new"}},
+		},
+		{
+			"empty new pane", true, 0, -1,
+			[2]paneContent{{line: 0, text: "highlighted old"}, {line: -1}},
+		},
+		{
+			"unified missing highlighting", false, 2, 2,
+			[2]paneContent{{line: 2}, {line: 2, text: "context fallback"}},
+		},
+		{
+			"split missing highlighting", true, 2, 2,
+			[2]paneContent{
+				{line: 2, text: "context fallback"},
+				{line: 2, text: "context fallback"},
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			v := &diffView{split: tc.split}
+			v.appendLineRow(3, 4, lines, highlighted, tc.left, tc.right)
+			testutil.RequireEqual(t, len(v.rows), 1, "rows = %#v", v.rows)
+			row := v.rows[0]
+			testutil.RequireEqual(t, row.kind, lineRow,
+				"row kind = %v", row.kind,
+			)
+			testutil.RequireEqual(t, row.file, 3, "file index = %d", row.file)
+			testutil.RequireEqual(t, row.hunk, 4, "hunk index = %d", row.hunk)
+			testutil.RequireEqual(t, row.panes, tc.want,
+				"pane content = %#v", row.panes,
+			)
+			testutil.RequireEqual(t, v.maxLineWidth, renderedLineWidth(row),
+				"maximum line width = %d", v.maxLineWidth,
 			)
 		})
 	}

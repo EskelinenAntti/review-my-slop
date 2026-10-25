@@ -14,8 +14,7 @@ func TestPreserveTranslatesCursorSelectionAndViewport(t *testing.T) {
 	cursor, ok := old.search("added one", first, forward)
 	testutil.RequireEqual(t, ok, true, "%s", "cursor not found")
 
-	selection := beginSelection(first)
-	selection, ok = old.extendSelection(selection, cursor)
+	selection, ok := old.selectionBetween(first, cursor)
 	testutil.RequireEqual(t, ok, true, "%s", "selection not created")
 
 	viewport := old.newViewport(100, 4)
@@ -81,6 +80,81 @@ func TestPreserveReturnsEmptyStateForEmptyView(t *testing.T) {
 		"state = %#v", preserved,
 	)
 	testutil.RequireEqual(t, preserved.selection, nil, "state = %#v", preserved)
+}
+
+func TestPreserveSelectionRequiresMatchingHunks(t *testing.T) {
+	firstLine := patch.Line{Kind: patch.Addition, Text: "first", NewNumber: 1}
+	lastLine := patch.Line{Kind: patch.Addition, Text: "last", NewNumber: 2}
+	hunk := patch.Hunk{Header: "@@ -0,0 +1,2 @@", Lines: []patch.Line{
+		firstLine, lastLine,
+	}}
+	file := patch.File{NewPath: "first.go", Hunks: []patch.Hunk{hunk}}
+	otherFile := patch.File{NewPath: "second.go", Hunks: []patch.Hunk{hunk}}
+	separateHunks := file
+	separateHunks.Hunks = []patch.Hunk{
+		{Header: "@@ -0,0 +1 @@", Lines: []patch.Line{firstLine}},
+		{Header: "@@ -0,0 +2 @@", Lines: []patch.Line{lastLine}},
+	}
+	cases := []struct {
+		name        string
+		oldFiles    []patch.File
+		nextFiles   []patch.File
+		first, last int
+		want        bool
+	}{
+		{"same hunk", []patch.File{file}, []patch.File{file}, 2, 3, true},
+		{
+			"reversed endpoints", []patch.File{file}, []patch.File{file},
+			3, 2, true,
+		},
+		{
+			"invalid first endpoint", []patch.File{file}, []patch.File{file},
+			-1, 3, false,
+		},
+		{
+			"invalid last endpoint", []patch.File{file}, []patch.File{file},
+			2, -1, false,
+		},
+		{
+			"different source files", []patch.File{file, otherFile},
+			[]patch.File{file, otherFile}, 2, 6, false,
+		},
+		{
+			"different source hunks", []patch.File{separateHunks},
+			[]patch.File{file}, 2, 4, false,
+		},
+		{
+			"file removed", []patch.File{file}, []patch.File{otherFile},
+			2, 3, false,
+		},
+		{
+			"different destination hunks", []patch.File{file},
+			[]patch.File{separateHunks}, 2, 3, false,
+		},
+	}
+	for _, split := range []bool{false, true} {
+		for _, tc := range cases {
+			name := fmt.Sprintf("%s/split=%v", tc.name, split)
+			t.Run(name, func(t *testing.T) {
+				options := Options{SideBySide: split}
+				old := newDiffView(patch.Patch{Files: tc.oldFiles}, options)
+				next := newDiffView(patch.Patch{Files: tc.nextFiles}, options)
+				selection := diffSelection{
+					First: diffCursor{row: tc.first, pane: right},
+					Last:  diffCursor{row: tc.last, pane: right},
+				}
+				got := preserveSelection(old, &selection, next)
+				testutil.RequireEqual(t, got != nil, tc.want,
+					"selection = %#v", got,
+				)
+				if got != nil {
+					testutil.RequireEqual(t, *got, selection,
+						"selection = %#v", got,
+					)
+				}
+			})
+		}
+	}
 }
 
 func TestPreserveClampsHorizontalOffsetForShorterLines(t *testing.T) {

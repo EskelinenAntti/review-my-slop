@@ -14,6 +14,30 @@ import (
 	"github.com/eskelinenantti/review-my-slop/internal/testutil"
 )
 
+func TestStoreRejectsEmptyPath(t *testing.T) {
+	store := Store{}
+	for _, test := range []struct {
+		name string
+		run  func() error
+	}{
+		{"read", func() error {
+			_, err := store.List("/repo")
+			return err
+		}},
+		{"write", func() error {
+			_, err := store.Add(testComment("/repo", "feedback"))
+			return err
+		}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			err := test.run()
+			if err == nil || err.Error() != "comments path is empty" {
+				t.Fatalf("error = %v, want comments path is empty", err)
+			}
+		})
+	}
+}
+
 func TestListMissingStoreDoesNotCreateDatabase(t *testing.T) {
 	directory := filepath.Join(t.TempDir(), "state")
 	path := filepath.Join(directory, "comments.db")
@@ -30,6 +54,40 @@ func TestListMissingStoreDoesNotCreateDatabase(t *testing.T) {
 	}
 	if _, err := os.Stat(directory); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("directory stat error = %v, want not exist", err)
+	}
+}
+
+func TestStoreReopenSecuresExistingPaths(t *testing.T) {
+	for _, mode := range []databaseMode{readDatabase, writeDatabase} {
+		name := "read"
+		if mode == writeDatabase {
+			name = "write"
+		}
+		t.Run(name, func(t *testing.T) {
+			store := Store{
+				Path: filepath.Join(t.TempDir(), "state", "comments.db"),
+			}
+			_, err := store.Add(testComment("/repo", "feedback"))
+			testutil.NoError(t, err)
+			directory := filepath.Dir(store.Path)
+			testutil.NoError(t, os.Chmod(directory, 0o755))
+			testutil.NoError(t, os.Chmod(store.Path, 0o644))
+
+			db, err := store.openDatabase(mode)
+			testutil.NoError(t, err)
+			defer db.Close()
+
+			for path, want := range map[string]os.FileMode{
+				directory:  0o700,
+				store.Path: 0o600,
+			} {
+				info, err := os.Stat(path)
+				testutil.NoError(t, err)
+				testutil.RequireEqual(t, info.Mode().Perm(), want,
+					"%s mode = %o, want %o", path, info.Mode().Perm(), want,
+				)
+			}
+		})
 	}
 }
 
@@ -106,6 +164,50 @@ func TestStoreQueuesByRepositoryAndDeletesExactPeek(t *testing.T) {
 	testutil.RequireEqual(t, dbInfo.Mode().Perm(), 0o600,
 		"database mode = %o, want 600", dbInfo.Mode().Perm(),
 	)
+}
+
+func TestStoreMutationsCannotAccessAnotherRepository(t *testing.T) {
+	for _, operation := range []string{"update", "delete", "acknowledge"} {
+		t.Run(operation, func(t *testing.T) {
+			store := Store{Path: filepath.Join(t.TempDir(), "comments.db")}
+			original := testComment("/repo/other", "feedback")
+			_, err := store.Add(original)
+			testutil.NoError(t, err)
+
+			switch operation {
+			case "update":
+				foreign := original
+				foreign.Repository = "/repo/current"
+				foreign.Body = "changed"
+				err = store.Update(foreign)
+			case "delete":
+				err = store.Delete("/repo/current", original.ID)
+			case "acknowledge":
+				err = store.Acknowledge("/repo/current", []string{original.ID})
+			default:
+				t.Fatalf("unknown operation %q", operation)
+			}
+			if operation == "acknowledge" {
+				testutil.NoError(t, err)
+			} else if err == nil {
+				t.Fatal("mutation accepted another repository's comment")
+			}
+
+			remaining, err := store.List(original.Repository)
+			testutil.NoError(t, err)
+			testutil.RequireEqual(t, len(remaining), 1,
+				"remaining comments = %#v", remaining,
+			)
+			testutil.RequireEqual(t, remaining[0].Body, original.Body,
+				"comment was modified: %#v", remaining[0],
+			)
+			current, err := store.List("/repo/current")
+			testutil.NoError(t, err)
+			testutil.RequireEqual(t, len(current), 0,
+				"unexpected comments = %#v", current,
+			)
+		})
+	}
 }
 
 func TestWritePrompt(t *testing.T) {

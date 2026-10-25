@@ -3,12 +3,6 @@
 package diffscreen
 
 import (
-	"fmt"
-	"strings"
-
-	"charm.land/lipgloss/v2"
-	"github.com/charmbracelet/x/ansi"
-	"github.com/eskelinenantti/review-my-slop/internal/appinfo"
 	"github.com/eskelinenantti/review-my-slop/internal/patch"
 	"github.com/eskelinenantti/review-my-slop/internal/ui"
 	"github.com/eskelinenantti/review-my-slop/internal/ui/internal/frame"
@@ -154,14 +148,6 @@ func (v *View) Move(motion Motion) {
 		if cursor, ok := v.view.last(); ok {
 			v.setCursor(cursor)
 		}
-
-	default:
-		v.moveBetweenSections(motion)
-	}
-}
-
-func (v *View) moveBetweenSections(motion Motion) {
-	switch motion {
 	case PreviousFile:
 		v.jumpFile(backward)
 	case NextFile:
@@ -182,10 +168,7 @@ func (v *View) step(direction direction) {
 	if !ok {
 		return
 	}
-	if !v.extendSelectionTo(next) {
-		return
-	}
-	v.setCursor(next)
+	v.applyMovement(v.view.keepVisible(v.viewport, next), next)
 }
 func (v *View) setCursor(cursor diffCursor) {
 	v.cursor = cursor
@@ -193,23 +176,20 @@ func (v *View) setCursor(cursor diffCursor) {
 }
 func (v *View) halfPage(direction direction) {
 	viewport, cursor := v.view.scrollHalfPage(v.viewport, v.cursor, direction)
-	if !v.extendSelectionTo(cursor) {
-		return
-	}
-	v.viewport, v.cursor = viewport, cursor
+	v.applyMovement(viewport, cursor)
 }
 
-// extendSelectionTo accepts unrestricted movement when no range is active.
-// An active range changes only when its endpoint remains in the original hunk.
-func (v *View) extendSelectionTo(cursor diffCursor) bool {
-	if v.selection == nil {
-		return true
-	}
-	selection, ok := v.view.extendSelection(*v.selection, cursor)
-	if ok {
+// applyMovement commits focus and scrolling together only when the active
+// selection can follow the proposed cursor within its original hunk.
+func (v *View) applyMovement(viewport diffViewport, cursor diffCursor) {
+	if v.selection != nil {
+		selection, ok := v.view.selectionBetween(v.selection.First, cursor)
+		if !ok {
+			return
+		}
 		v.selection = &selection
 	}
-	return ok
+	v.viewport, v.cursor = viewport, cursor
 }
 func (v *View) jumpFile(direction direction) {
 	v.selection = nil
@@ -223,13 +203,10 @@ func (v *View) switchPane(pane diffPane) {
 		return
 	}
 	if v.selection != nil {
-		first, firstOK := v.view.switchPane(v.selection.First, pane)
-		last, lastOK := v.view.switchPane(v.selection.Last, pane)
-		if !firstOK || !lastOK {
-			return
-		}
-		selection := beginSelection(first)
-		selection, ok = v.view.extendSelection(selection, last)
+		selection, ok := v.view.translateSelection(*v.selection,
+			func(cursor diffCursor) (diffCursor, bool) {
+				return v.view.switchPane(cursor, pane)
+			})
 		if !ok {
 			return
 		}
@@ -262,10 +239,11 @@ func (v *View) ScrollHorizontal(columns int) {
 func (v *View) ScrollVertical(rows int) {
 	v.search.repeatMiss = false
 	viewport, cursor := v.view.scrollVertical(v.viewport, v.cursor, rows)
-	if cursor != v.cursor && !v.extendSelectionTo(cursor) {
+	if cursor == v.cursor {
+		v.viewport = viewport
 		return
 	}
-	v.viewport, v.cursor = viewport, cursor
+	v.applyMovement(viewport, cursor)
 }
 
 // ToggleSelection starts a range at the focused line or clears the current
@@ -389,70 +367,4 @@ func (v *View) Find(d Direction) bool {
 		v.setCursor(cursor)
 	}
 	return ok
-}
-
-// Render returns the full screen, including its header, status footer, and
-// final blank line. A non-nil error replaces the status while retaining the
-// position label. Dimensions are configured through Resize.
-func (v *View) Render(err error) string {
-	counts := frame.Muted(v.view.countsLabel)
-	header := frame.Title(appinfo.Name) + "  " + counts
-	body := v.renderBody()
-	status := v.renderStatus()
-	footer := frame.Muted(status)
-	if v.search.repeatMiss {
-		message := fmt.Sprintf("no matches for %q", v.search.term)
-		footer = frame.Error(message)
-	}
-	if err != nil {
-		footer = frame.Error(frame.SingleLine(err.Error()))
-	}
-	return frame.Render(header, body, v.renderFooter(footer), v.height)
-}
-func (v *View) renderBody() []string {
-	var body []string
-	if len(v.view.patch.Files) == 0 {
-		empty := "No unstaged or untracked changes."
-		if v.view.patch.Kind == patch.Branch {
-			empty = "No branch or worktree changes."
-		}
-		body = frame.EmptyBody(v.height, empty)
-	} else {
-		body = strings.Split(
-			v.view.render(v.viewport, v.cursor, v.selection),
-			"\n",
-		)
-	}
-	return body
-}
-
-func (v *View) renderStatus() string {
-	status := "j/k/h/l move  c comment  ? help  q quit"
-	if v.search.active {
-		status = "/" + v.search.query + cursorStyle.Render(" ")
-		if v.search.miss {
-			status += frame.Error("  no matches")
-		}
-	} else if v.selection != nil {
-		status = "visual selection  j/k extend  c comment  Esc cancel"
-	}
-	return status
-}
-
-func (v *View) renderFooter(value string) string {
-	label := "local changes"
-	if v.view.patch.Kind == patch.Branch {
-		label = "branch changes from " + v.view.patch.Branch
-	}
-	if v.viewport.top > 0 {
-		label += fmt.Sprintf(" (%d%%)", v.view.viewportProgress(v.viewport))
-	}
-	right := frame.Muted(label)
-	width := frame.ScreenWidth(v.width)
-	rightWidth := lipgloss.Width(right)
-	value = ansi.Truncate(value, max(0, width-rightWidth-1), "")
-	return value + strings.Repeat(
-		" ",
-		max(1, width-lipgloss.Width(value)-rightWidth),
-	) + right
 }

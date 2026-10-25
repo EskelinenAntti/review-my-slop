@@ -9,6 +9,24 @@ import (
 	"github.com/eskelinenantti/review-my-slop/internal/comments"
 )
 
+// editCommentDraft owns the temporary file for the duration of edit. Only a
+// successful edit is read back; every exit removes the draft.
+func editCommentDraft(
+	body string,
+	anchor comments.Anchor,
+	edit func(string) error,
+) (string, error) {
+	path, err := createCommentFile(body, anchor)
+	if err != nil {
+		return "", err
+	}
+	defer os.Remove(path)
+	if err := edit(path); err != nil {
+		return "", err
+	}
+	return readCommentFile(path, anchor)
+}
+
 func createCommentFile(body string, anchor comments.Anchor) (string, error) {
 	file, err := os.CreateTemp("", appinfo.Name+"-comment-*.md")
 	if err != nil {
@@ -42,26 +60,26 @@ func readCommentFile(path string, anchor comments.Anchor) (string, error) {
 }
 
 func commentDraft(body string, anchor comments.Anchor) string {
-	if len(anchor.QuotedLines) == 0 {
+	suggestion := suggestionBlock(anchor.QuotedLines)
+	if suggestion == "" {
 		return body
 	}
-	lines := suggestionLines(anchor.QuotedLines)
 	var draft strings.Builder
 	_, _ = draft.WriteString(body)
 	if body != "" && !strings.HasSuffix(body, "\n") {
 		_ = draft.WriteByte('\n')
 	}
 	_ = draft.WriteByte('\n')
-	_, _ = draft.WriteString(suggestionBlock(lines))
+	_, _ = draft.WriteString(suggestion)
 	_ = draft.WriteByte('\n')
 	return draft.String()
 }
 
 func stripUnchangedSuggestion(body string, quoted []string) string {
-	if len(quoted) == 0 {
+	suggestion := suggestionBlock(quoted)
+	if suggestion == "" {
 		return body
 	}
-	suggestion := suggestionBlock(suggestionLines(quoted))
 	before, after, found := strings.Cut(body, suggestion)
 	if !found {
 		return body
@@ -73,7 +91,14 @@ func stripUnchangedSuggestion(body string, quoted []string) string {
 	return before + "\n" + strings.TrimLeft(after, "\n")
 }
 
-func suggestionBlock(lines []string) string {
+// suggestionBlock renders the new version of quoted diff lines, or no block
+// when there is no quoted context. A deletion-only selection gets an empty
+// block.
+func suggestionBlock(quoted []string) string {
+	if len(quoted) == 0 {
+		return ""
+	}
+	lines := suggestionLines(quoted)
 	fence := contextFence(lines)
 	var block strings.Builder
 	_, _ = block.WriteString(fence)

@@ -33,46 +33,39 @@ func WritePrompt(w io.Writer, comments []Comment) error {
 		return err
 	}
 	for index, comment := range comments {
-		if err := writePromptComment(w, index+1, comment); err != nil {
+		text := promptComment(index+1, comment)
+		if _, err := fmt.Fprint(w, text); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func writePromptComment(w io.Writer, number int, comment Comment) error {
+func promptComment(number int, comment Comment) string {
+	var text strings.Builder
 	anchor := comment.Anchor
-	_, headingErr := fmt.Fprintf(
-		w,
+	_, _ = fmt.Fprintf(
+		&text,
 		"\n### %d. `%s` (%s)\n\n",
 		number,
 		anchor.FilePath,
 		describeRange(anchor),
 	)
-	if headingErr != nil {
-		return headingErr
-	}
-	if err := writeQuotedLines(w, anchor.QuotedLines); err != nil {
-		return err
-	}
-	_, err := fmt.Fprintln(w, strings.TrimSpace(comment.Body))
-	return err
+	writeQuotedLines(&text, anchor.QuotedLines)
+	_, _ = fmt.Fprintln(&text, strings.TrimSpace(comment.Body))
+	return text.String()
 }
 
-func writeQuotedLines(w io.Writer, lines []string) error {
+func writeQuotedLines(text *strings.Builder, lines []string) {
 	if len(lines) == 0 {
-		return nil
+		return
 	}
-	if _, err := fmt.Fprintln(w, "```diff"); err != nil {
-		return err
-	}
+	_, _ = text.WriteString("```diff\n")
 	for _, line := range lines {
-		if _, err := fmt.Fprintln(w, line); err != nil {
-			return err
-		}
+		_, _ = text.WriteString(line)
+		_ = text.WriteByte('\n')
 	}
-	_, err := fmt.Fprintln(w, "```")
-	return err
+	_, _ = text.WriteString("```\n")
 }
 
 func describeRange(anchor Anchor) string {

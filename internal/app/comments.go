@@ -3,7 +3,6 @@ package app
 import (
 	"errors"
 	"path/filepath"
-	"slices"
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
@@ -50,12 +49,7 @@ func (m model) editSelectedComment() (tea.Model, tea.Cmd) {
 		index:  index,
 		anchor: comment.Anchor,
 	}
-	cmd, err := m.openCommentEditor()
-	if err != nil {
-		m.err = err
-		return m, nil
-	}
-	return m, cmd
+	return m.startEditor(m.openCommentEditor)
 }
 
 func (m *model) beginComment() (tea.Cmd, error) {
@@ -103,11 +97,7 @@ func (m *model) finishCommentEdit() {
 }
 
 func (m *model) updateSavedComment(saved comments.Comment, index int) {
-	if index >= 0 {
-		m.comments.items[index] = saved
-	} else {
-		m.comments.items = append(m.comments.items, saved)
-	}
+	m.comments.upsert(saved, index)
 	m.commentsChanged()
 	if index < 0 {
 		m.commentView.Move(len(m.comments.items))
@@ -126,13 +116,12 @@ func (m *model) deleteComment(index int) {
 		m.err = err
 		return
 	}
-	m.comments.items = slices.Delete(m.comments.items, index, index+1)
+	m.comments.remove(index)
 	m.commentsChanged()
 }
 
 func (m *model) commentsChanged() {
 	m.commentView.Update(m.comments.items)
-	m.comments.revision++
 	m.err = nil
 }
 

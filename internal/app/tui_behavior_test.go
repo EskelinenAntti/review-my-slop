@@ -74,6 +74,63 @@ func TestCommentRequiresEditor(t *testing.T) {
 	)
 }
 
+func TestSelectedCommentEditorStartup(t *testing.T) {
+	anchor := comments.Anchor{FilePath: "main.go", NewStart: 2}
+	item := comments.Comment{ID: "one", Body: "existing body", Anchor: anchor}
+	for _, tc := range []struct {
+		name    string
+		editor  string
+		items   []comments.Comment
+		wantCmd bool
+		wantErr bool
+	}{
+		{
+			name: "configured editor", editor: "true",
+			items: []comments.Comment{item}, wantCmd: true,
+		},
+		{
+			name:  "missing editor",
+			items: []comments.Comment{item}, wantErr: true,
+		},
+		{name: "empty list"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv("EDITOR", tc.editor)
+			m := testModel(coveragePatch(), tc.items, nil)
+			m = updateModel(t, m, textKey("C"))
+			updated, cmd := m.Update(textKey("e"))
+			var ok bool
+			m, ok = updated.(model)
+			testutil.RequireEqual(t, ok, true, "model type = %T", updated)
+			testutil.RequireEqual(t, cmd != nil, tc.wantCmd,
+				"command present = %v", cmd != nil)
+			testutil.RequireEqual(t, m.err != nil, tc.wantErr,
+				"error = %v", m.err)
+			testutil.RequireEqual(t, m.mode, modeComments, "mode = %v", m.mode)
+			if tc.wantErr {
+				testutil.RequireEqual(t, m.err.Error(), "$EDITOR is not set",
+					"error = %v", m.err)
+			}
+			if tc.wantCmd {
+				testutil.RequireEqual(t, m.edit.index, 0,
+					"edit index = %d", m.edit.index)
+				testutil.RequireEqual(t, m.edit.body, item.Body,
+					"edit body = %q", m.edit.body)
+				gotAnchor := m.edit.anchor
+				testutil.RequireEqual(t, gotAnchor.FilePath, anchor.FilePath,
+					"anchor = %#v", gotAnchor)
+				testutil.RequireEqual(t, gotAnchor.NewStart, anchor.NewStart,
+					"anchor = %#v", gotAnchor)
+			} else {
+				testutil.RequireEqual(t, m.edit.index, -1,
+					"edit index = %d", m.edit.index)
+				testutil.RequireEqual(t, m.edit.body, "",
+					"edit body = %q", m.edit.body)
+			}
+		})
+	}
+}
+
 func TestEmptyNewCommentIsDiscarded(t *testing.T) {
 	t.Setenv("EDITOR", "true")
 	called := false

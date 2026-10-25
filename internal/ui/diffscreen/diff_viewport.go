@@ -3,6 +3,7 @@ package diffscreen
 import (
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
+	"github.com/eskelinenantti/review-my-slop/internal/ui"
 )
 
 func (v *diffView) newViewport(width, height int) diffViewport {
@@ -19,10 +20,7 @@ func (v *diffView) resize(
 
 func (v *diffView) maxTop(height int) int {
 	end := max(0, len(v.rows)-height)
-	if v.hasStickyHeader(end, height) {
-		end++
-	}
-	return end
+	return end + v.stickyHeaderHeight(end, height)
 }
 
 func (v *diffView) clampViewport(viewport diffViewport) diffViewport {
@@ -34,17 +32,27 @@ func (v *diffView) clampViewport(viewport diffViewport) diffViewport {
 	return viewport
 }
 
-func (v *diffView) hasStickyHeader(top int, viewportHeight int) bool {
-	return viewportHeight > 1 && top >= 0 &&
-		top < len(v.rows) && v.rows[top].kind != fileRow
+// stickyHeaderHeight reserves a row only when the file header has scrolled out
+// of view and there is room left for content.
+func (v *diffView) stickyHeaderHeight(top int, viewportHeight int) int {
+	if viewportHeight > 1 && top >= 0 &&
+		top < len(v.rows) && v.rows[top].kind != fileRow {
+		return 1
+	}
+	return 0
 }
 
 func (v *diffView) contentHeight(viewport diffViewport) int {
-	height := viewport.height
-	if v.hasStickyHeader(viewport.top, viewport.height) {
-		height--
-	}
+	headerHeight := v.stickyHeaderHeight(viewport.top, viewport.height)
+	height := viewport.height - headerHeight
 	return max(1, height)
+}
+
+// visibleRows returns the half-open range of projected rows in the viewport,
+// excluding the space reserved for a sticky file header.
+func (v *diffView) visibleRows(viewport diffViewport) (start, end int) {
+	end = min(len(v.rows), viewport.top+v.contentHeight(viewport))
+	return viewport.top, end
 }
 
 func (v *diffView) keepVisible(
@@ -80,7 +88,7 @@ func (v *diffView) align(
 	}
 	offset := max(0, alignmentOffset(viewport.height, alignment)-headerHeight)
 	viewport.top = cursor.row - offset
-	if !v.hasStickyHeader(viewport.top, viewport.height) {
+	if v.stickyHeaderHeight(viewport.top, viewport.height) == 0 {
 		viewport.top = cursor.row - alignmentOffset(viewport.height, alignment)
 	}
 	return v.clampViewport(viewport)
@@ -100,11 +108,9 @@ func (v *diffView) scrollHorizontal(
 	viewport diffViewport,
 	columns int,
 ) diffViewport {
-	columns = max(
-		-viewport.leftColumn,
-		min(columns, v.maxHorizontalOffset(viewport.width)-viewport.leftColumn),
+	viewport.leftColumn = ui.MoveWithinBounds(
+		viewport.leftColumn, columns, v.maxHorizontalOffset(viewport.width),
 	)
-	viewport.leftColumn += columns
 	return v.clampViewport(viewport)
 }
 
@@ -113,24 +119,23 @@ func (v *diffView) scrollVertical(
 	cursor diffCursor,
 	rows int,
 ) (diffViewport, diffCursor) {
-	rows = max(-viewport.top, min(rows, v.maxTop(viewport.height)-viewport.top))
-	viewport.top += rows
+	viewport.top = ui.MoveWithinBounds(
+		viewport.top, rows, v.maxTop(viewport.height),
+	)
 	viewport = v.clampViewport(viewport)
 	if !v.valid(cursor) || v.cursorVisible(viewport, cursor) {
 		return viewport, cursor
 	}
-	target := max(
-		viewport.top,
-		min(cursor.row, viewport.top+v.contentHeight(viewport)-1),
-	)
+	start, end := v.visibleRows(viewport)
+	target := max(start, min(cursor.row, end-1))
 	d := forward
 	if cursor.row > target {
 		d = backward
 	}
-	candidate, ok := v.nearest(target, cursor.pane, d, viewport)
-	if !ok && v.split {
-		candidate, ok = v.nearest(target, cursor.pane.other(), d, viewport)
-	}
+	candidate, ok := v.inPreferredPane(cursor.pane,
+		func(pane diffPane) (diffCursor, bool) {
+			return v.nearest(target, pane, d, viewport)
+		})
 	if ok {
 		cursor = candidate
 	}
@@ -167,8 +172,8 @@ func (v *diffView) viewportProgress(viewport diffViewport) int {
 	if len(v.rows) == 0 {
 		return 0
 	}
-	bottom := min(len(v.rows), viewport.top+v.contentHeight(viewport))
-	return bottom * 100 / len(v.rows)
+	_, end := v.visibleRows(viewport)
+	return end * 100 / len(v.rows)
 }
 
 func (v *diffView) nearest(
@@ -177,18 +182,10 @@ func (v *diffView) nearest(
 	direction direction,
 	viewport diffViewport,
 ) (diffCursor, bool) {
-	height := v.contentHeight(viewport)
-	if cursor, ok := v.cursorInViewport(target, pane, viewport); ok {
-		return cursor, true
-	}
-	for distance := 1; distance < height; distance++ {
-		for _, y := range neighborRows(target, distance, direction) {
-			if cursor, ok := v.cursorInViewport(y, pane, viewport); ok {
-				return cursor, true
-			}
-		}
-	}
-	return diffCursor{}, false
+	return nearestCursor(target, v.contentHeight(viewport)-1, direction,
+		func(row int) (diffCursor, bool) {
+			return v.cursorInViewport(row, pane, viewport)
+		})
 }
 
 func (v *diffView) cursorInViewport(
@@ -203,21 +200,13 @@ func (v *diffView) cursorInViewport(
 }
 
 func (v *diffView) rowVisible(viewport diffViewport, row int) bool {
-	return row >= viewport.top &&
-		row < viewport.top+v.contentHeight(viewport)
+	start, end := v.visibleRows(viewport)
+	return row >= start && row < end
 }
 
-func (v *diffView) maxHorizontalOffset(width int) int {
-	contentWidth := max(1, width-14)
-	extra := 0
-	if v.split {
-		contentWidth, extra = max(1, (width-3)/2-6), 2
-	}
-	return max(0, v.maxLineWidth+extra-contentWidth)
-}
-
-func renderedLineWidth(current entry) int {
+func renderedLineWidth(current projectedRow) int {
+	text := current.text + current.panes[left].text + current.panes[right].text
 	return lipgloss.Width(
-		expandTabs(ansi.Strip(current.text + current.left + current.right)),
+		expandTabs(ansi.Strip(text)),
 	)
 }

@@ -61,8 +61,7 @@ func (v *View) Resize(width, height int) {
 
 // Move shifts focus by delta comments within the list bounds.
 func (v *View) Move(delta int) {
-	delta = max(-v.row, min(delta, max(0, len(v.items)-1)-v.row))
-	v.row += delta
+	v.row = ui.MoveWithinBounds(v.row, delta, max(0, len(v.items)-1))
 	v.keepVisible()
 }
 
@@ -135,8 +134,7 @@ func (v *View) Render(err error) string {
 		"j/k move  Enter/e edit  D delete  Esc/q return",
 	)
 	if err != nil {
-		message := frame.SingleLine(err.Error())
-		footer = frame.Error(ansi.Truncate(message, width, ""))
+		footer = ansi.Truncate(frame.Error(err.Error()), width, "")
 	}
 	return frame.Render(header, body, footer, v.height)
 }
