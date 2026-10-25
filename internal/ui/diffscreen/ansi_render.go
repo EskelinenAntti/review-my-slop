@@ -71,17 +71,7 @@ func filterSGRParts(parts []string, colors foregroundPolicy) []string {
 		switch {
 		case code == sgrExtendedBackground ||
 			(colors == discardForeground && code == sgrExtendedForeground):
-			if len(parts) > 0 {
-				// Consume the mode and its payload, even when truncated.
-				switch parts[0] {
-				case "2": // RGB channels
-					parts = parts[min(4, len(parts)):]
-				case "5": // Palette index
-					parts = parts[min(2, len(parts)):]
-				default:
-					// Unknown modes remain for parameter-wise filtering.
-				}
-			}
+			parts = skipExtendedColor(parts)
 		case isBackgroundSGR(code):
 			// Background colors are supplied by the row style.
 		case colors == discardForeground && isForegroundSGR(code):
@@ -91,6 +81,22 @@ func filterSGRParts(parts []string, colors foregroundPolicy) []string {
 		}
 	}
 	return filtered
+}
+
+// skipExtendedColor consumes a recognized mode and its payload, even when
+// truncated. Unknown modes remain for parameter-wise filtering.
+func skipExtendedColor(parts []string) []string {
+	if len(parts) == 0 {
+		return parts
+	}
+	switch parts[0] {
+	case "2": // Mode followed by three RGB channels.
+		return parts[min(4, len(parts)):]
+	case "5": // Mode followed by a palette index.
+		return parts[min(2, len(parts)):]
+	default:
+		return parts
+	}
 }
 
 func isBackgroundSGR(code int) bool {

@@ -105,6 +105,35 @@ func TestFilterANSIColors(t *testing.T) {
 	}
 }
 
+func TestSkipExtendedColor(t *testing.T) {
+	for _, test := range []struct {
+		name  string
+		parts []string
+		want  []string
+	}{
+		{"missing mode", nil, nil},
+		{"RGB", []string{"2", "40", "48", "49", "1"}, []string{"1"}},
+		{"palette", []string{"5", "48", "4"}, []string{"4"}},
+		{"RGB without channels", []string{"2"}, []string{}},
+		{"truncated RGB", []string{"2", "255", "0"}, []string{}},
+		{"palette without index", []string{"5"}, []string{}},
+		{"unknown mode", []string{"3", "1"}, []string{"3", "1"}},
+		{"empty mode", []string{"", "1"}, []string{"", "1"}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			original := slices.Clone(test.parts)
+			got := skipExtendedColor(test.parts)
+			if !slices.Equal(got, test.want) {
+				t.Errorf("skipExtendedColor(%v) = %v, want %v",
+					test.parts, got, test.want)
+			}
+			if !slices.Equal(test.parts, original) {
+				t.Errorf("skipExtendedColor mutated input: %v", test.parts)
+			}
+		})
+	}
+}
+
 func TestFilterSGRPartsLeavesInputUnchanged(t *testing.T) {
 	parts := []string{"44", "1", "48", "5", "123", "4"}
 	original := slices.Clone(parts)
