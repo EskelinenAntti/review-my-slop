@@ -50,6 +50,57 @@ func TestSelectedDefaultsToCurrentAndMovementExtendsRange(t *testing.T) {
 	testutil.RequireEqual(t, len(lines), 1, "cleared selection=%#v", lines)
 }
 
+func TestMoveBetweenFilesAndPanes(t *testing.T) {
+	tests := []struct {
+		name     string
+		setup    []Motion
+		motion   Motion
+		wantFile string
+		wantText string
+	}{
+		{
+			name: "next file", motion: NextFile,
+			wantFile: "second.go", wantText: "other",
+		},
+		{
+			name: "previous file", setup: []Motion{NextFile},
+			motion: PreviousFile, wantFile: "first.go", wantText: "after",
+		},
+		{
+			name: "old pane", setup: []Motion{NextLine},
+			motion: OldPane, wantFile: "first.go", wantText: "removed one",
+		},
+		{
+			name: "new pane", setup: []Motion{NextLine, OldPane},
+			motion: NewPane, wantFile: "first.go", wantText: "added one",
+		},
+		{
+			name: "other pane", setup: []Motion{NextLine},
+			motion: OtherPane, wantFile: "first.go", wantText: "removed one",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			v := New(testPatch(), Options{SideBySide: true})
+			v.Resize(120, 10)
+			for _, motion := range tt.setup {
+				v.Move(motion)
+			}
+
+			v.Move(tt.motion)
+
+			file, line, ok := v.Current()
+			testutil.RequireEqual(t, ok, true, "no focused source line")
+			testutil.RequireEqual(t, file.DisplayPath, tt.wantFile,
+				"focused file = %q", file.DisplayPath,
+			)
+			testutil.RequireEqual(t, line.Text, tt.wantText,
+				"focused line = %q", line.Text,
+			)
+		})
+	}
+}
+
 func TestUpdateAndConfigurePreserveState(t *testing.T) {
 	p := testPatch()
 	v := New(p, Options{Dark: true})
