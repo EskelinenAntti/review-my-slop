@@ -535,7 +535,12 @@ func TestRenderedCodeRowsHaveExactTerminalWidth(t *testing.T) {
 	for _, test := range []struct {
 		constructor func(patch.Patch, bool) *diffView
 		width       int
-	}{{newUnifiedView, 37}, {newSideBySideView, 120}} {
+	}{
+		{newUnifiedView, 37},
+		{newUnifiedView, 38},
+		{newSideBySideView, 120},
+		{newSideBySideView, 121},
+	} {
 		v := test.constructor(testPatch(), true)
 		cursor := mustFirst(t, v)
 		for {

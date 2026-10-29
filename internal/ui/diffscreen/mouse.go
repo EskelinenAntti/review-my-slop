@@ -57,7 +57,7 @@ func (v *View) cursorAtPoint(x, y int) (diffCursor, bool) {
 		switch {
 		case x < leftWidth:
 			pane = left
-		case x < leftWidth+3:
+		case x < leftWidth+splitPaneSeparatorWidth:
 			return diffCursor{}, false
 		default:
 			pane = right
