@@ -96,6 +96,37 @@ func TestMouseHitTestingMatchesScrolledProjection(t *testing.T) {
 	}
 }
 
+func TestSplitMousePaneBoundaries(t *testing.T) {
+	for _, test := range []struct {
+		width, dividerStart, rightStart int
+	}{
+		{120, 58, 61},
+		{121, 59, 62},
+	} {
+		v := New(testPatch(), Options{SideBySide: true})
+		v.Resize(test.width, 20)
+		for x := test.dividerStart; x < test.rightStart; x++ {
+			testutil.RequireEqual(t, v.BeginDrag(x, 3), false,
+				"width=%d: divider column %d accepted", test.width, x,
+			)
+		}
+		for _, point := range []struct {
+			x    int
+			pane diffPane
+		}{
+			{test.dividerStart - 1, left},
+			{test.rightStart, right},
+		} {
+			testutil.RequireEqual(t, v.BeginDrag(point.x, 3), true,
+				"width=%d: pane column %d rejected", test.width, point.x,
+			)
+			testutil.RequireEqual(t, v.cursor.pane, point.pane,
+				"width=%d: column %d focused wrong pane", test.width, point.x,
+			)
+		}
+	}
+}
+
 func TestSplitMouseRejectsDividerEmptyPaneAndCrossPaneDrag(t *testing.T) {
 	v := New(testPatch(), Options{SideBySide: true})
 	v.Resize(120, 20)

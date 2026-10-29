@@ -12,6 +12,14 @@ import (
 	"github.com/eskelinenantti/review-my-slop/internal/ui/internal/frame"
 )
 
+const (
+	lineNumberWidth         = 5
+	unifiedGutterWidth      = 2*lineNumberWidth + 4
+	splitGutterWidth        = lineNumberWidth + 1
+	splitPaneSeparator      = " │ "
+	splitPaneSeparatorWidth = 3
+)
+
 func (v *diffView) render(
 	viewport diffViewport,
 	cursor diffCursor,
@@ -102,8 +110,10 @@ func (v *diffView) renderUnifiedLine(
 	line := hunk.Lines[current.rightLine]
 	prefix := lineMarker(line.Kind)
 	gutter := fmt.Sprintf(
-		"%5s %5s %s ",
+		"%*s %*s %s ",
+		lineNumberWidth,
 		number(line.OldNumber),
+		lineNumberWidth,
 		number(line.NewNumber),
 		prefix,
 	)
@@ -152,12 +162,12 @@ func (v *diffView) renderSplitRow(
 		cursor,
 		selection,
 	)
-	return left + " │ " + right
+	return left + splitPaneSeparator + right
 }
 
 func splitPaneWidths(width int) (left, right int) {
-	left = max(20, (width-3)/2)
-	return left, max(20, width-3-left)
+	left = max(20, (width-splitPaneSeparatorWidth)/2)
+	return left, max(20, width-splitPaneSeparatorWidth-left)
 }
 
 func (v *diffView) renderPane(
@@ -179,7 +189,7 @@ func (v *diffView) renderPane(
 		text, numberValue = current.left, line.OldNumber
 	}
 	prefix := lineMarker(line.Kind) + " "
-	gutter := fmt.Sprintf("%5s ", number(numberValue))
+	gutter := fmt.Sprintf("%*s ", lineNumberWidth, number(numberValue))
 	value := gutter + fitANSIWindow(
 		prefix+text,
 		offset,
